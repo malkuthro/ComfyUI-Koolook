@@ -73,14 +73,11 @@ class Wan22EasyPrompt:
         return list(kwargs.keys())
 
     def execute(self, body, clip=None, **kwargs):
-        # Collect field selections, excluding body
-        prompt_parts = []
-        for key, value in kwargs.items():
-            if key != "body" and value and value != "none":
-                prompt_parts.append(f"{key}: {value}")
+        # Collect selected options (values only), excluding body and skipping "none"
+        prompt_parts = [value for key, value in kwargs.items() if value and value != "none"]
         fields_str = ", ".join(prompt_parts)
 
-        # Combined: fields + body (with comma if both present)
+        # Combined: fields options + body (with comma if both present)
         combined = fields_str
         if body:
             if combined:
@@ -100,7 +97,7 @@ class Wan22EasyPrompt:
 
     # Optional: IS_CHANGED for re-execution if config changes
     @classmethod
-    def IS_CHANGED(cls):
+    def IS_CHANGED(cls, *args, **kwargs):
         # Hash the config.json to re-execute if it changes
         script_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(script_dir, 'config.json')
