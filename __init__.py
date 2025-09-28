@@ -4,7 +4,7 @@ import os
 class Wan22EasyPrompt:
     """
     Wan 2.2 Easy Prompt node for ComfyUI.
-    Loads dynamic inputs from config.json and outputs a formatted string for prompts.
+    Loads dynamic inputs from config.json, adds a body text input, and outputs two strings: combined prompt and fields only.
     """
     def __init__(self):
         pass
@@ -28,7 +28,7 @@ class Wan22EasyPrompt:
                 "output_type": "STRING"
             }
 
-        # Build the INPUT_TYPES dict dynamically
+        # Build the INPUT_TYPES dict dynamically from config fields
         input_types = {"required": {}}
         for field in config['fields']:
             name = field['name']
@@ -47,25 +47,42 @@ class Wan22EasyPrompt:
                 }
                 input_types["required"][name] = ("STRING", defaults)
 
+        # Add the body text input at the end (appears at the bottom)
+        input_types["required"]["body"] = ("STRING", {
+            "multiline": True,
+            "default": "",
+            "lazy": True
+        })
+
         return input_types
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt",)
+    RETURN_TYPES = ("STRING", "STRING",)
+    RETURN_NAMES = ("combined_prompt", "fields_only",)
     FUNCTION = "execute"
     CATEGORY = "Wan/Parameters"
     OUTPUT_NODE = False
 
     def check_lazy_status(self, **kwargs):
-        # All inputs are lazy; evaluate all if any are needed. For simplicity, require all.
-        return list(kwargs.keys())  # Return all input names to evaluate everything
+        # Evaluate all inputs if needed
+        return list(kwargs.keys())
 
-    def execute(self, **kwargs):
-        # Concatenate selections into a prompt string, skipping "none"
+    def execute(self, body, **kwargs):
+        # Collect field selections, excluding body
         prompt_parts = []
         for key, value in kwargs.items():
-            if value and value != "none":
+            if key != "body" and value and value != "none":
                 prompt_parts.append(f"{key}: {value}")
-        return (", ".join(prompt_parts),)
+        fields_str = ", ".join(prompt_parts)
+
+        # Combined: fields + body (with comma if both present)
+        combined = fields_str
+        if body:
+            if combined:
+                combined += ", " + body
+            else:
+                combined = body
+
+        return (combined, fields_str,)
 
     # Optional: IS_CHANGED for re-execution if config changes
     @classmethod
