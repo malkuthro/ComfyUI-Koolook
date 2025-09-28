@@ -4,7 +4,8 @@ import os
 class Wan22EasyPrompt:
     """
     Wan 2.2 Easy Prompt node for ComfyUI.
-    Loads dynamic inputs from config.json, adds a body text input, and outputs two strings: combined prompt and fields only.
+    Loads dynamic inputs from config.json, adds a body text input, and outputs two strings (combined prompt and fields only) plus optional CONDITIONING.
+    Includes an optional CLIP input to encode the combined prompt into CONDITIONING, allowing use as a positive prompt node.
     """
     def __init__(self):
         pass
@@ -29,7 +30,12 @@ class Wan22EasyPrompt:
             }
 
         # Build the INPUT_TYPES dict dynamically from config fields
-        input_types = {"required": {}}
+        input_types = {
+            "required": {},
+            "optional": {
+                "clip": ("CLIP",)
+            }
+        }
         for field in config['fields']:
             name = field['name']
             if field['type'] == 'combo':
@@ -56,8 +62,8 @@ class Wan22EasyPrompt:
 
         return input_types
 
-    RETURN_TYPES = ("STRING", "STRING",)
-    RETURN_NAMES = ("combined_prompt", "fields_only",)
+    RETURN_TYPES = ("STRING", "STRING", "CONDITIONING",)
+    RETURN_NAMES = ("combined_prompt", "fields_only", "conditioning",)
     FUNCTION = "execute"
     CATEGORY = "Wan/Parameters"
     OUTPUT_NODE = False
@@ -66,7 +72,7 @@ class Wan22EasyPrompt:
         # Evaluate all inputs if needed
         return list(kwargs.keys())
 
-    def execute(self, body, **kwargs):
+    def execute(self, body, clip=None, **kwargs):
         # Collect field selections, excluding body
         prompt_parts = []
         for key, value in kwargs.items():
@@ -82,7 +88,15 @@ class Wan22EasyPrompt:
             else:
                 combined = body
 
-        return (combined, fields_str,)
+        # Conditioning: Encode the combined prompt if clip is provided, else empty list
+        if clip is not None:
+            tokens = clip.tokenize(combined)
+            cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+            conditioning = [[cond, {"pooled_output": pooled}]]
+        else:
+            conditioning = []
+
+        return (combined, fields_str, conditioning,)
 
     # Optional: IS_CHANGED for re-execution if config changes
     @classmethod
