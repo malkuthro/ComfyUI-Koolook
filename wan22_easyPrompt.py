@@ -45,5 +45,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    config.get('node_name', "JsonConfigNode"): "JSON Config Node"
+    config.get('node_name', "JsonConfigNode"): "Wan 2.2 Easy Prompt"  # Changed display name
 }
