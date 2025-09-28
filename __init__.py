@@ -121,9 +121,9 @@ class ImageAspect:
                 "aspect_ratio": ("STRING", {"default": "16:9"}),
                 "upscale_method": (["nearest-exact", "bilinear", "area", "bicubic", "lanczos"], {"default": "nearest-exact"}),
                 "keep_proportion": (["stretch", "letterbox", "pillarbox"], {"default": "stretch"}),
-                "pad_red": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "pad_green": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "pad_blue": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "pad_red": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
+                "pad_green": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
+                "pad_blue": ("INT", {"default": 0, "min": 0, "max": 255, "step": 1}),
                 "crop_position": (["top", "bottom", "left", "right", "center"], {"default": "center"}),
                 "divisible_by": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
                 "device": (["cpu", "cuda"], {"default": "cpu"}),
@@ -223,7 +223,7 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
                     pad_r = total_pad_w - pad_l
 
             # Create background with pad color (assume C=3 for RGB)
-            pad_color = [pad_red, pad_green, pad_blue]
+            pad_color = [pad_red / 255.0, pad_green / 255.0, pad_blue / 255.0]
             pad_color_tensor = torch.tensor(pad_color, dtype=image.dtype, device=device).view(1, 3, 1, 1)
             out_image = pad_color_tensor.expand(B, 3, target_height, target_width)
             out_image[:, :, pad_t:pad_t + new_h, pad_l:pad_l + new_w] = resized_image
