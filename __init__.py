@@ -1,3 +1,66 @@
-# Init for Koolook Wan 2.2 custom node
+import json
+import os
 
-from .Wan22_easyPrompt import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+# Get the directory of this script to locate config.json
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(script_dir, 'config.json')
+
+# Load the JSON config with error handling
+try:
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+except FileNotFoundError:
+    print(f"Error: config.json not found at {config_path}. Using dummy config.")
+    config = {
+        "category": "Wan/Parameters",
+        "node_name": "Wan_2.2",
+        "fields": [],
+        "output_type": "STRING"
+    }
+except json.JSONDecodeError:
+    print(f"Error: Invalid JSON in {config_path}. Using dummy config.")
+    config = {
+        "category": "Wan/Parameters",
+        "node_name": "Wan_2.2",
+        "fields": [],
+        "output_type": "STRING"
+    }
+
+# Build the INPUT_TYPES dict dynamically
+input_types = {"required": {}}
+for field in config['fields']:
+    name = field['name']
+    if field['type'] == 'combo':
+        options = field['options']
+        defaults = {"default": field.get('default', options[0])}
+        input_types["required"][name] = (options, defaults)
+    elif field['type'] == 'string':
+        defaults = {"default": field.get('default', ""), "multiline": True}
+        input_types["required"][name] = ("STRING", defaults)
+
+# Dynamically create the node class
+class JsonConfigNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return input_types
+
+    RETURN_TYPES = (config.get('output_type', "STRING"),)
+    FUNCTION = "execute"
+    CATEGORY = config.get('category', "Custom")
+
+    def execute(self, **kwargs):
+        # Example: Concatenate selections into a prompt string (customize as needed)
+        prompt_parts = []
+        for key, value in kwargs.items():
+            if value and value != "none":  # Skip 'none' if desired
+                prompt_parts.append(f"{key}: {value}")
+        return (", ".join(prompt_parts),)
+
+# Register the node
+NODE_CLASS_MAPPINGS = {
+    config.get('node_name', "JsonConfigNode"): JsonConfigNode
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    config.get('node_name', "JsonConfigNode"): "Wan 2.2 Easy Prompt"  # Or whatever display name you want
+}
