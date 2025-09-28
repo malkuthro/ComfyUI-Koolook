@@ -121,9 +121,7 @@ class ImageAspect:
                 "aspect_ratio": ("STRING", {"default": "16:9"}),
                 "upscale_method": (["nearest-exact", "bilinear", "area", "bicubic", "lanczos"], {"default": "nearest-exact"}),
                 "keep_proportion": (["stretch", "letterbox", "pillarbox"], {"default": "stretch"}),
-                "pad_red": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "pad_green": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "pad_blue": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "pad_color": ("STRING", {"default": "0, 0, 0"}),
                 "crop_position": (["top", "bottom", "left", "right", "center"], {"default": "center"}),
                 "divisible_by": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
                 "device": (["cpu", "cuda"], {"default": "cpu"}),
@@ -144,7 +142,7 @@ are divisible by the specified value. Supports stretch or pad/crop modes for pro
 Outputs the resized image, optional mask, and final width/height for VFX pipeline integration.
 """
 
-    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_red, pad_green, pad_blue, crop_position, divisible_by, device, mask=None):
+    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color, crop_position, divisible_by, device, mask=None):
         def round_to_nearest_multiple(number, multiple):
             return multiple * round(number / multiple)
 
@@ -225,10 +223,14 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
                     pad_l = total_pad_w // 2
                     pad_r = total_pad_w - pad_l
 
+            # Parse pad_color
+            pad_color = [float(x.strip()) for x in pad_color.split(',')]
+            if len(pad_color) != 3:
+                raise ValueError("Pad color must be three comma-separated floats, e.g., '0, 0, 0'.")
+
             # Create background with pad color (assume C=3 for RGB)
-            pad_color = [pad_red, pad_green, pad_blue]
             pad_color_tensor = torch.tensor(pad_color, dtype=image.dtype, device=device).view(1, 3, 1, 1)
-            out_image = pad_color_tensor.expand(B, 3, target_height, target_width)
+            out_image = pad_color_tensor.expand(B, 3, target_height, target_width).clone()
             out_image[:, :, pad_t:pad_t + new_h, pad_l:pad_l + new_w] = resized_image
 
             if mask is not None:
