@@ -1,0 +1,97 @@
+{
+  "category": "Wan/Parameters",
+  "node_name": "Wan_2.2",
+  "fields": [
+    {
+      "name": "light_source",
+      "type": "combo",
+      "options": ["none", "Sunny lighting", "Artificial lighting", "Moonlighting", "Practical lighting", "Firelighting", "Fluorescent lighting", "Overcast lighting", "Mixed lighting"],
+      "default": "none"
+    },
+    {
+      "name": "lighting_type",
+      "type": "combo",
+      "options": ["none", "Soft lighting", "Hard lighting", "Top lighting", "Side lighting", "Underlighting", "Edge lighting", "Silhouette lighting", "Low contrast lighting", "High contrast lighting"],
+      "default": "none"
+    },
+    {
+      "name": "time_of_day",
+      "type": "combo",
+      "options": ["none", "Sunrise time", "Night time", "Dusk time", "Sunset time", "Dawn time"],
+      "default": "none"
+    },
+    {
+      "name": "shot_size",
+      "type": "combo",
+      "options": ["none", "Extreme close-up shot", "Close-up shot", "Medium shot", "Medium close-up shot", "Medium wide shot", "Wide shot"],
+      "default": "none"
+    },
+    {
+      "name": "lens_focal_length",
+      "type": "combo",
+      "options": ["none", "Medium lens", "Wide lens", "Long-focus lens", "Telephoto lens", "Fisheye lens"],
+      "default": "none"
+    },
+    {
+      "name": "lens_type",
+      "type": "combo",
+      "options": ["none", "Clean single shot", "Two shot", "Three shot", "Group shot", "Establishing shot"],
+      "default": "none"
+    },
+    {
+      "name": "camera_angle",
+      "type": "combo",
+      "options": ["none", "Over-the-shoulder shot", "High angle shot", "Low angle shot", "Dutch angle shot", "Aerial shot"],
+      "default": "none"
+    },
+    {
+      "name": "composition",
+      "type": "combo",
+      "options": ["none", "Center composition", "Balanced composition", "Left/right weighted composition", "Symmetrical composition", "Short-side composition"],
+      "default": "none"
+    },
+    {
+      "name": "color_tone",
+      "type": "combo",
+      "options": ["none", "Warm colors", "Cool colors", "Saturated colors", "Desaturated colors"],
+      "default": "none"
+    },
+    {
+      "name": "motion",
+      "type": "combo",
+      "options": ["none", "Street dance", "Running", "Skateboarding", "Soccer", "Tennis", "Table tennis", "Snowboarder", "Basketball", "Rugby field", "Bowl dance", "Aerial cartwheel"],
+      "default": "none"
+    },
+    {
+      "name": "character_emotion",
+      "type": "combo",
+      "options": ["none", "Angrily", "Fear", "Happy", "Sadly", "Surprised"],
+      "default": "none"
+    },
+    {
+      "name": "basic_camera_movement",
+      "type": "combo",
+      "options": ["none", "Camera pushes in for a close-up", "Camera pulls back", "Camera pans to the right", "Camera moves to the left", "Camera tilts up"],
+      "default": "none"
+    },
+    {
+      "name": "advanced_camera_movement",
+      "type": "combo",
+      "options": ["none", "Handheld camera", "Compound move", "Tracking shot", "Arc shot"],
+      "default": "none"
+    },
+    {
+      "name": "visual_style",
+      "type": "combo",
+      "options": ["none", "Felt style", "3D cartoon style", "Pixel art style", "Puppet animation", "3D game scene", "Claymation style", "2D anime style", "Watercolor painting", "Black and white animation segment", "Oil painting style"],
+      "default": "none"
+    },
+    {
+      "name": "visual_effects",
+      "type": "combo",
+      "options": ["none", "Tilt-shift photography", "Time-lapse"],
+      "default": "none"
+    }
+  ],
+  "output_type": "STRING"
+}
