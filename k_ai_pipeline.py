@@ -58,8 +58,8 @@ class EasyAIPipeline:
     # To change the order from top to bottom in the UI, reorder the elements here.
     # Ensure RETURN_TYPES and the return statement in generate_pipeline match the order.
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("file_path", "name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name", "ai_method")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("OUTPUT - Path+File", "output_name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name")
     FUNCTION = "generate_pipeline"
     CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
@@ -73,13 +73,13 @@ class EasyAIPipeline:
         output_directory = os.path.join(job_path, shot_name, ai_method, version_str).replace("\\", "/")  # Normalize to forward slashes
 
         # Construct full name: shot_name_ai_method_version_str.extension
-        name = f"{shot_name}_{ai_method}_{version_str}{extension}"
+        output_name = f"{shot_name}_{ai_method}_{version_str}{extension}"
 
         # Final file path: output_directory/name
-        file_path = os.path.join(output_directory, name).replace("\\", "/")
+        filePath_OUTPUT = os.path.join(output_directory, output_name).replace("\\", "/")
 
         # Return all for chaining in workflows (e.g., connect to savers or prompts)
-        return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name, ai_method)
+        return (filePath_OUTPUT, output_name, version_str, output_directory, shot_duration, seed_value, shot_name)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
