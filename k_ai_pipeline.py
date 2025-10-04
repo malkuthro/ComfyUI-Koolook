@@ -27,7 +27,7 @@ class EasyAIPipeline:
                     "step": 1,
                     "display": "number"
                 }),
-                "job_path": ("STRING", {
+                "base_directory_path": ("STRING", {
                     "default": "n:/TRK_sync_BIG_NJOBS/baconx/Menneskehavn/outputs/VIDEO/ComfyUI/Wan2.1/Vortex/pComps",
                     "multiline": True
                 }),
@@ -58,15 +58,26 @@ class EasyAIPipeline:
     RETURN_NAMES = ("file_path", "name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name", "ai_method")
     FUNCTION = "generate_pipeline"
     CATEGORY = "Koolook/VFX"
-    OUTPUT_NODE = True
+    OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
-    def generate_pipeline(self, shot_duration, seed_value, job_path, extension, shot_name, ai_method, version):
+    def generate_pipeline(self, shot_duration, seed_value, base_directory_path, extension, shot_name, ai_method, version):
+        # Generate version string like 'v001'
         version_str = f"v{version:03d}"
-        output_directory = os.path.join(job_path, shot_name, ai_method, version_str).replace("\\", "/")
+
+        # Construct output path based on typical VFX structure: job_path/shot_name/ai_method/version_str
+        # Adjust as needed for specific pipeline conventions
+        output_directory = os.path.join(base_directory_path, shot_name, ai_method, version_str).replace("\\", "/")  # Normalize to forward slashes
+
+        # Construct full name: shot_name_ai_method_version_str.extension
         name = f"{shot_name}_{ai_method}_{version_str}{extension}"
+
+        # Final file path: output_directory/name
         file_path = os.path.join(output_directory, name).replace("\\", "/")
+
+        # Return all for chaining in workflows (e.g., connect to savers or prompts)
         return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name, ai_method)
 
+# Individual node mappings
 NODE_CLASS_MAPPINGS = {
     "EasyAIPipeline": EasyAIPipeline
 }
