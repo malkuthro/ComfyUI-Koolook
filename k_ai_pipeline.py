@@ -51,20 +51,39 @@ class EasyAIPipeline:
                     "step": 1,
                     "display": "number"
                 }),
-            }
+                "output_directory_display": ("STRING", {
+                    "default": "",
+                    "multiline": True
+                }),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
+
+    INPUT_IS_LIST = True
 
     # To customize output names, edit the strings in this tuple (e.g., "output_directory" to "output_xxxxx").
     # To change the order from top to bottom in the UI, reorder the elements here.
     # Ensure RETURN_TYPES and the return statement in generate_pipeline match the order.
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING")
-    RETURN_NAMES = ("OUTPUT - Path+File", "output_name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name")
+    RETURN_NAMES = ("filePath_OUTPUT", "output_name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name")
     FUNCTION = "generate_pipeline"
     CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
-    def generate_pipeline(self, shot_duration, seed_value, job_path, extension, shot_name, ai_method, version):
+    def generate_pipeline(self, shot_duration, seed_value, job_path, extension, shot_name, ai_method, version, output_directory_display, unique_id=None, extra_pnginfo=None):
+        shot_duration = shot_duration[0]
+        seed_value = seed_value[0]
+        job_path = job_path[0]
+        extension = extension[0]
+        shot_name = shot_name[0]
+        ai_method = ai_method[0]
+        version = version[0]
+        output_directory_display = output_directory_display[0]
+
         # Generate version string like 'v001'
         version_str = f"v{version:03d}"
 
@@ -78,8 +97,25 @@ class EasyAIPipeline:
         # Final file path: output_directory/name
         filePath_OUTPUT = os.path.join(output_directory, output_name).replace("\\", "/")
 
+        # Update node display if possible
+        if unique_id is not None and extra_pnginfo is not None:
+            if isinstance(extra_pnginfo, dict) and "workflow" in extra_pnginfo:
+                workflow = extra_pnginfo["workflow"]
+                node = next(
+                    (x for x in workflow["nodes"] if str(x["id"]) == str(unique_id)),
+                    None,
+                )
+                if node and "widgets_values" in node:
+                    # Update the last widget (output_directory_display)
+                    node["widgets_values"][-1] = output_directory
+            else:
+                print("Error: extra_pnginfo is not a dict or missing 'workflow' key")
+
         # Return all for chaining in workflows (e.g., connect to savers or prompts)
-        return (filePath_OUTPUT, output_name, version_str, output_directory, shot_duration, seed_value, shot_name)
+        return {
+            "ui": {"text": [output_directory]},
+            "result": (filePath_OUTPUT, output_name, version_str, output_directory, shot_duration, seed_value, shot_name)
+        }
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
