@@ -28,8 +28,12 @@ class EasyAIPipeline:
                     "display": "number"
                 }),
                 "job_path": ("STRING", {
-                    "default": "N:/TRK_sync_BIG_NJOBS/baconx/Menneskehavn/outputs/VIDEO/ComfyUI/Wan2.2/Vortex/pComps",
+                    "default": "place your BASE directory PATH here (eg. ../nuke/preComp/AI)",
                     "multiline": True
+                }),
+                "extension": ("STRING", {
+                    "default": ".%04d.exr",
+                    "multiline": False
                 }),
                 # Output section
                 "shot_name": ("STRING", {
@@ -54,13 +58,13 @@ class EasyAIPipeline:
     # To change the order from top to bottom in the UI, reorder the elements here.
     # Ensure RETURN_TYPES and the return statement in generate_pipeline match the order.
 
-    RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("version", "output_directory", "shot_duration", "seed", "shot_name", "ai_method")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("file_path", "name", "version_string", "output_directory", "shot_duration", "seed", "shot_name", "ai_method")
     FUNCTION = "generate_pipeline"
     CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
-    def generate_pipeline(self, shot_duration, seed, job_path, shot_name, ai_method, version):
+    def generate_pipeline(self, shot_duration, seed, job_path, extension, shot_name, ai_method, version):
         # Generate version string like 'v001'
         version_str = f"v{version:03d}"
 
@@ -68,8 +72,14 @@ class EasyAIPipeline:
         # Adjust as needed for specific pipeline conventions
         output_directory = os.path.join(job_path, shot_name, ai_method, version_str).replace("\\", "/")  # Normalize to forward slashes
 
+        # Construct full name: shot_name_ai_method_version_str.extension
+        name = f"{shot_name}_{ai_method}_{version_str}{extension}"
+
+        # Final file path: output_directory/name
+        file_path = os.path.join(output_directory, name).replace("\\", "/")
+
         # Return all for chaining in workflows (e.g., connect to savers or prompts)
-        return ( version_str, output_directory, shot_duration, seed, shot_name, ai_method)
+        return (file_path, name, version_str, output_directory, shot_duration, seed, shot_name, ai_method)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
