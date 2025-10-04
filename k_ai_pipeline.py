@@ -20,7 +20,7 @@ class EasyAIPipeline:
                     "step": 1,
                     "display": "number"
                 }),
-                "seed": ("INT", {
+                "seed_value": ("INT", {
                     "default": 453453453,
                     "min": 0,
                     "max": 999999999999,
@@ -28,7 +28,7 @@ class EasyAIPipeline:
                     "display": "number"
                 }),
                 "job_path": ("STRING", {
-                    "default": "place your BASE directory PATH here (eg. ../nuke/preComp/AI)",
+                    "default": "n:/TRK_sync_BIG_NJOBS/baconx/Menneskehavn/outputs/VIDEO/ComfyUI/Wan2.1/Vortex/pComps",
                     "multiline": True
                 }),
                 "extension": ("STRING", {
@@ -59,12 +59,12 @@ class EasyAIPipeline:
     # Ensure RETURN_TYPES and the return statement in generate_pipeline match the order.
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("file_path", "name", "version_string", "output_directory", "shot_duration", "seed", "shot_name", "ai_method")
+    RETURN_NAMES = ("file_path", "name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name", "ai_method")
     FUNCTION = "generate_pipeline"
     CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
-    def generate_pipeline(self, shot_duration, seed, job_path, extension, shot_name, ai_method, version):
+    def generate_pipeline(self, shot_duration, seed_value, job_path, extension, shot_name, ai_method, version):
         # Generate version string like 'v001'
         version_str = f"v{version:03d}"
 
@@ -79,7 +79,7 @@ class EasyAIPipeline:
         file_path = os.path.join(output_directory, name).replace("\\", "/")
 
         # Return all for chaining in workflows (e.g., connect to savers or prompts)
-        return (file_path, name, version_str, output_directory, shot_duration, seed, shot_name, ai_method)
+        return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name, ai_method)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
