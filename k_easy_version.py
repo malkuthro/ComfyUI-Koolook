@@ -33,7 +33,7 @@ class Easy_Version:
         version_str = f"v{version:03d}"
         return (version_str,)
 
-# Individual node mappings
+# Node mappings for ComfyUI integration
 NODE_CLASS_MAPPINGS = {
     "Easy_Version": Easy_Version
 }
