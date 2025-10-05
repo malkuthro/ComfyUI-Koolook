@@ -1,0 +1,5 @@
+SAVE EXR - GitHub:
+https://github.com/spacepxl/ComfyUI-HQ-Image-Save
+
+CLI argument to use 32b:
+https://github.com/spacepxl/ComfyUI-HQ-Image-Save/issues/8
