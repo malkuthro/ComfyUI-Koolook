@@ -79,20 +79,17 @@ class easy_ImageBatch:
             raise ValueError("Each input should be a single IMAGE (batch size 1), not a pre-batched tensor.")
 
         h, w, c = image1.shape[1:]
-        if placeholder_color == "Black":
-            placeholder = torch.zeros(h, w, c)  # [H, W, C] zero tensor for black
-        else:  # Gray
-            placeholder = torch.full((h, w, c), 0.5)  # 50% gray in 0-1 float space
+        device = image1.device
+        dtype = image1.dtype
 
-        # For masks: single-channel [H, W]
-        black_mask = torch.zeros((h, w), dtype=torch.float32)
-        white_mask = torch.ones((h, w), dtype=torch.float32)
+        # Vectorized creation of image_batch
+        fill_value = 0.0 if placeholder_color == "Black" else 0.5
+        image_batch = torch.full((total_frames, h, w, c), fill_value, device=device, dtype=dtype)
 
-        # Initialize lists for frames and masks
-        frame_images = [placeholder.clone() for _ in range(total_frames)]
-        frame_masks = [black_mask.clone() for _ in range(total_frames)]
+        # Vectorized creation of mask_batch (single channel)
+        mask_batch = torch.zeros((total_frames, h, w), device=device, dtype=torch.float32)
 
-        # Collect connected keyframes
+        # Collect keyframes and compute indices
         keyframes = [(image1[0], image1_frame)]
         if image2 is not None and image2_frame is not None:
             if image2.shape[1:] != (h, w, c):
@@ -107,18 +104,15 @@ class easy_ImageBatch:
                 raise ValueError("All images must have the same height, width, and channels.")
             keyframes.append((image4[0], image4_frame))
 
-        # Place keyframes in the sequence
+        # Place keyframes
         for img, f in keyframes:
             index = f - start_frame
             if 0 <= index < total_frames:
-                frame_images[index] = img
-                frame_masks[index] = white_mask.clone()
+                image_batch[index] = img
+                mask_batch[index] = 1.0
             else:
                 print(f"Warning: Frame {f} maps to index {index} which is out of range (0 to {total_frames-1}); ignoring this keyframe.")
 
-        # Stack into batch tensors
-        image_batch = torch.stack(frame_images, dim=0)  # [total_frames, H, W, C]
-        mask_batch = torch.stack(frame_masks, dim=0)    # [total_frames, H, W]
         return (image_batch, mask_batch, )
 
 # Node mappings for ComfyUI registration
