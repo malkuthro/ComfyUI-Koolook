@@ -4,7 +4,7 @@ class easy_ImageBatch:
     """
     A custom ComfyUI node for VFX workflows that takes 1-4 keyframe images with specified frame positions
     and creates an IMAGE batch sequence of a given total length, filling undefined frames with selected placeholder color (black or 50% gray).
-    Also outputs a MASK batch where occupied frames are white (1.0) and empty are black (0.0), directly compatible with standard mask nodes.
+    Also outputs a MASK batch where occupied frames are black (0.0) and empty are white (1.0), directly compatible with standard mask nodes.
     Supports VFX-style frame numbering with a start_frame offset (internal indices are 0-based).
     Useful for preparing sparse control sequences for video models like Wan 2.2, where placeholder frames indicate no latent update.
     Assumes all input images have identical dimensions.
@@ -86,8 +86,8 @@ class easy_ImageBatch:
         fill_value = 0.0 if placeholder_color == "Black" else 0.5
         image_batch = torch.full((total_frames, h, w, c), fill_value, device=device, dtype=dtype)
 
-        # Vectorized creation of mask_batch (single channel)
-        mask_batch = torch.zeros((total_frames, h, w), device=device, dtype=torch.float32)
+        # Vectorized creation of mask_batch (single channel), initialized to 1.0 (white for empty)
+        mask_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
 
         # Collect keyframes and compute indices
         keyframes = [(image1[0], image1_frame)]
@@ -109,7 +109,7 @@ class easy_ImageBatch:
             index = f - start_frame
             if 0 <= index < total_frames:
                 image_batch[index] = img
-                mask_batch[index] = 1.0
+                mask_batch[index] = 0.0  # Black (0.0) for occupied
             else:
                 print(f"Warning: Frame {f} maps to index {index} which is out of range (0 to {total_frames-1}); ignoring this keyframe.")
 
