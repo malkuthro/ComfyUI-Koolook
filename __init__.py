@@ -3,7 +3,7 @@ from .k_easy_version import Easy_Version
 from .k_easy_wan22_prompt import EasyWan22Prompt
 from .k_easy_resize import EasyResize
 from .k_ai_pipeline import EasyAIPipeline
-from .k_easy_batch import MultiKeyframeImageBatch  # Added for new VFX batch node
+from .k_easy_image_batch import easy_ImageBatch  # Added for new VFX batch node
 
 # Aggregate mappings from each node file
 # Assuming each node file defines its own NODE_CLASS_MAPPINGS and NODE_DISPLAY_NAME_MAPPINGS
@@ -20,8 +20,8 @@ from .k_easy_resize import NODE_DISPLAY_NAME_MAPPINGS as resize_display
 from .k_ai_pipeline import NODE_CLASS_MAPPINGS as pipeline_mappings
 from .k_ai_pipeline import NODE_DISPLAY_NAME_MAPPINGS as pipeline_display
 
-from .k_easy_batch import NODE_CLASS_MAPPINGS as batch_mappings  # Added for new VFX batch node
-from .k_easy_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # Added for new VFX batch node
+from .k_easy_image_batch import NODE_CLASS_MAPPINGS as batch_mappings  # Added for new VFX batch node
+from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # Added for new VFX batch node
 
 # Merge all mappings
 NODE_CLASS_MAPPINGS = {
