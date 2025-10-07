@@ -1,6 +1,6 @@
 import torch
 
-class MultiKeyframeImageBatch:
+class easy_ImageBatch:
     """
     A custom ComfyUI node for VFX workflows that takes 1-4 keyframe images with specified frame positions
     and creates an IMAGE batch sequence of a given total length, filling undefined frames with selected placeholder color (black or 50% gray).
@@ -123,9 +123,9 @@ class MultiKeyframeImageBatch:
 
 # Node mappings for ComfyUI registration
 NODE_CLASS_MAPPINGS = {
-    "MultiKeyframeImageBatch": MultiKeyframeImageBatch
+    "easy_ImageBatch": easy_ImageBatch
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "MultiKeyframeImageBatch": "Multi Keyframe Image Batch (VFX)"
+    "easy_ImageBatch": "Easy Image Batch"
 }
