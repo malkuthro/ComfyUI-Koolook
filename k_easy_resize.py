@@ -68,14 +68,13 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
         # Move to specified device
         image = image.to(device)
         if mask is not None:
-            mask = mask.to(device)
+            mask = mask.unsqueeze(1)  # Simplified: Add channel dim for interpolation [B, 1, H, W]
 
         # Image processing (inspired by ResizeImage logic in image_nodes.py)
         B, H, W, C = image.shape
         image = image.movedim(-1, 1)  # Channels-first
 
-        if mask is not None:
-            mask = mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1])).movedim(1, -1).movedim(-1, 1)  # Adjust for interpolation
+        has_alpha = (C == 4)
 
         if keep_proportion == "stretch":
             # Simple resize
@@ -120,9 +119,14 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
             if len(pad_color) != 3:
                 raise ValueError("Pad color must be three comma-separated floats, e.g., '0, 0, 0'.")
 
-            # Create background with pad color (assume C=3 for RGB)
-            pad_color_tensor = torch.tensor(pad_color, dtype=image.dtype, device=device).view(1, 3, 1, 1)
-            out_image = pad_color_tensor.expand(B, 3, target_height, target_width).clone()
+            # Create background with pad color (RGB or RGBA)
+            pad_channels = 4 if has_alpha else 3
+            pad_color_tensor = torch.zeros((1, pad_channels, 1, 1), dtype=image.dtype, device=device)
+            pad_color_tensor[0, :3, 0, 0] = torch.tensor(pad_color, dtype=image.dtype, device=device)
+            if has_alpha:
+                # Default alpha to 1 (opaque) for padding
+                pad_color_tensor[0, 3, 0, 0] = 1.0
+            out_image = pad_color_tensor.expand(B, pad_channels, target_height, target_width).clone()
             out_image[:, :, pad_t:pad_t + new_h, pad_l:pad_l + new_w] = resized_image
 
             if mask is not None:
@@ -133,7 +137,7 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
 
         out_image = out_image.movedim(1, -1)
         if out_mask is not None:
-            out_mask = out_mask.movedim(1, -1).squeeze(1)
+            out_mask = out_mask.movedim(1, -1).squeeze(-1)  # Squeeze last dim (channel=1) -> [B, H', W']
 
         return (out_image, out_mask, target_width, target_height)
 
