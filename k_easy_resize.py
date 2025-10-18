@@ -1,6 +1,7 @@
 import torch
 from comfy.utils import common_upscale
 from nodes import MAX_RESOLUTION
+import math
 
 class EasyResize:
     @classmethod
@@ -8,7 +9,7 @@ class EasyResize:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "base_on": (["Width", "Height"], {"default": "Width"}),
+                "base_on": (["Width", "Height", "Original"], {"default": "Width"}),
                 "base_size": ("INT", {"default": 512, "min": 1, "max": MAX_RESOLUTION, "step": 1}),
                 "aspect_ratio": ("STRING", {"default": "16:9"}),
                 "divisible_by": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
@@ -46,16 +47,40 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
         if divisible_by < 1:
             divisible_by = 1
 
-        # Parse aspect ratio (order matters: '16:9' implies width > height if base allows)
-        try:
-            ar_parts = [int(part.strip()) for part in aspect_ratio.split(':')]
-            if len(ar_parts) != 2 or ar_parts[0] <= 0 or ar_parts[1] <= 0:
-                raise ValueError("Aspect ratio must be 'w:h' with positive integers, e.g., '16:9'.")
-            ar_width, ar_height = ar_parts
-        except ValueError as e:
-            raise ValueError(str(e))
+        # Move to specified device
+        image = image.to(device)
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # Simplified: Add channel dim for interpolation [B, 1, H, W]
 
-        ratio = ar_width / ar_height  # w/h ratio
+        # Image processing (inspired by ResizeImage logic in image_nodes.py)
+        B, H, W, C = image.shape
+        original_B, original_H, original_W, original_C = B, H, W, C
+        image = image.movedim(-1, 1)  # Channels-first
+
+        has_alpha = (C == 4)
+
+        was_original = (base_on == "Original")
+        if was_original:
+            if original_W == 0 or original_H == 0:
+                raise ValueError("Image has zero dimension")
+            original_ratio = original_W / original_H
+            if original_W >= original_H:
+                base_on = "Width"
+            else:
+                base_on = "Height"
+
+        # Parse aspect ratio or use original
+        if was_original:
+            ratio = original_ratio
+        else:
+            try:
+                ar_parts = [int(part.strip()) for part in aspect_ratio.split(':')]
+                if len(ar_parts) != 2 or ar_parts[0] <= 0 or ar_parts[1] <= 0:
+                    raise ValueError("Aspect ratio must be 'w:h' with positive integers, e.g., '16:9'.")
+                ar_width, ar_height = ar_parts
+                ratio = ar_width / ar_height
+            except ValueError as e:
+                raise ValueError(str(e))
 
         # Make base_size divisible by 'divisible_by'
         base_rounded = max(divisible_by, round_to_nearest_multiple(base_size, divisible_by))
@@ -69,17 +94,6 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
             target_height = base_rounded
             computed_width = target_height * ratio
             target_width = max(divisible_by, round_to_nearest_multiple(computed_width, divisible_by))
-
-        # Move to specified device
-        image = image.to(device)
-        if mask is not None:
-            mask = mask.unsqueeze(1)  # Simplified: Add channel dim for interpolation [B, 1, H, W]
-
-        # Image processing (inspired by ResizeImage logic in image_nodes.py)
-        B, H, W, C = image.shape
-        image = image.movedim(-1, 1)  # Channels-first
-
-        has_alpha = (C == 4)
 
         # Color map for modes
         color_map = {
