@@ -9,7 +9,7 @@ class EasyResize:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "base_on": (["Width", "Height", "Original"], {"default": "Width"}),
+                "base_on": (["Width", "Height"], {"default": "Width"}),
                 "base_size": ("INT", {"default": 512, "min": 1, "max": MAX_RESOLUTION, "step": 1}),
                 "aspect_ratio": ("STRING", {"default": "16:9"}),
                 "divisible_by": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
@@ -27,8 +27,8 @@ class EasyResize:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "IMAGE")
-    RETURN_NAMES = ("IMAGE", "MASK", "width", "height", "COLOR_PANEL")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "IMAGE", "INT", "INT", "STRING")
+    RETURN_NAMES = ("IMAGE", "MASK", "width", "height", "COLOR_PANEL", "original_width", "original_height", "original_aspect_ratio")
     FUNCTION = "adjust_to_aspect"
     CATEGORY = "Koolook/Image"
     DESCRIPTION = """
@@ -59,28 +59,24 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
 
         has_alpha = (C == 4)
 
-        was_original = (base_on == "Original")
-        if was_original:
-            if original_W == 0 or original_H == 0:
-                raise ValueError("Image has zero dimension")
-            original_ratio = original_W / original_H
-            if original_W >= original_H:
-                base_on = "Width"
-            else:
-                base_on = "Height"
-
-        # Parse aspect ratio or use original
-        if was_original:
-            ratio = original_ratio
+        # Compute original aspect ratio
+        if original_W == 0 or original_H == 0:
+            original_aspect_ratio = "1:1"  # Default if zero dimensions
         else:
-            try:
-                ar_parts = [int(part.strip()) for part in aspect_ratio.split(':')]
-                if len(ar_parts) != 2 or ar_parts[0] <= 0 or ar_parts[1] <= 0:
-                    raise ValueError("Aspect ratio must be 'w:h' with positive integers, e.g., '16:9'.")
-                ar_width, ar_height = ar_parts
-                ratio = ar_width / ar_height
-            except ValueError as e:
-                raise ValueError(str(e))
+            gcd_val = math.gcd(original_W, original_H)
+            ar_w = original_W // gcd_val
+            ar_h = original_H // gcd_val
+            original_aspect_ratio = f"{ar_w}:{ar_h}"
+
+        # Parse aspect ratio
+        try:
+            ar_parts = [int(part.strip()) for part in aspect_ratio.split(':')]
+            if len(ar_parts) != 2 or ar_parts[0] <= 0 or ar_parts[1] <= 0:
+                raise ValueError("Aspect ratio must be 'w:h' with positive integers, e.g., '16:9'.")
+            ar_width, ar_height = ar_parts
+            ratio = ar_width / ar_height
+        except ValueError as e:
+            raise ValueError(str(e))
 
         # Make base_size divisible by 'divisible_by'
         base_rounded = max(divisible_by, round_to_nearest_multiple(base_size, divisible_by))
@@ -185,7 +181,7 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
         color_panel[0, :, :, :] = torch.tensor(panel_color_list, dtype=image.dtype, device=device).view(panel_channels, 1, 1)
         color_panel = color_panel.movedim(1, -1)  # to [1, H, W, 3]
 
-        return (out_image, out_mask, target_width, target_height, color_panel)
+        return (out_image, out_mask, target_width, target_height, color_panel, original_W, original_H, original_aspect_ratio)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
