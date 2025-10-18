@@ -24,6 +24,8 @@ class EasyResize:
                 "mask": ("MASK",),
                 "pad_color": ("STRING", {"default": "0, 0, 0"}),
                 "panel_color": ("STRING", {"default": "0, 0, 0"}),
+                "composed_image": ("BOOLEAN", {"default": False}),
+                "inverted_mask": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -38,9 +40,11 @@ are divisible by the specified value. Supports stretch or pad/crop modes for pro
 Outputs the resized image, optional mask, and final width/height for VFX pipeline integration.
 Also outputs a solid color panel (canvas) of the target size using the specified panel_color_mode and optional custom panel_color.
 When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color in the corresponding field as comma-separated floats, e.g., '0.5, 0.5, 0.5' for gray.
+If 'composed_image' is enabled, the IMAGE output will be the resized image composited onto the color panel using the (optionally inverted) mask.
+If 'inverted_mask' is enabled, the MASK output will be inverted, and the composed image (if enabled) will use the inverted mask.
 """
 
-    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color_mode, crop_position, divisible_by, device, panel_color_mode, mask=None, pad_color="0, 0, 0", panel_color="0, 0, 0"):
+    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color_mode, crop_position, divisible_by, device, panel_color_mode, mask=None, pad_color="0, 0, 0", panel_color="0, 0, 0", composed_image=False, inverted_mask=False):
         def round_to_nearest_multiple(number, multiple):
             return multiple * round(number / multiple)
 
@@ -181,6 +185,24 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
         color_panel[0, :, :, :] = torch.tensor(panel_color_list, dtype=image.dtype, device=device).view(panel_channels, 1, 1)
         color_panel = color_panel.expand(B, -1, -1, -1)  # Expand to match batch size B
         color_panel = color_panel.movedim(1, -1)  # to [B, H, W, 3]
+
+        # Handle mask inversion if enabled
+        if out_mask is not None and inverted_mask:
+            out_mask = 1.0 - out_mask
+
+        # Handle composed image if enabled
+        if composed_image:
+            if out_mask is None:
+                raise ValueError("Composed image requires a mask input.")
+            # Composite: image * mask + color_panel * (1 - mask)
+            # Ensure color_panel has same channels as out_image (add alpha if needed)
+            if has_alpha:
+                color_panel_alpha = torch.cat([color_panel, torch.ones((B, target_height, target_width, 1), dtype=image.dtype, device=device)], dim=-1)
+            else:
+                color_panel_alpha = color_panel
+            # Expand mask to match channels
+            expanded_mask = out_mask.unsqueeze(-1).expand(-1, -1, -1, out_image.shape[-1])
+            out_image = out_image * expanded_mask + color_panel_alpha * (1.0 - expanded_mask)
 
         return (out_image, out_mask, target_width, target_height, color_panel, original_W, original_H, original_aspect_ratio)
 
