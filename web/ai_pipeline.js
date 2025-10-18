@@ -47,5 +47,41 @@ app.registerExtension({
                 }, { serialize: false });
             };
         }
+    },
+    async nodeCreated(node) {
+        if (node.comfyClass !== "EasyResize") return;
+
+        // Function to update widgets for a mode
+        const updateWidgets = (modeName, colorName, value) => {
+            const colorWidgetIndex = node.widgets.findIndex(w => w.name === colorName);
+            if (value === "Custom") {
+                if (colorWidgetIndex === -1) {
+                    node.addWidget("string", colorName, "0, 0, 0", null, { multiline: false });
+                }
+            } else {
+                if (colorWidgetIndex !== -1) {
+                    node.widgets.splice(colorWidgetIndex, 1);  // Remove
+                }
+            }
+            node.setDirtyCanvas(true, true);
+        };
+
+        // Pad color mode
+        const padModeWidget = node.widgets.find(w => w.name === "pad_color_mode");
+        const origPadCallback = padModeWidget.callback;
+        padModeWidget.callback = (value) => {
+            if (origPadCallback) origPadCallback.call(this, value);
+            updateWidgets("pad_color_mode", "pad_color", value);
+        };
+        updateWidgets("pad_color_mode", "pad_color", padModeWidget.value);
+
+        // Panel color mode
+        const panelModeWidget = node.widgets.find(w => w.name === "panel_color_mode");
+        const origPanelCallback = panelModeWidget.callback;
+        panelModeWidget.callback = (value) => {
+            if (origPanelCallback) origPanelCallback.call(this, value);
+            updateWidgets("panel_color_mode", "panel_color", value);
+        };
+        updateWidgets("panel_color_mode", "panel_color", panelModeWidget.value);
     }
 });
