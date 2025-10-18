@@ -20,11 +20,12 @@ class EasyResize:
             },
             "optional": {
                 "mask": ("MASK",),
+                "panel_color": ("STRING", {"default": "0, 0, 0"}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("IMAGE", "MASK", "width", "height")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "IMAGE")
+    RETURN_NAMES = ("IMAGE", "MASK", "width", "height", "COLOR_PANEL")
     FUNCTION = "adjust_to_aspect"
     CATEGORY = "Koolook/Image"
     DESCRIPTION = """
@@ -32,9 +33,10 @@ Adjusts the input image to a target resolution based on a base dimension (width 
 an aspect ratio (e.g., '16:9' for landscape, '9:16' for portrait), ensuring both dimensions
 are divisible by the specified value. Supports stretch or pad/crop modes for proportion control.
 Outputs the resized image, optional mask, and final width/height for VFX pipeline integration.
+Also outputs a solid color panel (canvas) of the target size using the specified panel_color.
 """
 
-    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color, crop_position, divisible_by, device, mask=None):
+    def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color, crop_position, divisible_by, device, mask=None, panel_color="0, 0, 0"):
         def round_to_nearest_multiple(number, multiple):
             return multiple * round(number / multiple)
 
@@ -139,7 +141,19 @@ Outputs the resized image, optional mask, and final width/height for VFX pipelin
         if out_mask is not None:
             out_mask = out_mask.movedim(1, -1).squeeze(-1)  # Squeeze last dim (channel=1) -> [B, H', W']
 
-        return (out_image, out_mask, target_width, target_height)
+        # Create color panel
+        # Parse panel_color
+        panel_color_list = [float(x.strip()) for x in panel_color.split(',')]
+        if len(panel_color_list) != 3:
+            raise ValueError("Panel color must be three comma-separated floats, e.g., '0, 0, 0'.")
+
+        # Create panel tensor (B=1, C=3, H=target_height, W=target_width)
+        panel_channels = 3  # RGB, no alpha
+        color_panel = torch.zeros((1, panel_channels, target_height, target_width), dtype=image.dtype, device=device)
+        color_panel[0, :, :, :] = torch.tensor(panel_color_list, dtype=image.dtype, device=device).view(panel_channels, 1, 1)
+        color_panel = color_panel.movedim(1, -1)  # to [1, H, W, 3]
+
+        return (out_image, out_mask, target_width, target_height, color_panel)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
