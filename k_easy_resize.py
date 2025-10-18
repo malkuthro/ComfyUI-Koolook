@@ -175,11 +175,12 @@ When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color 
             out_mask = out_mask.movedim(1, -1).squeeze(-1)  # Squeeze last dim (channel=1) -> [B, H', W']
 
         # Create color panel
-        # Create panel tensor (B=1, C=3, H=target_height, W=target_width)
+        # Create panel tensor (B, H, W, 3)
         panel_channels = 3  # RGB, no alpha
         color_panel = torch.zeros((1, panel_channels, target_height, target_width), dtype=image.dtype, device=device)
         color_panel[0, :, :, :] = torch.tensor(panel_color_list, dtype=image.dtype, device=device).view(panel_channels, 1, 1)
-        color_panel = color_panel.movedim(1, -1)  # to [1, H, W, 3]
+        color_panel = color_panel.expand(B, -1, -1, -1)  # Expand to match batch size B
+        color_panel = color_panel.movedim(1, -1)  # to [B, H, W, 3]
 
         return (out_image, out_mask, target_width, target_height, color_panel, original_W, original_H, original_aspect_ratio)
 
