@@ -55,6 +55,8 @@ class EasyAIPipeline:
                     "step": 1,
                     "display": "number"
                 }),
+                "disable_versioning": ("BOOLEAN", {"default": False}),
+                "enable_overwrite": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -64,18 +66,25 @@ class EasyAIPipeline:
     CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
-    def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version):
+    def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite):
         # Generate version string like 'v001'
-        version_str = f"v{version:03d}"
+        version_str = f"v{version:03d}" if not disable_versioning else ""
 
-        # Construct output path based on typical VFX structure: base_directory_path/shot_name/ai_method/version_str
+        # Construct output path based on typical VFX structure: base_directory_path/shot_name/ai_method[/version_str]
         # Clean any double slashes for robustness
-        output_directory = os.path.join(base_directory_path.rstrip('/'), shot_name.lstrip('/'), ai_method.lstrip('/'), version_str.lstrip('/')).replace('\\', '/')
+        parts = [base_directory_path.rstrip('/'), shot_name.lstrip('/'), ai_method.lstrip('/')]
+        if not disable_versioning:
+            parts.append(version_str.lstrip('/'))
+        output_directory = os.path.join(*parts).replace('\\', '/')
         while '//' in output_directory:
             output_directory = output_directory.replace('//', '/')
 
-        # Construct full name: shot_name_ai_method_version_str.extension
-        name = f"{shot_name}_{ai_method}_{version_str}{extension}"
+        # Check for overwrite protection
+        if not enable_overwrite and os.path.exists(output_directory):
+            raise ValueError(f"Output directory already exists and overwrite is disabled. Enable 'enable_overwrite' or adjust parameters: {output_directory}")
+
+        # Construct full name: shot_name_ai_method[_version_str].extension
+        name = f"{shot_name}_{ai_method}_{version_str}{extension}" if not disable_versioning else f"{shot_name}_{ai_method}{extension}"
 
         # Final file path: output_directory/name (with cleaning)
         file_path = os.path.join(output_directory, name).replace('\\', '/')
