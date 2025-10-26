@@ -47,15 +47,19 @@ app.registerExtension({
                         base_directory_path: getEffectiveValue(this, "base_directory_path"),
                         shot_name: getEffectiveValue(this, "shot_name"),
                         ai_method: getEffectiveValue(this, "ai_method"),
-                        version: getEffectiveValue(this, "version")
+                        version: getEffectiveValue(this, "version"),
+                        disable_versioning: getEffectiveValue(this, "disable_versioning"),
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = `v${values.version.toString().padStart(3, '0')}`;
-                        let output_directory = [values.base_directory_path, values.shot_name, values.ai_method, version_str]
-                            .filter(part => part.toString().trim() !== "")
-                            .join("/").replace(/\\/g, "/");
+                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
+                        if (!values.disable_versioning) {
+                            const version_str = `v${values.version.toString().padStart(3, '0')}`;
+                            parts.push(version_str);
+                        }
+                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
                         output_directory = output_directory.replace(/\/+/g, '/');
                         displayWidget.value = output_directory;
                     }
@@ -69,17 +73,22 @@ app.registerExtension({
                         shot_name: getEffectiveValue(this, "shot_name"),
                         ai_method: getEffectiveValue(this, "ai_method"),
                         extension: getEffectiveValue(this, "extension"),
-                        version: getEffectiveValue(this, "version")
+                        version: getEffectiveValue(this, "version"),
+                        disable_versioning: getEffectiveValue(this, "disable_versioning"),
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = `v${values.version.toString().padStart(3, '0')}`;
-                        let output_directory = [values.base_directory_path, values.shot_name, values.ai_method, version_str]
-                            .filter(part => part.toString().trim() !== "")
-                            .join("/").replace(/\\/g, "/");
+                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
+                        let version_str = "";
+                        if (!values.disable_versioning) {
+                            version_str = `v${values.version.toString().padStart(3, '0')}`;
+                            parts.push(version_str);
+                        }
+                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
                         output_directory = output_directory.replace(/\/+/g, '/');
-                        const name = `${values.shot_name}_${values.ai_method}_${version_str}${values.extension}`;
+                        const name = !values.disable_versioning ? `${values.shot_name}_${values.ai_method}_${version_str}${values.extension}` : `${values.shot_name}_${values.ai_method}${values.extension}`;
                         let file_path = `${output_directory}/${name}`.replace(/\\/g, "/");
                         file_path = file_path.replace(/\/+/g, '/');
                         displayWidget.value = file_path;
