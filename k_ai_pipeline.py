@@ -79,9 +79,14 @@ class EasyAIPipeline:
         while '//' in output_directory:
             output_directory = output_directory.replace('//', '/')
 
-        # Check for overwrite protection
-        if not enable_overwrite and os.path.exists(output_directory):
-            raise ValueError(f"Output directory already exists and overwrite is disabled. Enable 'enable_overwrite' or adjust parameters: {output_directory}")
+        # Ensure output directory exists (create if missing) but don't treat an existing directory
+        # as a reason to error — only an existing file with the same final path should block writing.
+        if not os.path.exists(output_directory):
+            try:
+                os.makedirs(output_directory, exist_ok=True)
+            except Exception:
+                # If directory creation fails, leave the original path and let downstream handle it.
+                pass
 
         # Construct full name: shot_name_ai_method[_version_str].extension
         name = f"{shot_name}_{ai_method}_{version_str}{extension}" if not disable_versioning else f"{shot_name}_{ai_method}{extension}"
@@ -90,6 +95,12 @@ class EasyAIPipeline:
         file_path = os.path.join(output_directory, name).replace('\\', '/')
         while '//' in file_path:
             file_path = file_path.replace('//', '/')
+
+        # Check for overwrite protection on the final file path only. This avoids raising an error
+        # simply because the directory exists (useful when this node's output is connected to a loader),
+        # but still prevents accidentally overwriting an existing file unless enable_overwrite is True.
+        if not enable_overwrite and os.path.exists(file_path):
+            raise ValueError(f"Output file already exists and overwrite is disabled. Enable 'enable_overwrite' or adjust parameters: {file_path}")
 
         # Return all for chaining in workflows (e.g., connect to savers or prompts)
         return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name)
