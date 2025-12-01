@@ -23,13 +23,17 @@ from .k_ai_pipeline import NODE_DISPLAY_NAME_MAPPINGS as pipeline_display
 from .k_easy_image_batch import NODE_CLASS_MAPPINGS as batch_mappings  # Added for new VFX batch node
 from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # Added for new VFX batch node
 
+from .k_easy_track import NODE_CLASS_MAPPINGS as cam_loader_mappings
+from .k_easy_track import NODE_DISPLAY_NAME_MAPPINGS as cam_loader_display
+
 # Merge all mappings
 NODE_CLASS_MAPPINGS = {
     **version_mappings,
     **wan_mappings,
     **resize_mappings,
     **pipeline_mappings,
-    **batch_mappings  # Added for new VFX batch node
+    **batch_mappings,  # Added for new VFX batch node
+    **cam_loader_mappings,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -37,7 +41,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **wan_display,
     **resize_display,
     **pipeline_display,
-    **batch_display  # Added for new VFX batch node
+    **batch_display,  # Added for new VFX batch node
+    **cam_loader_display,
 }
 
 WEB_DIRECTORY = "./web"
