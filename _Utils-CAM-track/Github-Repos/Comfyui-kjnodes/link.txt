@@ -1,0 +1,3 @@
+https://github.com/kijai/ComfyUI-KJNodes
+
+https://github.com/kijai/ComfyUI-KJNodes/blob/main/nodes/nodes.py

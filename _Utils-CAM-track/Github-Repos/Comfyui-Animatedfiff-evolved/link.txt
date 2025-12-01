@@ -1,0 +1,3 @@
+https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved
+
+https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved/blob/main/animatediff/nodes_cameractrl.py
