@@ -1,0 +1,27 @@
+got prompt
+control_camera_video.shape torch.Size([1, 6, 81, 704, 1248])
+control_camera_latents.shape torch.Size([1, 24, 21, 704, 1248])
+Interrupting prompt 4254c21a-a69f-48a2-867c-22fb99f936d4
+Processing interrupted
+Prompt executed in 8.07 seconds
+got prompt
+control_camera_video.shape torch.Size([1, 6, 80, 704, 1248])
+!!! Exception during processing !!! shape '[1, 20, 4, 6, 704, 1248]' is invalid for input of size 437538816
+Traceback (most recent call last):
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 510, in execute
+    output_data, output_ui, has_subgraph, has_pending_tasks = await get_output_data(prompt_id, unique_id, obj, input_data_all, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, hidden_inputs=hidden_inputs)
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 324, in get_output_data
+    return_values = await _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, obj.FUNCTION, allow_interrupt=True, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, hidden_inputs=hidden_inputs)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 298, in _async_map_node_over_list
+    await process_inputs(input_dict, i)
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 286, in process_inputs
+    result = f(**inputs)
+             ^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\fun_camera\nodes.py", line 158, in process
+    control_camera_latents = control_camera_latents.contiguous().view(b, f // 4, 4, c, h, w).transpose(2, 3)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: shape '[1, 20, 4, 6, 704, 1248]' is invalid for input of size 437538816
+
+Prompt executed in 2.29 seconds

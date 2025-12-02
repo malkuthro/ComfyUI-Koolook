@@ -79,6 +79,17 @@ def ray_condition(K, c2w, H, W, device):
     # plucker = plucker.permute(0, 1, 4, 2, 3)
     return plucker
 
+def ensure_pose_count_modulo(poses, target_modulo=1):
+    """Pad pose list so len(poses) % 4 equals target_modulo (Wan camera encoder requirement)."""
+    if not poses:
+        return poses
+    remainder = len(poses) % 4
+    pad = (target_modulo - remainder) % 4
+    if pad:
+        poses = poses + [poses[-1][:] for _ in range(pad)]
+    return poses
+
+
 def process_poses(poses, width=672, height=384, original_pose_width=1280, original_pose_height=720, device='cpu', return_poses=False):
     """Modified from https://github.com/hehao13/CameraCtrl/blob/main/inference.py
     """
@@ -138,6 +149,7 @@ class WanVideoFunCameraEmbeds:
     CATEGORY = "WanVideoWrapper"
 
     def process(self, poses, width, height, strength, start_percent, end_percent, fun_ref_image=None):
+        poses = ensure_pose_count_modulo(poses)
         num_frames = len(poses)
 
         control_camera_video = process_poses(poses, width, height)

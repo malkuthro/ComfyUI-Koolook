@@ -1,4 +1,4 @@
-# Nuke Camera Export → ComfyUI Pose Pipeline
+# Nuke ASCI Camera Export → ComfyUI Pose Pipeline
 
 This document captures the end-to-end workflow we established for converting Nuke camera animations into RealEstate10k-compatible pose files that ComfyUI can ingest via the Koolook loader.
 
@@ -23,6 +23,7 @@ Key behavior:
 - Parses command-line arguments for input path, output path, fps, intrinsics, and placeholder pose width/height.
 - Reads each ASCI row using the known column order and converts rotation degrees → radians.
 - Builds a rotation matrix using Nuke's ZXY order (`euler_zxy_to_matrix`).
+- Converts Nuke's camera-center translations into RealEstate10k-style world→camera translations via `t = -R * C`; without this step ComfyUI interprets movement on the wrong axis.
 - Writes RealEstate10k-style rows:
   - Columns 1–7: timestamp (µs), fx, fy, cx, cy, pose_width, pose_height.
   - Columns 8–19: `[R|t]` flattened row-major (each row’s three rotation entries followed by that row’s translation component).
@@ -38,9 +39,10 @@ python nuke_ASCI-2-Pose_converter.py \
 ```
 
 ```
+cd nuke_CAM_exporter
 python nuke_ASCI-2-Pose_converter.py `
     inputs/camTrack_v01.asci `
-    outputs/camTrack_v01_converted.txt `
+    outputs/camTrack_v06_converted.txt `
     --fps 25 --fx 0.5 --fy 0.5 --cx 0.5 --cy 0.5 `
     --width 1248 --height 704
 ```
@@ -76,5 +78,10 @@ source:inputs/camTrack_v01.asci fps:25.0 fx:0.5 fy:0.5 cx:0.5 cy:0.5 width:1280.
 1. In Nuke, verify the first keyframe values match the ASCI line (screenshot `DataValidation-nuke.png`).
 2. After running the converter, open the TXT and confirm the translation entries in row 1 match the screenshot.
 3. Load the TXT through the Koolook loader + CameraPoseVisualizer to visually confirm the path.
+
+## 6. Using in ComfyUI:
+1. Copy `outputs/camTrack_v01_converted.txt` into ComfyUI's input folder (or reference the absolute path).
+2. Use the `Koolook Load Camera Poses (Absolute Path)` node to read it.
+3. Preview with `CameraPoseVisualizer` and feed into camera/motion encoder nodes.
 
 Keep this document handy as a “resume” of the pipeline so future adjustments reference the same assumptions and file locations.

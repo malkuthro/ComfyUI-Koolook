@@ -92,6 +92,18 @@ def iter_asci_poses(path: Path) -> Iterator[Tuple[List[List[float]], Tuple[float
         yield euler_zxy_to_matrix(rx, ry, rz), (tx, ty, tz)
 
 
+def camera_center_to_translation(
+    rotation: Sequence[Sequence[float]], camera_center: Tuple[float, float, float]
+) -> Tuple[float, float, float]:
+    cx, cy, cz = camera_center
+    r = rotation
+    return (
+        -(r[0][0] * cx + r[0][1] * cy + r[0][2] * cz),
+        -(r[1][0] * cx + r[1][1] * cy + r[1][2] * cz),
+        -(r[2][0] * cx + r[2][1] * cy + r[2][2] * cz),
+    )
+
+
 def format_pose_rows(
     rotation: List[List[float]], translation: Tuple[float, float, float]
 ) -> List[float]:
@@ -117,7 +129,8 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as f:
         f.write(header + "\n")
-        for idx, (rotation, translation) in enumerate(poses):
+        for idx, (rotation, camera_center) in enumerate(poses):
+            translation = camera_center_to_translation(rotation, camera_center)
             row = [
                 idx * frame_time_us,
                 args.fx,
