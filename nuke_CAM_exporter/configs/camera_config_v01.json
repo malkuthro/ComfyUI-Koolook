@@ -1,0 +1,18 @@
+{
+  "input": "../inputs/camTrack_v01.asci",
+  "output": "../outputs/camTrack_v09_converted.txt",
+  "fps": 25.0,
+  "unit_scale": 100.0,
+  "lens": {
+    "focal_length_mm": 35.0,
+    "sensor_width_mm": 36.0,
+    "sensor_height_mm": 24.0,
+    "principal_point_offset_x_mm": 0.0,
+    "principal_point_offset_y_mm": 0.0
+  },
+  "resolution": {
+    "width_px": 1920,
+    "height_px": 1080
+  }
+}
+

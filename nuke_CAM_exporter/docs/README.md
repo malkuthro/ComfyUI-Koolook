@@ -21,6 +21,7 @@ File: `nuke_CAM_exporter/nuke_ASCI-2-Pose_converter.py`
 
 Key behavior:
 - Parses command-line arguments for input path, output path, fps, intrinsics, and placeholder pose width/height.
+- Optionally ingests a JSON config (`--config`) that stores lens data, render resolution, file paths, and unit scale per shot.
 - Reads each ASCI row using the known column order and converts rotation degrees → radians.
 - Builds a rotation matrix using Nuke's ZXY order (`euler_zxy_to_matrix`).
 - Converts Nuke's camera-center translations into RealEstate10k-style world→camera translations via `t = -R * C`; without this step ComfyUI interprets movement on the wrong axis.
@@ -46,6 +47,45 @@ python nuke_ASCI-2-Pose_converter.py `
     --fps 25 --fx 0.5 --fy 0.5 --cx 0.5 --cy 0.5 `
     --width 1248 --height 704
 ```
+
+### JSON-driven workflow
+Use the template in `configs/camera_config_template.json` (copy + rename per shot):
+
+```json
+{
+  "input": "../inputs/camTrack_v01.asci",
+  "output": "../outputs/camTrack_v06_converted.txt",
+  "fps": 25.0,
+  "unit_scale": 1.0,
+  "lens": {
+    "focal_length_mm": 33.5212349,
+    "sensor_width_mm": 36.0,
+    "sensor_height_mm": 24.0,
+    "principal_point_offset_x_mm": 0.0,
+    "principal_point_offset_y_mm": 0.0
+  },
+  "resolution": {
+    "width_px": 1248,
+    "height_px": 704
+  }
+}
+```
+
+Run:
+
+```
+cd nuke_CAM_exporter
+python nuke_ASCI-2-Pose_converter.py --config configs/camera_config_v01.json
+```
+
+The script converts the physical lens info into RealEstate-style intrinsics:
+
+- `fx = focal_length_mm / sensor_width_mm`
+- `fy = focal_length_mm / sensor_height_mm`
+- `cx = 0.5 + principal_offset_x_mm / sensor_width_mm`
+- `cy = 0.5 + principal_offset_y_mm / sensor_height_mm`
+
+If the ASCI translations are in centimeters (typical “World to Meters 100”), set `"unit_scale": 0.01` (or pass `--unit-scale 0.01`) so the exported translations land in meters.
 
 Snippet (core formatting function):
 ```python

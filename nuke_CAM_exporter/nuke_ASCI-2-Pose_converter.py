@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Sequence, Tuple
 
@@ -33,6 +35,7 @@ def parse_args() -> argparse.Namespace:
         default=Path("outputs/camTrack_v01_converted.txt"),
         help="Destination RealEstate-style TXT file",
     )
+    parser.add_argument("--config", type=Path, help="Optional JSON pipeline config")
     parser.add_argument("--fps", type=float, default=DEFAULT_FPS, help="Frame rate for timestamps")
     parser.add_argument("--fx", type=float, default=DEFAULT_FX, help="Normalized focal length x")
     parser.add_argument("--fy", type=float, default=DEFAULT_FY, help="Normalized focal length y")
@@ -40,7 +43,127 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cy", type=float, default=DEFAULT_CY, help="Normalized principal point y")
     parser.add_argument("--width", type=float, default=DEFAULT_WIDTH, help="Pose width placeholder")
     parser.add_argument("--height", type=float, default=DEFAULT_HEIGHT, help="Pose height placeholder")
+    parser.add_argument("--unit-scale", type=float, default=1.0, help="Scale factor to convert translations into meters")
+    parser.add_argument("--focal-length-mm", type=float, help="Physical focal length in millimeters")
+    parser.add_argument("--sensor-width-mm", type=float, help="Horizontal aperture / filmback in millimeters")
+    parser.add_argument("--sensor-height-mm", type=float, help="Vertical aperture / filmback in millimeters")
+    parser.add_argument(
+        "--principal-offset-x-mm",
+        type=float,
+        help="Principal point offset from filmback center along X (mm, default 0)",
+    )
+    parser.add_argument(
+        "--principal-offset-y-mm",
+        type=float,
+        help="Principal point offset from filmback center along Y (mm, default 0)",
+    )
     return parser.parse_args()
+
+
+@dataclass
+class ConverterSettings:
+    input_path: Path
+    output_path: Path
+    fps: float
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    width: float
+    height: float
+    unit_scale: float
+    metadata: dict
+
+
+def load_config(path: Path | None) -> dict:
+    if not path:
+        return {}
+    data = json.loads(path.read_text())
+    data["_config_dir"] = path.parent
+    return data
+
+
+def resolve_path(config: dict, key: str, fallback: Path) -> Path:
+    raw = config.get(key, fallback)
+    if isinstance(raw, str):
+        candidate = Path(raw)
+    else:
+        candidate = Path(raw)
+    if not candidate.is_absolute() and "_config_dir" in config:
+        candidate = config["_config_dir"] / candidate
+    return candidate
+
+
+def compute_intrinsics(
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    args: argparse.Namespace,
+    config: dict,
+) -> tuple[float, float, float, float]:
+    intrinsics_cfg = config.get("intrinsics", {})
+    fx = intrinsics_cfg.get("fx", fx)
+    fy = intrinsics_cfg.get("fy", fy)
+    cx = intrinsics_cfg.get("cx", cx)
+    cy = intrinsics_cfg.get("cy", cy)
+
+    lens_cfg = config.get("lens", {})
+    focal_mm = args.focal_length_mm or lens_cfg.get("focal_length_mm")
+    sensor_w_mm = args.sensor_width_mm or lens_cfg.get("sensor_width_mm")
+    sensor_h_mm = args.sensor_height_mm or lens_cfg.get("sensor_height_mm")
+    offset_x_mm = args.principal_offset_x_mm
+    if offset_x_mm is None:
+        offset_x_mm = lens_cfg.get("principal_point_offset_x_mm", 0.0)
+    offset_y_mm = args.principal_offset_y_mm
+    if offset_y_mm is None:
+        offset_y_mm = lens_cfg.get("principal_point_offset_y_mm", 0.0)
+
+    if focal_mm and sensor_w_mm and sensor_h_mm:
+        fx = focal_mm / sensor_w_mm
+        fy = focal_mm / sensor_h_mm
+        cx = 0.5 + (offset_x_mm / sensor_w_mm)
+        cy = 0.5 + (offset_y_mm / sensor_h_mm)
+
+    return fx, fy, cx, cy
+
+
+def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
+    config = load_config(args.config)
+
+    input_path = resolve_path(config, "input", args.input)
+    output_path = resolve_path(config, "output", args.output)
+    fps = config.get("fps", args.fps)
+
+    width = config.get("pose_width", config.get("width", args.width))
+    height = config.get("pose_height", config.get("height", args.height))
+    resolution_cfg = config.get("resolution", {})
+    width = resolution_cfg.get("width_px", width)
+    height = resolution_cfg.get("height_px", height)
+
+    unit_scale = config.get("unit_scale", args.unit_scale)
+    fx, fy, cx, cy = compute_intrinsics(args.fx, args.fy, args.cx, args.cy, args, config)
+
+    metadata = {
+        "config": str(args.config) if args.config else None,
+        "lens": config.get("lens"),
+        "resolution": resolution_cfg or {"width_px": width, "height_px": height},
+        "unit_scale": unit_scale,
+    }
+
+    return ConverterSettings(
+        input_path=input_path,
+        output_path=output_path,
+        fps=fps,
+        fx=fx,
+        fy=fy,
+        cx=cx,
+        cy=cy,
+        width=width,
+        height=height,
+        unit_scale=unit_scale,
+        metadata=metadata,
+    )
 
 
 def euler_zxy_to_matrix(rx: float, ry: float, rz: float) -> List[List[float]]:
@@ -118,32 +241,34 @@ def format_pose_rows(
 
 def main() -> None:
     args = parse_args()
-    poses = list(iter_asci_poses(args.input))
-    frame_time_us = int(round(1_000_000 / args.fps))
+    settings = resolve_settings(args)
+    poses = list(iter_asci_poses(settings.input_path))
+    frame_time_us = int(round(1_000_000 / settings.fps))
 
     header = (
-        f"source:{args.input.as_posix()} fps:{args.fps} fx:{args.fx} fy:{args.fy} "
-        f"cx:{args.cx} cy:{args.cy} width:{args.width} height:{args.height}"
+        f"source:{settings.input_path.as_posix()} fps:{settings.fps} fx:{settings.fx} fy:{settings.fy} "
+        f"cx:{settings.cx} cy:{settings.cy} width:{settings.width} height:{settings.height} unit_scale:{settings.unit_scale}"
     )
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8") as f:
+    settings.output_path.parent.mkdir(parents=True, exist_ok=True)
+    with settings.output_path.open("w", encoding="utf-8") as f:
         f.write(header + "\n")
         for idx, (rotation, camera_center) in enumerate(poses):
-            translation = camera_center_to_translation(rotation, camera_center)
+            scaled_center = tuple(coord * settings.unit_scale for coord in camera_center)
+            translation = camera_center_to_translation(rotation, scaled_center)
             row = [
                 idx * frame_time_us,
-                args.fx,
-                args.fy,
-                args.cx,
-                args.cy,
-                args.width,
-                args.height,
+                settings.fx,
+                settings.fy,
+                settings.cx,
+                settings.cy,
+                settings.width,
+                settings.height,
             ]
             row.extend(format_pose_rows(rotation, translation))
             f.write(" ".join(f"{val:.12f}" for val in row) + "\n")
 
-    print(f"Converted {len(poses)} poses -> {args.output}")
+    print(f"Converted {len(poses)} poses -> {settings.output_path}")
 
 
 if __name__ == "__main__":
