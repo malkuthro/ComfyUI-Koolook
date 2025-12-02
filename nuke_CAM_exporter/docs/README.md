@@ -21,7 +21,7 @@ File: `nuke_CAM_exporter/nuke_ASCI-2-Pose_converter.py`
 
 Key behavior:
 - Parses command-line arguments for input path, output path, fps, intrinsics, and placeholder pose width/height.
-- Optionally ingests a JSON config (`--config`) that stores lens data, render resolution, file paths, and unit scale per shot.
+- Optionally ingests a JSON config (`--config`) that stores lens data, render resolution, file paths, unit scale, and frame caps per shot.
 - Reads each ASCI row using the known column order and converts rotation degrees → radians.
 - Builds a rotation matrix using Nuke's ZXY order (`euler_zxy_to_matrix`).
 - Converts Nuke's camera-center translations into RealEstate10k-style world→camera translations via `t = -R * C`; without this step ComfyUI interprets movement on the wrong axis.
@@ -45,7 +45,8 @@ python nuke_ASCI-2-Pose_converter.py `
     inputs/camTrack_v01.asci `
     outputs/camTrack_v06_converted.txt `
     --fps 25 --fx 0.5 --fy 0.5 --cx 0.5 --cy 0.5 `
-    --width 1248 --height 704
+    --width 1248 --height 704 `
+    --start-frame 10 --end-frame 70 --max-frames 48
 ```
 
 ### JSON-driven workflow
@@ -67,6 +68,11 @@ Use the template in `configs/camera_config_template.json` (copy + rename per sho
   "resolution": {
     "width_px": 1248,
     "height_px": 704
+  },
+  "frame_range": {
+    "start": 10,
+    "end": 170,
+    "max_frames": 60
   }
 }
 ```
@@ -85,7 +91,30 @@ The script converts the physical lens info into RealEstate-style intrinsics:
 - `cx = 0.5 + principal_offset_x_mm / sensor_width_mm`
 - `cy = 0.5 + principal_offset_y_mm / sensor_height_mm`
 
-If the ASCI translations are in centimeters (typical “World to Meters 100”), set `"unit_scale": 0.01` (or pass `--unit-scale 0.01`) so the exported translations land in meters.
+### 🔑 Getting the unit scale right (don’t skip!)
+
+ComfyUI expects world→camera translations in **meters**. If your Nuke track uses a different scale, the pose will look correct in direction but wrong in amplitude. Use this checklist every time:
+
+1. **Measure a real distance** from the plate (dolly travel, two survey points, set dressing width). In Nuke you can:
+   - Use CameraTracker’s *Set Reference Distance* or a custom Axis/Card pair with a known separation.
+   - Enter the surveyed value (e.g. 6.3 m) directly into a distance expression.
+2. **Read the raw ASCI delta** for the same span. Example: `translate.z` goes from `-0.215132` to `-0.105132` ⇒ raw delta = `0.11`.
+3. **Compute the multiplier**:  
+   `unit_scale = real_distance_meters / asci_delta`
+   - If the real move is 3.5 m: `3.5 / 0.11 = 31.82` ⇒ set `"unit_scale": 31.82`.
+   - If the scene is authored in centimeters (Nuke “World to Meters 100”), use `0.01`.
+4. **Store the measurement** in your config so anyone regenerating the TXT knows where the number came from.
+
+> **Tip:** When the camera tracker already scaled the scene (you set a reference distance), the raw ASCI deltas are in meters and `unit_scale` stays at `1.0`.
+
+Once `unit_scale` is set, rerun the converter—the exported Z travel will match the original plate exactly.
+
+Frame limiting options:
+Frame limiting options:
+
+- `frame_range.start` / `--start-frame`: zero-based index of the first ASCI row to keep.
+- `frame_range.end` / `--end-frame`: exclusive stop index (omit or set `null` to use all remaining frames).
+- `frame_range.max_frames` / `--max-frames`: hard cap after slicing (useful when a loader needs a specific length) / Wan22 = 80 (for Wan's 81 frames recomended workflows)
 
 Snippet (core formatting function):
 ```python

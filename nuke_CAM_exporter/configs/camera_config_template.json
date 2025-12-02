@@ -1,6 +1,6 @@
 {
   "input": "../inputs/camTrack_v01.asci",
-  "output": "../outputs/camTrack_v07_converted.txt",
+  "output": "../outputs/camTrack_v01_converted.txt",
   "fps": 25.0,
   "unit_scale": 1.0,
   "lens": {
@@ -11,8 +11,13 @@
     "principal_point_offset_y_mm": 0.0
   },
   "resolution": {
-    "width_px": 1280,
-    "height_px": 720
+    "width_px": 1920,
+    "height_px": 1080
+  },
+  "frame_range": {
+    "start": 0,
+    "end": null,
+    "max_frames": null
   }
 }
 

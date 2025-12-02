@@ -1,8 +1,8 @@
 {
-  "input": "../inputs/camTrack_v01.asci",
-  "output": "../outputs/camTrack_v09_converted.txt",
+  "input": "../inputs/camTrack_1.7m_v02.asci",
+  "output": "../outputs/camTrack_1.7m_v02_converted.txt",
   "fps": 25.0,
-  "unit_scale": 100.0,
+  "unit_scale": 0.1,
   "lens": {
     "focal_length_mm": 35.0,
     "sensor_width_mm": 36.0,
@@ -13,6 +13,11 @@
   "resolution": {
     "width_px": 1920,
     "height_px": 1080
+  },
+  "frame_range": {
+    "start": 0,
+    "end": 160,
+    "max_frames": 80
   }
 }
 

@@ -44,6 +44,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=float, default=DEFAULT_WIDTH, help="Pose width placeholder")
     parser.add_argument("--height", type=float, default=DEFAULT_HEIGHT, help="Pose height placeholder")
     parser.add_argument("--unit-scale", type=float, default=1.0, help="Scale factor to convert translations into meters")
+    parser.add_argument("--start-frame", type=int, default=None, help="First ASCI row (0-based) to include")
+    parser.add_argument("--end-frame", type=int, default=None, help="Exclusive ASCI row to stop at")
+    parser.add_argument("--max-frames", type=int, default=None, help="Cap total frames exported after slicing")
     parser.add_argument("--focal-length-mm", type=float, help="Physical focal length in millimeters")
     parser.add_argument("--sensor-width-mm", type=float, help="Horizontal aperture / filmback in millimeters")
     parser.add_argument("--sensor-height-mm", type=float, help="Vertical aperture / filmback in millimeters")
@@ -73,6 +76,9 @@ class ConverterSettings:
     height: float
     unit_scale: float
     metadata: dict
+    frame_start: int
+    frame_end: int | None
+    max_frames: int | None
 
 
 def load_config(path: Path | None) -> dict:
@@ -144,11 +150,21 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
     unit_scale = config.get("unit_scale", args.unit_scale)
     fx, fy, cx, cy = compute_intrinsics(args.fx, args.fy, args.cx, args.cy, args, config)
 
+    frame_cfg = config.get("frame_range", {})
+    frame_start = args.start_frame if args.start_frame is not None else frame_cfg.get("start", 0)
+    frame_end = args.end_frame if args.end_frame is not None else frame_cfg.get("end")
+    max_frames = args.max_frames if args.max_frames is not None else frame_cfg.get("max_frames")
+
     metadata = {
         "config": str(args.config) if args.config else None,
         "lens": config.get("lens"),
         "resolution": resolution_cfg or {"width_px": width, "height_px": height},
         "unit_scale": unit_scale,
+        "frame_range": {
+            "start": frame_start,
+            "end": frame_end,
+            "max_frames": max_frames,
+        },
     }
 
     return ConverterSettings(
@@ -163,6 +179,9 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
         height=height,
         unit_scale=unit_scale,
         metadata=metadata,
+        frame_start=frame_start,
+        frame_end=frame_end,
+        max_frames=max_frames,
     )
 
 
@@ -243,6 +262,16 @@ def main() -> None:
     args = parse_args()
     settings = resolve_settings(args)
     poses = list(iter_asci_poses(settings.input_path))
+    total_available = len(poses)
+    start_idx = max(0, settings.frame_start)
+    end_idx = settings.frame_end if settings.frame_end is not None else total_available
+    if end_idx is not None:
+        end_idx = max(start_idx, min(end_idx, total_available))
+    poses = poses[start_idx:end_idx]
+    if settings.max_frames is not None:
+        poses = poses[: settings.max_frames]
+    if not poses:
+        raise ValueError("No poses left after applying frame_range/max_frames filters.")
     frame_time_us = int(round(1_000_000 / settings.fps))
 
     header = (
@@ -268,7 +297,10 @@ def main() -> None:
             row.extend(format_pose_rows(rotation, translation))
             f.write(" ".join(f"{val:.12f}" for val in row) + "\n")
 
-    print(f"Converted {len(poses)} poses -> {settings.output_path}")
+    print(
+        f"Converted {len(poses)} poses "
+        f"(frames {start_idx}–{start_idx + len(poses) - 1} of {total_available}) -> {settings.output_path}"
+    )
 
 
 if __name__ == "__main__":
