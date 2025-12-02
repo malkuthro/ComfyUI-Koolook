@@ -1,0 +1,58 @@
+control_camera_video.shape torch.Size([1, 6, 161, 704, 1248])
+control_camera_latents.shape torch.Size([1, 24, 41, 704, 1248])
+CUDA Compute Capability: 8.9
+Detected model in_channels: 36
+Model cross attention type: t2v, num_heads: 40, num_layers: 40
+Model variant detected: 14B_2.2
+model_type FLOW
+Loading LoRA: Wan22_Lightning\4steps_1022_i2v\wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022 with strength: 1.0
+Using accelerate to load and assign model weights to device...
+Loading transformer parameters to cuda:0:   0%|          | 0/1101 [00:00<?, ?it/Loading transformer parameters to cuda:0:   1%|          | 11/1101 [00:00<00:12,Loading transformer parameters to cuda:0:   3%|▎         | 38/1101 [00:00<00:05,Loading transformer parameters to cuda:0:   6%|▌         | 68/1101 [00:00<00:04,Loading transformer parameters to cuda:0:   9%|▉         | 97/1101 [00:00<00:04,Loading transformer parameters to cuda:0:  11%|█▏        | 126/1101 [00:00<00:03Loading transformer parameters to cuda:0:  14%|█▍        | 155/1101 [00:00<00:03Loading transformer parameters to cuda:0:  17%|█▋        | 182/1101 [00:00<00:03Loading transformer parameters to cuda:0:  19%|█▉        | 209/1101 [00:00<00:03Loading transformer parameters to cuda:0:  22%|██▏       | 242/1101 [00:00<00:03Loading transformer parameters to cuda:0:  25%|██▍       | 271/1101 [00:01<00:03Loading transformer parameters to cuda:0: 100%|█████████▉| 1098/1101 [00:01<00:0Loading transformer parameters to cuda:0: 100%|██████████| 1101/1101 [00:01<00:00, 783.50it/s] 
+Using 1095 LoRA weight patches for WanVideo model
+------- Scheduler info -------
+Total timesteps: tensor([999, 961, 909, 833, 714, 499], device='cuda:0')
+Using timesteps: tensor([999, 961, 909], device='cuda:0')
+Using sigmas: tensor([1.0000, 0.9615, 0.9090, 0.8333])
+------------------------------
+sigmas: tensor([1.0000, 0.9615, 0.9090, 0.8333])
+image_cond shape: torch.Size([20, 21, 88, 156])
+Input sequence length: 72072
+Sampling 81 frames at 1248x704 with 3 steps
+  0%|          | 0/3 [00:00<?, ?it/s]Error during model prediction: The size of tensor a (21) must match the size of tensor b (41) at non-singleton dimension 2
+  0%|          | 0/3 [00:02<?, ?it/s]
+Error during sampling: The size of tensor a (21) must match the size of tensor b (41) at non-singleton dimension 2
+!!! Exception during processing !!! The size of tensor a (21) must match the size of tensor b (41) at non-singleton dimension 2
+Traceback (most recent call last):
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 510, in execute
+    output_data, output_ui, has_subgraph, has_pending_tasks = await get_output_data(prompt_id, unique_id, obj, input_data_all, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, hidden_inputs=hidden_inputs)
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 324, in get_output_data
+    return_values = await _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, obj.FUNCTION, allow_interrupt=True, execution_block_cb=execution_block_cb, pre_execute_cb=pre_execute_cb, hidden_inputs=hidden_inputs)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 298, in _async_map_node_over_list
+    await process_inputs(input_dict, i)
+  File "C:\Users\ai.machine\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\execution.py", line 286, in process_inputs
+    result = f(**inputs)
+             ^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\nodes_sampler.py", line 3036, in process
+    raise e
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\nodes_sampler.py", line 2921, in process
+    noise_pred, noise_pred_ovi, self.cache_state = predict_with_cfg(
+                                                   ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\nodes_sampler.py", line 1543, in predict_with_cfg
+    raise e
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\nodes_sampler.py", line 1414, in predict_with_cfg
+    noise_pred_cond, noise_pred_ovi, cache_state_cond = transformer(
+                                                        ^^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ai.machine\Documents\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper\wanvideo\modules\model.py", line 2302, in forward
+    x = [u + v for u, v in zip(x, fun_camera)]
+         ~~^~~
+RuntimeError: The size of tensor a (21) must match the size of tensor b (41) at non-singleton dimension 2
+
+Prompt executed in 19.18 seconds
