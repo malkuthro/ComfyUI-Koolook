@@ -1,8 +1,8 @@
 {
-  "input": "../inputs/camTrack_1.7m_v02.asci",
-  "output": "../outputs/camTrack_1.7m_v04_converted.txt",
+  "input": "../inputs/camTrack_Latest.asci",
+  "output": "W:/projects/ondt_blod_3084/sequences/001/0032/comp/asci_CAM/converted/camTrack_Latest-v02_converted.txt",
   "fps": 25.0,
-  "unit_scale": 0.1,
+  "unit_scale": 0.2,
   "lens": {
     "focal_length_mm": 35.0,
     "sensor_width_mm": 36.0,

@@ -1,0 +1,48 @@
+set cut_paste_input [stack 0]
+version 15.0 v1
+push $cut_paste_input
+
+# Test Camera - Simple forward dolly with pan
+Camera2 {
+    inputs 0
+    translate {curve x 0.0 80 0.0; curve y 0.0 80 0.0; curve z -5.0 80 -3.0}
+    rotate {curve x 0.0 80 0.0; curve y -10.0 80 -15.0; curve z 0.0 80 0.0}
+    focal {35.0}
+    haperture {36.0}
+    vaperture {24.0}
+    near {0.1}
+    far {1000.0}
+    win_translate {{0.5 0.5}}
+    win_scale {{1 1}}
+    winroll {0}
+    fov {54.432}
+    f_stop {2.8}
+    focus_distance {5.0}
+    lens {35.0}
+    name Camera2
+    selected true
+    xpos 0
+    ypos 0
+}
+
+# Reference Grid - helps visualize camera motion
+Grid2 {
+    inputs 0
+    display {luminance}
+    name Grid2
+    selected false
+    xpos 0
+    ypos -100
+}
+
+# Render node for validation
+Write1 {
+    file {test_render_%04d.exr}
+    file_type exr
+    datatype {32 bit float}
+    compression {Zip (1 scanline)}
+    name Write1
+    selected false
+    xpos 0
+    ypos -200
+}
