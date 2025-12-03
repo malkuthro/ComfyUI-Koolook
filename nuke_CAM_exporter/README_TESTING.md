@@ -22,7 +22,7 @@ This creates a Nuke script with:
 2. Select the `Camera2` node
 3. Right-click → **Export Ascii**
 4. Configure export:
-   - **Columns**: `translate.x`, `rotate.x`, `translate.y`, `rotate.y`, `rotate.z`, `translate.z`
+   - **Columns**: `translate.x`, `rotate.x`, `translate.y`, `rotate.y`, `translate.z`, `rotate.z`
    - **Rotation order**: ZXY (Nuke's default)
    - **Rotation units**: Degrees
 5. Save as `inputs/test_camera.asci`

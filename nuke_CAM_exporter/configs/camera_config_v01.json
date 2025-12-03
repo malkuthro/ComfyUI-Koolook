@@ -1,6 +1,6 @@
 {
-  "input": "../inputs/nukeCam_unit-1_v2.asci",
-  "output": "../outputs/nukeCam_unit-1_v4_converted.txt",
+  "input": "../inputs/nukeCam_unit-1_wRotation.asci",
+  "output": "../outputs/nukeCam_unit-1_wRotation_converted.txt",
   "fps": 25.0,
   "unit_scale": 1,
   "lens": {

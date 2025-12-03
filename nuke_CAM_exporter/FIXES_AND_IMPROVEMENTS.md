@@ -100,7 +100,7 @@ Comprehensive testing guide with:
 2. **Export camera from Nuke:**
    - Open `test_scene.nk` in Nuke
    - Select Camera2 node
-   - Export Ascii with columns: `[translate.x, rotate.x, translate.y, rotate.y, rotate.z, translate.z]`
+   - Export Ascii with columns: `[translate.x, rotate.x, translate.y, rotate.y, translate.z, rotate.z]`
    - Save as `inputs/test_camera.asci`
 
 3. **Convert:**
