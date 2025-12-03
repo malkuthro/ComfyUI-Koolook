@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         nargs="?",
         default=Path("inputs/camTrack_v01.asci"),
-        help="Path to Nuke ASCI export",
+        help="Path to Nuke ASCI export (combined order: Tx Rx Ty Ry Tz Rz)",
     )
     parser.add_argument(
         "output",
@@ -34,6 +34,16 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         default=Path("outputs/camTrack_v01_converted.txt"),
         help="Destination RealEstate-style TXT file",
+    )
+    parser.add_argument(
+        "--input-translation",
+        type=Path,
+        help="Optional ASCI file containing translation columns only (order: Tx Ty Tz)",
+    )
+    parser.add_argument(
+        "--input-rotation",
+        type=Path,
+        help="Optional ASCI file containing rotation columns only (order: Rx Ry Rz in degrees)",
     )
     parser.add_argument("--config", type=Path, help="Optional JSON pipeline config")
     parser.add_argument("--fps", type=float, default=DEFAULT_FPS, help="Frame rate for timestamps")
@@ -65,7 +75,9 @@ def parse_args() -> argparse.Namespace:
 
 @dataclass
 class ConverterSettings:
-    input_path: Path
+    input_path: Path | None
+    translation_input_path: Path | None
+    rotation_input_path: Path | None
     output_path: Path
     fps: float
     fx: float
@@ -138,6 +150,18 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
     config = load_config(args.config)
 
     input_path = resolve_path(config, "input", args.input)
+
+    def resolve_optional_path(config_key: str, arg_value: Path | None) -> Path | None:
+        if arg_value is not None:
+            return arg_value
+        cfg_val = config.get(config_key)
+        if cfg_val is None:
+            return None
+        return resolve_path(config, config_key, Path(cfg_val))
+
+    translation_input_path = resolve_optional_path("input_translation", args.input_translation)
+    rotation_input_path = resolve_optional_path("input_rotation", args.input_rotation)
+
     output_path = resolve_path(config, "output", args.output)
     fps = config.get("fps", args.fps)
 
@@ -157,6 +181,9 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
 
     metadata = {
         "config": str(args.config) if args.config else None,
+        "input": str(input_path) if input_path else None,
+        "input_translation": str(translation_input_path) if translation_input_path else None,
+        "input_rotation": str(rotation_input_path) if rotation_input_path else None,
         "lens": config.get("lens"),
         "resolution": resolution_cfg or {"width_px": width, "height_px": height},
         "unit_scale": unit_scale,
@@ -169,6 +196,8 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
 
     return ConverterSettings(
         input_path=input_path,
+        translation_input_path=translation_input_path,
+        rotation_input_path=rotation_input_path,
         output_path=output_path,
         fps=fps,
         fx=fx,
@@ -255,6 +284,29 @@ def iter_asci_poses(path: Path) -> Iterator[Tuple[List[List[float]], Tuple[float
         yield euler_zxy_to_matrix(rx, ry, rz), (tx, ty, tz)
 
 
+def iter_split_asci_poses(
+    translation_path: Path, rotation_path: Path
+) -> Iterator[Tuple[List[List[float]], Tuple[float, float, float]]]:
+    translation_lines = [line.strip() for line in translation_path.read_text().splitlines() if line.strip()]
+    rotation_lines = [line.strip() for line in rotation_path.read_text().splitlines() if line.strip()]
+    if len(translation_lines) != len(rotation_lines):
+        raise ValueError(
+            f"Translation ({len(translation_lines)}) and rotation ({len(rotation_lines)}) ASCI files "
+            "must contain the same number of rows."
+        )
+
+    for idx, (t_line, r_line) in enumerate(zip(translation_lines, rotation_lines)):
+        t_values = t_line.split()
+        r_values = r_line.split()
+        if len(t_values) != 3:
+            raise ValueError(f"Expected 3 translation columns per line in {translation_path}, got {len(t_values)} (line {idx})")
+        if len(r_values) != 3:
+            raise ValueError(f"Expected 3 rotation columns per line in {rotation_path}, got {len(r_values)} (line {idx})")
+        tx, ty, tz = map(float, t_values)
+        rx, ry, rz = (math.radians(float(val)) for val in r_values)
+        yield euler_zxy_to_matrix(rx, ry, rz), (tx, ty, tz)
+
+
 def camera_center_to_translation(
     rotation: Sequence[Sequence[float]], camera_center: Tuple[float, float, float]
 ) -> Tuple[float, float, float]:
@@ -288,7 +340,23 @@ def format_pose_rows(
 def main() -> None:
     args = parse_args()
     settings = resolve_settings(args)
-    poses = list(iter_asci_poses(settings.input_path))
+    # Determine data source: single combined ASCI or split translation/rotation files.
+    if settings.translation_input_path and settings.rotation_input_path:
+        poses = list(
+            iter_split_asci_poses(settings.translation_input_path, settings.rotation_input_path)
+        )
+        source_label = (
+            f"translation:{settings.translation_input_path.as_posix()} "
+            f"rotation:{settings.rotation_input_path.as_posix()}"
+        )
+    elif settings.translation_input_path or settings.rotation_input_path:
+        raise ValueError(
+            "Both input_translation and input_rotation must be provided together. "
+            "Either supply both split files or rely on the combined 'input' ASCI path."
+        )
+    else:
+        poses = list(iter_asci_poses(settings.input_path))
+        source_label = settings.input_path.as_posix()
     total_available = len(poses)
     start_idx = max(0, settings.frame_start)
     end_idx = settings.frame_end if settings.frame_end is not None else total_available
@@ -302,7 +370,7 @@ def main() -> None:
     frame_time_us = int(round(1_000_000 / settings.fps))
 
     header = (
-        f"source:{settings.input_path.as_posix()} fps:{settings.fps} fx:{settings.fx} fy:{settings.fy} "
+        f"source:{source_label} fps:{settings.fps} fx:{settings.fx} fy:{settings.fy} "
         f"cx:{settings.cx} cy:{settings.cy} width:{settings.width} height:{settings.height} unit_scale:{settings.unit_scale}"
     )
 

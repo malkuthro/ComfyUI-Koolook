@@ -1,5 +1,7 @@
 {
   "input": "../inputs/camTrack_v01.asci",
+  "input_translation": null,
+  "input_rotation": null,
   "output": "../outputs/camTrack_v01_converted.txt",
   "fps": 25.0,
   "unit_scale": 1.0,
