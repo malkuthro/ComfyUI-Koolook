@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
@@ -25,24 +26,83 @@ NUKE_HORIZONTAL_LABEL = "+Z (frame left)  <-  ->  -Z (frame right)"
 NUKE_VERTICAL_LABEL = "+X (frame down)  v  ^  -X (frame up)"
 
 
-def parse_translation_file(path: Path, limit: int | None) -> List[Tuple[float, float, float]]:
-    rows: List[Tuple[float, float, float]] = []
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        parts = stripped.split()
-        if len(parts) >= 6:
-            # Combined ASCI: Tx Rx Ty Ry Tz Rz
+def euler_zxy_to_matrix(rx_rad: float, ry_rad: float, rz_rad: float) -> List[List[float]]:
+    sx, cx = math.sin(rx_rad), math.cos(rx_rad)
+    sy, cy = math.sin(ry_rad), math.cos(ry_rad)
+    sz, cz = math.sin(rz_rad), math.cos(rz_rad)
+
+    Rx = (
+        (1.0, 0.0, 0.0),
+        (0.0, cx, -sx),
+        (0.0, sx, cx),
+    )
+    Ry = (
+        (cy, 0.0, sy),
+        (0.0, 1.0, 0.0),
+        (-sy, 0.0, cy),
+    )
+    Rz = (
+        (cz, -sz, 0.0),
+        (sz, cz, 0.0),
+        (0.0, 0.0, 1.0),
+    )
+
+    def mat_mul(a, b):
+        return [
+            [
+                a[r][0] * b[0][c] + a[r][1] * b[1][c] + a[r][2] * b[2][c]
+                for c in range(3)
+            ]
+            for r in range(3)
+        ]
+
+    return mat_mul(Ry, mat_mul(Rx, Rz))
+
+
+def load_track_samples(
+    translation_path: Path,
+    rotation_path: Path | None,
+) -> List[dict]:
+    samples: List[dict] = []
+
+    def append_sample(tx: float, ty: float, tz: float, rx_deg: float | None, ry_deg: float | None, rz_deg: float | None):
+        forward = None
+        if rx_deg is not None and ry_deg is not None and rz_deg is not None:
+            R = euler_zxy_to_matrix(
+                math.radians(rx_deg),
+                math.radians(ry_deg),
+                math.radians(rz_deg),
+            )
+            # Camera in Nuke looks toward -Z (viewing down the negative Z axis)
+            forward = (-R[0][2], -R[1][2], -R[2][2])
+        samples.append({"translation": (tx, ty, tz), "forward": forward})
+
+    lines = [l.strip() for l in translation_path.read_text().splitlines() if l.strip()]
+    if rotation_path:
+        rot_lines = [l.strip() for l in rotation_path.read_text().splitlines() if l.strip()]
+        if len(lines) != len(rot_lines):
+            raise ValueError("Translation and rotation ASCI files must have the same number of lines.")
+        for t_line, r_line in zip(lines, rot_lines):
+            tx, ty, tz = map(float, t_line.split()[:3])
+            rx_deg, ry_deg, rz_deg = map(float, r_line.split()[:3])
+            append_sample(tx, ty, tz, rx_deg, ry_deg, rz_deg)
+    else:
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 6:
+                raise ValueError(
+                    "Combined ASCI expected 6 columns per line (Tx Rx Ty Ry Tz Rz). "
+                    f"Got {len(parts)} columns: {line}"
+                )
             tx = float(parts[0])
+            rx_deg = float(parts[1])
             ty = float(parts[2])
+            ry_deg = float(parts[3])
             tz = float(parts[4])
-        else:
-            tx, ty, tz = map(float, parts[:3])
-        rows.append((tx, ty, tz))
-        if limit is not None and len(rows) >= limit:
-            break
-    return rows
+            rz_deg = float(parts[5])
+            append_sample(tx, ty, tz, rx_deg, ry_deg, rz_deg)
+
+    return samples
 
 
 def parse_pose_file(path: Path, limit: int | None) -> List[dict]:
@@ -101,6 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Top-view plot of camera path (Nuke-style top view).")
     parser.add_argument("--config", type=Path, help="Optional JSON config (same format as converter).")
     parser.add_argument("--translation", type=Path, help="Translation ASCI file (Tx Ty Tz).")
+    parser.add_argument("--rotation", type=Path, help="Rotation ASCI file (Rx Ry Rz) when exports are split.")
     parser.add_argument(
         "--pose",
         type=Path,
@@ -154,8 +215,10 @@ def main() -> None:
         return resolve_path(config, config_key)
 
     translation_path = resolved_path(args.translation, "input_translation")
+    rotation_path = resolved_path(args.rotation, "input_rotation")
     if translation_path is None:
         translation_path = resolved_path(None, "input")
+        rotation_path = None
     if translation_path is None:
         parser.error("Translation source missing (pass --translation or provide input/_translation in config).")
 
@@ -170,12 +233,17 @@ def main() -> None:
         if limit is None and frame_cfg.get("end") is not None:
             limit = max(0, frame_cfg["end"] - start_idx)
 
-    translation_rows = parse_translation_file(translation_path, None)
-    translation_rows = translation_rows[start_idx:]
+    track_samples = load_track_samples(translation_path, rotation_path)
+    track_samples = track_samples[start_idx:]
     if limit is not None:
-        translation_rows = translation_rows[:limit]
-    translation_rows = scale_rows(translation_rows, unit_scale)
-    tx, _, tz = split_axes(translation_rows)
+        track_samples = track_samples[:limit]
+
+    for sample in track_samples:
+        tx, ty, tz = sample["translation"]
+        sample["translation"] = (tx * unit_scale, ty * unit_scale, tz * unit_scale)
+
+    translations_scaled = [sample["translation"] for sample in track_samples]
+    tx, _, tz = split_axes(translations_scaled)
 
     def orient_axes(xs: Sequence[float], zs: Sequence[float]) -> Tuple[List[float], List[float]]:
         horiz, vert = (list(zs), list(xs)) if NUKE_SWAP_AXES else (list(xs), list(zs))
@@ -190,6 +258,7 @@ def main() -> None:
         return hx[0], hy[0]
 
     hx, hy = orient_axes(tx, tz)
+    track_screen_points = list(zip(hx, hy))
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.axhline(0.0, color="#666666", linewidth=0.8, alpha=0.6)
@@ -257,15 +326,15 @@ def main() -> None:
         ax.text(half - pad, pad, "-Z", ha="right", va="bottom", **label_kwargs)
         ax.text(-pad, -half + pad, "+X", ha="right", va="top", **label_kwargs)
         ax.text(-pad, half - pad, "-X", ha="right", va="bottom", **label_kwargs)
-        if pose_rows and pose_screen_points:
+        nuke_forward_samples = [s for s in track_samples if s["forward"] is not None]
+        if nuke_forward_samples:
             arrow_scale = max(half * 0.2, 0.05)
             head_width = half * 0.05
             head_length = half * 0.08
             for idx, label in ((0, "Start"), (-1, "End")):
-                base_x, base_y = pose_screen_points[idx]
-                forward = pose_rows[idx]["R"]
-                world_forward = (forward[0][2], forward[1][2], forward[2][2])
-                dir_x, dir_y = orient_point(world_forward[0], world_forward[2])
+                base_x, base_y = track_screen_points[idx]
+                forward = track_samples[idx]["forward"]
+                dir_x, dir_y = orient_point(forward[0], forward[2])
                 ax.arrow(
                     base_x,
                     base_y,
@@ -274,22 +343,23 @@ def main() -> None:
                     head_width=head_width,
                     head_length=head_length,
                     length_includes_head=True,
-                    color="tab:purple",
+                    color="tab:blue",
                     linewidth=1.5,
-                    alpha=0.85,
+                    alpha=0.9,
                     zorder=4,
                 )
                 ax.text(
                     base_x,
                     base_y,
                     label,
-                    color="tab:purple",
+                    color="tab:blue",
                     fontsize=8,
                     fontweight="bold",
                     ha="center",
                     va="center",
                     zorder=5,
                 )
+            ax.scatter([], [], marker="^", color="tab:blue", label="Nuke cam forward")
     ax.set_title("Camera path (top view)")
     ax.axis("equal")
     ax.grid(True, linestyle="--", alpha=0.3)
