@@ -70,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         help="Principal point offset from filmback center along Y (mm, default 0)",
     )
+    parser.add_argument(
+        "--invert-z",
+        action="store_true",
+        help="Flip translation Z before exporting (use when ComfyUI zoom runs backward)",
+    )
     return parser.parse_args()
 
 
@@ -87,6 +92,7 @@ class ConverterSettings:
     width: float
     height: float
     unit_scale: float
+    invert_z: bool
     metadata: dict
     frame_start: int
     frame_end: int | None
@@ -149,7 +155,10 @@ def compute_intrinsics(
 def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
     config = load_config(args.config)
 
-    input_path = resolve_path(config, "input", args.input)
+    if "input" in config and config["input"] is None:
+        input_path = None
+    else:
+        input_path = resolve_path(config, "input", args.input)
 
     def resolve_optional_path(config_key: str, arg_value: Path | None) -> Path | None:
         if arg_value is not None:
@@ -172,6 +181,7 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
     height = resolution_cfg.get("height_px", height)
 
     unit_scale = config.get("unit_scale", args.unit_scale)
+    invert_z = config.get("invert_z", args.invert_z)
     fx, fy, cx, cy = compute_intrinsics(args.fx, args.fy, args.cx, args.cy, args, config)
 
     frame_cfg = config.get("frame_range", {})
@@ -187,6 +197,7 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
         "lens": config.get("lens"),
         "resolution": resolution_cfg or {"width_px": width, "height_px": height},
         "unit_scale": unit_scale,
+        "invert_z": invert_z,
         "frame_range": {
             "start": frame_start,
             "end": frame_end,
@@ -207,6 +218,7 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
         width=width,
         height=height,
         unit_scale=unit_scale,
+        invert_z=invert_z,
         metadata=metadata,
         frame_start=frame_start,
         frame_end=frame_end,
@@ -380,7 +392,11 @@ def main() -> None:
         for idx, (rotation, camera_center) in enumerate(poses):
             # Convert from Nuke's Y-up to OpenCV's Y-down coordinate system
             rotation_opencv = convert_yup_to_ydown(rotation)
-            
+
+            # Optional switch keeps zoom direction consistent between Nuke and ComfyUI
+            if settings.invert_z:
+                camera_center = (camera_center[0], camera_center[1], -camera_center[2])
+
             # Scale camera center to meters and convert to world-to-camera translation
             scaled_center = tuple(coord * settings.unit_scale for coord in camera_center)
             translation = camera_center_to_translation(rotation_opencv, scaled_center)
