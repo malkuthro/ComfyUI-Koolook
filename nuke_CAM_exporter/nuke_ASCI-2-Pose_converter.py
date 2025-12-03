@@ -186,6 +186,7 @@ def resolve_settings(args: argparse.Namespace) -> ConverterSettings:
 
 
 def euler_zxy_to_matrix(rx: float, ry: float, rz: float) -> List[List[float]]:
+    """Convert ZXY Euler angles to rotation matrix in Nuke's coordinate system (Y-up)."""
     sx, cx = math.sin(rx), math.cos(rx)
     sy, cy = math.sin(ry), math.cos(ry)
     sz, cz = math.sin(rz), math.cos(rz)
@@ -207,6 +208,26 @@ def euler_zxy_to_matrix(rx: float, ry: float, rz: float) -> List[List[float]]:
     )
 
     return mat_mul(Ry, mat_mul(Rx, Rz))
+
+
+def convert_yup_to_ydown(rotation: List[List[float]]) -> List[List[float]]:
+    """
+    Convert rotation matrix from Nuke's Y-up coordinate system to OpenCV's Y-down.
+    
+    Nuke: +X right, +Y up, +Z forward
+    OpenCV: +X right, +Y down, +Z forward
+    
+    Transformation: flip Y axis by negating Y row and Y column of rotation matrix.
+    This is equivalent to: R_opencv = T * R_nuke * T, where T = diag(1, -1, 1)
+    """
+    r = rotation
+    # Negate Y row and Y column: R'[i,j] = T[i,i] * R[i,j] * T[j,j]
+    # where T = diag(1, -1, 1)
+    return [
+        [r[0][0], -r[0][1], r[0][2]],  # X row: keep X, negate Y, keep Z
+        [-r[1][0], r[1][1], -r[1][2]],  # Y row: negate X, keep Y, negate Z
+        [r[2][0], -r[2][1], r[2][2]],  # Z row: keep X, negate Y, keep Z
+    ]
 
 
 def mat_mul(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> List[List[float]]:
@@ -237,6 +258,12 @@ def iter_asci_poses(path: Path) -> Iterator[Tuple[List[List[float]], Tuple[float
 def camera_center_to_translation(
     rotation: Sequence[Sequence[float]], camera_center: Tuple[float, float, float]
 ) -> Tuple[float, float, float]:
+    """
+    Convert camera center (world position) to world-to-camera translation.
+    
+    Formula: t = -R * C, where C is camera center in world space.
+    This gives us the translation component of the [R|t] matrix.
+    """
     cx, cy, cz = camera_center
     r = rotation
     return (
@@ -283,8 +310,13 @@ def main() -> None:
     with settings.output_path.open("w", encoding="utf-8") as f:
         f.write(header + "\n")
         for idx, (rotation, camera_center) in enumerate(poses):
+            # Convert from Nuke's Y-up to OpenCV's Y-down coordinate system
+            rotation_opencv = convert_yup_to_ydown(rotation)
+            
+            # Scale camera center to meters and convert to world-to-camera translation
             scaled_center = tuple(coord * settings.unit_scale for coord in camera_center)
-            translation = camera_center_to_translation(rotation, scaled_center)
+            translation = camera_center_to_translation(rotation_opencv, scaled_center)
+            
             row = [
                 idx * frame_time_us,
                 settings.fx,
@@ -294,7 +326,7 @@ def main() -> None:
                 settings.width,
                 settings.height,
             ]
-            row.extend(format_pose_rows(rotation, translation))
+            row.extend(format_pose_rows(rotation_opencv, translation))
             f.write(" ".join(f"{val:.12f}" for val in row) + "\n")
 
     print(
