@@ -2,35 +2,19 @@
 
 This is the quick reference for translating DCC camera exports (Nuke / Houdini) into something Wan understands.
 
-## Mental model
+### Mental model
 
-<table>
-  <thead>
-    <tr>
-      <th>Renderer</th>
-      <th>Camera input</th>
-      <th>Coordinate frame</th>
-      <th>Intrinsics</th>
-      <th>Translation</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Nuke / Houdini (Scanline, Karma, etc.)</td>
-      <td>Native camera node from the scene graph</td>
-      <td>Whatever the scene uses</td>
-      <td>Stored on the camera node (filmback + focal)</td>
-      <td>Camera center <code>C</code> in scene units</td>
-    </tr>
-    <tr>
-      <td>Wan video pipeline</td>
-      <td>RealEstate10k-style TXT (<code>timestamp fx fy cx cy width height R&#124;t</code>)</td>
-      <td>Fixed OpenCV-style axes (+X right, +Y down, +Z forward)</td>
-      <td>Requires normalized values (<code>fx = f_mm / sensor_w_mm</code>)</td>
-      <td>Needs <strong>world→camera</strong> translation <code>t = –R · C</code> in meters</td>
-    </tr>
-  </tbody>
-</table>
+**Nuke / Houdini (Scanline, Karma, etc.)**
+- Camera input: native camera node from the scene graph  
+- Coordinate frame: whatever the scene uses  
+- Intrinsics: stored on the camera node (filmback + focal)  
+- Translation: camera center `C` in scene units  
+
+**Wan video pipeline**
+- Camera input: RealEstate10k TXT (`timestamp fx fy cx cy width height R\|t`)  
+- Coordinate frame: fixed OpenCV axes (+X right, +Y down, +Z forward)  
+- Intrinsics: requires normalized values (`fx = f_mm / sensor_w_mm`)  
+- Translation: needs **world→camera** translation `t = –R · C` in meters 
 
 Wan was trained on RealEstate10k, so its camera encoder only understands that schema. Anything else (raw ASCI, FBX, etc.) must be converted first.
 
@@ -145,102 +129,3 @@ The most common reason for visible drift is a scale mismatch. Because Wan assume
 4. **Wide lenses need tighter tolerances.** For anything 35 mm or wider, aim for centimeter-level accuracy. Every 1% error in scale equals ~1% sliding on screen.
 
 Document the measurement in the config file (e.g. `"reference_distance_m": 6.53`). That way anyone regenerating the poses knows where the number came from and can double-check if the set changes.***
-
-### Can Houdini export the “right” data directly?
-
-Even if your Houdini scene already uses meters, the RealEstate schema still applies. Houdini’s `optransform("/obj/cam1", "/obj/world")` gives you a 4×4 world→camera matrix, but you still need to:
-
-1. Normalize intrinsics (`fx = focal_len / aperture`, etc.).
-2. Convert the matrix into `[R|t]` flattened rows with `t = –R·C` (or just invert the world transform you already have).
-3. Emit timestamps + metadata (fps, width, height) in the RealEstate order.
-
-If you want to script it inside Houdini, the following Python SOP snippet mirrors the converter logic:
-
-```python
-import math, json
-from pathlib import Path
-
-node = hou.node("/obj/cam1")
-fps = hou.fps()
-f_length = node.parm("focal").eval()
-aperture = node.parm("aperture").eval()  # horizontal mm
-sensor_h = node.parm("apertureh").eval() or aperture * (9/16)
-fx = f_length / aperture
-fy = f_length / sensor_h
-cx, cy = 0.5, 0.5
-
-out_lines = []
-for frame in range(int(start), int(end) + 1):
-    hou.setFrame(frame)
-    m = node.worldTransform().inverted()  # world→camera
-    R = m.extractRotationMatrix3()
-    t = m.extractTranslates("trs")
-    row = [
-        (frame - start) * (1e6 / fps),
-        fx, fy, cx, cy,
-        width, height,
-        R.at(0,0), R.at(0,1), R.at(0,2), t[0],
-        R.at(1,0), R.at(1,1), R.at(1,2), t[1],
-        R.at(2,0), R.at(2,1), R.at(2,2), t[2],
-    ]
-    out_lines.append(" ".join(f"{v:.12f}" for v in row))
-
-Path("$HIP/poses/cam_track.txt").write_text(
-    f"source:houdini fps:{fps} fx:{fx} fy:{fy} cx:{cx} cy:{cy} width:{width} height:{height}\n" +
-    "\n".join(out_lines)
-)
-```
-
-This is effectively re-implementing `nuke_ASCI-2-Pose_converter.py`. Unless you need it embedded in Houdini, it’s simpler to export a standard ASCI/FBX and run the converter with `unit_scale=1.0`.***
-
-## Where CameraCtrl fits vs. UniCtrl / Uni3C
-
-<table>
-  <thead>
-    <tr>
-      <th></th>
-      <th>CameraCtrl (AnimateDiff / Wan camera encoder)</th>
-      <th>UniCtrl / Uni3C (Xuweiyi Chen et al., 2024)</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>Primary job</strong></td>
-      <td>Consume explicit camera trajectories (<code>fx/fy/cx/cy</code>, <code>[R|t]</code>) and tell the motion model where the camera is each frame.</td>
-      <td>Modify the diffusion UNet’s attention during sampling so adjacent frames share semantics and motion stays coherent.</td>
-    </tr>
-    <tr>
-      <td><strong>Input requirements</strong></td>
-      <td>RealEstate10K-style TXT + calibrated lens metadata from Nuke/Houdini/RealityCapture.</td>
-      <td>None beyond the base prompt/image conditioning; purely inference-time.</td>
-    </tr>
-    <tr>
-      <td><strong>Training</strong></td>
-      <td>Needs a camera encoder / motion LoRA trained on RealEstate10K (AnimateDiff, Wan 14B, etc.).</td>
-      <td>Training-free; plug-and-play on top of AnimateDiff / VideoCrafter / ModelScope weights.</td>
-    </tr>
-    <tr>
-      <td><strong>What it guarantees</strong></td>
-      <td>Camera <em>path</em> matches the supplied track (dolly, pan, roll, etc.); scene content still hallucinated.</td>
-      <td>Better spatiotemporal consistency for the hallucinated content; does not enforce a specific path.</td>
-    </tr>
-    <tr>
-      <td><strong>Failure mode</strong></td>
-      <td>Wrong poses / scale ⇒ camera mismatch, even if UniCtrl is perfect.</td>
-      <td>Still a generative scene; cannot force FG objects to stick to plate geometry.</td>
-    </tr>
-    <tr>
-      <td><strong>Best use</strong></td>
-      <td>Matching VFX plates, I2V backgrounds, virtual production where the camera move must match live action.</td>
-      <td>Any T2V/I2V run where you want less flicker without retraining; works even with pure text prompts.</td>
-    </tr>
-  </tbody>
-</table>
-
-### How they’re interconnected
-
-1. **Pipeline order:** Nuke/Houdini → exporter → RealEstate TXT → CameraCtrl nodes (`Koolook Load Camera Poses`, `WanVideo FunCamera Embeds`) → Wan encoder.  
-2. **Optional stabilization:** While sampling, UniCtrl hooks into the UNet attention blocks and reuses the first frame’s keys/values, injects motion queries, and syncs latents so subsequent frames stay semantically aligned.  
-3. **Outcome:** CameraCtrl keeps the *geometry* aligned with your tracked move. UniCtrl keeps the *diffusion process* from drifting frame-to-frame. Together you get the closest thing to a “virtual camera” that respects both the live-action motion and temporal coherence.
-
-In short: CameraCtrl is the equivalent of importing your tracked Steadicam into a renderer; UniCtrl is more like an attention-based stabilizer that reduces flicker. Use CameraCtrl whenever you need Wan to obey a real camera path, and layer UniCtrl on top when the diffusion output itself needs extra temporal polish.
