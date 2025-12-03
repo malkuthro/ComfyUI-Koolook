@@ -67,6 +67,26 @@ Wan was trained on RealEstate10k, so its camera encoder only understands that sc
 
 Following this flow keeps the rendered motion aligned with the original plate, even though the raw numbers look different after conversion.***
 
+### Quick visual QA (top-view plot)
+
+Whenever you need to confirm that the scaled translations and rotations still match what you see in Nuke, use the helper plot:
+
+```
+cd nuke_CAM_exporter
+py -3 testing_tools/plot_top_view.py \
+    --config configs/camera_config_v01.json \
+    --output testing_tools/top_view.png
+```
+
+What it shows:
+
+- Green = scaled Nuke camera centers (after `unit_scale` and frame slicing).
+- Purple = world→camera translations from the RealEstate TXT (mostly for debugging; the green curve is what matches Nuke).
+- Blue cones/arrows = camera forward vectors from the ASCI rotation channels (first/last frames), rendered in the same “view from –Y” orientation you see in Nuke’s top view.
+- A 1×1 m square centered on the origin with the +Z / –X quadrant shaded so you know at a glance which way the camera is pointing relative to the plate.
+
+As long as the green curve and blue cones match your Nuke viewport, the exporter is doing the right thing—any remaining mismatch in a ComfyUI render is down to Wan’s hallucinated geometry, not the pose math.
+
 ## Where things happen inside the ComfyUI graph
 
 1. **`Text Multiline` → `Koolook Load Camera Poses`**  
@@ -109,6 +129,8 @@ Even with perfect pose conversion, Wan isn’t a deterministic renderer—it’s
 - **No shared 3D points.** Your tracked points in Nuke are actual world markers. Wan fabricates its own depth, so there’s nothing forcing it to align to those anchors.
 - **Token downsampling.** Camera embeddings get compressed (Plücker rays → 21 tokens → VAE stride). That’s enough to guide global motion but not sub-pixel parallax.
 - **Scale sensitivity.** Any tiny error in focal length, sensor size, or `unit_scale` shows up as sliding when you composite back with live-action elements.
+
+One way to sanity-check where things diverge is the top-view plot described above. The green curve (Nuke camera center after scaling) is the only trajectory you can compare directly to the plate; the purple `t` values are world→camera translations that Wan later inverts, so they don’t need to “look” like the Nuke path. If the green curve aligns with the tracked move, the export is correct. Any remaining X drift—like the character sliding toward the right wall in the render—is just Wan prioritising a pleasing composition over strict lateral translation, especially on wide dolly moves.
 
 ### Tips when you need zero sliding
 
