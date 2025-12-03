@@ -191,6 +191,6 @@ What you get:
 - Purple curve = world→camera translations from the converted TXT.
 - 1×1 m square centered on origin with the +Z / -X quadrant shaded (mirrors the Nuke viewport).
 - Axis labels explicitly show frame directions (`+Z (frame left)`, `+X (frame down)`).
-- Purple cones/arrows at the first and last poses indicate the camera’s facing direction within the same top view.
+- Blue cones/arrows at the first and last Nuke keyframes show the camera’s facing direction within the same top view.
 
 Use this plot to verify the camera lives in the expected quadrant or to explain offsets before re-rendering. The script respects the same config that drives the converter, so you only need to keep one JSON per shot.
