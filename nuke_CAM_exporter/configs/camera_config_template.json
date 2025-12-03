@@ -5,6 +5,8 @@
   "output": "../outputs/camTrack_v01_converted.txt",
   "fps": 25.0,
   "unit_scale": 1.0,
+  "_note_invert_z": "Set true if zoom direction renders reversed in ComfyUI",
+  "invert_z": false,
   "lens": {
     "focal_length_mm": 35.0,
     "sensor_width_mm": 36.0,
