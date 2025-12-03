@@ -1,6 +1,6 @@
 {
   "input": "../inputs/camTrack_1.7m_v02.asci",
-  "output": "../outputs/camTrack_1.7m_v02_converted.txt",
+  "output": "../outputs/camTrack_1.7m_v04_converted.txt",
   "fps": 25.0,
   "unit_scale": 0.1,
   "lens": {

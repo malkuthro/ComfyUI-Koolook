@@ -1,0 +1,10 @@
+{
+  "git.enabled": true,
+  "git.decorations.enabled": true,
+  "scm.diffDecorations": "all",
+  "scm.diffDecorationsGutterVisibility": "always",
+  "files.decorations.enabled": true,
+  "explorer.decorations.badges": true,
+  "explorer.decorations.colors": true
+}
+
