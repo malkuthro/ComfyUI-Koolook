@@ -6,6 +6,7 @@ This document captures the end-to-end workflow we established for converting Nuk
 - **Nuke camera**: standard `Camera` node with Translation / Rotation channels keyed over time.
 - **Export step**: use Nuke's *Export Ascii* tool with the column mapping shown in `ASCI_source_data/AnimationChannels_and_values_firstFrame_plus-ASCI-window.png`.
 - Column order: `[translate.x, rotate.x, translate.y, rotate.y, translate.z, rotate.z]`.
+- Prefer to stick to the combined export unless you want to split the channels into two files. When splitting, export translations as `Tx Ty Tz` and rotations as `Rx Ry Rz` (degrees) and reference them via the config keys described below.
   - Rotations are exported in **degrees** using Nuke's **ZXY rotation order** (see `DataValidation-nuke.png`).
 - **Raw file**: `nuke_CAM_exporter/inputs/camTrack_v01.asci` (162 lines covering frames 1001–1161 in this example).
 
@@ -55,6 +56,8 @@ Use the template in `configs/camera_config_template.json` (copy + rename per sho
 ```json
 {
   "input": "../inputs/camTrack_v01.asci",
+  "input_translation": null,
+  "input_rotation": null,
   "output": "../outputs/camTrack_v06_converted.txt",
   "fps": 25.0,
   "unit_scale": 1.0,
@@ -76,6 +79,8 @@ Use the template in `configs/camera_config_template.json` (copy + rename per sho
   }
 }
 ```
+
+Set `"input_translation"` / `"input_rotation"` when you export translations and rotations as two separate ASCI files. Leave them `null` (or omit entirely) when you rely on the combined `input` file.
 
 Run:
 
