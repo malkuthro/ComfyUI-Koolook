@@ -146,3 +146,4 @@ If motion still doesn't match:
 - Check that ComfyUI render resolution matches pose file resolution
 - Consider using camera projection in Nuke to validate the converted poses
 
+

@@ -73,8 +73,6 @@ def generate_nuke_script(output_path: Path, num_frames: int = 50) -> None:
         "    xpos 0",
         "    ypos -200",
         "}",
-        "",
-        "end_group",
     ]
     
     output_path.write_text("\n".join(script_lines))

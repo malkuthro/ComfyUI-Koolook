@@ -123,8 +123,8 @@ def compare_poses(asci_path: Path, pose_path: Path, unit_scale: float = 1.0) -> 
         R_asci = euler_zxy_to_matrix(rx, ry, rz)
         R_asci_np = np.array(R_asci)
         
-        # Get pose data
-        timestamp, intrinsics, R_pose_row = parse_pose_line(pose_data[i])
+        # Get pose data (already parsed on line 97)
+        timestamp, intrinsics, R_pose_row = pose_data[i]
         R_pose = [row[:3] for row in R_pose_row]  # Extract rotation part
         t_pose = [row[3] for row in R_pose_row]  # Extract translation part
         R_pose_np = np.array(R_pose)
