@@ -7,7 +7,7 @@ This document explains how to test and validate the Nuke → ComfyUI camera conv
 ### 1. Generate Test Scene
 
 ```bash
-python test_nuke_scene.py --output test_scene.nk --frames 50
+python test_nuke_scene.py --output test_scene.nk --frames 81
 ```
 
 This creates a Nuke script with:
