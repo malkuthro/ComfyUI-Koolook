@@ -245,13 +245,13 @@ def iter_asci_poses(path: Path) -> Iterator[Tuple[List[List[float]], Tuple[float
         values = stripped.split()
         if len(values) != 6:
             raise ValueError(f"Expected 6 columns per line, got {len(values)}: {line}")
-        # Exporter columns: [translate.x, rotate.x, translate.y, rotate.y, rotate.z, translate.z]
+        # Exporter columns: [translate.x, rotate.x, translate.y, rotate.y, translate.z, rotate.z]
         tx = float(values[0])
         rx = math.radians(float(values[1]))
         ty = float(values[2])
         ry = math.radians(float(values[3]))
-        rz = math.radians(float(values[4]))
-        tz = float(values[5])
+        tz = float(values[4])
+        rz = math.radians(float(values[5]))
         yield euler_zxy_to_matrix(rx, ry, rz), (tx, ty, tz)
 
 

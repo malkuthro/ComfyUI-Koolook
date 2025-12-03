@@ -79,7 +79,7 @@ def compare_rows(indices: list[int]) -> None:
     for idx in indices:
         if idx >= len(pose_rows):
             continue
-        tx, rx, ty, ry, rz, tz = asci_rows[idx]
+        tx, rx, ty, ry, tz, rz = asci_rows[idx]
         R_nuke = euler_zxy(math.radians(rx), math.radians(ry), math.radians(rz))
         R_cv = convert_yup_to_ydown(R_nuke)
         t = [-val for val in mat_vec_mul(R_cv, (tx, ty, tz))]

@@ -17,11 +17,12 @@ import numpy as np
 
 
 def parse_asci_line(line: str) -> Tuple[float, float, float, float, float, float]:
-    """Parse one line of ASCI file: [Tx, Rx, Ty, Ry, Rz, Tz]"""
+    """Parse one line of ASCI file: [Tx, Rx, Ty, Ry, Tz, Rz]"""
     values = line.strip().split()
     if len(values) != 6:
         raise ValueError(f"Expected 6 columns, got {len(values)}")
-    return tuple(float(v) for v in values)
+    tx, rx, ty, ry, tz, rz = (float(v) for v in values)
+    return tx, rx, ty, ry, tz, rz
 
 
 def parse_pose_line(line: str) -> Tuple[float, List[float], List[float]]:
@@ -114,7 +115,7 @@ def compare_poses(asci_path: Path, pose_path: Path, unit_scale: float = 1.0) -> 
         print(f"\nFrame {i}:")
         
         # Parse ASCI
-        tx, rx_deg, ty, ry_deg, rz_deg, tz = parse_asci_line(asci_lines[i])
+        tx, rx_deg, ty, ry_deg, tz, rz_deg = parse_asci_line(asci_lines[i])
         rx, ry, rz = math.radians(rx_deg), math.radians(ry_deg), math.radians(rz_deg)
         
         print(f"  ASCI: T=({tx:.3f}, {ty:.3f}, {tz:.3f}), R=({rx_deg:.1f}°, {ry_deg:.1f}°, {rz_deg:.1f}°)")

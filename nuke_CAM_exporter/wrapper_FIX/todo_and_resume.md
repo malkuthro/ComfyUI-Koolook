@@ -2,7 +2,7 @@
 
 ## Summary of Current State
 - **ASCI Export/Converter**
-  - Confirmed Nuke export columns `[Tx, Rx, Ty, Ry, Rz, Tz]` (degrees, ZXY order).
+- Confirmed Nuke export columns `[Tx, Rx, Ty, Ry, Tz, Rz]` (degrees, ZXY order).
   - `nuke_ASCI-2-Pose_converter.py` converts to RealEstate-style `[R|t]` rows and works for arbitrary frame counts.
   - Latest file `outputs/camTrack_v01_converted_v5.txt` trimmed to 81 frames to match Wan’s multiple-of-4 plus one requirement.
 - **ComfyUI/Wan Errors**

@@ -5,7 +5,7 @@ This document captures the end-to-end workflow we established for converting Nuk
 ## 1. Source Data
 - **Nuke camera**: standard `Camera` node with Translation / Rotation channels keyed over time.
 - **Export step**: use Nuke's *Export Ascii* tool with the column mapping shown in `ASCI_source_data/AnimationChannels_and_values_firstFrame_plus-ASCI-window.png`.
-  - Column order: `[translate.x, rotate.x, translate.y, rotate.y, rotate.z, translate.z]`.
+- Column order: `[translate.x, rotate.x, translate.y, rotate.y, translate.z, rotate.z]`.
   - Rotations are exported in **degrees** using Nuke's **ZXY rotation order** (see `DataValidation-nuke.png`).
 - **Raw file**: `nuke_CAM_exporter/inputs/camTrack_v01.asci` (162 lines covering frames 1001–1161 in this example).
 
@@ -79,7 +79,7 @@ Use the template in `configs/camera_config_template.json` (copy + rename per sho
 
 Run:
 
-```
+```bash
 cd nuke_CAM_exporter
 python nuke_ASCI-2-Pose_converter.py --config configs/camera_config_v01.json
 ```
@@ -140,7 +140,7 @@ source:inputs/camTrack_v01.asci fps:25.0 fx:0.5 fy:0.5 cx:0.5 cy:0.5 width:1280.
 ## 4. Documentation
 - `docs/camTrack_v01_converted_README.txt` explains:
   - Source file, fps, intrinsics, and placeholder dimensions.
-  - Column mapping `[Tx, Rx, Ty, Ry, Rz, Tz]` and the ZXY rotation order.
+- Column mapping `[Tx, Rx, Ty, Ry, Tz, Rz]` and the ZXY rotation order.
   - Steps for regenerating the TXT and importing it into ComfyUI (`Koolook Load Camera Poses (Absolute Path)` + `CameraPoseVisualizer`).
 
 ## 5. Validation Checklist
