@@ -159,3 +159,38 @@ source:inputs/camTrack_v01.asci fps:25.0 fx:0.5 fy:0.5 cx:0.5 cy:0.5 width:1280.
 3. Preview with `CameraPoseVisualizer` and feed into camera/motion encoder nodes.
 
 Keep this document handy as a “resume” of the pipeline so future adjustments reference the same assumptions and file locations.
+
+## 7. Plotting the camera path (Nuke-style top view)
+Whenever you need to sanity-check where the camera sits relative to the plate, use the helper script `testing_tools/plot_top_view.py`. It renders a quad view that matches Nuke’s “view from -Y” (horizontal axis = +Z frame left, vertical axis = +X frame down). Defaults are baked in—you don’t need to remember extra flags.
+
+### Required files
+- Config JSON for the shot (e.g. `nuke_CAM_exporter/configs/camera_config_v01.json`) with at least:
+  - `"input"` *or* `"input_translation"` / `"input_rotation"` pointing at ASCI exports.
+  - `"output"` pointing at the converted TXT (used to overlay world-to-camera translations).
+  - `"unit_scale"` and `"frame_range"` set the same way you run the converter.
+- Optional: override paths via CLI if you want to plot a different file set.
+
+### Command
+```
+cd nuke_CAM_exporter
+py -3 testing_tools/plot_top_view.py \
+    --config configs/camera_config_v01.json \
+    --output testing_tools/top_view.png
+```
+
+On Windows PowerShell:
+```
+cd nuke_CAM_exporter
+py -3 testing_tools/plot_top_view.py `
+    --config configs/camera_config_v01.json `
+    --output testing_tools/top_view.png
+```
+
+What you get:
+- Green curve = raw Nuke camera centers (after `unit_scale`).
+- Purple curve = world→camera translations from the converted TXT.
+- 1×1 m square centered on origin with the +Z / -X quadrant shaded (mirrors the Nuke viewport).
+- Axis labels explicitly show frame directions (`+Z (frame left)`, `+X (frame down)`).
+- Purple cones/arrows at the first and last poses indicate the camera’s facing direction within the same top view.
+
+Use this plot to verify the camera lives in the expected quadrant or to explain offsets before re-rendering. The script respects the same config that drives the converter, so you only need to keep one JSON per shot.
