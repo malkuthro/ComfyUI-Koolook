@@ -1,8 +1,8 @@
 {
-  "input": "../inputs/camTrack_Latest.asci",
-  "output": "W:/projects/ondt_blod_3084/sequences/001/0032/comp/asci_CAM/converted/camTrack_Latest-v02_converted.txt",
+  "input": "../inputs/nukeCam_unit-1_v2.asci",
+  "output": "../outputs/nukeCam_unit-1_v3_converted.txt",
   "fps": 25.0,
-  "unit_scale": 0.2,
+  "unit_scale": 1,
   "lens": {
     "focal_length_mm": 35.0,
     "sensor_width_mm": 36.0,
@@ -16,7 +16,7 @@
   },
   "frame_range": {
     "start": 0,
-    "end": 160,
+    "end": null,
     "max_frames": 80
   }
 }

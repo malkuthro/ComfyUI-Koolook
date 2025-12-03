@@ -73,17 +73,23 @@ This script checks:
    - ✅ Fixed: The converter now includes `convert_yup_to_ydown()` function
    - Check validation output for coordinate system warnings
 
-2. **Incorrect unit_scale**
+2. **Camera solver rotated 90° (or any large rotation)**
+   - **This is normal!** Nuke's camera solver may orient the camera with large rotations (e.g., 90° Y-axis)
+   - The converter preserves all rotations correctly, including 90° rotations
+   - Use `python debug_rotation.py inputs/your_camera.asci` to analyze rotations
+   - If motion still doesn't match, check `unit_scale` and lens parameters (see below)
+
+3. **Incorrect unit_scale**
    - Measure real-world distance traveled by camera
    - Calculate: `unit_scale = real_distance_meters / asci_delta`
    - Example: Camera moves 1.7m, ASCI Tz delta is 17.0 → `unit_scale = 0.1`
 
-3. **Wrong lens parameters**
+4. **Wrong lens parameters**
    - Verify focal length matches Nuke camera settings
    - Check sensor size (filmback) matches camera node
    - Use `--focal-length-mm` and `--sensor-width-mm` / `--sensor-height-mm` flags
 
-4. **Frame range mismatch**
+5. **Frame range mismatch**
    - Ensure ASCI export includes all frames you want
    - Use `--start-frame` and `--end-frame` to slice if needed
 
