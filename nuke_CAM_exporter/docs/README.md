@@ -170,6 +170,26 @@ Whenever you need to sanity-check where the camera sits relative to the plate, u
   - `"unit_scale"` and `"frame_range"` set the same way you run the converter.
 - Optional: override paths via CLI if you want to plot a different file set.
 
+### Environment setup (once per machine)
+- Install the dependencies listed in `nuke_CAM_exporter/requirements.txt` inside a virtual environment:
+  - Windows PowerShell:
+    ```
+    cd W:\transfer\Cristian\ToolSets\ComfyUI-Koolook\nuke_CAM_exporter
+    py -3 -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    ```
+  - macOS / Linux:
+    ```
+    cd nuke_CAM_exporter
+    python3 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    ```
+- Activate the same virtual environment before each plotting run (`.\.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS/Linux).
+
 ### Command
 ```
 cd nuke_CAM_exporter

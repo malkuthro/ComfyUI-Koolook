@@ -1,10 +1,10 @@
 {
   "input": null,
-  "input_translation": "../inputs/sh0032_unit-1-split_tr.asci",
-  "input_rotation": "../inputs/sh0032_unit-1-split_rot.asci",
-  "output": "../outputs/sh0032_unit-1.5-split_converted_v4.txt",
+  "input_translation": "../inputs/sh0031_split-TR_.asci",
+  "input_rotation": "../inputs/sh0031_split-ROT_.asci",
+  "output": "../outputs/sh0031_split-OUTPUT_v03.txt",
   "fps": 25.0,
-  "unit_scale": 1.5,
+  "unit_scale": 0.5,
   "_note_invert_z": "Set true if zoom direction renders reversed in ComfyUI",
   "invert_z": false,
   "lens": {
