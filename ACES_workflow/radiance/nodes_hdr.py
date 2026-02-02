@@ -2931,10 +2931,17 @@ class OCIOColorTransform:
             return None, f"Error loading config: {str(e)}"
 
     def _get_available_colorspaces(self, config) -> list:
-        """Get list of available colorspaces from config."""
+        """Get list of available colorspaces from config (OCIO v1/v2 compatible)."""
         if config is None:
             return []
-        return [config.getColorSpaceNameByIndex(i) for i in range(config.getNumColorSpaces())]
+        if hasattr(config, "getNumColorSpaces") and hasattr(config, "getColorSpaceNameByIndex"):
+            return [config.getColorSpaceNameByIndex(i) for i in range(config.getNumColorSpaces())]
+        if hasattr(config, "getColorSpaces"):
+            try:
+                return [cs.getName() if hasattr(cs, "getName") else getattr(cs, "name", "") for cs in config.getColorSpaces()]
+            except Exception:
+                return []
+        return []
 
     def transform(self, image: torch.Tensor, source_colorspace: str,
                   target_colorspace: str, ocio_config_path: str = "",
@@ -3023,23 +3030,50 @@ class OCIOListColorspaces:
             else:
                 config = OCIO.GetCurrentConfig()
 
-            # Get colorspaces
+            # Get colorspaces (OCIO v1/v2 compatible)
             spaces = []
-            for i in range(config.getNumColorSpaces()):
-                name = config.getColorSpaceNameByIndex(i)
-                cs = config.getColorSpace(name)
-                family = cs.getFamily() if cs else ""
-                spaces.append(f"{name} [{family}]" if family else name)
+            if hasattr(config, "getNumColorSpaces") and hasattr(config, "getColorSpaceNameByIndex"):
+                for i in range(config.getNumColorSpaces()):
+                    name = config.getColorSpaceNameByIndex(i)
+                    cs = config.getColorSpace(name)
+                    family = cs.getFamily() if cs else ""
+                    spaces.append(f"{name} [{family}]" if family else name)
+            elif hasattr(config, "getColorSpaces"):
+                try:
+                    for cs in config.getColorSpaces():
+                        name = cs.getName() if hasattr(cs, "getName") else getattr(cs, "name", "")
+                        family = cs.getFamily() if hasattr(cs, "getFamily") else getattr(cs, "family", "")
+                        spaces.append(f"{name} [{family}]" if family else name)
+                except Exception:
+                    pass
 
             # Get looks
-            looks = [config.getLookNameByIndex(i) for i in range(config.getNumLooks())]
+            looks = []
+            if hasattr(config, "getNumLooks") and hasattr(config, "getLookNameByIndex"):
+                looks = [config.getLookNameByIndex(i) for i in range(config.getNumLooks())]
+            elif hasattr(config, "getLooks"):
+                try:
+                    looks = [lk.getName() if hasattr(lk, "getName") else getattr(lk, "name", "") for lk in config.getLooks()]
+                except Exception:
+                    pass
 
             # Get displays and views
             displays = []
-            for d in range(config.getNumDisplays()):
-                display = config.getDisplay(d)
-                views = [config.getView(display, v) for v in range(config.getNumViews(display))]
-                displays.append(f"{display}: {', '.join(views)}")
+            if hasattr(config, "getNumDisplays") and hasattr(config, "getDisplay") and hasattr(config, "getNumViews") and hasattr(config, "getView"):
+                for d in range(config.getNumDisplays()):
+                    display = config.getDisplay(d)
+                    views = [config.getView(display, v) for v in range(config.getNumViews(display))]
+                    displays.append(f"{display}: {', '.join(views)}")
+            elif hasattr(config, "getDisplays"):
+                try:
+                    for display in config.getDisplays():
+                        try:
+                            view_list = config.getViews(display) if hasattr(config, "getViews") else []
+                        except Exception:
+                            view_list = []
+                        displays.append(f"{display}: {', '.join(view_list)}" if view_list else display)
+                except Exception:
+                    pass
 
             result = "═══ OCIO COLORSPACES ═══\n"
             result += "\n".join(spaces[:50])  # Limit to 50
