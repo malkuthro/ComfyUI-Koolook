@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.DS_Store
+*.vscode/
+*.code-workspace
+*.log
+*.bat
+
+CLAUDE.md
+.claude
+
+backup/
+ref/
+testing/
+documentation/
+deprecated/
+image files/

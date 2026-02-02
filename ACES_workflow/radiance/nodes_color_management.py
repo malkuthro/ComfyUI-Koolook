@@ -14,7 +14,7 @@ try:
 except ImportError:
     OCIO = None
 
-class RadianceOCIOColorTransform:
+class RadianceOCIOColorTransformV2:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -27,14 +27,15 @@ class RadianceOCIOColorTransform:
             }
         }
     
-    RETURN_TYPES = ("IMAGE",)
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "debug_info")
     FUNCTION = "transform"
     CATEGORY = "FXTD Studios/Radiance/Color Management"
     
     def transform(self, image, config_file, input_space, output_space, direction):
         if OCIO is None:
             print("PyOpenColorIO not found inside Radiance nodes. Please install it to use this node: pip install PyOpenColorIO")
-            return (image,)
+            return (image, "ERROR: PyOpenColorIO not installed")
             
         try:
             # Load config
@@ -60,27 +61,37 @@ class RadianceOCIOColorTransform:
             cpu = processor.getDefaultCPUProcessor()
             
             # Process Image
-            # Image is Batch, H, W, C (RGB) -> Flatten to N pixels RGB
-            # PyOpenColorIO expects float32 buffer
-            
-            # Convert torch to numpy
-            img_np = image.contiguous().cpu().numpy()
+            # Supports batch x H x W x C; preserves alpha and dtype/device
+            orig_dtype = image.dtype
+
+            img_np = np.ascontiguousarray(image.detach().cpu().numpy())
+            if img_np.ndim != 4 or img_np.shape[-1] < 3:
+                return (image, "WARN: input tensor is not (batch,H,W,C)")
+
             batch, h, w, c = img_np.shape
-            
-            # Flatten to (N, 3)
-            flat_img = img_np.reshape(-1, 3).astype(np.float32)
-            
-            # Apply
-            cpu.applyRGB(flat_img)
-            
-            # Reshape back
-            result_np = flat_img.reshape(batch, h, w, c)
-            
-            return (torch.from_numpy(result_np),)
+            alpha_np = None
+            if c > 3:
+                alpha_np = img_np[..., 3:].copy()
+                img_np = img_np[..., :3]
+
+            # Flatten all frames and process in one call
+            flat = img_np.reshape(-1, 3).astype(np.float32)
+            cpu.applyRGB(flat)
+            result_np = flat.reshape(batch, h, w, 3)
+
+            if alpha_np is not None:
+                result_np = np.concatenate([result_np, alpha_np], axis=-1)
+
+            result_t = torch.from_numpy(result_np)
+            if result_t.dtype != orig_dtype:
+                result_t = result_t.to(orig_dtype)
+
+            debug_info = f"Batch frames processed: {batch}, shape: {list(result_t.shape)}"
+            return (result_t, debug_info)
             
         except Exception as e:
             print(f"[Radiance] OCIO Error: {e}")
-            return (image,)
+            return (image, f"ERROR: {e}")
 
 class RadianceLogCurveDecode:
     """
@@ -197,11 +208,11 @@ class RadianceLogCurveDecode:
         return (t,)
 
 NODE_CLASS_MAPPINGS = {
-    "RadianceOCIOColorTransform": RadianceOCIOColorTransform,
+    "RadianceOCIOColorTransformV2": RadianceOCIOColorTransformV2,
     "RadianceLogCurveDecode": RadianceLogCurveDecode
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceOCIOColorTransform": "Radiance OCIO Color Transform",
+    "RadianceOCIOColorTransformV2": "Radiance OCIO Color Transform v2",
     "RadianceLogCurveDecode": "Radiance Log Curve Decode"
 }
