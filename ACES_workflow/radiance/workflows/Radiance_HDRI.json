@@ -1,0 +1,872 @@
+{
+  "id": "4786d9a6-a62a-42dd-8a2e-0fed1988f572",
+  "revision": 0,
+  "last_node_id": 477,
+  "last_link_id": 752,
+  "nodes": [
+    {
+      "id": 157,
+      "type": "Note",
+      "pos": [
+        15720.000268582175,
+        -4470.00004782158
+      ],
+      "size": [
+        413.609375,
+        803.28125
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "FXTD STUDIOS\nwww.FXTD.org\n\nhttps://github.com/fxtdstudios\n\nhttps://linktr.ee/fxtdstudio\n\n\nThis workflow work with FLUX models \nFLUX.1-Krea-dev\nhttps://huggingface.co/black-forest-labs/FLUX.1-Krea-dev/tree/main\n\n\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 4
+    },
+    {
+      "id": 186,
+      "type": "PreviewImage",
+      "pos": [
+        24910.001814672232,
+        -5240.000277168504
+      ],
+      "size": [
+        2340,
+        1500
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 374
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.8.2",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 187,
+      "type": "PreviewImage",
+      "pos": [
+        24920.00031028061,
+        -3709.9995390698605
+      ],
+      "size": [
+        2320,
+        1520
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 373
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.8.2",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 194,
+      "type": "LoadImage",
+      "pos": [
+        15730.001673534269,
+        -5340.000392464262
+      ],
+      "size": [
+        429.734375,
+        837.8125
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.8.2",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "FLOGO.png",
+        "image"
+      ],
+      "shape": 4
+    },
+    {
+      "id": 230,
+      "type": "HDR360Generate",
+      "pos": [
+        22790.00270849125,
+        -4609.999964238277
+      ],
+      "size": [
+        421.25,
+        491.875
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source_image",
+          "type": "IMAGE",
+          "link": 749
+        }
+      ],
+      "outputs": [
+        {
+          "name": "panorama",
+          "type": "IMAGE",
+          "links": [
+            373,
+            752
+          ]
+        },
+        {
+          "name": "projection_map",
+          "type": "IMAGE",
+          "links": [
+            374
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "HDR360Generate"
+      },
+      "widgets_values": [
+        "Angular_Map",
+        4096,
+        2048,
+        360,
+        180,
+        0,
+        0,
+        0,
+        "Lanczos",
+        "Mirror",
+        0
+      ]
+    },
+    {
+      "id": 254,
+      "type": "FXTDHelp",
+      "pos": [
+        17755.56118587565,
+        -5800.437875626078
+      ],
+      "size": [
+        508.4375,
+        218.28125
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trigger",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDHelp"
+      },
+      "widgets_values": [
+        "Full Documentation"
+      ],
+      "shape": 4
+    },
+    {
+      "id": 256,
+      "type": "Note",
+      "pos": [
+        15740.001853499532,
+        -5519.999497508485
+      ],
+      "size": [
+        412.546875,
+        160.9375
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "select the docs and run the node"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 4
+    },
+    {
+      "id": 320,
+      "type": "PreviewImage",
+      "pos": [
+        17700.002520813534,
+        -4180.005853710351
+      ],
+      "size": [
+        690,
+        785.90625
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 525
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.8.2",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 321,
+      "type": "FXTDResolution",
+      "pos": [
+        16720.75754465896,
+        -4539.9994700981915
+      ],
+      "size": [
+        537.546875,
+        529.21875
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            647
+          ]
+        },
+        {
+          "name": "preview",
+          "type": "IMAGE",
+          "links": [
+            525
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDResolution"
+      },
+      "widgets_values": [
+        "FLUX 1MP Wide (16:9)",
+        "Flux / SD3",
+        "1.0",
+        1024,
+        1024,
+        "9:16",
+        false,
+        64,
+        1,
+        false
+      ],
+      "shape": 4
+    },
+    {
+      "id": 435,
+      "type": "FXTD_Radiance_Sampler_Pro",
+      "pos": [
+        18690.001656325614,
+        -4429.999481083874
+      ],
+      "size": [
+        427.03125,
+        595.9375
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 656
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 712
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 713
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 647
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            723
+          ]
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTD_Radiance_Sampler_Pro"
+      },
+      "widgets_values": [
+        984411057512577,
+        "randomize",
+        "🎨 Flux txt2img",
+        20,
+        1,
+        "euler",
+        "simple",
+        1,
+        1,
+        3.5,
+        0,
+        150,
+        true,
+        false
+      ]
+    },
+    {
+      "id": 438,
+      "type": "FXTDRadianceLoader",
+      "pos": [
+        16710.000935327793,
+        -5549.999424910864
+      ],
+      "size": [
+        588.125,
+        398.484375
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            656
+          ]
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            714
+          ]
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            724
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDRadianceLoader"
+      },
+      "widgets_values": [
+        "flux1-krea-dev.safetensors",
+        "fp32",
+        "t5xxl_fp16.safetensors",
+        "clip_l.safetensors",
+        "flux",
+        "default",
+        "ae.safetensors"
+      ],
+      "shape": 4
+    },
+    {
+      "id": 447,
+      "type": "HDRToneMap",
+      "pos": [
+        21440.00046294341,
+        -4810.000194829795
+      ],
+      "size": [
+        496.5625,
+        442.8125
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 747
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            749
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "HDRToneMap"
+      },
+      "widgets_values": [
+        "🎬 Cinematic Film",
+        "filmic_aces",
+        0,
+        2.2,
+        1,
+        1,
+        1,
+        0.5,
+        0,
+        true
+      ]
+    },
+    {
+      "id": 460,
+      "type": "FXTDCinematicPromptEncoder",
+      "pos": [
+        17689.999890874613,
+        -5249.9995383936475
+      ],
+      "size": [
+        698.3125,
+        1019.375
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 714
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            712
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            713
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDCinematicPromptEncoder"
+      },
+      "widgets_values": [
+        "A cinematic scene...Close view of gloved hands adjusting mechanical switches and controls, slow deliberate movement, aircraft vibration unchanged,",
+        "🚀 Sci-Fi Cinematic",
+        "Medium Shot (MS)",
+        "ARRI Alexa 35",
+        "50mm Standard Prime",
+        "f/2.8 (Cinematic Separation)",
+        "Cinematic Haze / Volumetric Fog",
+        "Photorealistic (Raw)",
+        "None",
+        "None",
+        "None",
+        "None",
+        "",
+        2024,
+        "Standard",
+        0,
+        "Medium Shot (MS) of A cinematic scene...Close view of gloved hands adjusting mechanical switches and controls, slow deliberate movement, aircraft vibration unchanged,. Shot on ARRI Alexa 35 with 50mm Standard Prime at f/2.8 (Cinematic Separation). Lighting is Cinematic Haze / Volumetric Fog. Photore...",
+        null
+      ],
+      "shape": 4
+    },
+    {
+      "id": 466,
+      "type": "RadianceVAEDecode",
+      "pos": [
+        19540.001028544357,
+        -4839.999509738762
+      ],
+      "size": [
+        460,
+        168.71875
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 723
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 724
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            733
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "RadianceVAEDecode"
+      },
+      "widgets_values": [
+        "Linear",
+        0
+      ]
+    },
+    {
+      "id": 472,
+      "type": "FXTDAIUpscale",
+      "pos": [
+        20470.00138111515,
+        -4689.9994133568
+      ],
+      "size": [
+        390,
+        340
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 733
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            747
+          ]
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDAIUpscale"
+      },
+      "widgets_values": [
+        "SUPIR-v0Q_fp16",
+        512,
+        32,
+        true,
+        false
+      ]
+    },
+    {
+      "id": 477,
+      "type": "FXTDSaveEXR",
+      "pos": [
+        24900.00040972014,
+        -6080.000235038746
+      ],
+      "size": [
+        400,
+        603.140625
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 752
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file_paths",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "folder_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "radiance",
+        "ver": "6d452a3ce4b9154ffb58f0405e654a2998d47327",
+        "Node name for S&R": "FXTDSaveEXR"
+      },
+      "widgets_values": [
+        "output\\hdri_01",
+        "16-bit Half Float",
+        "ZIP",
+        "Linear",
+        "Same as Input",
+        "None",
+        false,
+        "",
+        1,
+        4,
+        true,
+        "",
+        "ACEScg"
+      ]
+    }
+  ],
+  "links": [
+    [
+      373,
+      230,
+      0,
+      187,
+      0,
+      "IMAGE"
+    ],
+    [
+      374,
+      230,
+      1,
+      186,
+      0,
+      "IMAGE"
+    ],
+    [
+      525,
+      321,
+      1,
+      320,
+      0,
+      "IMAGE"
+    ],
+    [
+      647,
+      321,
+      0,
+      435,
+      3,
+      "LATENT"
+    ],
+    [
+      656,
+      438,
+      0,
+      435,
+      0,
+      "MODEL"
+    ],
+    [
+      712,
+      460,
+      0,
+      435,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      713,
+      460,
+      1,
+      435,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      714,
+      438,
+      1,
+      460,
+      0,
+      "CLIP"
+    ],
+    [
+      723,
+      435,
+      0,
+      466,
+      0,
+      "LATENT"
+    ],
+    [
+      724,
+      438,
+      2,
+      466,
+      1,
+      "VAE"
+    ],
+    [
+      733,
+      466,
+      0,
+      472,
+      0,
+      "IMAGE"
+    ],
+    [
+      747,
+      472,
+      0,
+      447,
+      0,
+      "IMAGE"
+    ],
+    [
+      749,
+      447,
+      0,
+      230,
+      0,
+      "IMAGE"
+    ],
+    [
+      752,
+      230,
+      0,
+      477,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7972024500000101,
+      "offset": [
+        -22531.22286309839,
+        6936.26140339018
+      ]
+    },
+    "frontendVersion": "1.35.9",
+    "workflowRendererVersion": "Vue",
+    "info": {
+      "name": "Flux 32-Bit HDR Generation Workflow",
+      "author": "FXTD Studios",
+      "version": "1.0.0",
+      "description": "Professional Flux-based 32-bit floating point HDR image generation with EXR output and ACEScg color space support"
+    },
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
