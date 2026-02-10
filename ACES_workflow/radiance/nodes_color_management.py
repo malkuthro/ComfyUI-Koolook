@@ -15,12 +15,24 @@ except ImportError:
     OCIO = None
 
 class RadianceOCIOColorTransformV2:
+    @staticmethod
+    def _list_colorspaces(config):
+        names = []
+        try:
+            if hasattr(config, "getNumColorSpaces") and hasattr(config, "getColorSpaceNameByIndex"):
+                names = [config.getColorSpaceNameByIndex(i) for i in range(config.getNumColorSpaces())]
+            elif hasattr(config, "getColorSpaces"):
+                names = [cs.getName() if hasattr(cs, "getName") else getattr(cs, "name", "") for cs in config.getColorSpaces()]
+        except Exception:
+            pass
+        return [n for n in names if n]
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
-                "config_file": ("STRING", {"default": "ACES 1.3 Studio", "multiline": False}),
+                "config_file": ("STRING", {"default": "", "multiline": True}),
                 "input_space": ("STRING", {"default": "ACES - ACEScg"}),
                 "output_space": ("STRING", {"default": "Output - sRGB"}),
                 "direction": (["Forward", "Inverse"],),
@@ -38,18 +50,28 @@ class RadianceOCIOColorTransformV2:
             return (image, "ERROR: PyOpenColorIO not installed")
             
         try:
+            # Sanitize config path (trim whitespace/quotes/newlines)
+            config_file = (config_file or "").strip().strip('"').strip("'")
+
             # Load config
-            if os.path.exists(config_file):
+            if config_file and os.path.exists(config_file):
                 config = OCIO.Config.CreateFromFile(config_file)
+                config_source = config_file
             else:
+                if config_file:
+                    return (image, f"ERROR: config file not found: {config_file}")
                 try:
                     config = OCIO.Config.CreateFromEnv()
-                except:
-                    # Fallback
-                    config = OCIO.Config.Create()
+                    config_source = "OCIO env"
+                except Exception:
+                    return (image, "ERROR: no config_file provided and OCIO env not set")
             
-            # Verify spaces exist (simple check)
-            # if not config.getColorSpace(input_space): ... 
+            # Verify spaces exist and report available ones
+            available_spaces = self._list_colorspaces(config)
+            if input_space not in available_spaces:
+                return (image, f"ERROR: input colorspace '{input_space}' not found in config ({config_source}). Available: {', '.join(available_spaces[:30])}")
+            if output_space not in available_spaces:
+                return (image, f"ERROR: output colorspace '{output_space}' not found in config ({config_source}). Available: {', '.join(available_spaces[:30])}")
             
             # Create Transform
             if direction == "Forward":
@@ -86,7 +108,7 @@ class RadianceOCIOColorTransformV2:
             if result_t.dtype != orig_dtype:
                 result_t = result_t.to(orig_dtype)
 
-            debug_info = f"Batch frames processed: {batch}, shape: {list(result_t.shape)}"
+            debug_info = f"Config: {config_source} | Batch frames processed: {batch}, shape: {list(result_t.shape)}"
             return (result_t, debug_info)
             
         except Exception as e:
