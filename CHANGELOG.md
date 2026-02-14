@@ -13,6 +13,10 @@ The format is inspired by Keep a Changelog and SemVer.
   - `third_party/THIRD_PARTY.md`
   - `third_party/forks_manifest.yaml`
   - `tools/report_mods.py`
+- Contribution/release templates:
+  - `.github/PULL_REQUEST_TEMPLATE.md`
+  - `.github/ISSUE_TEMPLATE/release_checklist.md`
+  - `docs/RELEASE_NOTES_TEMPLATE.md`
 
 ## [0.1.0] - 2026-02-14
 
