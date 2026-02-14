@@ -8,6 +8,7 @@ entries:
     local_paths:
       - "k_easy_resize.py"
     status: "modified"
+    sync_state: "needs-upstream-reference"
     license: "unknown"
     notes: "Inspired by Resize Image V2; verify exact upstream commit/license metadata."
 
@@ -17,5 +18,18 @@ entries:
     source_ref: "n/a"
     local_paths: []
     status: "reference_only"
+    sync_state: "n/a"
     license: "unknown"
     notes: "No vendored code; integration reference in docs/workflows."
+
+  - id: "wan22_parameter_reference"
+    name: "Wan 2.2 parameter docs reference"
+    source_repo: "https://alidocs.dingtalk.com/i/nodes/EpGBa2Lm8aZxe5myC99MelA2WgN7R35y"
+    source_ref: "n/a"
+    local_paths:
+      - "config.json"
+      - "k_easy_wan22_prompt.py"
+    status: "reference_only"
+    sync_state: "manual"
+    license: "unknown"
+    notes: "Prompt parameter taxonomy inspired by external docs; no direct vendored code tracked yet."
