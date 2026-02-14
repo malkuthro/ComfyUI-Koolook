@@ -1,0 +1,3 @@
+# Pin ComfyUI source and ref for reproducible builds
+COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
+COMFYUI_REF=master
