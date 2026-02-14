@@ -28,7 +28,7 @@ Documentation = "https://github.com/malkuthro/ComfyUI-Koolook/wiki"
 "Bug Tracker" = "https://github.com/malkuthro/ComfyUI-Koolook/issues"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "CristianP"
 DisplayName = "ComfyUI-Koolook"
 Icon = ""
 includes = [] 
