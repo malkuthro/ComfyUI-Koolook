@@ -22,6 +22,13 @@ The code for the Easy Resize node is inspired by the Resize Image V2 node from C
 - **Error Handling**: Fallbacks for missing/invalid JSON in Wan 2.2 Easy Prompt; validation for aspect ratios and divisibility in Easy Resize.
 - **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. No additional dependencies beyond standard Python and ComfyUI libraries.
 
+## RunPod
+
+A dedicated RunPod setup scaffold is available in `Runpod_Comfy/`.
+
+- Entry guide: `Runpod_Comfy/README.md`
+- Deploy notes: `Runpod_Comfy/docs/DEPLOY_RUNPOD.md`
+
 ## Release & Stability
 
 For production usage, install a pinned stable tag/commit instead of following moving branch heads.

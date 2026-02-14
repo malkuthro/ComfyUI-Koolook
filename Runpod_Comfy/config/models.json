@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "example_sdxl_checkpoint",
+      "url": "https://example.com/path/to/model.safetensors",
+      "dest": "models/checkpoints/model.safetensors",
+      "sha256": "",
+      "enabled": false
+    }
+  ]
+}
