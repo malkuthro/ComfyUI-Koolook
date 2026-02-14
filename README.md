@@ -22,6 +22,14 @@ The code for the Easy Resize node is inspired by the Resize Image V2 node from C
 - **Error Handling**: Fallbacks for missing/invalid JSON in Wan 2.2 Easy Prompt; validation for aspect ratios and divisibility in Easy Resize.
 - **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. No additional dependencies beyond standard Python and ComfyUI libraries.
 
+## Release & Stability
+
+For production usage, install a pinned stable tag/commit instead of following moving branch heads.
+
+- Release workflow: `docs/RELEASE_WORKFLOW.md`
+- Change history: `CHANGELOG.md`
+- Third-party tracking: `third_party/THIRD_PARTY.md`, `third_party/forks_manifest.yaml`
+
 ## Installation
 ### Via ComfyUI-Manager (Recommended)
 1. Open ComfyUI and access the Manager interface.

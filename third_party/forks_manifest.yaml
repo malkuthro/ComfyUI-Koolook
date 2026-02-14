@@ -1,0 +1,21 @@
+version: 1
+updated_at: "2026-02-14"
+entries:
+  - id: "easy_resize_inspiration"
+    name: "Easy Resize (inspired component)"
+    source_repo: "https://github.com/kijai/ComfyUI-KJNodes"
+    source_ref: "unknown"
+    local_paths:
+      - "k_easy_resize.py"
+    status: "modified"
+    license: "unknown"
+    notes: "Inspired by Resize Image V2; verify exact upstream commit/license metadata."
+
+  - id: "promptjson_integration_reference"
+    name: "PromptJSON interoperability reference"
+    source_repo: "https://github.com/NeuralSamurAI/ComfyUI-PromptJSON"
+    source_ref: "n/a"
+    local_paths: []
+    status: "reference_only"
+    license: "unknown"
+    notes: "No vendored code; integration reference in docs/workflows."
