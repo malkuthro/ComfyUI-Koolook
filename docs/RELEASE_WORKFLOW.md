@@ -31,6 +31,7 @@ git push origin vX.Y.Z
 ```
 
 5. Publish GitHub release notes (what changed, tested matrix, known issues)
+   - use `docs/RELEASE_NOTES_TEMPLATE.md`
 
 ## Production Install Recommendation
 
