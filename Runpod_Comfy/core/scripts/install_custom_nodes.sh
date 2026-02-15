@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=/opt/bootstrap/Runpod_Comfy
 WORKDIR="${COMFYUI_WORKDIR:-/workspace/ComfyUI}"
 NODES_DIR="$WORKDIR/custom_nodes"
-LOCK="$ROOT/config/custom_nodes.lock.json"
+LOCK="$ROOT/image/active/custom_nodes.lock.json"
 
 mkdir -p "$NODES_DIR"
 

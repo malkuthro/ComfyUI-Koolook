@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY Runpod_Comfy /opt/bootstrap/Runpod_Comfy
 
-RUN chmod +x /opt/bootstrap/Runpod_Comfy/scripts/*.sh /opt/bootstrap/Runpod_Comfy/docker/start.sh
+RUN chmod +x /opt/bootstrap/Runpod_Comfy/core/scripts/*.sh /opt/bootstrap/Runpod_Comfy/core/docker/start.sh
 
 EXPOSE 8188
 
-ENTRYPOINT ["/opt/bootstrap/Runpod_Comfy/docker/start.sh"]
+ENTRYPOINT ["/opt/bootstrap/Runpod_Comfy/core/docker/start.sh"]

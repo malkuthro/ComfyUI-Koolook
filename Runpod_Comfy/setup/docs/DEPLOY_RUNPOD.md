@@ -7,7 +7,7 @@ Use GitHub Container Registry or Docker Hub.
 Example (GHCR):
 
 ```bash
-docker build -t ghcr.io/malkuthro/comfyui-koolook:runpod-v1 -f Runpod_Comfy/docker/Dockerfile .
+docker build -t ghcr.io/malkuthro/comfyui-koolook:runpod-v1 -f Runpod_Comfy/core/docker/Dockerfile .
 docker push ghcr.io/malkuthro/comfyui-koolook:runpod-v1
 ```
 

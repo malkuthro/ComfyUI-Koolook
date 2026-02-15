@@ -25,7 +25,10 @@
 - Repo files (`TODO/WORKLOG/DECISIONS/WORKFLOW`) are continuity anchor across devices.
 
 ## 2026-02-15 — Recipe architecture for long-term readability
-- Rename `profiles/` concept to `admin_recipes/` for clearer ownership/intent.
-- Keep one recipe folder per image variant (`upscaler-v1`, `wan22-v1`, etc.).
+- Use a 3-zone layout inside `Runpod_Comfy/`:
+  - `setup/` (operator-facing edits/docs/tools)
+  - `image/` (generated outputs + active locks)
+  - `core/` (runtime internals)
+- Keep one recipe folder per image variant under `setup/recipes/<id>/`.
 - Compiler supports explicit args (`--id`, `--out`, `--image-tag`, `--no-activate`).
-- Generated artifacts are stored under `builds/<recipe-id>/` and can be activated to `config/`.
+- Default outputs go to `image/builds/<recipe-id>/` and can be activated to `image/active/`.

@@ -5,7 +5,7 @@ ROOT=/opt/bootstrap/Runpod_Comfy
 WORKDIR="${COMFYUI_WORKDIR:-/workspace/ComfyUI}"
 PORT="${COMFYUI_PORT:-8188}"
 
-"$ROOT/scripts/bootstrap.sh"
+"$ROOT/core/scripts/bootstrap.sh"
 
 cd "$WORKDIR"
 
