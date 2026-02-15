@@ -117,6 +117,9 @@ base_image=runpod.get('base_image'); comfy=runpod.get('comfyui',{}) if isinstanc
 if not base_image: raise ValueError('base_image is required')
 image_name=runpod.get('image_name','')
 image_tag= image_tag_override or runpod.get('image_tag', recipe_id)
+features = runpod.get('features', {}) if isinstance(runpod.get('features'), dict) else {}
+enable_jupyter = bool(features.get('enable_jupyter', True))
+enable_file_tools = bool(features.get('enable_file_tools', True))
 nodes=nodes_data.get('nodes',[]); models=models_data.get('models',[])
 url_models=parse_urls(urls_path)
 for n in nodes:
@@ -135,6 +138,8 @@ comfy_lock='\n'.join([
     f'BASE_IMAGE={base_image}',
     f'IMAGE_NAME={image_name}',
     f'RUNPOD_IMAGE_TAG={image_tag}',
+    f'ENABLE_JUPYTER={str(enable_jupyter).lower()}',
+    f'ENABLE_FILE_TOOLS={str(enable_file_tools).lower()}',
     f"COMFYUI_REPO={comfy.get('repo','https://github.com/comfyanonymous/ComfyUI.git')}",
     f"COMFYUI_REF={comfy.get('ref','master')}",
     ''
@@ -148,6 +153,8 @@ print(f'Base image    : {base_image}')
 print(f'Image name    : {image_name or "(unset)"}')
 print(f'Image tag     : {image_tag}')
 print(f'ComfyUI ref   : {comfy.get("ref","master")}')
+print(f'Jupyter       : {enable_jupyter}')
+print(f'File tools    : {enable_file_tools}')
 print(f'Custom nodes  : {len(nodes)}')
 print(f'Models        : {len(models)} (urls.txt additions: {len(url_models)})')
 print(f'Output dir    : {out_dir}')
