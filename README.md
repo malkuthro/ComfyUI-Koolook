@@ -26,8 +26,8 @@ The code for the Easy Resize node is inspired by the Resize Image V2 node from C
 
 A dedicated RunPod setup scaffold is available in `Runpod_Comfy/`.
 
-- Entry guide: `Runpod_Comfy/README.md`
-- Deploy notes: `Runpod_Comfy/docs/DEPLOY_RUNPOD.md`
+- Entry guide: `Runpod_Comfy/setup/USER_README.md`
+- Deploy notes: `Runpod_Comfy/image/DEPLOY_RUNPOD.md`
 
 ## Release & Stability
 

@@ -2,15 +2,16 @@
 
 ## 2026-02-15 — Profile-first RunPod build flow
 - We use profile files as inputs and generate lock files as build/runtime truth.
-- Profile inputs:
-  - `Runpod_Comfy/profiles/runpod.<id>.yaml`
-  - `Runpod_Comfy/profiles/nodes.<id>.yaml`
-  - `Runpod_Comfy/profiles/models.<id>.yaml`
-  - Optional `Runpod_Comfy/profiles/urls.<id>.txt`
+- Profile/recipe inputs:
+  - `Runpod_Comfy/setup/recipes/<id>/runpod.yaml`
+  - `Runpod_Comfy/setup/recipes/<id>/nodes.yaml`
+  - `Runpod_Comfy/setup/recipes/<id>/models.yaml`
+  - Optional `Runpod_Comfy/setup/recipes/<id>/urls.txt`
 - Compiler output:
-  - `Runpod_Comfy/config/comfyui.lock`
-  - `Runpod_Comfy/config/custom_nodes.lock.json`
-  - `Runpod_Comfy/config/models.json`
+  - `Runpod_Comfy/image/builds/<id>/comfyui.lock`
+  - `Runpod_Comfy/image/builds/<id>/custom_nodes.lock.json`
+  - `Runpod_Comfy/image/builds/<id>/models.json`
+  - Activated to `Runpod_Comfy/image/active/*`
 - Docker base image is taken from generated `comfyui.lock` (`BASE_IMAGE` build arg).
 - Goal: normal updates (new node repo/model URL/version bumps) should require editing config files only, not Python/Docker logic.
 - Expected operator UX:
