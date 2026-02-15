@@ -1,3 +1,7 @@
+# GitHub and Reference Links
+
+> Note: moved to `Runpod_Comfy/core/docs/references/` during the 3-zone refactor (`setup/image/core`) so technical references live under `core/`.
+
 # Github - Links
 
 ### Runpod.io official - documentation
