@@ -2,77 +2,68 @@
 
 Production-oriented scaffold for running ComfyUI on RunPod with pinned versions.
 
-## Goals
-
-- Reproducible ComfyUI runtime
-- Clear version pinning for ComfyUI + custom nodes
-- Optional model bootstrap from URLs
-- Easy promotion from test to stable
-
 ## Structure
 
+- `base/` → stable scaffold area (reserved for core runtime layout)
+- `admin_recipes/` → **your editable inputs** (one recipe per image variant)
+- `builds/` → generated lock outputs per recipe
+- `config/` → active lock set consumed by runtime scripts
 - `docker/` → image/runtime entrypoint
-- `config/` → lock files and model manifests
 - `scripts/` → bootstrap installers
-- `docs/` → requirements and references
+- `tools/` → recipe helpers (`new_profile.sh`, `compile_profile.sh`)
 
 ## Quick Start
 
-### 1) Create profile files
-
-Create a new profile set (recommended):
+### 1) Create a recipe
 
 ```bash
-Runpod_Comfy/tools/new_profile.sh <profile-id>
+Runpod_Comfy/tools/new_profile.sh upscaler-v1
 ```
 
 This creates:
 
-- `profiles/runpod.<profile-id>.yaml`
-- `profiles/nodes.<profile-id>.yaml`
-- `profiles/models.<profile-id>.yaml`
-- Optional helper file: `profiles/urls.<profile-id>.txt`
+- `admin_recipes/upscaler-v1/runpod.yaml`
+- `admin_recipes/upscaler-v1/nodes.yaml`
+- `admin_recipes/upscaler-v1/models.yaml`
+- `admin_recipes/upscaler-v1/urls.txt` (optional helper)
 
-> Keep one profile-id per image variant (e.g. `upscaler-v1`, `wan22-v1`).
-> Do **not** edit the `*.example.yaml` files for real builds.
-
-### 2) Compile profile into lock files
+### 2) Compile recipe
 
 ```bash
-Runpod_Comfy/tools/compile_profile.sh <profile-id>
+Runpod_Comfy/tools/compile_profile.sh --id upscaler-v1
 ```
 
-This generates:
+Generated outputs:
 
-- `config/comfyui.lock`
-- `config/custom_nodes.lock.json`
-- `config/models.json`
+- `builds/upscaler-v1/comfyui.lock`
+- `builds/upscaler-v1/custom_nodes.lock.json`
+- `builds/upscaler-v1/models.json`
+
+By default, compile also **activates** this recipe by copying outputs to `config/`.
 
 ### 3) Build image
 
 ```bash
 BASE_IMAGE=$(grep '^BASE_IMAGE=' Runpod_Comfy/config/comfyui.lock | cut -d= -f2-)
+IMAGE_TAG=$(grep '^RUNPOD_IMAGE_TAG=' Runpod_Comfy/config/comfyui.lock | cut -d= -f2-)
 docker build --build-arg BASE_IMAGE="$BASE_IMAGE" \
-  -t comfyui-koolook:runpod-v1 -f Runpod_Comfy/docker/Dockerfile .
+  -t comfyui-koolook:${IMAGE_TAG} -f Runpod_Comfy/docker/Dockerfile .
 ```
 
-### 5) Run locally (smoke test)
+### 4) Iterate safely
+
+- Minor tweaks: keep same recipe folder, bump `image_tag` in `runpod.yaml`.
+- Major changes: clone recipe to new id (`upscaler-v2`, `wan22-v1`).
+- You can compile without activation using `--no-activate`.
+
+## Compiler arguments
 
 ```bash
-docker run --rm -it -p 8188:8188 \
-  -e COMFYUI_WORKDIR=/workspace/ComfyUI \
-  comfyui-koolook:runpod-v1
+Runpod_Comfy/tools/compile_profile.sh --id <recipe-id> [--out <dir>] [--image-tag <tag>] [--no-activate]
 ```
 
-## Runtime env vars
+Backward compatible:
 
-- `COMFYUI_PORT` (default: `8188`)
-- `COMFYUI_WORKDIR` (default: `/workspace/ComfyUI`)
-- `RUNPOD_VOLUME_ROOT` (default: `/workspace`)
-- `HF_TOKEN` (optional for gated HuggingFace models)
-- `CIVITAI_TOKEN` (optional)
-
-## Notes
-
-- This scaffold is intentionally conservative and explicit.
-- For production users, pin refs to commits/tags before release.
+```bash
+Runpod_Comfy/tools/compile_profile.sh <recipe-id>
+```
