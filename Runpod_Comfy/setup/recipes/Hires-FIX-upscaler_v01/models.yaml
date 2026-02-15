@@ -3,7 +3,7 @@ profile_id: Hires-FIX-upscaler_v01
 models:
   - name: wan22_t2v_a14b_low_fp8_scaled_kj
     url: https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/T2V/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors
-    dest: models/checkpoints/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors
+    dest: models/diffusion_models/Wan2_2-T2V-A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors
     sha256: ""
     enabled: true
 
