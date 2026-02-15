@@ -1,6 +1,0 @@
-# Optional quick model list parser.
-# Format (pipe-separated):
-# url | dest | sha256(optional) | enabled(optional,true/false) | name(optional)
-#
-# Example:
-# https://example.com/model.safetensors | models/checkpoints/model.safetensors |  | false | my_model
