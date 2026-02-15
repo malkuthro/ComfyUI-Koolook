@@ -1,0 +1,14 @@
+profile_id: Hires-FIX-upscaler_v01
+
+nodes:
+  - id: comfyui-koolook
+    repo: https://github.com/malkuthro/ComfyUI-Koolook.git
+    ref: main
+    target_dir: ComfyUI-Koolook
+    install: []
+
+  - id: comfyui-manager
+    repo: https://github.com/ltdrdata/ComfyUI-Manager.git
+    ref: main
+    target_dir: ComfyUI-Manager
+    install: []
