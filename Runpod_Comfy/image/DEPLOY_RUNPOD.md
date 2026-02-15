@@ -33,7 +33,7 @@ docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
 - `COMFYUI_PORT=8188`
 - `JUPYTER_PORT=8888`
-- `JUPYTER_TOKEN=...` (default in image is `runpod`)
+- `JUPYTER_TOKEN=...` (recommended to set explicitly; if unset, container auto-generates and logs a token)
 - `COMFYUI_WORKDIR=/workspace/ComfyUI`
 - `HF_TOKEN=...` (if needed)
 - `CIVITAI_TOKEN=...` (if needed)

@@ -8,7 +8,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     COMFYUI_PORT=8188 \
     JUPYTER_PORT=8888 \
-    JUPYTER_TOKEN=runpod \
     COMFYUI_WORKDIR=/workspace/ComfyUI \
     RUNPOD_VOLUME_ROOT=/workspace
 
