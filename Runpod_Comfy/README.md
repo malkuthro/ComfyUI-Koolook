@@ -2,9 +2,9 @@
 
 This module is organized in three top-level folders:
 
-- `setup/` → operator-facing inputs/docs/tools
-- `image/` → generated build artifacts and active lock set
-- `core/` → runtime internals (docker/scripts)
+- `setup/` → operator-facing inputs and helper tools
+- `image/` → generated build artifacts, active lock set, and deploy runbook
+- `core/` → runtime internals (docker/scripts) and technical references
 
 Start here:
 - `Runpod_Comfy/setup/USER_README.md`
