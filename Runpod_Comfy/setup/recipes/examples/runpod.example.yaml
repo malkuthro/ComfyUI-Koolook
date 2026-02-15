@@ -7,6 +7,10 @@ base_image: runpod/pytorch:2.6.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 image_name: ghcr.io/your-user/comfyui-koolook
 image_tag: upscaler-v1.0.0
 
+features:
+  enable_jupyter: true
+  enable_file_tools: true
+
 comfyui:
   repo: https://github.com/comfyanonymous/ComfyUI.git
   ref: master

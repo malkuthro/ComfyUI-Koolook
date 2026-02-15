@@ -29,7 +29,16 @@ for ((i=0; i<COUNT; i++)); do
   fi
 
   echo "[models] downloading: $NAME"
-  curl -L --fail "$URL" -o "$DEST"
+
+  CURL_ARGS=(-L --fail)
+  if [[ "$URL" == *"huggingface.co"* ]] && [[ -n "${HF_TOKEN:-}" ]]; then
+    CURL_ARGS+=(-H "Authorization: Bearer ${HF_TOKEN}")
+  fi
+  if [[ "$URL" == *"civitai.com"* ]] && [[ -n "${CIVITAI_TOKEN:-}" ]]; then
+    CURL_ARGS+=(-H "Authorization: Bearer ${CIVITAI_TOKEN}")
+  fi
+
+  curl "${CURL_ARGS[@]}" "$URL" -o "$DEST"
 
   if [[ -n "$SHA256" ]]; then
     echo "$SHA256  $DEST" | sha256sum -c -

@@ -1,13 +1,13 @@
 # TODO
 
 ## NOW
-- [ ] Fill real values for RunPod profile files (`Runpod_Comfy/profiles/*.example.yaml` copies)
+- [ ] Fill real values for RunPod recipe files (`Runpod_Comfy/setup/recipes/<id>/*.yaml`)
 - [ ] Compile selected profile and verify generated lock files
 - [ ] Build and push first RunPod image
 
 ## NEXT
 - [ ] Deploy image on RunPod and run smoke test workflow
-- [ ] Add helper script: `Runpod_Comfy/tools/build_from_lock.sh`
+- [ ] Add helper script: `Runpod_Comfy/setup/tools/build_from_lock.sh`
 - [ ] Add profile validation checks (schema-lite)
 
 ## BLOCKED
