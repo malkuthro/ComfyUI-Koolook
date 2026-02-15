@@ -34,3 +34,11 @@
 
 ### Blockers
 - Real model URLs/checksums not finalized.
+
+### Additional context imported from Telegram (extended)
+- Desired abstraction confirmed: config-driven workflow where adding node repos/model URLs and bumping versions does not require code edits.
+- Strong emphasis on "production-ready" compiler/scaffold with placeholders now and real values tomorrow.
+- Tomorrow checklist reaffirmed:
+  1. Fill real profile values (CUDA/image/nodes/models).
+  2. Compile profile, build image, push image.
+  3. Deploy on RunPod and validate.
