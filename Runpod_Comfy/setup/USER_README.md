@@ -20,6 +20,11 @@ Creates:
 - `Runpod_Comfy/setup/recipes/upscaler-v1/models.yaml`
 - `Runpod_Comfy/setup/recipes/upscaler-v1/urls.txt`
 
+In `runpod.yaml`, feature defaults are ON:
+- `features.enable_jupyter: true`
+- `features.enable_file_tools: true`
+Set either to `false` to disable.
+
 ### 2) Compile recipe
 
 ```bash
@@ -41,9 +46,18 @@ By default compile also **activates** to:
 ```bash
 BASE_IMAGE=$(grep '^BASE_IMAGE=' Runpod_Comfy/image/active/comfyui.lock | cut -d= -f2-)
 IMAGE_TAG=$(grep '^RUNPOD_IMAGE_TAG=' Runpod_Comfy/image/active/comfyui.lock | cut -d= -f2-)
-docker build --build-arg BASE_IMAGE="$BASE_IMAGE" \
-  -t comfyui-koolook:${IMAGE_TAG} -f Runpod_Comfy/core/docker/Dockerfile .
+ENABLE_JUPYTER=$(grep '^ENABLE_JUPYTER=' Runpod_Comfy/image/active/comfyui.lock | cut -d= -f2-)
+ENABLE_FILE_TOOLS=$(grep '^ENABLE_FILE_TOOLS=' Runpod_Comfy/image/active/comfyui.lock | cut -d= -f2-)
+
+docker build \
+  --build-arg BASE_IMAGE="$BASE_IMAGE" \
+  --build-arg ENABLE_JUPYTER="$ENABLE_JUPYTER" \
+  --build-arg ENABLE_FILE_TOOLS="$ENABLE_FILE_TOOLS" \
+  -t comfyui-koolook:${IMAGE_TAG} \
+  -f Runpod_Comfy/core/docker/Dockerfile .
 ```
+
+By default both `ENABLE_JUPYTER` and `ENABLE_FILE_TOOLS` are `true`.
 
 ## Iterate safely
 
