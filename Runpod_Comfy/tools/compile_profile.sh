@@ -1,248 +1,164 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <profile-id>"
-  echo "Example: $0 example"
-  exit 1
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RECIPE_ID=""
+RECIPES_DIR="$ROOT/admin_recipes"
+OUT_DIR=""
+ACTIVATE=true
+IMAGE_TAG_OVERRIDE=""
+
+usage() {
+  cat <<EOF
+Usage:
+  $0 --id <recipe-id> [--recipes-dir <dir>] [--out <dir>] [--image-tag <tag>] [--no-activate]
+  $0 <recipe-id>   # backward-compatible
+
+Defaults:
+  recipes-dir: Runpod_Comfy/admin_recipes
+  out:         Runpod_Comfy/builds/<recipe-id>
+  activate:    true (copies generated files to Runpod_Comfy/config)
+EOF
+}
+
+if [[ $# -eq 1 && "$1" != --* ]]; then
+  RECIPE_ID="$1"
+else
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) RECIPE_ID="$2"; shift 2 ;;
+      --recipes-dir) RECIPES_DIR="$2"; shift 2 ;;
+      --out) OUT_DIR="$2"; shift 2 ;;
+      --image-tag) IMAGE_TAG_OVERRIDE="$2"; shift 2 ;;
+      --no-activate) ACTIVATE=false; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "Unknown arg: $1"; usage; exit 1 ;;
+    esac
+  done
 fi
 
-PROFILE_ID="$1"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILES_DIR="$ROOT/profiles"
+[[ -z "$RECIPE_ID" ]] && { usage; exit 1; }
+[[ -z "$OUT_DIR" ]] && OUT_DIR="$ROOT/builds/$RECIPE_ID"
+
+RECIPE_DIR="$RECIPES_DIR/$RECIPE_ID"
+RUNPOD_PROFILE="$RECIPE_DIR/runpod.yaml"
+NODES_PROFILE="$RECIPE_DIR/nodes.yaml"
+MODELS_PROFILE="$RECIPE_DIR/models.yaml"
+URLS_FILE="$RECIPE_DIR/urls.txt"
 CONFIG_DIR="$ROOT/config"
 
-RUNPOD_PROFILE="$PROFILES_DIR/runpod.${PROFILE_ID}.yaml"
-NODES_PROFILE="$PROFILES_DIR/nodes.${PROFILE_ID}.yaml"
-MODELS_PROFILE="$PROFILES_DIR/models.${PROFILE_ID}.yaml"
-URLS_FILE="$PROFILES_DIR/urls.${PROFILE_ID}.txt"
+for f in "$RUNPOD_PROFILE" "$NODES_PROFILE" "$MODELS_PROFILE"; do
+  [[ -f "$f" ]] || { echo "Missing: $f"; exit 1; }
+done
+mkdir -p "$OUT_DIR"
 
-if [[ ! -f "$RUNPOD_PROFILE" ]]; then
-  echo "Missing profile: $RUNPOD_PROFILE"
-  echo "Tip: copy from $PROFILES_DIR/runpod.example.yaml"
-  exit 1
-fi
-if [[ ! -f "$NODES_PROFILE" ]]; then
-  echo "Missing profile: $NODES_PROFILE"
-  echo "Tip: copy from $PROFILES_DIR/nodes.example.yaml"
-  exit 1
-fi
-if [[ ! -f "$MODELS_PROFILE" ]]; then
-  echo "Missing profile: $MODELS_PROFILE"
-  echo "Tip: copy from $PROFILES_DIR/models.example.yaml"
-  exit 1
-fi
+python3 - "$RUNPOD_PROFILE" "$NODES_PROFILE" "$MODELS_PROFILE" "$URLS_FILE" "$OUT_DIR" "$RECIPE_ID" "$IMAGE_TAG_OVERRIDE" <<'PY'
+import json, pathlib, re, sys
+runpod_path = pathlib.Path(sys.argv[1]); nodes_path = pathlib.Path(sys.argv[2]); models_path = pathlib.Path(sys.argv[3]); urls_path = pathlib.Path(sys.argv[4]); out_dir = pathlib.Path(sys.argv[5]); recipe_id = sys.argv[6]; image_tag_override = sys.argv[7]
 
-mkdir -p "$CONFIG_DIR"
-
-python3 - "$RUNPOD_PROFILE" "$NODES_PROFILE" "$MODELS_PROFILE" "$URLS_FILE" "$CONFIG_DIR" <<'PY'
-import json
-import pathlib
-import re
-import sys
-
-runpod_path = pathlib.Path(sys.argv[1])
-nodes_path = pathlib.Path(sys.argv[2])
-models_path = pathlib.Path(sys.argv[3])
-urls_path = pathlib.Path(sys.argv[4])
-config_dir = pathlib.Path(sys.argv[5])
-
-
-def parse_scalar(v: str):
-    v = v.strip()
-    if not v:
-        return ""
-    if v in ("true", "True"):
-        return True
-    if v in ("false", "False"):
-        return False
-    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-        return v[1:-1]
-    if re.fullmatch(r"-?\d+", v):
-        try:
-            return int(v)
-        except ValueError:
-            pass
+def scalar(v):
+    v=v.strip()
+    if not v: return ""
+    if v.lower()=="true": return True
+    if v.lower()=="false": return False
+    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")): return v[1:-1]
+    if re.fullmatch(r"-?\d+", v): return int(v)
     return v
 
-
-def parse_simple_yaml(path: pathlib.Path):
-    lines = path.read_text(encoding="utf-8").splitlines()
-    root = {}
-    i = 0
-    n = len(lines)
-
-    while i < n:
-        raw = lines[i]
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            i += 1
-            continue
-
-        if stripped.startswith("- "):
-            raise ValueError(f"Top-level list not supported in {path}")
-
-        if ":" not in raw:
-            raise ValueError(f"Invalid line in {path}: {raw}")
-
-        key, val = raw.split(":", 1)
-        key = key.strip()
-        val = val.strip()
-
-        if val:
-            root[key] = parse_scalar(val)
-            i += 1
-            continue
-
-        # block value
-        i += 1
-        block = []
-        while i < n:
-            raw2 = lines[i]
-            if not raw2.strip() or raw2.strip().startswith("#"):
-                i += 1
-                continue
-            indent = len(raw2) - len(raw2.lstrip(" "))
-            if indent < 2:
-                break
-            block.append(raw2)
-            i += 1
-
-        if block and block[0].lstrip().startswith("- "):
-            items = []
-            current = None
-            for bl in block:
-                indent = len(bl) - len(bl.lstrip(" "))
-                s = bl.strip()
-                if s.startswith("- "):
-                    if current is not None:
-                        items.append(current)
-                    current = {}
-                    payload = s[2:].strip()
+def parse(path):
+    lines=path.read_text(encoding='utf-8').splitlines(); root={}; i=0
+    while i<len(lines):
+        raw=lines[i]; s=raw.strip(); i+=1
+        if not s or s.startswith('#'): continue
+        if ':' not in raw: raise ValueError(f"Invalid line: {raw}")
+        k,v=raw.split(':',1); k=k.strip(); v=v.strip()
+        if v:
+            root[k]=scalar(v); continue
+        block=[]
+        while i<len(lines):
+            r=lines[i]; st=r.strip()
+            if not st or st.startswith('#'): i+=1; continue
+            if (len(r)-len(r.lstrip(' ')))<2: break
+            block.append(r); i+=1
+        if block and block[0].lstrip().startswith('- '):
+            items=[]; cur=None
+            for b in block:
+                st=b.strip()
+                if st.startswith('- '):
+                    if cur is not None: items.append(cur)
+                    cur={}; payload=st[2:].strip()
                     if payload:
-                        if ":" not in payload:
-                            raise ValueError(f"Invalid list item in {path}: {bl}")
-                        k, v = payload.split(":", 1)
-                        current[k.strip()] = parse_scalar(v.strip())
+                        kk,vv=payload.split(':',1); cur[kk.strip()]=scalar(vv.strip())
                 else:
-                    if current is None:
-                        raise ValueError(f"Malformed list block in {path}: {bl}")
-                    if ":" not in s:
-                        raise ValueError(f"Invalid nested mapping in {path}: {bl}")
-                    k, v = s.split(":", 1)
-                    current[k.strip()] = parse_scalar(v.strip())
-            if current is not None:
-                items.append(current)
-            root[key] = items
+                    kk,vv=st.split(':',1); cur[kk.strip()]=scalar(vv.strip())
+            if cur is not None: items.append(cur)
+            root[k]=items
         else:
-            nested = {}
-            for bl in block:
-                s = bl.strip()
-                if ":" not in s:
-                    raise ValueError(f"Invalid nested mapping in {path}: {bl}")
-                k, v = s.split(":", 1)
-                nested[k.strip()] = parse_scalar(v.strip())
-            root[key] = nested
-
+            d={}
+            for b in block:
+                kk,vv=b.strip().split(':',1); d[kk.strip()]=scalar(vv.strip())
+            root[k]=d
     return root
 
+def parse_urls(path):
+    if not path.exists(): return []
+    out=[]
+    for line in path.read_text(encoding='utf-8').splitlines():
+        s=line.strip()
+        if not s or s.startswith('#'): continue
+        p=[x.strip() for x in s.split('|')]
+        if len(p)<2: raise ValueError(f"Bad urls entry: {line}")
+        url,dest=p[0],p[1]; sha=p[2] if len(p)>2 else ""; enabled=(p[3].lower()!='false') if len(p)>3 and p[3] else True; name=p[4] if len(p)>4 and p[4] else pathlib.Path(dest).stem
+        out.append({"name":name,"url":url,"dest":dest,"sha256":sha,"enabled":enabled})
+    return out
 
-def parse_urls(path: pathlib.Path):
-    models = []
-    if not path.exists():
-        return models
-    for line in path.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        parts = [p.strip() for p in s.split("|")]
-        if len(parts) < 2:
-            raise ValueError(f"Invalid urls entry: {line}")
-        url = parts[0]
-        dest = parts[1]
-        sha = parts[2] if len(parts) > 2 else ""
-        enabled_raw = parts[3] if len(parts) > 3 else "true"
-        name = parts[4] if len(parts) > 4 and parts[4] else pathlib.Path(dest).stem
-        enabled = str(enabled_raw).lower() != "false"
-        models.append({
-            "name": name,
-            "url": url,
-            "dest": dest,
-            "sha256": sha,
-            "enabled": enabled,
-        })
-    return models
-
-runpod = parse_simple_yaml(runpod_path)
-nodes_data = parse_simple_yaml(nodes_path)
-models_data = parse_simple_yaml(models_path)
-url_models = parse_urls(urls_path)
-
-base_image = runpod.get("base_image")
-comfyui = runpod.get("comfyui", {}) if isinstance(runpod.get("comfyui"), dict) else {}
-comfy_repo = comfyui.get("repo", "https://github.com/comfyanonymous/ComfyUI.git")
-comfy_ref = comfyui.get("ref", "master")
-
-if not base_image:
-    raise ValueError(f"base_image is required in {runpod_path}")
-
-nodes = nodes_data.get("nodes", [])
-if not isinstance(nodes, list):
-    raise ValueError(f"nodes must be a list in {nodes_path}")
-
-for node in nodes:
-    if "repo" not in node or "ref" not in node:
-        raise ValueError(f"Each node requires repo and ref in {nodes_path}: {node}")
-    if "target_dir" not in node or not node["target_dir"]:
-        repo = str(node["repo"]).rstrip("/")
-        node["target_dir"] = pathlib.Path(repo).name.replace(".git", "")
-    node.setdefault("install", "[]")
-    if isinstance(node["install"], str):
-        node["install"] = []
-
-models = models_data.get("models", [])
-if not isinstance(models, list):
-    raise ValueError(f"models must be a list in {models_path}")
-
-for model in models:
-    for req in ("name", "url", "dest"):
-        if req not in model:
-            raise ValueError(f"Model missing '{req}' in {models_path}: {model}")
-    model.setdefault("sha256", "")
-    model.setdefault("enabled", True)
-
+runpod=parse(runpod_path); nodes_data=parse(nodes_path); models_data=parse(models_path)
+base_image=runpod.get('base_image'); comfy=runpod.get('comfyui',{}) if isinstance(runpod.get('comfyui'),dict) else {}
+if not base_image: raise ValueError('base_image is required')
+image_name=runpod.get('image_name','')
+image_tag= image_tag_override or runpod.get('image_tag', recipe_id)
+nodes=nodes_data.get('nodes',[]); models=models_data.get('models',[])
+url_models=parse_urls(urls_path)
+for n in nodes:
+    if 'repo' not in n or 'ref' not in n: raise ValueError(f'node requires repo/ref: {n}')
+    n.setdefault('target_dir', pathlib.Path(str(n['repo']).rstrip('/')).name.replace('.git',''))
+    if n.get('install') in ('',None): n['install']=[]
+for m in models:
+    for req in ('name','url','dest'):
+      if req not in m: raise ValueError(f'model missing {req}: {m}')
+    m.setdefault('sha256',''); m.setdefault('enabled',True)
 models.extend(url_models)
 
-comfy_lock = "\n".join([
-    "# Generated by Runpod_Comfy/tools/compile_profile.sh",
-    f"PROFILE_ID={runpod.get('profile_id', 'unknown')}",
-    f"BASE_IMAGE={base_image}",
-    f"COMFYUI_REPO={comfy_repo}",
-    f"COMFYUI_REF={comfy_ref}",
-    "",
+comfy_lock='\n'.join([
+    '# Generated by Runpod_Comfy/tools/compile_profile.sh',
+    f'RECIPE_ID={recipe_id}',
+    f'BASE_IMAGE={base_image}',
+    f'IMAGE_NAME={image_name}',
+    f'RUNPOD_IMAGE_TAG={image_tag}',
+    f"COMFYUI_REPO={comfy.get('repo','https://github.com/comfyanonymous/ComfyUI.git')}",
+    f"COMFYUI_REF={comfy.get('ref','master')}",
+    ''
 ])
-
-(config_dir / "comfyui.lock").write_text(comfy_lock, encoding="utf-8")
-(config_dir / "custom_nodes.lock.json").write_text(
-    json.dumps({"version": 1, "nodes": nodes}, indent=2) + "\n",
-    encoding="utf-8",
-)
-(config_dir / "models.json").write_text(
-    json.dumps({"version": 1, "models": models}, indent=2) + "\n",
-    encoding="utf-8",
-)
-
-print("=== Runpod_Comfy profile compile summary ===")
-print(f"Profile ID    : {runpod.get('profile_id', 'unknown')}")
-print(f"Base image    : {base_image}")
-print(f"ComfyUI repo  : {comfy_repo}")
-print(f"ComfyUI ref   : {comfy_ref}")
-print(f"Custom nodes  : {len(nodes)}")
-print(f"Models        : {len(models)} (includes urls.txt additions: {len(url_models)})")
-print("Generated:")
-print(f" - {config_dir / 'comfyui.lock'}")
-print(f" - {config_dir / 'custom_nodes.lock.json'}")
-print(f" - {config_dir / 'models.json'}")
+(out_dir/'comfyui.lock').write_text(comfy_lock, encoding='utf-8')
+(out_dir/'custom_nodes.lock.json').write_text(json.dumps({'version':1,'nodes':nodes},indent=2)+'\n',encoding='utf-8')
+(out_dir/'models.json').write_text(json.dumps({'version':1,'models':models},indent=2)+'\n',encoding='utf-8')
+print('=== compile summary ===')
+print(f'Recipe ID     : {recipe_id}')
+print(f'Base image    : {base_image}')
+print(f'Image name    : {image_name or "(unset)"}')
+print(f'Image tag     : {image_tag}')
+print(f'ComfyUI ref   : {comfy.get("ref","master")}')
+print(f'Custom nodes  : {len(nodes)}')
+print(f'Models        : {len(models)} (urls.txt additions: {len(url_models)})')
+print(f'Output dir    : {out_dir}')
 PY
+
+if [[ "$ACTIVATE" == true ]]; then
+  mkdir -p "$CONFIG_DIR"
+  cp "$OUT_DIR/comfyui.lock" "$CONFIG_DIR/comfyui.lock"
+  cp "$OUT_DIR/custom_nodes.lock.json" "$CONFIG_DIR/custom_nodes.lock.json"
+  cp "$OUT_DIR/models.json" "$CONFIG_DIR/models.json"
+  echo "Activated build into: $CONFIG_DIR"
+fi
 
 echo "[ok] compile complete"

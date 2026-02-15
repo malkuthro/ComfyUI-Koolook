@@ -23,3 +23,9 @@
 - Planning/serious execution in OpenClaw web dashboard.
 - Telegram for quick pings.
 - Repo files (`TODO/WORKLOG/DECISIONS/WORKFLOW`) are continuity anchor across devices.
+
+## 2026-02-15 — Recipe architecture for long-term readability
+- Rename `profiles/` concept to `admin_recipes/` for clearer ownership/intent.
+- Keep one recipe folder per image variant (`upscaler-v1`, `wan22-v1`, etc.).
+- Compiler supports explicit args (`--id`, `--out`, `--image-tag`, `--no-activate`).
+- Generated artifacts are stored under `builds/<recipe-id>/` and can be activated to `config/`.
