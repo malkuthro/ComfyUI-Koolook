@@ -25,6 +25,10 @@ In `runpod.yaml`, feature defaults are ON:
 - `features.enable_file_tools: true`
 Set either to `false` to disable.
 
+Path rules (important):
+- Node `target_dir` is relative to `ComfyUI/custom_nodes` (do not prefix `ComfyUI/...`).
+- Model `dest` is relative to `ComfyUI` root (use `models/...`, not `ComfyUI/models/...`).
+
 ### 2) Compile recipe
 
 ```bash
