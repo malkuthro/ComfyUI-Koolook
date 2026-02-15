@@ -19,15 +19,16 @@ The format is inspired by Keep a Changelog and SemVer.
   - `docs/RELEASE_NOTES_TEMPLATE.md`
 - RunPod_Comfy implementation scaffold:
   - `Runpod_Comfy/README.md`
-  - `Runpod_Comfy/docker/Dockerfile`
-  - `Runpod_Comfy/docker/start.sh`
-  - `Runpod_Comfy/scripts/bootstrap.sh`
-  - `Runpod_Comfy/scripts/install_custom_nodes.sh`
-  - `Runpod_Comfy/scripts/download_models.sh`
-  - `Runpod_Comfy/config/comfyui.lock`
-  - `Runpod_Comfy/config/custom_nodes.lock.json`
-  - `Runpod_Comfy/config/models.json`
-  - `Runpod_Comfy/docs/DEPLOY_RUNPOD.md`
+  - `Runpod_Comfy/setup/USER_README.md`
+  - `Runpod_Comfy/core/docker/Dockerfile`
+  - `Runpod_Comfy/core/docker/start.sh`
+  - `Runpod_Comfy/core/scripts/bootstrap.sh`
+  - `Runpod_Comfy/core/scripts/install_custom_nodes.sh`
+  - `Runpod_Comfy/core/scripts/download_models.sh`
+  - `Runpod_Comfy/image/active/comfyui.lock`
+  - `Runpod_Comfy/image/active/custom_nodes.lock.json`
+  - `Runpod_Comfy/image/active/models.json`
+  - `Runpod_Comfy/image/DEPLOY_RUNPOD.md`
 
 ## [0.1.0] - 2026-02-14
 
