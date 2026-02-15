@@ -1,7 +1,7 @@
 [project]
 name = "koolook"
 description = "This repository provides custom nodes for ComfyUI tailored for VFX and AI image/video generation workflows"
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"} 
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
