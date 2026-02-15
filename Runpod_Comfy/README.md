@@ -18,29 +18,35 @@ Production-oriented scaffold for running ComfyUI on RunPod with pinned versions.
 
 ## Quick Start
 
-### 1) Pin ComfyUI version
+### 1) Create profile files
 
-Edit `config/comfyui.lock`:
+Copy and edit these files:
 
-```ini
-COMFYUI_REPO=https://github.com/comfyanonymous/ComfyUI.git
-COMFYUI_REF=master
-```
+- `profiles/runpod.<profile-id>.yaml`
+- `profiles/nodes.<profile-id>.yaml`
+- `profiles/models.<profile-id>.yaml`
+- Optional: `profiles/urls.<profile-id>.txt`
 
-Set `COMFYUI_REF` to a commit SHA for stability.
+You can start from the `*.example.yaml` files.
 
-### 2) Add custom nodes
-
-Edit `config/custom_nodes.lock.json`.
-
-### 3) Add models (optional)
-
-Edit `config/models.json`.
-
-### 4) Build image
+### 2) Compile profile into lock files
 
 ```bash
-docker build -t comfyui-koolook:runpod-v1 -f Runpod_Comfy/docker/Dockerfile .
+Runpod_Comfy/tools/compile_profile.sh <profile-id>
+```
+
+This generates:
+
+- `config/comfyui.lock`
+- `config/custom_nodes.lock.json`
+- `config/models.json`
+
+### 3) Build image
+
+```bash
+BASE_IMAGE=$(grep '^BASE_IMAGE=' Runpod_Comfy/config/comfyui.lock | cut -d= -f2-)
+docker build --build-arg BASE_IMAGE="$BASE_IMAGE" \
+  -t comfyui-koolook:runpod-v1 -f Runpod_Comfy/docker/Dockerfile .
 ```
 
 ### 5) Run locally (smoke test)

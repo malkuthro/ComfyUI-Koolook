@@ -1,4 +1,5 @@
-FROM runpod/pytorch:2.6.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+ARG BASE_IMAGE=runpod/pytorch:2.6.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \

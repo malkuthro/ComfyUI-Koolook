@@ -1,0 +1,13 @@
+profile_id: example
+
+# Base image used by Runpod_Comfy/docker/Dockerfile via --build-arg BASE_IMAGE
+base_image: runpod/pytorch:2.6.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+
+comfyui:
+  repo: https://github.com/comfyanonymous/ComfyUI.git
+  ref: master
+
+# Optional metadata for your own notes.
+notes:
+  cuda: "12.4"
+  image_tag: "runpod-v1"
