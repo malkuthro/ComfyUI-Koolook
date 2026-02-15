@@ -1,0 +1,16 @@
+profile_id: Hires-FIX-upscaler_v01
+
+# Docker build base
+base_image: runpod/pytorch:2.6.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+
+# Optional image metadata used by compiler summary/lock file
+image_name: ghcr.io/malkuthro/comfyui-koolook
+image_tag: hires-fix-upscaler-v01
+
+features:
+  enable_jupyter: true
+  enable_file_tools: true
+
+comfyui:
+  repo: https://github.com/comfyanonymous/ComfyUI.git
+  ref: master
