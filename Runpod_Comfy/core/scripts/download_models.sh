@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT=/opt/bootstrap/Runpod_Comfy
 WORKDIR="${COMFYUI_WORKDIR:-/workspace/ComfyUI}"
-LOCK="$ROOT/config/models.json"
+LOCK="$ROOT/image/active/models.json"
 
 if [[ ! -f "$LOCK" ]]; then
   echo "[models] lock file not found: $LOCK"

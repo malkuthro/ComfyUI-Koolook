@@ -8,8 +8,8 @@ if [[ $# -lt 1 ]]; then
 fi
 
 ID="$1"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RECIPES="$ROOT/admin_recipes"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RECIPES="$ROOT/setup/recipes"
 EXAMPLES="$RECIPES/examples"
 TARGET="$RECIPES/$ID"
 
@@ -39,4 +39,4 @@ fi
 echo
 echo "Next:"
 echo "  1) edit $TARGET/{runpod.yaml,nodes.yaml,models.yaml,urls.txt}"
-echo "  2) Runpod_Comfy/tools/compile_profile.sh --id $ID"
+echo "  2) Runpod_Comfy/setup/tools/compile_profile.sh --id $ID"
