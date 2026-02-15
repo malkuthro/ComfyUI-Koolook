@@ -20,14 +20,21 @@ Production-oriented scaffold for running ComfyUI on RunPod with pinned versions.
 
 ### 1) Create profile files
 
-Copy and edit these files:
+Create a new profile set (recommended):
+
+```bash
+Runpod_Comfy/tools/new_profile.sh <profile-id>
+```
+
+This creates:
 
 - `profiles/runpod.<profile-id>.yaml`
 - `profiles/nodes.<profile-id>.yaml`
 - `profiles/models.<profile-id>.yaml`
-- Optional: `profiles/urls.<profile-id>.txt`
+- Optional helper file: `profiles/urls.<profile-id>.txt`
 
-You can start from the `*.example.yaml` files.
+> Keep one profile-id per image variant (e.g. `upscaler-v1`, `wan22-v1`).
+> Do **not** edit the `*.example.yaml` files for real builds.
 
 ### 2) Compile profile into lock files
 
