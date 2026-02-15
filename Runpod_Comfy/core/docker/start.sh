@@ -9,12 +9,14 @@ JUPYTER_TOKEN="${JUPYTER_TOKEN:-runpod}"
 
 "$ROOT/core/scripts/bootstrap.sh"
 
-if [[ -f "$ROOT/image/active/comfyui.lock" ]]; then
-  # shellcheck disable=SC1091
-  source "$ROOT/image/active/comfyui.lock"
+LOCK="$ROOT/image/active/comfyui.lock"
+ENABLE_JUPYTER_LOCK="true"
+if [[ -f "$LOCK" ]]; then
+  ENABLE_JUPYTER_LOCK=$(grep -E '^ENABLE_JUPYTER=' "$LOCK" | head -n1 | cut -d= -f2-)
+  [[ -z "$ENABLE_JUPYTER_LOCK" ]] && ENABLE_JUPYTER_LOCK="true"
 fi
 
-if [[ "${ENABLE_JUPYTER:-true}" == "true" ]]; then
+if [[ "$ENABLE_JUPYTER_LOCK" == "true" ]]; then
   echo "[jupyter] starting on 0.0.0.0:${JUPYTER_PORT}"
   jupyter lab \
     --ip=0.0.0.0 \
