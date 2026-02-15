@@ -26,9 +26,9 @@
 
 ## 2026-02-15 — Recipe architecture for long-term readability
 - Use a 3-zone layout inside `Runpod_Comfy/`:
-  - `setup/` (operator-facing edits/docs/tools)
-  - `image/` (generated outputs + active locks)
-  - `core/` (runtime internals)
+  - `setup/` (operator-facing edits/tools; keep lightweight)
+  - `image/` (generated outputs + active locks + deploy runbook)
+  - `core/` (runtime internals + technical references)
 - Keep one recipe folder per image variant under `setup/recipes/<id>/`.
 - Compiler supports explicit args (`--id`, `--out`, `--image-tag`, `--no-activate`).
 - Default outputs go to `image/builds/<recipe-id>/` and can be activated to `image/active/`.

@@ -2,9 +2,9 @@
 
 This package is split into 3 readable zones:
 
-- `setup/` → what you edit (recipes, docs, helper tools)
-- `image/` → generated outputs (build artifacts + active locks)
-- `core/` → runtime internals (Docker + bootstrap scripts)
+- `setup/` → what you edit (recipes + helper tools)
+- `image/` → generated outputs (build artifacts + active locks) + deploy runbook
+- `core/` → runtime internals (Docker + bootstrap scripts + technical references)
 
 ## Quick Start
 
@@ -54,6 +54,11 @@ docker build --build-arg BASE_IMAGE="$BASE_IMAGE" \
 ```bash
 Runpod_Comfy/setup/tools/compile_profile.sh --id upscaler-v1 --no-activate
 ```
+
+## Deploy
+
+RunPod deploy runbook:
+- `Runpod_Comfy/image/DEPLOY_RUNPOD.md`
 
 ## Compiler args
 
