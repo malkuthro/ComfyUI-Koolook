@@ -7,6 +7,13 @@
       "dest": "models/checkpoints/model.safetensors",
       "sha256": "",
       "enabled": false
+    },
+    {
+      "name": "example_vae",
+      "url": "https://example.com/path/to/vae.safetensors",
+      "dest": "models/vae/vae.safetensors",
+      "sha256": "",
+      "enabled": false
     }
   ]
 }
