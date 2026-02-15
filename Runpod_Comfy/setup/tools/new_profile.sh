@@ -22,7 +22,14 @@ for kind in runpod nodes models; do
     echo "[skip] exists: $dst"
   else
     cp "$src" "$dst"
-    sed -i "s/^profile_id: .*/profile_id: ${ID}/" "$dst" || true
+    python3 - "$dst" "$ID" <<'PY'
+from pathlib import Path
+import re, sys
+p=Path(sys.argv[1]); rid=sys.argv[2]
+t=p.read_text(encoding='utf-8')
+t=re.sub(r'^profile_id:\s*.*$', f'profile_id: {rid}', t, flags=re.M)
+p.write_text(t, encoding='utf-8')
+PY
     echo "[new]  $dst"
   fi
 done
