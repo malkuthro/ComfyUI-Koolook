@@ -17,13 +17,20 @@ from .nodes_color_management import (
 NAMESPACE_SUFFIX = "__koolook_v1_0_1"
 DISPLAY_SUFFIX = " (Koolook v1.0.1)"
 
+# Optional compact IDs for frequently used nodes.
+# If a node is listed here, this ID is used instead of the default
+# "<original_id>__koolook_v1_0_1" format.
+SHORT_ID_OVERRIDES = {
+    "RadianceOCIOColorTransformV2": "k_easy_OCIO_v101",
+}
+
 
 def _namespace_mappings(class_mappings, display_mappings):
     namespaced_classes = {}
     namespaced_display = {}
 
     for node_id, node_cls in class_mappings.items():
-        namespaced_id = f"{node_id}{NAMESPACE_SUFFIX}"
+        namespaced_id = SHORT_ID_OVERRIDES.get(node_id, f"{node_id}{NAMESPACE_SUFFIX}")
         namespaced_classes[namespaced_id] = node_cls
         base_display = display_mappings.get(node_id, node_id)
         namespaced_display[namespaced_id] = f"{base_display}{DISPLAY_SUFFIX}"
