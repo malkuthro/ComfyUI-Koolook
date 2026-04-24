@@ -1,7 +1,0 @@
-opencv-python
-imageio
-OpenEXR
-Imath
-opencolorio
-colour-science
-transformers

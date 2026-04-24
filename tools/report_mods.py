@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Simple report for third-party modification tracking.
 
-Reads third_party/forks_manifest.yaml and prints a short summary for maintainers.
+Reads forks/forks_manifest.yaml and prints a short summary for maintainers.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ except Exception:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    manifest_path = repo_root / "third_party" / "forks_manifest.yaml"
+    manifest_path = repo_root / "forks" / "forks_manifest.yaml"
 
     if not manifest_path.exists():
         print(f"Manifest not found: {manifest_path}")
