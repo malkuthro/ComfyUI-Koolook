@@ -10,8 +10,8 @@ The format is inspired by Keep a Changelog and SemVer.
 - Initial release/process scaffolding:
   - `docs/RELEASE_WORKFLOW.md`
   - `docs/REPO_AUDIT_2026-02-14.md`
-  - `third_party/THIRD_PARTY.md`
-  - `third_party/forks_manifest.yaml`
+  - `forks/THIRD_PARTY.md`
+  - `forks/forks_manifest.yaml`
   - `tools/report_mods.py`
 - Contribution/release templates:
   - `.github/PULL_REQUEST_TEMPLATE.md`

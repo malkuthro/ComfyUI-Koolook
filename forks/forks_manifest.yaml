@@ -1,0 +1,63 @@
+version: 1
+updated_at: "2026-04-24"
+external_forks:
+  root_relative_to_main: "../ComfyUI-Forks"
+  root_env_var: "KOLOOK_FORKS_DIR"
+  notes: "Keep raw upstream/fork clones here. Modified working nodes live in MAIN and are tracked by this repository."
+  naming_convention:
+    pinned_baseline: "<repo>-v<version>-koolook"
+    rolling_upstream: "<repo>-main-upstream"
+entries:
+  - id: "radiance_koolook_v1_0_1_baseline"
+    name: "Radiance Koolook v1.0.1 baseline"
+    source_repo: "https://github.com/fxtdstudios/radiance.git"
+    source_ref: "comfyui (closest public baseline; v1.0.1 tag not found upstream)"
+    pinned_commit: "f1b8ae330848fa08aba24c9d3e355cb432d3515b"
+    external_checkout:
+      relative_path_from_forks_root: "radiance-v1.0.1-koolook"
+      upstream_tracking_path_from_forks_root: "radiance-main-upstream"
+      default_branch: "koolook/v1-multiframe"
+    local_paths:
+      - "forks/radiance_koolook/versions/v1_0_1/nodes_hdr.py"
+      - "forks/radiance_koolook/versions/v1_0_1/nodes_color_management.py"
+      - "forks/radiance_koolook/versions/v1_0_1/nodes_dna.py"
+      - "forks/radiance_koolook/versions/v1_0_1/__init__.py"
+      - "forks/radiance_koolook/versions/v1_0_1/UPSTREAM_PIN.yaml"
+      - "forks/radiance_koolook/__init__.py"
+    status: "modified"
+    sync_state: "local-modified-from-upstream"
+    license: "to_verify_at_source_ref"
+    notes: "Local modifications include single-frame to multi-frame behavior changes and are committed in MAIN. External checkout is kept only as raw upstream reference."
+
+  - id: "easy_resize_inspiration"
+    name: "Easy Resize (inspired component)"
+    source_repo: "https://github.com/kijai/ComfyUI-KJNodes"
+    source_ref: "unknown"
+    local_paths:
+      - "k_easy_resize.py"
+    status: "modified"
+    sync_state: "needs-upstream-reference"
+    license: "unknown"
+    notes: "Inspired by Resize Image V2; verify exact upstream commit/license metadata."
+
+  - id: "promptjson_integration_reference"
+    name: "PromptJSON interoperability reference"
+    source_repo: "https://github.com/NeuralSamurAI/ComfyUI-PromptJSON"
+    source_ref: "n/a"
+    local_paths: []
+    status: "reference_only"
+    sync_state: "n/a"
+    license: "unknown"
+    notes: "No vendored code; integration reference in docs/workflows."
+
+  - id: "wan22_parameter_reference"
+    name: "Wan 2.2 parameter docs reference"
+    source_repo: "https://alidocs.dingtalk.com/i/nodes/EpGBa2Lm8aZxe5myC99MelA2WgN7R35y"
+    source_ref: "n/a"
+    local_paths:
+      - "config.json"
+      - "k_easy_wan22_prompt.py"
+    status: "reference_only"
+    sync_state: "manual"
+    license: "unknown"
+    notes: "Prompt parameter taxonomy inspired by external docs; no direct vendored code tracked yet."

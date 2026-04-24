@@ -1,0 +1,6 @@
+source_repo: "https://github.com/fxtdstudios/radiance.git"
+source_ref: "comfyui (closest public baseline; v1.0.1 tag not found upstream)"
+pinned_commit: "f1b8ae330848fa08aba24c9d3e355cb432d3515b"
+external_checkout_relative_to_forks_root: "radiance-v1.0.1-koolook"
+upstream_tracking_relative_to_forks_root: "radiance-main-upstream"
+external_work_branch: "koolook/v1-multiframe"
