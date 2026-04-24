@@ -38,6 +38,15 @@ For each fork entry in `forks/forks_manifest.yaml`:
 - `external_checkout.upstream_tracking_path_from_forks_root` = rolling upstream folder
 - `local_paths` = files tracked in MAIN
 
+## Tagging Policy (from now on)
+
+- MAIN repo tags use SemVer: `vMAJOR.MINOR.PATCH`.
+- Local fork version folders use underscore variant of the same version:
+  - `v1_0_1`, `v2_3_3`, etc.
+- Node mapping namespace suffixes must match folder versions:
+  - `__koolook_v1_0_1`, `__koolook_v2_3_3`, etc.
+- Keep `source_ref` + `pinned_commit` in `forks/forks_manifest.yaml` and `UPSTREAM_PIN.yaml`.
+
 ## Upgrade Flow Example (Radiance)
 
 1. Compare current local version (`forks/radiance_koolook/versions/v1_0_1`) with pinned raw baseline (`../ComfyUI-Forks/radiance-v1.0.1-koolook`).

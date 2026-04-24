@@ -33,10 +33,19 @@ RunPod management has been moved to a separate private repository for active ope
 
 For production usage, install a pinned stable tag/commit instead of following moving branch heads.
 
-- Release workflow: `docs/RELEASE_WORKFLOW.md`
+- Release workflow: `forks/README.md`
 - Change history: `CHANGELOG.md`
 - Fork tracking: `forks/THIRD_PARTY.md`, `forks/forks_manifest.yaml`
 - Fork workflow guide: `forks/README.md`
+
+### Tagging Policy (from now on)
+
+- Repo releases: `vMAJOR.MINOR.PATCH` (example: `v0.2.0`).
+- Fork code versions in paths use underscore format: `v1_0_1`, `v2_3_3`.
+- Comfy node ID namespace suffixes match fork version paths: `__koolook_v1_0_1`.
+- External raw checkout naming:
+  - pinned: `<repo>-v<version>-koolook`
+  - rolling upstream: `<repo>-main-upstream`
 
 ## External Fork Workflow (No Vendoring in MAIN)
 

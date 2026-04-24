@@ -12,7 +12,7 @@ assignees: []
 - [ ] Core workflows smoke-tested
 - [ ] `forks/forks_manifest.yaml` reviewed/updated
 - [ ] `CHANGELOG.md` updated
-- [ ] Release notes drafted (`docs/RELEASE_NOTES_TEMPLATE.md`)
+- [ ] Release notes drafted (PR body + `CHANGELOG.md`)
 
 ## Publish
 
