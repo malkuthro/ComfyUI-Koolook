@@ -15,7 +15,7 @@ Describe what this PR changes and why.
 - [ ] I updated docs (if needed)
 - [ ] I updated `CHANGELOG.md` (if needed)
 - [ ] I tested node loading in ComfyUI
-- [ ] I documented third-party derivations/changes in `third_party/`
+- [ ] I documented third-party derivations/changes in `forks/`
 - [ ] I verified no secrets/tokens are included
 
 ## Testing Notes

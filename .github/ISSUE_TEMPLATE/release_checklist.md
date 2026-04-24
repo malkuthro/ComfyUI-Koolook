@@ -10,9 +10,9 @@ assignees: []
 
 - [ ] Node import/startup passes on clean ComfyUI
 - [ ] Core workflows smoke-tested
-- [ ] `third_party/forks_manifest.yaml` reviewed/updated
+- [ ] `forks/forks_manifest.yaml` reviewed/updated
 - [ ] `CHANGELOG.md` updated
-- [ ] Release notes drafted (`docs/RELEASE_NOTES_TEMPLATE.md`)
+- [ ] Release notes drafted (PR body + `CHANGELOG.md`)
 
 ## Publish
 

@@ -1,13 +1,3 @@
-# Import node classes from their respective files
-from .k_easy_version import Easy_Version
-from .k_easy_wan22_prompt import EasyWan22Prompt
-from .k_easy_resize import EasyResize
-from .k_ai_pipeline import EasyAIPipeline
-from .k_easy_image_batch import easy_ImageBatch  # Added for new VFX batch node
-
-# Aggregate mappings from each node file
-# Assuming each node file defines its own NODE_CLASS_MAPPINGS and NODE_DISPLAY_NAME_MAPPINGS
-
 from .k_easy_version import NODE_CLASS_MAPPINGS as version_mappings
 from .k_easy_version import NODE_DISPLAY_NAME_MAPPINGS as version_display
 
@@ -26,14 +16,17 @@ from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # A
 from .k_easy_track import NODE_CLASS_MAPPINGS as cam_loader_mappings
 from .k_easy_track import NODE_DISPLAY_NAME_MAPPINGS as cam_loader_display
 
-# Merge all mappings
+from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
+from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
+
 NODE_CLASS_MAPPINGS = {
     **version_mappings,
     **wan_mappings,
     **resize_mappings,
     **pipeline_mappings,
-    **batch_mappings,  # Added for new VFX batch node
+    **batch_mappings,
     **cam_loader_mappings,
+    **radiance_koolook_mappings,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -41,9 +34,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **wan_display,
     **resize_display,
     **pipeline_display,
-    **batch_display,  # Added for new VFX batch node
+    **batch_display,
     **cam_loader_display,
+    **radiance_koolook_display,
 }
 
 WEB_DIRECTORY = "./web"
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
