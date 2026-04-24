@@ -6,18 +6,18 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-### Added
-- Initial release/process scaffolding:
-  - release/versioning notes in repository docs
-  - `forks/THIRD_PARTY.md`
-  - `forks/forks_manifest.yaml`
-  - `tools/report_mods.py`
-- Contribution/release templates:
-  - `.github/PULL_REQUEST_TEMPLATE.md`
-  - `.github/ISSUE_TEMPLATE/release_checklist.md`
-- RunPod_Comfy scaffold was previously added during iteration and has since been moved to a private management repository.
-
-## [0.1.0] - 2026-02-14
+## [0.1.0] - 2026-04-24
 
 ### Added
-- Project-level release/versioning strategy and third-party tracking scaffold.
+- Fork tracking moved to `forks/` with centralized workflow documentation.
+- Versioned Radiance fork package layout under `forks/radiance_koolook/versions/v1_0_1`.
+- `CLAUDE.md` and `Glossary.md` to keep workflow and naming conventions explicit.
+
+### Changed
+- Root node loader now imports the versioned Radiance fork entrypoint.
+- Release/checklist/template references updated to current fork-based paths.
+- Introduced compact node ID override for OCIO transform: `k_easy_OCIO_v101`.
+
+### Removed
+- Legacy `ACES_workflow/radiance` tree and duplicated tracking paths under `third_party/`.
+- Deprecated docs/assets/workflow artifacts removed during repository cleanup.
