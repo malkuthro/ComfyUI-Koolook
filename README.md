@@ -35,7 +35,56 @@ For production usage, install a pinned stable tag/commit instead of following mo
 
 - Release workflow: `docs/RELEASE_WORKFLOW.md`
 - Change history: `CHANGELOG.md`
-- Third-party tracking: `third_party/THIRD_PARTY.md`, `third_party/forks_manifest.yaml`
+- Fork tracking: `forks/THIRD_PARTY.md`, `forks/forks_manifest.yaml`
+- Fork workflow guide: `forks/README.md`
+
+## External Fork Workflow (No Vendoring in MAIN)
+
+This repository is the MAIN control repo. Large third-party repositories must stay outside MAIN.
+
+- Default external forks root (relative): `../ComfyUI-Forks`
+- MAIN stores only:
+  - wrappers under `forks/`
+  - provenance/tracking under `forks/`
+- MAIN does not store full external trees (no vendored copies).
+
+### Radiance Koolook Version Layout
+
+- Package entry path: `forks/radiance_koolook/__init__.py`
+- Version path (current): `forks/radiance_koolook/versions/v1_0_1/`
+- Modified node source is local and tracked in MAIN:
+  - `forks/radiance_koolook/versions/v1_0_1/nodes_hdr.py`
+  - `forks/radiance_koolook/versions/v1_0_1/nodes_color_management.py`
+  - `forks/radiance_koolook/versions/v1_0_1/nodes_dna.py`
+- External checkout is reference-only raw upstream:
+  - default location: `../ComfyUI-Forks/radiance-v1.0.1-koolook`
+  - baseline used for comparison: upstream `comfyui` tag (`f1b8ae330848fa08aba24c9d3e355cb432d3515b`) because `v1.0.1` tag is not published upstream
+- Node IDs are namespaced with version suffixes (current: `__koolook_v1_0_1`) to avoid collisions.
+- Each version folder should include `UPSTREAM_PIN.yaml` to keep parity with external pinned references.
+
+### Version Pinning (Portable Across PCs/macOS)
+
+- Track every external repo in `forks/forks_manifest.yaml` with:
+  - `source_ref` (tag/version)
+  - `pinned_commit` (exact hash used in production)
+  - `external_checkout.relative_path_from_forks_root`
+- Keep checkout folder names versioned, e.g.:
+  - `radiance-v1.0.1-koolook`
+  - `radiance-v2.3.3-koolook`
+
+### Machine Setup Example
+
+From the parent directory that contains `ComfyUI-Koolook`:
+
+```bash
+mkdir -p ../ComfyUI-Forks
+cd ../ComfyUI-Forks
+git clone https://github.com/fxtdstudios/radiance.git radiance-v1.0.1-koolook
+cd radiance-v1.0.1-koolook
+git checkout f1b8ae330848fa08aba24c9d3e355cb432d3515b
+```
+
+This external folder is for upstream comparison/sync work only.
 
 ## Installation
 ### Via ComfyUI-Manager (Recommended)
