@@ -1,8 +1,13 @@
 _safe*
-.venv/*
+.venv/
 Runpod_Comfy/
 PLAN.md
 
 .env
 .env.local
 .env.*.local
+
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
