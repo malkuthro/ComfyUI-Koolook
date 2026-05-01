@@ -1,26 +1,48 @@
 # ComfyUI-Koolook-Nodes
 
-This repository provides custom nodes for ComfyUI tailored for VFX and AI image/video generation workflows. It includes:
+This repository provides custom nodes for ComfyUI tailored for VFX and AI image/video generation workflows.
 
-- **Easy Version**: A simple node that generates a version string like 'v001' based on an integer input, padded to three digits. Ideal for VFX versioning in ComfyUI workflows, such as naming renders, sequences, or iterations in pipelines involving tools like Save Image or batch processing.
-- **Wan 2.2 Easy Prompt**: A dynamic prompt builder node that loads input fields and dropdown options from a `config.json` file. Inspired by Wan 2.2 parameters (e.g., light sources, lighting types, time of day), it generates comma-separated prompt strings for use in VFX workflows like structured prompts with nodes such as PromptJSON. Supports optional CLIP conditioning for direct integration into positive prompt slots.
-- **Easy Resize**: An image resizing node that adjusts images based on a base dimension (width or height), aspect ratio (e.g., "16:9"), and ensures dimensions are divisible by a specified value (e.g., 32 for model compatibility). Supports stretch, letterbox, or pillarbox modes with padding and cropping options. Perfect for preparing images in VFX pipelines, ensuring compatibility with AI models like Stable Diffusion or video generation tools.
+For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions and naming see [`CLAUDE.md`](CLAUDE.md) and [`Glossary.md`](Glossary.md).
 
-The code for the Easy Resize node is inspired by the Resize Image V2 node from ComfyUI-KJNodes (reference file: image_nodes.py, available at https://github.com/kijai/ComfyUI-KJNodes).
+### Koolook nodes (root package)
 
-## Recent Changes
-- **Node Splitting and Modularity**: All nodes have been split into separate Python files (`k_easy_version.py`, `k_easy_wan22_prompt.py`, `k_easy_resize.py`) for easier management, debugging, and extension in VFX workflows. The `__init__.py` now aggregates imports and mappings dynamically.
-- **Naming Consistency**: Nodes renamed for clarity and prefixed internally (e.g., class names like `Easy_Version`, `EasyWan22Prompt`, `EasyResize`). Display names updated to "Easy Version", "Wan 2.2 Easy Prompt", and "Easy Resize".
-- **Categories Updated**: Nodes appear under "VFX/Utils" (Easy Version), "Koolook/Wan_Video" (Wan 2.2 Easy Prompt), and "Koolook/Image" (Easy Resize) for better organization in ComfyUI's node search.
-- **Improved Documentation**: Usage examples now include VFX-specific tips, such as integrating with versioning for render farms or resizing for multi-resolution pipelines.
+| Node | Display name | Category | Source |
+|------|--------------|----------|--------|
+| `Easy_Version` | Easy Version | `VFX/Utils` | `k_easy_version.py` |
+| `EasyWan22Prompt` | Wan 2.2 Easy Prompt | `Koolook/Wan_Video` | `k_easy_wan22_prompt.py` |
+| `EasyResize` | Easy Resize | `Koolook/Image` | `k_easy_resize.py` |
+| `EasyAIPipeline` | Easy AI Pipeline | `Koolook/VFX` | `k_ai_pipeline.py` |
+| `easy_ImageBatch` | Easy Image Batch | `Koolook/VFX` | `k_easy_image_batch.py` |
+| `KoolookLoadCameraPosesAbsolute` | Koolook Load Camera Poses (Absolute Path) | `Koolook/Camera` | `k_easy_track.py` |
+
+Brief descriptions:
+
+- **Easy Version**: Generates a padded version string like `v001` from an integer. Ideal for naming renders, sequences, or iterations in VFX pipelines.
+- **Wan 2.2 Easy Prompt**: Dynamic prompt builder driven by `config.json` (light source, lighting type, time of day, etc.). Outputs a comma-separated prompt string and optional CLIP conditioning.
+- **Easy Resize**: Aspect-aware image resize that enforces divisibility (e.g., `32`) for model compatibility. Modes: stretch, letterbox, pillarbox; padding and cropping supported. Inspired by the Resize Image V2 node from [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes).
+- **Easy AI Pipeline**: Aggregates VFX shot parameters (shot duration, seed, base path, shot name, AI method, version) into a fully formatted output file path with overwrite protection. For organized writes from Save EXR / Save Image.
+- **Easy Image Batch**: Builds an `IMAGE` + `MASK` batch of length `total_frames` from 1–4 keyframe images placed at explicit frame indices (with `start_frame` offset). Empty frames are filled with black/gray and the mask marks empty=white / occupied=black. Useful for sparse keyframe control with Wan-style video models.
+- **Koolook Load Camera Poses (Absolute Path)**: Loads RealEstate10k-style `CAMERACTRL_POSES` from any absolute path (no ComfyUI path stripping), with overrideable pose width/height. Pairs with AnimateDiff CameraCtrl downstream.
+
+### Radiance Koolook nodes (forked, namespaced)
+
+These come from [`forks/radiance_koolook/versions/v1_0_1/`](forks/radiance_koolook/versions/v1_0_1) and load through the root `__init__.py`. All IDs are namespaced with the suffix `__koolook_v1_0_1` (display suffix `(Koolook v1.0.1)`) to avoid collisions with upstream Radiance.
+
+- HDR / EXR / color: `ImageToFloat32`, `Float32ColorCorrect`, `HDRExpandDynamicRange`, `HDRToneMap`, `ColorSpaceConvert`, `SaveImageEXR`, `LoadImageEXR`, `LoadImageEXRSequence`, `SaveImage16bit`, `HDRHistogram`, `LogCurveEncode`, `LogCurveDecode`
+- OCIO: `RadianceOCIOColorTransformV2` (also exposed under the compact ID `k_easy_OCIO_v101`), `RadianceLogCurveDecode`
+
+See [`forks/README.md`](forks/README.md) for the full fork workflow.
 
 ## Features
 - **Dynamic Inputs for Prompts**: Fields and dropdowns in Wan 2.2 Easy Prompt are defined in `config.json`, allowing easy customization without code changes—great for VFX artists iterating on lighting or camera parameters.
 - **Image Resizing with Aspect Control**: Easy Resize ensures precise resolutions for AI models, with options for keep_proportion preservation, padding colors, and device selection (CPU/CUDA). Supports masks for compositing in VFX.
+- **Pipeline Path Generation**: Easy AI Pipeline assembles VFX-style output paths and filenames from shot/version inputs, with optional version disabling and overwrite protection.
+- **Sparse Keyframe Batches**: Easy Image Batch constructs aligned `IMAGE` + `MASK` batches from up to four keyframe images, ready for sparse video-model control.
+- **Camera Pose Loading**: Koolook Load Camera Poses (Absolute Path) reads RealEstate10k pose TXT files from any disk location and emits `CAMERACTRL_POSES`.
 - **Startup Loading**: Nodes load configurations at ComfyUI launch; edit `config.json` and restart to update.
 - **Output Formatting**: Wan 2.2 Easy Prompt outputs comma-separated strings (skipping "none"), compatible with prompt builders. Easy Resize outputs resized images, masks, and width/height integers. Easy Version provides padded strings for filename appending.
 - **Error Handling**: Fallbacks for missing/invalid JSON in Wan 2.2 Easy Prompt; validation for aspect ratios and divisibility in Easy Resize.
-- **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. No additional dependencies beyond standard Python and ComfyUI libraries.
+- **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. The Koolook root nodes have no extra Python dependencies; the Radiance Koolook nodes optionally use `OpenEXR`, `Imath`, `PyOpenColorIO`, `colour`, `opencv-python`, and `imageio` (imports are guarded — if a dep is missing, the affected Radiance node is unavailable but the rest of the package still loads).
 
 ## RunPod
 
@@ -46,6 +68,34 @@ For production usage, install a pinned stable tag/commit instead of following mo
 - External raw checkout naming:
   - pinned: `<repo>-v<version>-koolook`
   - rolling upstream: `<repo>-main-upstream`
+
+## Sibling Projects
+
+Some related work lives in **sibling folders/repositories** outside MAIN. They are *consulted* (read-only knowledge sources, references, etc.) but never imported by MAIN at runtime. To keep the public repo free of machine-specific absolute paths, every sibling is referenced through an environment variable.
+
+### Conventions
+
+- Variable prefix: `KOLOOK_*` (matches the existing `KOLOOK_FORKS_DIR`).
+- Real paths live in a local, gitignored `.env` file. The committed `.env.example` declares the variable names with placeholder values.
+- Public docs and committed code reference siblings only via the env var name (and an optional portable relative default like `../<folder>`). Never hardcode an absolute path with a username.
+- A sibling project is a *runtime-optional* reference. If the variable is unset and no default is documented, agents/code must treat the sibling as unavailable and continue gracefully.
+
+### Registered siblings
+
+| Role | Env var | Portable default | Status |
+|------|---------|------------------|--------|
+| External forks root (raw upstream clones) | `KOLOOK_FORKS_DIR` | `../ComfyUI-Forks` | documented in `forks/forks_manifest.yaml` |
+| ComfyUI knowledge database | `KOLOOK_COMFYUI_KB_DIR` | `../ComfyUI_knowledge___DB` | read-only knowledge source |
+| Personal knowledge database | `KOLOOK_PERSONAL_KB_DIR` | *(no default — user-specific)* | optional |
+
+### Local setup
+
+```bash
+cp .env.example .env
+# Edit .env to point at the real paths on your machine.
+```
+
+Do **not** commit `.env`. The default `.gitignore` already excludes `.env`, `.env.local`, and `.env.*.local`.
 
 ## External Fork Workflow (No Vendoring in MAIN)
 
@@ -101,10 +151,13 @@ This external folder is for upstream comparison/sync work only.
 2. Go to "Install Custom Nodes" > "Install via Git URL".
 3. Paste the repository URL: `https://github.com/malkuthro/ComfyUI-Koolook.git`.
 4. Install and restart ComfyUI.
-5. The nodes will appear:
-   - "Easy Version" under "VFX/Utils".
-   - "Wan 2.2 Easy Prompt" under "Koolook/Wan_Video".
-   - "Easy Resize" under "Koolook/Image".
+5. Nodes appear under these categories in the node search:
+   - `VFX/Utils` — Easy Version
+   - `Koolook/Wan_Video` — Wan 2.2 Easy Prompt
+   - `Koolook/Image` — Easy Resize
+   - `Koolook/VFX` — Easy AI Pipeline, Easy Image Batch
+   - `Koolook/Camera` — Koolook Load Camera Poses (Absolute Path)
+   - Radiance categories (set by upstream Radiance) for the namespaced `(Koolook v1.0.1)` nodes
 
 ### Manual Installation
 1. Clone this repository into your `ComfyUI/custom_nodes/` directory:
@@ -114,7 +167,7 @@ This external folder is for upstream comparison/sync work only.
 2. Ensure `__init__.py` and `config.json` are in the cloned folder.
 3. Restart ComfyUI.
 
-No additional dependencies required beyond standard Python libraries.
+The root Koolook nodes have no additional Python dependencies. To enable the Radiance Koolook v1.0.1 nodes that handle EXR / OCIO / HDR work, install the optional packages: `OpenEXR`, `Imath`, `PyOpenColorIO`, `colour-science`, `opencv-python`, and `imageio`.
 
 ## Usage
 
@@ -168,10 +221,22 @@ This is the default configuration based on Wan 2.2 parameters:
 
 ## Node Code Overview
 The core logic is split across files for modularity:
-- **k_easy_version.py**: Handles `Easy_Version` class for string formatting.
-- **k_easy_wan22_prompt.py**: Loads `config.json` at import time, builds inputs dynamically (combos for dropdowns, strings for text), and formats selections into prompt strings with optional CLIP conditioning.
-- **k_easy_resize.py**: Parses aspect ratios, computes divisible dimensions, resizes with common_upscale, and handles padding/cropping. Inspired by Resize Image V2 from ComfyUI-KJNodes.
-- **__init__.py**: Imports all nodes and merges mappings for ComfyUI integration.
+
+Root Koolook nodes:
+- **k_easy_version.py** — `Easy_Version` class for padded version-string formatting.
+- **k_easy_wan22_prompt.py** — loads `config.json` at import time, builds inputs dynamically (combos for dropdowns, strings for text), and formats selections into prompt strings with optional CLIP conditioning.
+- **k_easy_resize.py** — parses aspect ratios, computes divisible dimensions, resizes with `common_upscale`, and handles padding/cropping. Inspired by Resize Image V2 from ComfyUI-KJNodes.
+- **k_ai_pipeline.py** — `EasyAIPipeline` builds VFX output paths/filenames from shot/version inputs and creates the output directory.
+- **k_easy_image_batch.py** — `easy_ImageBatch` builds aligned `IMAGE`+`MASK` keyframe batches with placeholder fill.
+- **k_easy_track.py** — `KoolookLoadCameraPosesAbsolute` loads RealEstate10k pose TXT files from any path.
+
+Forked/wrapped nodes:
+- **forks/radiance_koolook/** — version-namespaced wrapper for the Radiance fork. Currently exposes the `v1_0_1` set; modified node sources live in `forks/radiance_koolook/versions/v1_0_1/{nodes_hdr,nodes_color_management,nodes_dna}.py`. The wrapper applies the `__koolook_v1_0_1` ID suffix and the optional short ID `k_easy_OCIO_v101`.
+- **forks/forks_manifest.yaml**, **forks/THIRD_PARTY.md**, **forks/README.md** — fork tracking metadata.
+
+Glue and frontend:
+- **__init__.py** — imports all node packages, merges `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS`, and exposes `WEB_DIRECTORY = "./web"`.
+- **web/** — JavaScript extensions loaded by ComfyUI for the Koolook nodes (e.g., `ai_pipeline.js`).
 
 For advanced customizations (e.g., different output formats or additional resize modes), modify the `execute` or `adjust_to_aspect` methods in the respective files.
 

@@ -32,7 +32,7 @@ class EasyAIPipeline:
                     "multiline": False
                 }),
                 "base_directory_path": ("STRING", {
-                    "default": "n:/TRK_sync_BIG_NJOBS/baconx/Menneskehavn/outputs/VIDEO/ComfyUI/Wan2.1/Vortex/pComps",
+                    "default": "place your desired output dir here",
                     "multiline": True
                 }),
                 "extension": ("STRING", {
