@@ -2,3 +2,7 @@ _safe*
 .venv/*
 Runpod_Comfy/
 PLAN.md
+
+.env
+.env.local
+.env.*.local

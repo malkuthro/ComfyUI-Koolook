@@ -5,6 +5,7 @@
 - MAIN repo: `ComfyUI-Koolook`
 - External forks root (default): `../ComfyUI-Forks` (relative to MAIN)
 - External third-party code must remain outside MAIN.
+- Sibling projects (read-only references that live outside MAIN) are referenced via `KOLOOK_*` env vars only. Never hardcode absolute paths with usernames in committed files. Real paths live in `.env` (gitignored); the committed `.env.example` is the public template. See README "Sibling Projects" and `Glossary.md`.
 
 ## Hard rules
 

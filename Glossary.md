@@ -47,3 +47,15 @@ Short, plain-English definitions for this repo workflow.
 ## Pinned Commit
 - The exact git commit hash you lock to for reproducibility.
 - Use this when moving to another computer so behavior matches exactly.
+
+## Sibling Project
+- A related repository or folder that lives **outside MAIN** and is consulted (read-only) but never imported by MAIN at runtime.
+- Examples: external forks root, ComfyUI knowledge database, personal knowledge database.
+- Always referenced by env var (e.g. `KOLOOK_COMFYUI_KB_DIR`) — never by absolute path in committed files.
+- Real paths live in `.env` (gitignored). The committed `.env.example` declares the variable names.
+- Treated as runtime-optional: if the env var is unset and there is no portable default, the sibling is considered unavailable.
+
+## `.env` / `.env.example`
+- `.env.example` (committed) — public template listing the env var names with safe placeholder values.
+- `.env` (gitignored) — each user's local file with real machine-specific paths.
+- Pattern matches the existing `KOLOOK_FORKS_DIR` convention.
