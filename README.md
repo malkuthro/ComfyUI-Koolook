@@ -69,6 +69,34 @@ For production usage, install a pinned stable tag/commit instead of following mo
   - pinned: `<repo>-v<version>-koolook`
   - rolling upstream: `<repo>-main-upstream`
 
+## Sibling Projects
+
+Some related work lives in **sibling folders/repositories** outside MAIN. They are *consulted* (read-only knowledge sources, references, etc.) but never imported by MAIN at runtime. To keep the public repo free of machine-specific absolute paths, every sibling is referenced through an environment variable.
+
+### Conventions
+
+- Variable prefix: `KOLOOK_*` (matches the existing `KOLOOK_FORKS_DIR`).
+- Real paths live in a local, gitignored `.env` file. The committed `.env.example` declares the variable names with placeholder values.
+- Public docs and committed code reference siblings only via the env var name (and an optional portable relative default like `../<folder>`). Never hardcode an absolute path with a username.
+- A sibling project is a *runtime-optional* reference. If the variable is unset and no default is documented, agents/code must treat the sibling as unavailable and continue gracefully.
+
+### Registered siblings
+
+| Role | Env var | Portable default | Status |
+|------|---------|------------------|--------|
+| External forks root (raw upstream clones) | `KOLOOK_FORKS_DIR` | `../ComfyUI-Forks` | documented in `forks/forks_manifest.yaml` |
+| ComfyUI knowledge database | `KOLOOK_COMFYUI_KB_DIR` | `../ComfyUI_knowledge___DB` | read-only knowledge source |
+| Personal knowledge database | `KOLOOK_PERSONAL_KB_DIR` | *(no default — user-specific)* | optional |
+
+### Local setup
+
+```bash
+cp .env.example .env
+# Edit .env to point at the real paths on your machine.
+```
+
+Do **not** commit `.env`. The default `.gitignore` already excludes `.env`, `.env.local`, and `.env.*.local`.
+
 ## External Fork Workflow (No Vendoring in MAIN)
 
 This repository is the MAIN control repo. Large third-party repositories must stay outside MAIN.
