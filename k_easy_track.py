@@ -35,7 +35,7 @@ class KoolookLoadCameraPosesAbsolute:
                 "file_path": (
                     "STRING",
                     {
-                        "default": "C:/projects/shot01/camera/test_camera_track.txt",
+                        "default": "input/poses/example_track.txt",
                         "multiline": False,
                     },
                 ),
