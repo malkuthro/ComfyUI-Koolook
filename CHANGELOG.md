@@ -6,7 +6,22 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-### Fixed
+## [0.1.10] - 2026-05-04
+
+### Removed (BREAKING for any saved workflow using `Easy_Version`)
+- Dropped `Easy_Version` (and the `k_easy_version.py` source) — the
+  whole node was just a one-liner that turned an integer N into the
+  string `vNNN` (zero-padded). Maintainer concluded it was the first
+  trivial node they ever wrote and saw no real value. Anyone who needs
+  this exact behavior can either:
+  - inline the format string in their workflow downstream of an INT
+    primitive (`f"v{N:03d}"`), or
+  - use any of the more general string-format nodes in the ecosystem
+    (KJ Nodes, ComfyUI-Custom-Scripts, etc.).
+- Saved workflows that reference the `Easy_Version` ID will fail to
+  load — same migration as v0.1.5's `__koolook_v1_0_1` cleanup.
+
+### Fixed (carried over from PR #39, [Unreleased] in 0.1.8)
 - `Easy_hdr_VAE_encode` (Koolook v2.3.3) now wraps the encoded tensor in
   the standard ComfyUI `LATENT` dict (`{"samples": t}`) instead of
   returning the raw tensor. Wiring this node into KSampler previously
@@ -14,6 +29,25 @@ The format is inspired by Keep a Changelog and SemVer.
   on Wan 2.2 video workflows, because KSampler does
   `latent["samples"]` and the raw 5-D tensor doesn't support string
   indexing. The decoder side was already correct.
+
+### Added (carried over from PR #40, also unreleased on main)
+- `scripts/sync_to_dev.py` — pure-stdlib helper that copies the curated
+  runtime files (`__init__.py`, `config.json`, top-level `k_*.py`,
+  `forks/`, `web/`) into a live ComfyUI `custom_nodes/<pack>/` folder
+  for fast local iteration without bumping a version. Reads the target
+  path from the new `KOLOOK_COMFYUI_DEV_PATH` env var (auto-loads `.env`
+  from repo root); errors out cleanly when unset.
+- `.env.example` — `KOLOOK_COMFYUI_DEV_PATH=` entry with comment.
+- `CLAUDE.md` — new "`dev-sync`" trigger-phrase section so the agent
+  knows to run `scripts/sync_to_dev.py` when the maintainer says
+  "dev-sync" / "sync dev" / "copy those files" mid-session.
+
+### Net effect
+- Node count drops from 8 to **7**.
+- `Koolook/Pipeline` subfolder now has only 1 entry (`Easy AI Pipeline`)
+  instead of 2.
+- Faster local dev loop: a one-line tweak no longer requires cutting a
+  full release just to test it inside ComfyUI.
 
 ## [0.1.8] - 2026-05-03
 

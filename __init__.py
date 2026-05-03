@@ -1,6 +1,3 @@
-from .k_easy_version import NODE_CLASS_MAPPINGS as version_mappings
-from .k_easy_version import NODE_DISPLAY_NAME_MAPPINGS as version_display
-
 from .k_easy_wan22_prompt import NODE_CLASS_MAPPINGS as wan_mappings
 from .k_easy_wan22_prompt import NODE_DISPLAY_NAME_MAPPINGS as wan_display
 
@@ -20,7 +17,6 @@ from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mapp
 from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
 
 NODE_CLASS_MAPPINGS = {
-    **version_mappings,
     **wan_mappings,
     **resize_mappings,
     **pipeline_mappings,
@@ -30,7 +26,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    **version_display,
     **wan_display,
     **resize_display,
     **pipeline_display,
