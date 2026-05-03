@@ -35,6 +35,27 @@
 - When upgrading external forks (v2, v3, etc.), add a new wrapper/version namespace.
 - Never rename existing namespaced node IDs that already appear in saved workflows.
 
+## `dev-sync` — copy runtime files into a live ComfyUI install
+
+For fast iteration on a fix that doesn't deserve its own version bump,
+copy runtime files straight into a live ComfyUI custom_nodes folder
+instead of cutting a release.
+
+- Set `KOLOOK_COMFYUI_DEV_PATH` in `.env` (see `.env.example`). The path
+  must point at the maintainer's `custom_nodes/<koolook-folder>/`. It is
+  intentionally kept out of the committed tree.
+- Run `python scripts/sync_to_dev.py` (or `--dry-run` to preview).
+- Restart ComfyUI to load the new code.
+
+**Trigger phrase: `dev-sync`** (or any clear synonym like "copy those
+files", "sync dev", "push to dev"). When the maintainer says it during
+a session, the agent runs `scripts/sync_to_dev.py` and reports what was
+copied. The script errors out cleanly when the env var is unset; never
+guess a path.
+
+This is a development convenience only — anything worth shipping still
+goes through the normal PR + release flow described below.
+
 ## Releasing
 
 - The canonical release procedure is `docs/maintainers/releasing.md`. Follow it for every
