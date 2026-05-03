@@ -6,7 +6,24 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-05-03
+## [0.1.3] - 2026-05-03
+
+### Renamed
+- The new v2_3_3 VAE nodes are now exposed as `Easy_hdr_VAE_encode` /
+  `Easy_hdr_VAE_decode` (clean IDs and display names — no
+  `__koolook_v2_3_3` suffix), to avoid visual collision with upstream
+  Radiance v2.3.3's `RadianceVAEEncode` / `RadianceVAEDecode` aliases
+  in the ComfyUI node-add search. The version is still tracked
+  structurally (file lives in `versions/v2_3_3/`) and textually
+  (file header + UPSTREAM_PIN.yaml + forks/THIRD_PARTY.md). Other
+  Koolook nodes in the v2_3_3 set (none today, but possible in future)
+  would still use the `__koolook_v2_3_3` suffix by default — opt out
+  via the new `SKIP_VERSION_SUFFIX` set in `versions/v2_3_3/__init__.py`.
+- 0.1.2 was test-published to the registry with the previous
+  `RadianceVAEEncode__koolook_v2_3_3` IDs but never tagged or formally
+  released; bumping to 0.1.3 publishes the renamed version cleanly.
+
+## [0.1.2] - 2026-05-03 (test-published only, superseded by 0.1.3)
 
 ### License (BREAKING)
 - **Relicensed entire package to GPL-3.0.** v0.1.0 and v0.1.1 shipped under

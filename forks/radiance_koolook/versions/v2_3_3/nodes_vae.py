@@ -131,11 +131,11 @@ _REC709_TO_AP1 = torch.tensor(
 
 
 # ───────────────────────────────────────────────────────────────────────
-# RadianceVAEEncode (Koolook v2.3.3)
+# Easy_hdr_VAE_encode (Koolook v2.3.3)
 # ───────────────────────────────────────────────────────────────────────
 
 
-class RadianceVAEEncode:
+class Easy_hdr_VAE_encode:
     """
     Slim, video-friendly Radiance-style VAE encoder.
 
@@ -214,7 +214,7 @@ class RadianceVAEEncode:
 
         if img.shape[-1] < 3:
             raise ValueError(
-                f"RadianceVAEEncode (Koolook v2.3.3): input tensor must have "
+                f"Easy_hdr_VAE_encode (Koolook v2.3.3): input tensor must have "
                 f">= 3 channels in the last dimension; got shape "
                 f"{tuple(img.shape)}."
             )
@@ -261,7 +261,7 @@ class RadianceVAEEncode:
             msg = str(exc)
             if "must match" in msg and "non-singleton dimension" in msg:
                 raise RuntimeError(
-                    f"RadianceVAEEncode (Koolook v2.3.3): vae.encode() failed "
+                    f"Easy_hdr_VAE_encode (Koolook v2.3.3): vae.encode() failed "
                     f"with a tensor-shape mismatch ({msg}). Input shape was "
                     f"{tuple(img_rgb.shape)}. For video VAEs (Wan, Hunyuan, "
                     f"CogVideoX, LTX) this usually means another tensor in the "
@@ -275,7 +275,7 @@ class RadianceVAEEncode:
             raise
 
         debug = (
-            f"RadianceVAEEncode (Koolook v2.3.3) | input shape "
+            f"Easy_hdr_VAE_encode (Koolook v2.3.3) | input shape "
             f"{tuple(img_rgb.shape)} | source_space={source_space} | "
             f"exposure={exposure:+.2f} | hdr_mode={hdr_mode} | "
             f"alpha_handling={alpha_handling}"
@@ -284,11 +284,11 @@ class RadianceVAEEncode:
 
 
 # ───────────────────────────────────────────────────────────────────────
-# RadianceVAEDecode (Koolook v2.3.3)
+# Easy_hdr_VAE_decode (Koolook v2.3.3)
 # ───────────────────────────────────────────────────────────────────────
 
 
-class RadianceVAEDecode:
+class Easy_hdr_VAE_decode:
     """
     Slim, video-friendly Radiance-style VAE decoder.
 
@@ -349,7 +349,7 @@ class RadianceVAEDecode:
             msg = str(exc)
             if "must match" in msg and "non-singleton dimension" in msg:
                 raise RuntimeError(
-                    f"RadianceVAEDecode (Koolook v2.3.3): vae.decode() failed "
+                    f"Easy_hdr_VAE_decode (Koolook v2.3.3): vae.decode() failed "
                     f"with a tensor-shape mismatch ({msg}). Latent shape was "
                     f"{tuple(samples['samples'].shape)}. Verify the latent was "
                     f"produced by the same VAE you're decoding with."
@@ -382,7 +382,7 @@ class RadianceVAEDecode:
             img = _apply_3x3_color_matrix(linear, matrix)
 
         debug = (
-            f"RadianceVAEDecode (Koolook v2.3.3) | output shape "
+            f"Easy_hdr_VAE_decode (Koolook v2.3.3) | output shape "
             f"{tuple(img.shape)} | target_space={target_space} | "
             f"exposure_adjust={exposure_adjust:+.2f}"
         )
@@ -395,11 +395,11 @@ class RadianceVAEDecode:
 # ───────────────────────────────────────────────────────────────────────
 
 NODE_CLASS_MAPPINGS = {
-    "RadianceVAEEncode": RadianceVAEEncode,
-    "RadianceVAEDecode": RadianceVAEDecode,
+    "Easy_hdr_VAE_encode": Easy_hdr_VAE_encode,
+    "Easy_hdr_VAE_decode": Easy_hdr_VAE_decode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceVAEEncode": "◆ Radiance VAE Encode (Video-friendly)",
-    "RadianceVAEDecode": "◆ Radiance VAE Decode (Video-friendly)",
+    "Easy_hdr_VAE_encode": "Easy_hdr_VAE_encode",
+    "Easy_hdr_VAE_decode": "Easy_hdr_VAE_decode",
 }
