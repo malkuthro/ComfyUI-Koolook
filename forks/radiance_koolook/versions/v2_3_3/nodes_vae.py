@@ -280,7 +280,11 @@ class Easy_hdr_VAE_encode:
             f"exposure={exposure:+.2f} | hdr_mode={hdr_mode} | "
             f"alpha_handling={alpha_handling}"
         )
-        return (latent, debug)
+        # Wrap in the standard ComfyUI LATENT dict so downstream samplers
+        # (KSampler etc.) can do `latent["samples"]`. vae.encode() always
+        # returns the bare tensor, never the dict — every VAEEncode wrapper
+        # in upstream ComfyUI does this same wrapping.
+        return ({"samples": latent}, debug)
 
 
 # ───────────────────────────────────────────────────────────────────────

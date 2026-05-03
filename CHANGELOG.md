@@ -6,6 +6,15 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- `Easy_hdr_VAE_encode` (Koolook v2.3.3) now wraps the encoded tensor in
+  the standard ComfyUI `LATENT` dict (`{"samples": t}`) instead of
+  returning the raw tensor. Wiring this node into KSampler previously
+  crashed with `IndexError: too many indices for tensor of dimension 5`
+  on Wan 2.2 video workflows, because KSampler does
+  `latent["samples"]` and the raw 5-D tensor doesn't support string
+  indexing. The decoder side was already correct.
+
 ## [0.1.8] - 2026-05-03
 
 ### Changed (categories — affects ComfyUI node-add menu)
