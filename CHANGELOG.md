@@ -6,6 +6,20 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Changed
+- All node display names now suffix `(Koolook)` so they surface together
+  when users search "koolook" in the ComfyUI node-add menu. Previously
+  only `KoolookLoadCameraPosesAbsolute` (and the v2.3.3 fork nodes via
+  their version suffix) matched.
+  - `Easy_Version` → `Easy Version (Koolook)`
+  - `EasyAIPipeline` → `Easy AI Pipeline (Koolook)`
+  - `easy_ImageBatch` → `Easy Image Batch (Koolook)`
+  - `EasyWan22Prompt` → `Wan 2.2 Easy Prompt (Koolook)`
+  - `Easy_Version` category moved from `VFX/Utils` to `Koolook/VFX`
+    to match the rest of the pack.
+- Class keys (`NODE_CLASS_MAPPINGS`) are unchanged — saved workflows keep
+  loading and running unchanged.
+
 ## [0.1.6] - 2026-05-03
 
 ### Renamed (with back-compat alias)
