@@ -7,40 +7,36 @@ The package as a whole is licensed **GPL-3.0** (see [`LICENSE`](../LICENSE))
 because it incorporates GPL-3.0 code from upstream Radiance per the entries
 below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 
+> **Note:** the v0.1.0–0.1.4 releases also incorporated a much larger
+> Radiance v1.0 fork (~5,200 lines under
+> `forks/radiance_koolook/versions/v1_0_1/`) which was removed in v0.1.5.
+> The package's GPL-3.0 license persists from the v0.1.2 relicense and
+> from the remaining v2_3_3 fork below; downgrading back to MIT would be
+> confusing for downstream users and is not planned.
+
 ## Entries
 
-### fxtdstudios/radiance — v1.0.1 baseline (Koolook fork)
+### fxtdstudios/radiance — v1.0.1 baseline (REMOVED in v0.1.5)
 
+- **Status:** **Removed** in ComfyUI-Koolook v0.1.5 (2026-05-03).
 - **Name:** Radiance (FXTD Studios)
 - **Upstream repo URL:** https://github.com/fxtdstudios/radiance
-- **Upstream commit/tag used:** `f1b8ae330848fa08aba24c9d3e355cb432d3515b`
-  (closest public baseline; upstream `comfyui` branch tip when v1.0.1 was
-  packaged. The `v1.0.1` tag itself was never published upstream.)
-- **License:** GPL-3.0
-- **Local path(s):** [`forks/radiance_koolook/versions/v1_0_1/`](radiance_koolook/versions/v1_0_1/)
-  - `nodes_hdr.py`
-  - `nodes_color_management.py`
-  - `nodes_dna.py`
-  - `__init__.py`
-  - `UPSTREAM_PIN.yaml`
-- **What changed locally:**
-  - `RadianceOCIOColorTransformV2` is a Koolook-modified copy of upstream's
-    `RadianceOCIOColorTransform`: added `_list_colorspaces()` helper, a
-    second `STRING` debug output, config-file path sanitization, alpha-channel
-    preservation, and a multi-frame batch processing path (flattening all
-    frames into one `applyRGB` call).
-  - `LoadImageEXRSequence` is a Koolook-original sequence loader (no upstream
-    counterpart at this commit).
-  - `RadianceVAEEncode` and `RadianceVAEDecode` are Koolook-original wrappers
-    that integrate ComfyUI VAEs with HDR/ACEScg color-space handling. Upstream
-    v1.0 did not ship VAE classes; v2.0+ added the much larger
-    `RadianceVAE4KEncode` family.
-  - All exposed node IDs are namespaced with the suffix `__koolook_v1_0_1` to
-    avoid collisions with installed copies of upstream Radiance.
-- **Why changed:** Adapt color-management nodes for VFX pipelines where image
-  inputs are sequences (video frames) rather than single stills, and add HDR
-  VAE wrappers tailored for Koolook's AI image/video generation workflows.
-- **Last reviewed:** 2026-05-03
+- **Upstream commit/tag that was used:** `f1b8ae330848fa08aba24c9d3e355cb432d3515b`
+- **License:** GPL-3.0 (still applies to the historical commits in our git
+  history that contain the derived code).
+- **What was removed:** The entire `forks/radiance_koolook/versions/v1_0_1/`
+  folder (~5,200 lines / 26 namespaced nodes). It wrapped 24 verbatim
+  Radiance v1.0 classes plus 2 Koolook-modified ones
+  (`RadianceOCIOColorTransformV2` with a multiframe + alpha-preserving
+  variant; `LoadImageEXRSequence` as a Koolook-original sequence loader;
+  `RadianceVAEEncode/Decode` as Koolook-original VAE wrappers).
+- **Why removed:** The wrappers were vestigial — Koolook authors never
+  used them, no internal workflow referenced the `__koolook_v1_0_1`
+  namespaced IDs, and the VAE pair was superseded by `Easy_hdr_VAE_encode`
+  / `Easy_hdr_VAE_decode` in the v2_3_3 fork. Users who want Radiance
+  functionality should install upstream Radiance directly.
+- **Recoverable via git history.** Last commit containing the v1_0_1 code:
+  see CHANGELOG.md `[0.1.5]` for the SHA after the v0.1.5 release lands.
 
 ### fxtdstudios/radiance — v2.3.3 VAE subset (Koolook fork)
 

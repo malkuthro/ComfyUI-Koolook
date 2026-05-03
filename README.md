@@ -24,12 +24,16 @@ Brief descriptions:
 - **Easy Image Batch**: Builds an `IMAGE` + `MASK` batch of length `total_frames` from 1–4 keyframe images placed at explicit frame indices (with `start_frame` offset). Empty frames are filled with black/gray and the mask marks empty=white / occupied=black. Useful for sparse keyframe control with Wan-style video models.
 - **Koolook Load Camera Poses (Absolute Path)**: Loads RealEstate10k-style `CAMERACTRL_POSES` from any absolute path (no ComfyUI path stripping), with overrideable pose width/height. Pairs with AnimateDiff CameraCtrl downstream.
 
-### Radiance Koolook nodes (forked, namespaced)
+### Radiance Koolook nodes (v2_3_3 fork — video-friendly VAE)
 
-These come from [`forks/radiance_koolook/versions/v1_0_1/`](forks/radiance_koolook/versions/v1_0_1) and load through the root `__init__.py`. All IDs are namespaced with the suffix `__koolook_v1_0_1` (display suffix `(Koolook v1.0.1)`) to avoid collisions with upstream Radiance.
+These come from [`forks/radiance_koolook/versions/v2_3_3/`](forks/radiance_koolook/versions/v2_3_3) and load through the root `__init__.py`. They are slim, rank-agnostic re-implementations of the upstream Radiance v2.3.3 VAE encoder/decoder that work correctly with video VAEs (Wan 2.2, Hunyuan, CogVideoX, LTX) — they skip the upstream's 4K cosine-blend tile engine, which conflicts with video VAEs that already handle their own internal stitching.
 
-- HDR / EXR / color: `ImageToFloat32`, `Float32ColorCorrect`, `HDRExpandDynamicRange`, `HDRToneMap`, `ColorSpaceConvert`, `SaveImageEXR`, `LoadImageEXR`, `LoadImageEXRSequence`, `SaveImage16bit`, `HDRHistogram`, `LogCurveEncode`, `LogCurveDecode`
-- OCIO: `RadianceOCIOColorTransformV2` (also exposed under the compact ID `k_easy_OCIO_v101`), `RadianceLogCurveDecode`
+| Node ID | Display name | Category |
+|---|---|---|
+| `Easy_hdr_VAE_encode` | `Easy_hdr_VAE_encode` | `Koolook/VFX` |
+| `Easy_hdr_VAE_decode` | `Easy_hdr_VAE_decode` | `Koolook/VFX` |
+
+> **History note:** the v0.1.0–v0.1.4 releases also shipped a much larger `versions/v1_0_1/` fork that wrapped 26 Radiance v1.0 classes (HDR, EXR, OCIO, log curves, etc.) under the `__koolook_v1_0_1` namespace. Those wrappers were vestigial — never used by Koolook authors — and were removed in v0.1.5. Users who want that functionality should install upstream Radiance directly. See [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md) for full attribution and removal rationale.
 
 See [`forks/README.md`](forks/README.md) for the full fork workflow.
 
@@ -42,7 +46,7 @@ See [`forks/README.md`](forks/README.md) for the full fork workflow.
 - **Startup Loading**: Nodes load configurations at ComfyUI launch; edit `config.json` and restart to update.
 - **Output Formatting**: Wan 2.2 Easy Prompt outputs comma-separated strings (skipping "none"), compatible with prompt builders. Easy Resize outputs resized images, masks, and width/height integers. Easy Version provides padded strings for filename appending.
 - **Error Handling**: Fallbacks for missing/invalid JSON in Wan 2.2 Easy Prompt; validation for aspect ratios and divisibility in Easy Resize.
-- **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. The Koolook root nodes have no extra Python dependencies; the Radiance Koolook nodes optionally use `OpenEXR`, `Imath`, `PyOpenColorIO`, `colour`, `opencv-python`, and `imageio` (imports are guarded — if a dep is missing, the affected Radiance node is unavailable but the rest of the package still loads).
+- **Compatibility**: Works with ComfyUI-Manager for easy installation via Git URL. The Koolook root nodes and the slim v2_3_3 VAE wrappers have no extra Python dependencies beyond `torch` (already required by ComfyUI itself).
 
 ## RunPod
 
@@ -111,16 +115,15 @@ This repository is the MAIN control repo. Large third-party repositories must st
 ### Radiance Koolook Version Layout
 
 - Package entry path: `forks/radiance_koolook/__init__.py`
-- Version path (current): `forks/radiance_koolook/versions/v1_0_1/`
+- Active version path: `forks/radiance_koolook/versions/v2_3_3/`
 - Modified node source is local and tracked in MAIN:
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_hdr.py`
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_color_management.py`
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_dna.py`
+  - `forks/radiance_koolook/versions/v2_3_3/nodes_vae.py`
 - External checkout is reference-only raw upstream:
-  - default location: `../ComfyUI-Forks/radiance-v1.0.1-koolook`
-  - baseline used for comparison: upstream `comfyui` tag (`f1b8ae330848fa08aba24c9d3e355cb432d3515b`) because `v1.0.1` tag is not published upstream
-- Node IDs are namespaced with version suffixes (current: `__koolook_v1_0_1`) to avoid collisions.
+  - default location: `../ComfyUI-Forks/radiance-v2.3.3-koolook`
+  - baseline used for comparison: upstream commit `f262f47ddfda01ece154bf80c22769b1e4cef795` (the v2.3.3 release commit; the cleanest tag pointing at it is the typo'd `radinace2.3.3`, so we pin by SHA)
+- Node IDs in the v2_3_3 fork are exposed verbatim as `Easy_hdr_VAE_encode` / `Easy_hdr_VAE_decode` (the `__koolook_v2_3_3` namespace suffix is skipped via `SKIP_VERSION_SUFFIX` in `versions/v2_3_3/__init__.py` because the Koolook-specific names already differentiate them from upstream).
 - Each version folder should include `UPSTREAM_PIN.yaml` to keep parity with external pinned references.
+- The historical `v1_0_1` folder was removed in v0.1.5; see [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md).
 
 ### Version Pinning (Portable Across PCs/macOS)
 
@@ -232,7 +235,7 @@ Root Koolook nodes:
 - **k_easy_track.py** — `KoolookLoadCameraPosesAbsolute` loads RealEstate10k pose TXT files from any path.
 
 Forked/wrapped nodes:
-- **forks/radiance_koolook/** — version-namespaced wrapper for the Radiance fork. Currently exposes the `v1_0_1` set; modified node sources live in `forks/radiance_koolook/versions/v1_0_1/{nodes_hdr,nodes_color_management,nodes_dna}.py`. The wrapper applies the `__koolook_v1_0_1` ID suffix and the optional short ID `k_easy_OCIO_v101`.
+- **forks/radiance_koolook/** — version-namespaced wrapper for the Radiance fork. Currently exposes the `v2_3_3` set; modified node sources live in `forks/radiance_koolook/versions/v2_3_3/nodes_vae.py`. The wrapper supports the `__koolook_vX_Y_Z` ID suffix pattern but lets specific Koolook-named IDs (like `Easy_hdr_VAE_encode/decode`) ship without the suffix via the `SKIP_VERSION_SUFFIX` set.
 - **forks/forks_manifest.yaml**, **forks/THIRD_PARTY.md**, **forks/README.md** — fork tracking metadata.
 
 Glue and frontend:
