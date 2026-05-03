@@ -35,3 +35,14 @@
 
 - When upgrading external forks (v2, v3, etc.), add a new wrapper/version namespace.
 - Never rename existing namespaced node IDs that already appear in saved workflows.
+
+## Releasing
+
+- The canonical release procedure is `RELEASING.md`. Follow it for every
+  `vX.Y.Z` cut — do not invent a one-off flow.
+- The per-release tickbox mirror is `.github/ISSUE_TEMPLATE/release_checklist.md`.
+  Open one as a tracking issue when starting a release.
+- Always validate the Comfy Registry publish against the PR branch
+  (`gh workflow run publish.yml --ref release/vX.Y.Z-prep`) before merging.
+  A `Failed to validate token` error is almost always a `[tool.comfy] PublisherId`
+  mismatch, not a token problem.

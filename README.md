@@ -55,10 +55,11 @@ RunPod management has been moved to a separate private repository for active ope
 
 For production usage, install a pinned stable tag/commit instead of following moving branch heads.
 
-- Release workflow: `forks/README.md`
-- Change history: `CHANGELOG.md`
-- Fork tracking: `forks/THIRD_PARTY.md`, `forks/forks_manifest.yaml`
-- Fork workflow guide: `forks/README.md`
+- **Release procedure**: [`RELEASING.md`](RELEASING.md) (canonical, step-by-step)
+- Per-release checklist template: [`.github/ISSUE_TEMPLATE/release_checklist.md`](.github/ISSUE_TEMPLATE/release_checklist.md)
+- Change history: [`CHANGELOG.md`](CHANGELOG.md)
+- Fork tracking: [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md), [`forks/forks_manifest.yaml`](forks/forks_manifest.yaml)
+- Fork workflow guide: [`forks/README.md`](forks/README.md)
 
 ### Tagging Policy (from now on)
 
