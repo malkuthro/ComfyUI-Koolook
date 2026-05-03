@@ -71,7 +71,7 @@ class easy_ImageBatch:
     RETURN_TYPES = ("IMAGE", "MASK", )
     RETURN_NAMES = ("image_batch", "mask_batch", )
     FUNCTION = "create_batch"
-    CATEGORY = "Koolook/VFX"
+    CATEGORY = "Koolook/Image"
     OUTPUT_NODE = False  # Not necessarily an output node, but can be chained
 
     def create_batch(self, total_frames, start_frame, placeholder_color, image1, image1_frame, image2=None, image2_frame=None, image3=None, image3_frame=None, image4=None, image4_frame=None):

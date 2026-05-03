@@ -194,7 +194,7 @@ class Easy_hdr_VAE_encode:
     RETURN_TYPES = ("LATENT", "STRING")
     RETURN_NAMES = ("samples", "debug_info")
     FUNCTION = "encode"
-    CATEGORY = "Koolook/VFX"
+    CATEGORY = "Koolook/VAE"
     DESCRIPTION = (
         "Encode 32-bit Linear/ACEScg images or image sequences (video) to "
         "VAE latents. Skips upstream Radiance's 4K tile engine for "
@@ -329,7 +329,7 @@ class Easy_hdr_VAE_decode:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "debug_info")
     FUNCTION = "decode"
-    CATEGORY = "Koolook/VFX"
+    CATEGORY = "Koolook/VAE"
     DESCRIPTION = (
         "Decode VAE latents (image or video) directly to 32-bit "
         "Linear/ACEScg/sRGB images. Rank-agnostic — works with whatever "
@@ -400,6 +400,9 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Easy_hdr_VAE_encode": "Easy_hdr_VAE_encode",
-    "Easy_hdr_VAE_decode": "Easy_hdr_VAE_decode",
+    # Display names follow the same Title-Case "(Koolook)"-suffixed
+    # convention as the rest of the pack so they surface together when
+    # users type "koolook" in ComfyUI's node-add search.
+    "Easy_hdr_VAE_encode": "Easy HDR VAE Encode (Koolook)",
+    "Easy_hdr_VAE_decode": "Easy HDR VAE Decode (Koolook)",
 }

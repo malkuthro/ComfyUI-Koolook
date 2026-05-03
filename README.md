@@ -8,11 +8,11 @@ For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions 
 
 | Node | Display name | Category | Source |
 |------|--------------|----------|--------|
-| `Easy_Version` | Easy Version | `VFX/Utils` | `k_easy_version.py` |
-| `EasyWan22Prompt` | Wan 2.2 Easy Prompt | `Koolook/Wan_Video` | `k_easy_wan22_prompt.py` |
+| `Easy_Version` | Easy Version (Koolook) | `Koolook/Pipeline` | `k_easy_version.py` |
+| `EasyWan22Prompt` | Wan 2.2 Easy Prompt (Koolook) | `Koolook/Wan_Video` | `k_easy_wan22_prompt.py` |
 | `EasyResize_Koolook` | Easy Resize (Koolook) | `Koolook/Image` | `k_easy_resize.py` |
-| `EasyAIPipeline` | Easy AI Pipeline | `Koolook/VFX` | `k_ai_pipeline.py` |
-| `easy_ImageBatch` | Easy Image Batch | `Koolook/VFX` | `k_easy_image_batch.py` |
+| `EasyAIPipeline` | Easy AI Pipeline (Koolook) | `Koolook/Pipeline` | `k_ai_pipeline.py` |
+| `easy_ImageBatch` | Easy Image Batch (Koolook) | `Koolook/Image` | `k_easy_image_batch.py` |
 | `KoolookLoadCameraPosesAbsolute` | Koolook Load Camera Poses (Absolute Path) | `Koolook/Camera` | `k_easy_track.py` |
 
 Brief descriptions:
@@ -30,8 +30,8 @@ These come from [`forks/radiance_koolook/versions/v2_3_3/`](forks/radiance_koolo
 
 | Node ID | Display name | Category |
 |---|---|---|
-| `Easy_hdr_VAE_encode` | `Easy_hdr_VAE_encode` | `Koolook/VFX` |
-| `Easy_hdr_VAE_decode` | `Easy_hdr_VAE_decode` | `Koolook/VFX` |
+| `Easy_hdr_VAE_encode` | Easy HDR VAE Encode (Koolook) | `Koolook/VAE` |
+| `Easy_hdr_VAE_decode` | Easy HDR VAE Decode (Koolook) | `Koolook/VAE` |
 
 > **History note:** the v0.1.0–v0.1.4 releases also shipped a much larger `versions/v1_0_1/` fork that wrapped 26 Radiance v1.0 classes (HDR, EXR, OCIO, log curves, etc.) under the `__koolook_v1_0_1` namespace. Those wrappers were vestigial — never used by Koolook authors — and were removed in v0.1.5. Users who want that functionality should install upstream Radiance directly. See [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md) for full attribution and removal rationale.
 
@@ -160,8 +160,9 @@ This external folder is for upstream comparison/sync work only.
 5. Nodes appear under these categories in the node search:
    - `VFX/Utils` — Easy Version
    - `Koolook/Wan_Video` — Wan 2.2 Easy Prompt
-   - `Koolook/Image` — Easy Resize (Koolook)
-   - `Koolook/VFX` — Easy AI Pipeline, Easy Image Batch
+   - `Koolook/Image` — Easy Resize (Koolook), Easy Image Batch
+   - `Koolook/Pipeline` — Easy Version, Easy AI Pipeline
+   - `Koolook/VAE` — Easy HDR VAE Encode/Decode
    - `Koolook/Camera` — Koolook Load Camera Poses (Absolute Path)
    - Radiance categories (set by upstream Radiance) for the namespaced `(Koolook v1.0.1)` nodes
 

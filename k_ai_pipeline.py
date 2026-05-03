@@ -63,7 +63,7 @@ class EasyAIPipeline:
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING")
     RETURN_NAMES = ("WRITE_file_path", "output_name", "version_string", "output_directory", "shot_duration", "seed_value", "shot_name")
     FUNCTION = "generate_pipeline"
-    CATEGORY = "Koolook/VFX"
+    CATEGORY = "Koolook/Pipeline"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
     def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite):

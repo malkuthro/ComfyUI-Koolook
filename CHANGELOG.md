@@ -6,6 +6,29 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-05-03
+
+### Changed (categories — affects ComfyUI node-add menu)
+- `Koolook/VFX` is gone. Three more granular subfolders replace it:
+  - **`Koolook/Pipeline`** — `Easy_Version`, `EasyAIPipeline` (workflow
+    setup nodes)
+  - **`Koolook/Image`** — `EasyResize_Koolook`, `easy_ImageBatch` (joins
+    `EasyResize_Koolook`; `easy_ImageBatch` was previously in VFX)
+  - **`Koolook/VAE`** — `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode`
+    (now have their own subfolder; previously also in VFX)
+- Workflows continue to load and run unchanged — `CATEGORY` is purely a
+  UI-organization hint and only affects the node-add menu hierarchy.
+
+### Fixed (search discoverability)
+- `Easy_hdr_VAE_encode` / `Easy_hdr_VAE_decode` display names are now
+  **"Easy HDR VAE Encode (Koolook)"** / **"Easy HDR VAE Decode (Koolook)"**.
+  Previously the display name equalled the node ID (`Easy_hdr_VAE_encode`
+  with no "Koolook" string), so typing `koolook` in ComfyUI's node-add
+  search filter excluded them — they appeared registered but invisible.
+  Now they group with the rest of the pack under that filter.
+- Class IDs (`Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode`) are unchanged —
+  saved workflows that reference these IDs continue to load.
+
 ## [0.1.7] - 2026-05-03
 
 ### Changed
