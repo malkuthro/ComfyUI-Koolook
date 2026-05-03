@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-smoke:
+    name: Lint & Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lint tools
+        run: pip install ruff==0.6.9
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Compile all (syntax smoke)
+        run: python -m compileall -q -x '(\.venv|forks|upscaler_FIX/github_repos|nuke_CAM_exporter)' .
+
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bandit
+        run: pip install bandit==1.7.10
+
+      - name: Bandit scan
+        run: bandit -r . -x ./.venv,./forks,./upscaler_FIX,./nuke_CAM_exporter -ll

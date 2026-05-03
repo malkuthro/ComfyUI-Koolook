@@ -1,7 +1,5 @@
 import json
 import os
-import torch
-# Note: common_upscale is not used here, but if needed for future, import from comfy.utils
 
 class EasyWan22Prompt:
     """

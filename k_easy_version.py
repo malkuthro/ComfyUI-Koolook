@@ -1,6 +1,3 @@
-import os
-import json
-
 class Easy_Version:
     """
     A custom node that generates a version string like 'v001' based on an integer input.
