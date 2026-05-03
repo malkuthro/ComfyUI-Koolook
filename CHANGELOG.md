@@ -6,6 +6,18 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- `RELEASING.md` — canonical, step-by-step release procedure (was previously
+  ad-hoc; the gaps it closes are exactly what caused the `v0.1.0` orphan-tag
+  and `CristianP` `PublisherId` incidents).
+- README "Release & Stability" section now links `RELEASING.md` and the
+  per-release checklist template.
+- `CLAUDE.md` now references `RELEASING.md` for agents.
+
+### Changed
+- `.github/ISSUE_TEMPLATE/release_checklist.md` rewritten to mirror
+  `RELEASING.md`, including the registry-publisher validation step.
+
 ## [0.1.1] - 2026-05-03
 
 ### Fixed
