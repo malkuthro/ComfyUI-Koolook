@@ -31,6 +31,12 @@ Documentation = "https://github.com/malkuthro/ComfyUI-Koolook/wiki"
 PublisherId = "CristianP"
 DisplayName = "ComfyUI-Koolook"
 Icon = ""
-includes = [] 
+includes = []
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+
+[tool.ruff]
+extend-exclude = [".venv", "forks", "upscaler_FIX", "nuke_CAM_exporter"]
+
+[tool.ruff.lint.per-file-ignores]
+"k_easy_resize.py" = ["F841"]
 
