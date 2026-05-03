@@ -40,15 +40,19 @@ entries:
     notes: "Mirrors only the RadianceVAE4KEncode/Decode interface surface — Koolook ships a slimmer rank-agnostic reimplementation that handles image sequences (video frames) without the upstream's 4K cosine-blend tile engine, which conflicts with video VAEs (Wan 2.2 etc.) that already do their own temporal stitching."
 
   - id: "easy_resize_inspiration"
-    name: "Easy Resize (inspired component)"
+    name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"
     source_repo: "https://github.com/kijai/ComfyUI-KJNodes"
-    source_ref: "unknown"
+    source_ref: "main (interface inspiration only — not a vendored copy)"
     local_paths:
       - "k_easy_resize.py"
-    status: "modified"
-    sync_state: "needs-upstream-reference"
-    license: "unknown"
-    notes: "Inspired by Resize Image V2; verify exact upstream commit/license metadata."
+    status: "inspired_reimplementation"
+    sync_state: "no-upstream-tracking-needed"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-03"
+    exposed_node_ids:
+      - "EasyResize_Koolook"          # canonical (v0.1.6+)
+      - "EasyResize"                   # deprecated alias for workflow back-compat
+    notes: "Idea-level inspiration from KJ Nodes' Resize Image V2 (GPL-3.0 — same as our pack, so no relicense pressure). Implementation is a fresh write that substantially extends the surface (aspect-ratio parser, keep_proportion modes, mask + composed outputs, device selection, etc). Renamed in v0.1.6 from bare 'EasyResize' to 'EasyResize_Koolook' to resolve a node-ID collision with ComfyUI-EasyFilePaths."
 
   - id: "promptjson_integration_reference"
     name: "PromptJSON interoperability reference"
