@@ -6,7 +6,73 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-05-03
+## [0.1.5] - 2026-05-03
+
+### Removed (BREAKING for anyone using the v1_0_1 namespaced IDs)
+- Dropped the entire `forks/radiance_koolook/versions/v1_0_1/` folder
+  (~5,200 lines, 26 namespaced nodes). The wrappers were vestigial —
+  Koolook authors never used them, no internal workflow referenced any
+  `__koolook_v1_0_1` suffixed ID, and the VAE pair was already
+  superseded by `Easy_hdr_VAE_encode` / `Easy_hdr_VAE_decode` in v2_3_3.
+- IDs that no longer exist after this release:
+  `ImageToFloat32__koolook_v1_0_1`, `Float32ColorCorrect__koolook_v1_0_1`,
+  `HDRExpandDynamicRange__koolook_v1_0_1`, `HDRToneMap__koolook_v1_0_1`,
+  `ColorSpaceConvert__koolook_v1_0_1`, `SaveImageEXR__koolook_v1_0_1`,
+  `LoadImageEXR__koolook_v1_0_1`, `LoadImageEXRSequence__koolook_v1_0_1`,
+  `SaveImage16bit__koolook_v1_0_1`, `HDRHistogram__koolook_v1_0_1`,
+  `LogCurveEncode__koolook_v1_0_1`, `LogCurveDecode__koolook_v1_0_1`,
+  `HDRExposureBlend__koolook_v1_0_1`,
+  `HDRShadowHighlightRecovery__koolook_v1_0_1`,
+  `OCIOColorTransform__koolook_v1_0_1`,
+  `OCIOListColorspaces__koolook_v1_0_1`, `GPUTensorOps__koolook_v1_0_1`,
+  `HDR360Generate__koolook_v1_0_1`, `SaveHDRI__koolook_v1_0_1`,
+  `ACES2OutputTransform__koolook_v1_0_1`,
+  `DaVinciWideGamut__koolook_v1_0_1`, `ARRIWideGamut4__koolook_v1_0_1`,
+  `RadianceVAEEncode__koolook_v1_0_1`,
+  `RadianceVAEDecode__koolook_v1_0_1`, `k_easy_OCIO_v101`
+  (the short ID for `RadianceOCIOColorTransformV2`),
+  `RadianceLogCurveDecode__koolook_v1_0_1`.
+- Migration path: install upstream Radiance directly
+  (https://github.com/fxtdstudios/radiance) for the HDR/EXR/OCIO
+  functionality. Use `Easy_hdr_VAE_encode/decode` (already in v0.1.3+)
+  for video VAE workflows.
+- Source recoverable via `git checkout HEAD~1 -- forks/radiance_koolook/versions/v1_0_1/`
+  if you ever realize you need any of those wrappers back.
+
+### Added (registry hygiene from the original v0.1.4 plan)
+- `.gitignore` now excludes `upscaler_FIX/` and `nuke_CAM_exporter/` —
+  the maintainer's local dev workspaces accidentally committed in
+  Dec 2025. These were never imported by the package's root
+  `__init__.py`, so they had no runtime effect, but the Comfy Registry's
+  static scanner picked up `NODE_CLASS_MAPPINGS` from vendored 3rd-party
+  clones inside them and counted ~12 spurious nodes against this pack
+  in ComfyUI-Manager (yielding the misleading "44 nodes / 13 conflicts"
+  badge).
+
+### Removed (registry hygiene)
+- `git rm -r --cached upscaler_FIX nuke_CAM_exporter` — 70 files
+  untracked from git, files stay on the maintainer's local disk for
+  reference. ~3.7 MB of unrelated content out of the published archive.
+
+### Net effect on Manager / registry
+- Node count drops from 44 to **8** (6 root Koolook + 2 v2_3_3 VAE).
+- Spurious "Conflict with `ComfyUI-SuperUltimateVaceTools`" warnings
+  disappear.
+- Published archive shrinks by ~9 MB total (3.7 MB dev workspaces +
+  ~5.2 MB v1_0_1 fork code).
+
+### Notes for the maintainer
+- After merging this PR and `git pull`-ing main, your local working tree
+  will lose the `upscaler_FIX/` and `nuke_CAM_exporter/` folders (git
+  applies the deletion). Back up first or restore via
+  `git checkout HEAD~1 -- ...`. The `upscaler_FIX/` folder has already
+  been physically moved to `../ComfyUI-Forks-BK/`; the
+  `_Utils-CAM-track/` subfolder of `nuke_CAM_exporter/` has been moved
+  to `../ComfyUI-Tools-BK/nuke_CAM_exporter/`. The remainder of
+  `nuke_CAM_exporter/` (your actual Nuke pipeline work) is still on
+  disk in MAIN but no longer tracked by git.
+
+## [0.1.4] - 2026-05-03 (test-published only, superseded by 0.1.5)
 
 ### Removed (registry hygiene)
 - Untracked the maintainer's local dev workspaces from git: `upscaler_FIX/`

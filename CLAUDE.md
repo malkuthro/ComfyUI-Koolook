@@ -19,17 +19,16 @@
   - `forks/THIRD_PARTY.md`
   - `forks/README.md` (if workflow conventions change)
 
-## Radiance v1 policy
+## Radiance fork policy (v2_3_3)
 
 - Package entrypoint: `forks/radiance_koolook/__init__.py`
 - Modified nodes live in MAIN and are GitHub-tracked:
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_hdr.py`
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_color_management.py`
-  - `forks/radiance_koolook/versions/v1_0_1/nodes_dna.py`
-- External sibling checkout (`../ComfyUI-Forks/radiance-v1.0.1-koolook`) is raw reference only.
-- Current baseline pin for raw comparison: `f1b8ae330848fa08aba24c9d3e355cb432d3515b` (`comfyui` tag).
-- Exposed node IDs must stay namespaced with version suffixes (`__koolook_v1_0_1`) to avoid collisions.
-- `forks/forks_manifest.yaml` must include `source_ref` + `pinned_commit`.
+  - `forks/radiance_koolook/versions/v2_3_3/nodes_vae.py`
+- External sibling checkout (`../ComfyUI-Forks/radiance-v2.3.3-koolook`) is raw reference only.
+- Current baseline pin for raw comparison: `f262f47ddfda01ece154bf80c22769b1e4cef795` (the v2.3.3 release commit; the cleanest tag pointing at it is the typo'd `radinace2.3.3`, so we pin by SHA).
+- Koolook-original node IDs (`Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode`) are exposed verbatim via the `SKIP_VERSION_SUFFIX` set in `versions/v2_3_3/__init__.py`. Future Koolook nodes in this fork can opt out the same way; future ports of upstream-named classes should keep the `__koolook_v2_3_3` suffix to avoid colliding with installed copies of upstream Radiance.
+- `forks/forks_manifest.yaml` must include `source_ref` + `pinned_commit` + `license` + `license_verified_at`.
+- The historical `v1_0_1` fork was removed in v0.1.5 — see `forks/THIRD_PARTY.md` for the rationale and recovery instructions.
 
 ## Change management
 
