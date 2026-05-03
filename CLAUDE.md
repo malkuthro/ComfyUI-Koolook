@@ -5,7 +5,7 @@
 - MAIN repo: `ComfyUI-Koolook`
 - External forks root (default): `../ComfyUI-Forks` (relative to MAIN)
 - External third-party code must remain outside MAIN.
-- Sibling projects (read-only references that live outside MAIN) are referenced via `KOLOOK_*` env vars only. Never hardcode absolute paths with usernames in committed files. Real paths live in `.env` (gitignored); the committed `.env.example` is the public template. See README "Sibling Projects" and `Glossary.md`.
+- Sibling projects (read-only references that live outside MAIN) are referenced via `KOLOOK_*` env vars only. Never hardcode absolute paths with usernames in committed files. Real paths live in `.env` (gitignored); the committed `.env.example` is the public template. See README "Sibling Projects" and `docs/reference/glossary.md`.
 
 ## Hard rules
 
@@ -37,7 +37,7 @@
 
 ## Releasing
 
-- The canonical release procedure is `RELEASING.md`. Follow it for every
+- The canonical release procedure is `docs/maintainers/releasing.md`. Follow it for every
   `vX.Y.Z` cut — do not invent a one-off flow.
 - The per-release tickbox mirror is `.github/ISSUE_TEMPLATE/release_checklist.md`.
   Open one as a tracking issue when starting a release.

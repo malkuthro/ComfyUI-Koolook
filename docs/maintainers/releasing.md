@@ -3,7 +3,7 @@
 Canonical procedure for cutting a stable release of `ComfyUI-Koolook`.
 
 This document is the source of truth. The
-[`release_checklist.md`](.github/ISSUE_TEMPLATE/release_checklist.md) issue
+[`release_checklist.md`](../../.github/ISSUE_TEMPLATE/release_checklist.md) issue
 template mirrors these steps in tickbox form for each release.
 
 ## Conventions

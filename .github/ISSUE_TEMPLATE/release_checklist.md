@@ -6,7 +6,7 @@ labels: ["release"]
 assignees: []
 ---
 
-> Canonical procedure lives in [`RELEASING.md`](../../RELEASING.md). This is
+> Canonical procedure lives in [`docs/maintainers/releasing.md`](../../docs/maintainers/releasing.md). This is
 > the per-release tickbox mirror — keep both in sync.
 
 ## Pre-release validation

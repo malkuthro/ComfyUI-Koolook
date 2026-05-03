@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-05-03
+
 ### Changed
 - All node display names now suffix `(Koolook)` so they surface together
   when users search "koolook" in the ComfyUI node-add menu. Previously
@@ -19,6 +21,44 @@ The format is inspired by Keep a Changelog and SemVer.
     to match the rest of the pack.
 - Class keys (`NODE_CLASS_MAPPINGS`) are unchanged — saved workflows keep
   loading and running unchanged.
+- Carried in via PR #36, then bundled into this release alongside the
+  documentation reorg below.
+
+### Docs reorg (root cleanup)
+- Moved out of repo root (preserving git history via `git mv`):
+  - `Glossary.md` → [`docs/reference/glossary.md`](docs/reference/glossary.md)
+  - `RELEASING.md` → [`docs/maintainers/releasing.md`](docs/maintainers/releasing.md)
+- Root now keeps only the four files that *must* live there:
+  `README.md` (GitHub repo home + Comfy Registry description),
+  `LICENSE` (`pyproject.toml` reference + GitHub license badge),
+  `CHANGELOG.md` (tooling convention),
+  `CLAUDE.md` (Claude Code agent instructions).
+- New `docs/` structure with three audience buckets:
+  - [`docs/user_guide/`](docs/user_guide/) — end-user, per-node guides + screenshots (`img/`)
+  - [`docs/reference/`](docs/reference/) — lookup material (glossary, node inventory)
+  - [`docs/maintainers/`](docs/maintainers/) — project-internal procedures
+- Each bucket gets a short index `README.md` so the structure is
+  navigable from `docs/README.md` downwards without grep.
+
+### Added (new maintainer docs)
+- [`docs/maintainers/registry-api.md`](docs/maintainers/registry-api.md) —
+  documents the **undocumented** Comfy Registry version-management API
+  that we reverse-engineered while cleaning up v0.1.0–0.1.5
+  (deprecate / undeprecate / yank endpoints, status enum values,
+  auto-deprecation behavior, ready-to-paste curl recipes, and an
+  optional `registry-mgmt.yml` GitHub Actions workflow for codified
+  version management without ever exposing the token to a shell).
+- [`docs/maintainers/node-versioning.md`](docs/maintainers/node-versioning.md) —
+  codifies the rules from the v0.1.5 PR-review discussion for safely
+  changing a node's `INPUT_TYPES` / `RETURN_TYPES` / class names without
+  breaking saved user workflows. Five rules + the suffix-version pattern
+  + the alias-then-deprecate migration path + concrete worked examples.
+- Cross-references in `README.md`, `CLAUDE.md`,
+  `.github/ISSUE_TEMPLATE/release_checklist.md`, and the
+  `add-external-fork` skill all updated to point at the new paths.
+- Imported the existing untracked `docs/` images that the maintainer
+  had already started adding locally (node inventory screenshot under
+  `reference/`, Easy Image Batch helper image under `user_guide/img/`).
 
 ## [0.1.6] - 2026-05-03
 

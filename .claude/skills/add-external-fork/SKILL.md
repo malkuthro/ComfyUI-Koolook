@@ -217,7 +217,7 @@ git commit -m "Add <package> v<version> fork wrapper and tracking."
 External clones under `../ComfyUI-Forks/` are **not** committed to MAIN
 (they're outside the repo).
 
-If this fork ships in a release, follow [`RELEASING.md`](../../../RELEASING.md)
+If this fork ships in a release, follow [`docs/maintainers/releasing.md`](../../../docs/maintainers/releasing.md)
 for the version bump + tag + GitHub Release flow.
 
 ## Bumping an existing fork to a new pinned version
