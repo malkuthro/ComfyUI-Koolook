@@ -2,7 +2,7 @@
 
 This repository provides custom nodes for ComfyUI tailored for VFX and AI image/video generation workflows.
 
-For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions and naming see [`CLAUDE.md`](CLAUDE.md) and [`Glossary.md`](Glossary.md).
+For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions and naming see [`CLAUDE.md`](CLAUDE.md) and the [glossary](docs/reference/glossary.md). Full project documentation lives under [`docs/`](docs/).
 
 ### Koolook nodes (root package)
 
@@ -59,7 +59,9 @@ RunPod management has been moved to a separate private repository for active ope
 
 For production usage, install a pinned stable tag/commit instead of following moving branch heads.
 
-- **Release procedure**: [`RELEASING.md`](RELEASING.md) (canonical, step-by-step)
+- **Release procedure**: [`docs/maintainers/releasing.md`](docs/maintainers/releasing.md) (canonical, step-by-step)
+- **Comfy Registry API** (deprecate / yank versions): [`docs/maintainers/registry-api.md`](docs/maintainers/registry-api.md)
+- **Node versioning rules** (how to change a node without breaking saved workflows): [`docs/maintainers/node-versioning.md`](docs/maintainers/node-versioning.md)
 - Per-release checklist template: [`.github/ISSUE_TEMPLATE/release_checklist.md`](.github/ISSUE_TEMPLATE/release_checklist.md)
 - Change history: [`CHANGELOG.md`](CHANGELOG.md)
 - Fork tracking: [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md), [`forks/forks_manifest.yaml`](forks/forks_manifest.yaml)
