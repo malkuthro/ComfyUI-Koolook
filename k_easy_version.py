@@ -22,7 +22,7 @@ class Easy_Version:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("version_string",)
     FUNCTION = "generate_version"
-    CATEGORY = "Koolook/VFX"
+    CATEGORY = "Koolook/Pipeline"
     OUTPUT_NODE = False
 
     def generate_version(self, version):
