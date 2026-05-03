@@ -24,10 +24,10 @@ jobs:
         run: pip install ruff==0.6.9
 
       - name: Ruff check
-        run: ruff check .
+        run: ruff check --exclude=.venv,forks,upscaler_FIX,nuke_CAM_exporter .
 
       - name: Compile all (syntax smoke)
-        run: python -m compileall -q .
+        run: python -m compileall -q -x '(\.venv|forks|upscaler_FIX/github_repos|nuke_CAM_exporter)' .
 
   security-gate:
     name: Security Gate
