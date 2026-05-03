@@ -10,7 +10,7 @@ For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions 
 |------|--------------|----------|--------|
 | `Easy_Version` | Easy Version | `VFX/Utils` | `k_easy_version.py` |
 | `EasyWan22Prompt` | Wan 2.2 Easy Prompt | `Koolook/Wan_Video` | `k_easy_wan22_prompt.py` |
-| `EasyResize` | Easy Resize | `Koolook/Image` | `k_easy_resize.py` |
+| `EasyResize_Koolook` | Easy Resize (Koolook) | `Koolook/Image` | `k_easy_resize.py` |
 | `EasyAIPipeline` | Easy AI Pipeline | `Koolook/VFX` | `k_ai_pipeline.py` |
 | `easy_ImageBatch` | Easy Image Batch | `Koolook/VFX` | `k_easy_image_batch.py` |
 | `KoolookLoadCameraPosesAbsolute` | Koolook Load Camera Poses (Absolute Path) | `Koolook/Camera` | `k_easy_track.py` |
@@ -19,7 +19,7 @@ Brief descriptions:
 
 - **Easy Version**: Generates a padded version string like `v001` from an integer. Ideal for naming renders, sequences, or iterations in VFX pipelines.
 - **Wan 2.2 Easy Prompt**: Dynamic prompt builder driven by `config.json` (light source, lighting type, time of day, etc.). Outputs a comma-separated prompt string and optional CLIP conditioning.
-- **Easy Resize**: Aspect-aware image resize that enforces divisibility (e.g., `32`) for model compatibility. Modes: stretch, letterbox, pillarbox; padding and cropping supported. Inspired by the Resize Image V2 node from [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes).
+- **Easy Resize (Koolook)** — `EasyResize_Koolook`: Aspect-aware image resize that enforces divisibility (e.g., `32`) for model compatibility. Modes: stretch, letterbox, pillarbox; padding and cropping supported. Originally inspired by the `Resize Image V2` node from [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) (GPL-3.0 — see [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md) for the full attribution + change log). The legacy bare-name `EasyResize` ID is kept as a deprecated alias for saved-workflow compatibility.
 - **Easy AI Pipeline**: Aggregates VFX shot parameters (shot duration, seed, base path, shot name, AI method, version) into a fully formatted output file path with overwrite protection. For organized writes from Save EXR / Save Image.
 - **Easy Image Batch**: Builds an `IMAGE` + `MASK` batch of length `total_frames` from 1–4 keyframe images placed at explicit frame indices (with `start_frame` offset). Empty frames are filled with black/gray and the mask marks empty=white / occupied=black. Useful for sparse keyframe control with Wan-style video models.
 - **Koolook Load Camera Poses (Absolute Path)**: Loads RealEstate10k-style `CAMERACTRL_POSES` from any absolute path (no ComfyUI path stripping), with overrideable pose width/height. Pairs with AnimateDiff CameraCtrl downstream.
@@ -158,7 +158,7 @@ This external folder is for upstream comparison/sync work only.
 5. Nodes appear under these categories in the node search:
    - `VFX/Utils` — Easy Version
    - `Koolook/Wan_Video` — Wan 2.2 Easy Prompt
-   - `Koolook/Image` — Easy Resize
+   - `Koolook/Image` — Easy Resize (Koolook)
    - `Koolook/VFX` — Easy AI Pipeline, Easy Image Batch
    - `Koolook/Camera` — Koolook Load Camera Poses (Absolute Path)
    - Radiance categories (set by upstream Radiance) for the namespaced `(Koolook v1.0.1)` nodes
@@ -216,8 +216,8 @@ This is the default configuration based on Wan 2.2 parameters:
 }
 ```
 
-### Easy Resize
-1. Add the "Easy Resize" node to your workflow under "Koolook/Image".
+### Easy Resize (Koolook)
+1. Add the "Easy Resize (Koolook)" node (ID `EasyResize_Koolook`) to your workflow under "Koolook/Image".
 2. Connect an IMAGE (and optional MASK) input.
 3. Set the base dimension (Width or Height), base size, aspect ratio (e.g., "16:9" for landscape, "9:16" for portrait), and other options like keep_proportion (stretch, letterbox, pillarbox), pad_color (e.g., "0, 0, 0" for black), crop_position, divisible_by, and device.
 4. Connect the outputs: IMAGE and MASK for further processing, INT width/height for resolution-aware nodes like samplers or upscalers.

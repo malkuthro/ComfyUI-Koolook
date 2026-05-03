@@ -6,6 +6,37 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-03
+
+### Renamed (with back-compat alias)
+- `EasyResize` is now exposed canonically as **`EasyResize_Koolook`**
+  (display: `Easy Resize (Koolook)`) to resolve a node-ID collision with
+  `ComfyUI-EasyFilePaths`, which also registers the bare name `EasyResize`.
+  The old `EasyResize` ID is kept as a **deprecated alias** pointing at
+  the same class, so saved workflows still load and run unchanged. The
+  alias will be removed in a future major release once the deprecation
+  has had time to propagate.
+
+### Attribution
+- Added a proper SPDX header + GPL-3.0 attribution block to
+  `k_easy_resize.py`, crediting `kijai/ComfyUI-KJNodes` (`Resize Image V2`)
+  as the original interface inspiration. The Koolook implementation is a
+  fresh write that materially extended the surface (aspect-ratio parser,
+  keep_proportion modes, mask + composed outputs, device selection,
+  target/original W/H reporting, color-panel passthrough). KJ Nodes is
+  GPL-3.0, same as our pack — no relicense required.
+- `forks/THIRD_PARTY.md` and `forks/forks_manifest.yaml` upgraded the
+  KJ Nodes entry from `license: "unknown"` /
+  `sync_state: "needs-upstream-reference"` to verified GPL-3.0 with full
+  per-feature change notes.
+
+### Notes for users
+- If a saved workflow uses the bare `EasyResize` ID, it still works but
+  the node's display name now reads
+  `Easy Resize (deprecated, use 'Easy Resize (Koolook)')` as a hint to
+  swap. New workflows should pick `EasyResize_Koolook` from the node-add
+  menu.
+
 ## [0.1.5] - 2026-05-03
 
 ### Removed (BREAKING for anyone using the v1_0_1 namespaced IDs)

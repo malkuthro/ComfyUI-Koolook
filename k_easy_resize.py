@@ -1,3 +1,22 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# ComfyUI-Koolook — Easy Resize (Koolook variant)
+# Copyright (C) 2026 ComfyUI-Koolook contributors (kforgelabs).
+#
+# This file is part of ComfyUI-Koolook, licensed under GPL-3.0-or-later.
+# See the LICENSE file at the repo root for the full text.
+#
+# Originally inspired by `Resize Image V2` from kijai/ComfyUI-KJNodes
+# (GPL-3.0). This implementation has been substantially extended beyond
+# the inspiration with: aspect-ratio parsing, divisible_by enforcement
+# for AI model compatibility, multiple keep_proportion modes
+# (stretch/letterbox/pillarbox), padding color + crop position controls,
+# device selection, mask + composed-image outputs, target W/H + original
+# aspect-ratio reporting, and color-panel passthrough. See
+# forks/THIRD_PARTY.md for the full attribution + change log.
+#
+# Modified by ComfyUI-Koolook on 2026-05-03 (renamed and re-attributed).
+
 import torch
 from comfy.utils import common_upscale
 from nodes import MAX_RESOLUTION
@@ -209,11 +228,24 @@ The 'inverted_MASK' is the inverted version of the mask (if provided).
 
         return (out_image, composed_image_out, out_mask, inverted_mask_out, target_width, target_height, color_panel, original_W, original_H, original_aspect_ratio)
 
-# Individual node mappings
+# Node mappings.
+#
+# v0.1.6 rename: the canonical ID is now "EasyResize_Koolook". The old
+# bare-name "EasyResize" remains as a backward-compatible alias so that
+# saved workflows continue to load — it'll be removed in a future major
+# release once the deprecation has had time to propagate.
+#
+# Why renamed: the bare "EasyResize" ID collides with at least one other
+# pack in the ComfyUI ecosystem (ComfyUI-EasyFilePaths registers the same
+# bare name). The "_Koolook" suffix follows the same family pattern as
+# Easy_hdr_VAE_encode/decode and removes the conflict.
+
 NODE_CLASS_MAPPINGS = {
-    "EasyResize": EasyResize
+    "EasyResize_Koolook": EasyResize,         # canonical ID (new)
+    "EasyResize": EasyResize,                  # legacy alias (deprecated, kept for workflow compat)
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "EasyResize": "Easy Resize"
+    "EasyResize_Koolook": "Easy Resize (Koolook)",
+    "EasyResize": "Easy Resize (deprecated, use 'Easy Resize (Koolook)')",
 }

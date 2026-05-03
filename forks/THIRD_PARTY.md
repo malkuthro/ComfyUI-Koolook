@@ -38,6 +38,33 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 - **Recoverable via git history.** Last commit containing the v1_0_1 code:
   see CHANGELOG.md `[0.1.5]` for the SHA after the v0.1.5 release lands.
 
+### kijai/ComfyUI-KJNodes — Resize Image V2 inspiration (Koolook reimplementation)
+
+- **Name:** ComfyUI-KJNodes (Kijai)
+- **Upstream repo URL:** https://github.com/kijai/ComfyUI-KJNodes
+- **License:** GPL-3.0 (verified 2026-05-03 via raw `LICENSE` fetch)
+- **Local path(s):** [`k_easy_resize.py`](../k_easy_resize.py)
+  — exposed as the `EasyResize_Koolook` ComfyUI node ID (with `EasyResize`
+  retained as a deprecated alias for workflow backward-compat).
+- **What was inspired (not copied):** The general idea of a smarter
+  resize node with aspect-ratio handling and stride-aware (divisible-by)
+  sizing came from KJ Nodes' `Resize Image V2`. The Koolook implementation
+  is a fresh write that materially expanded the surface:
+  - Aspect-ratio string parser (`"16:9"`, `"9:16"`, etc.) with base-axis
+    selection (Width/Height).
+  - `keep_proportion` modes: stretch / letterbox / pillarbox.
+  - Padding color + crop position controls for letterbox/pillarbox modes.
+  - Per-call device selection (CPU / CUDA).
+  - Mask + composed-image outputs in addition to the resized image.
+  - Target W/H + original W/H/aspect-ratio reporting outputs.
+  - Color-panel passthrough output.
+- **Why renamed in v0.1.6:** The bare-name `EasyResize` collides with
+  `ComfyUI-EasyFilePaths`, which also registers an `EasyResize` node ID.
+  Bumping our canonical ID to `EasyResize_Koolook` removes the conflict
+  while keeping the old ID as a deprecation alias so saved workflows
+  still load. The KJ Nodes attribution stays in the file header and here.
+- **Last reviewed:** 2026-05-03
+
 ### fxtdstudios/radiance — v2.3.3 VAE subset (Koolook fork)
 
 - **Name:** Radiance (FXTD Studios)
