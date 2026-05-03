@@ -6,7 +6,45 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-03
+
+### License (BREAKING)
+- **Relicensed entire package to GPL-3.0.** v0.1.0 and v0.1.1 shipped under
+  a claimed MIT license while already incorporating GPL-3.0-derived code from
+  [fxtdstudios/radiance](https://github.com/fxtdstudios/radiance) under
+  `forks/radiance_koolook/`. GPL-3.0 §5(c) requires the entire combined work
+  to be GPL-3.0; relicensing aligns the package with what we actually ship
+  and matches the dominant license posture of the ComfyUI custom-node
+  ecosystem. Downstream users incorporating, linking to, or deriving from
+  ComfyUI-Koolook must now distribute under GPL-3.0 (or compatible).
+- Added `LICENSE` file at repo root with the full GPL-3.0 text
+  (`pyproject.toml` previously referenced a `LICENSE` file that did not
+  exist on disk).
+- README "License" section rewritten to declare GPL-3.0 and explain the
+  §5(c) implication.
+
 ### Added
+- **`forks/radiance_koolook/versions/v2_3_3/`** — slim, video-friendly
+  re-implementation of `RadianceVAEEncode` / `RadianceVAEDecode` exposed
+  under the namespace suffix `__koolook_v2_3_3`. Mirrors the *interface
+  surface* of upstream `RadianceVAE4KEncode` / `RadianceVAE4KDecode`
+  but skips the 4K cosine-blend tile engine, which conflicts with
+  modern video VAEs (Wan 2.2, Hunyuan, CogVideoX, LTX) that already
+  handle their own temporal/spatial stitching internally. Fixes the
+  `"size of tensor a (192) must match the size of tensor b (132) at
+  non-singleton dimension 4"` runtime error users hit when chaining
+  upstream's VAE encoder into Wan 2.2 video workflows.
+- `forks/THIRD_PARTY.md` — full attribution entries for the v1.0.1
+  baseline (already in the repo) and the new v2.3.3 VAE subset, with
+  per-class change notes.
+- `.claude/skills/license-pre-check/` — blocking license-compatibility
+  audit skill for Claude Code. Run **before** copying or porting any
+  third-party code; refuses to proceed on incompatible combinations
+  (e.g. GPL upstream into MIT downstream).
+- `.claude/skills/add-external-fork/` — Claude Code port of the
+  existing Cursor skill, with a mandatory Phase 0 ("run
+  license-pre-check first") and a Phase 3c requirement to add GPL §5(a)
+  modification headers on derived files.
 - `RELEASING.md` — canonical, step-by-step release procedure (was previously
   ad-hoc; the gaps it closes are exactly what caused the `v0.1.0` orphan-tag
   and `CristianP` `PublisherId` incidents).
@@ -15,8 +53,23 @@ The format is inspired by Keep a Changelog and SemVer.
 - `CLAUDE.md` now references `RELEASING.md` for agents.
 
 ### Changed
+- `forks/forks_manifest.yaml` — explicit `license: "GPL-3.0"` and
+  `license_verified_at` fields on the existing radiance entry (was
+  `to_verify_at_source_ref`); pre-registered the new v2.3.3 VAE entry
+  with verified license metadata.
 - `.github/ISSUE_TEMPLATE/release_checklist.md` rewritten to mirror
   `RELEASING.md`, including the registry-publisher validation step.
+
+### Notes for users
+- If your workflow currently references the bare-name `RadianceVAEEncode`
+  or `RadianceVAEDecode` (which routes to upstream Radiance v2.3.3's
+  `RadianceVAE4KEncode/Decode` via that package's alias), and you hit
+  the 4D vs 5D tensor mismatch on video workflows, switch to the
+  namespaced `RadianceVAEEncode__koolook_v2_3_3` /
+  `RadianceVAEDecode__koolook_v2_3_3` (display name suffix
+  *(Koolook v2.3.3)*).
+- The existing `__koolook_v1_0_1` namespaced nodes are unchanged and
+  remain available for backward compatibility with saved workflows.
 
 ## [0.1.1] - 2026-05-03
 
