@@ -29,6 +29,101 @@ The format is inspired by Keep a Changelog and SemVer.
   on Wan 2.2 video workflows, because KSampler does
   `latent["samples"]` and the raw 5-D tensor doesn't support string
   indexing. The decoder side was already correct.
+- `Easy_hdr_VAE_encode` / `Easy_hdr_VAE_decode` (Koolook v2.3.3) now
+  produce proper N-frame sequences end-to-end on Wan 2.2 / Hunyuan /
+  CogVideoX / LTX video workflows. Two combined fixes:
+  1. **Rank-aware dispatch.** 5-D `(B, F, H, W, C)` video tensors paired
+     with a 2-D image VAE are iterated frame-by-frame and stacked along
+     a temporal axis on encode (and per-frame decoded then concatenated
+     to a `(B*F, H, W, C)` ComfyUI IMAGE batch on decode). 5-D tensors
+     with a 3-D-native VAE — identified via `vae.latent_dim == 3`,
+     which is the actual attribute ComfyUI sets on its VAE class for
+     video VAEs — pass through unchanged.
+  2. **5-D output normalization on decode.** 3-D-aware VAEs return a
+     5-D `(B, F, H, W, C)` tensor from `vae.decode()`. Without an
+     explicit reshape, downstream IMAGE-typed nodes (Get Image Size,
+     SaveImage) misread that as a single 4-D image with `count=1` and
+     `height=F` — exactly the symptom we were debugging
+     (`1056×41 count=1` after a 41-frame Wan 2.2 sequence). The fix
+     mirrors the stock ComfyUI VAEDecode node
+     ([nodes.py:303-304](https://github.com/comfyanonymous/ComfyUI/blob/master/nodes.py#L303-L304)):
+     `if img.ndim == 5: img = img.reshape(-1, H, W, C)` — the leading
+     `(B, F, …)` dims collapse into the standard ComfyUI batch axis,
+     so SaveImage now writes `_00001.png … _0004N.png` instead of one
+     squashed frame.
+
+  The new `path=image | video-iter | video-3d` field in `debug_info`
+  surfaces which dispatch branch fired per run, for live verification.
+
+### Added (Easy_hdr_VAE_encode / decode feature parity with upstream)
+- Restored the cinema-grade color-management surface from upstream
+  Radiance v2.3.3's `RadianceVAE4KEncode/Decode`, while keeping the
+  slim no-tile-engine code path that lets these nodes work with
+  Wan 2.2 video VAEs (the original motivation for the Koolook fork —
+  upstream's 4K cosine-blend tile engine errors with `"size of tensor a
+  (192) must match the size of tensor b (132) at non-singleton dimension 4"`
+  on video VAEs because the tiler's spatial alignment fights the video
+  VAE's internal temporal-aware encoding).
+- **12 source / target color spaces** (was 4): Linear, ACEScg,
+  **ACES 2065-1**, **Rec.2020 Linear**, sRGB, Raw, plus six cinema log
+  curves — **ARRI LogC3** (EI-aware, default 800), **ARRI LogC4**,
+  **Sony S-Log3**, **Panasonic V-Log**, **DaVinci Intermediate**,
+  **RED Log3G10**. Round-trip math (linearize → encode) and matrix
+  constants ported verbatim from upstream's `color_utils.py` with the
+  bug-fix history preserved in the docstrings. Conversions are
+  rank-agnostic and 4-channel-aware (alpha passes through untouched).
+- **`Compress (Log)` HDR mode** — the upstream HDR-clamp-free pipeline.
+  On encode, the linear-space tensor is re-encoded through a cinema log
+  curve (matches `source_space` if it's a log space, else ARRI LogC4)
+  and goes into the VAE without a hard clamp. On decode, the VAE output
+  is run through `_soft_log_shoulder` (tanh rolloff at the per-profile
+  knee instead of a hard clamp at 1.0) and `_denoise_log_highlights`
+  (3×3 box blur in log space, ramped quadratically toward the highlight
+  region) before log→linear conversion. Per-profile parameters
+  (`LOG_PROFILE_HDR_PARAMS` table) tune knee / ceiling / denoise
+  threshold / strength to each curve's slope at code 1.0 — RED Log3G10
+  gets the most conservative settings, Sony S-Log3 / ARRI LogC4 the
+  loosest. Pair `hdr_mode="Compress (Log)"` on both encode and decode
+  for HDR-clean roundtrips; mismatched modes produce garbage by design.
+- **`latent_sampling`** parameter (`sample` / `mean` / `mode`).
+  `sample` is ComfyUI's default random posterior sample. `mean` and
+  `mode` use the posterior mean for deterministic, lowest-noise
+  encoding — best for img2img where minimum reconstruction noise
+  matters. The mean/mode path replicates ComfyUI's preprocessing
+  (BHWC → BCHW → [-1, 1] scaling) before reaching `first_stage_model`,
+  with a graceful fallback chain that never crashes.
+- **Real alpha output.** `Easy_hdr_VAE_encode` now returns
+  `(LATENT samples, STRING debug_info, IMAGE alpha)`. With
+  `alpha_handling="Preserve"` and a 4-channel input, the alpha channel
+  is surfaced as a separate IMAGE for downstream re-compositing
+  post-decode (VAEs don't encode alpha, so it's routed around them).
+  With `alpha_handling="Ignore"` or a 3-channel input, alpha is a
+  zeros tensor of compatible shape — downstream wiring never fails.
+  The previous `alpha_handling` flag was a documented no-op.
+- **Exposure now applied in linear space** for all source spaces. The
+  previous behavior multiplied raw input bytes by `2^exposure` even
+  when the input was sRGB-gamma or log-coded, which produced visually
+  wrong results for non-linear sources. Linear sources are unaffected
+  (linear × 2^stops is the correct semantic). Raw source still does a
+  raw-domain multiplication so users who know what they're feeding the
+  VAE keep their bytes intact.
+- New helper module
+  [`forks/radiance_koolook/versions/v2_3_3/color_helpers.py`](forks/radiance_koolook/versions/v2_3_3/color_helpers.py)
+  contains all log curves, soft-shoulder / log-denoise helpers,
+  `encode_with_sampling_mode`, color-space matrices, and dispatch
+  tables. `nodes_vae.py` keeps the node wiring + sequence dispatch.
+
+### Intentionally NOT ported (upstream-only features)
+- 4K cosine-blend tile engine and its `tile_size` / `overlap` /
+  `processing_mode` knobs — this is the broken plumbing that motivated
+  the slim fork in the first place.
+- `inverse_tonemap` / `target_stops` (SDR→HDR expansion).
+- `.rhdr` sidecar export and `rhdr_precision` (Radiance Viewer-specific).
+- `crop_padding` (only relevant when tiling).
+
+These can be added back in future patches if needed; the slim wrapper
+stays at ~600 lines of node wiring + ~450 lines of color helpers,
+~40% the size of upstream's `vae.py` (2,638 lines).
 
 ### Added (carried over from PR #40, also unreleased on main)
 - `scripts/sync_to_dev.py` — pure-stdlib helper that copies the curated
