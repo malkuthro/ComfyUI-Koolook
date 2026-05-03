@@ -113,5 +113,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "EasyWan22Prompt": "Wan 2.2 Easy Prompt"
+    "EasyWan22Prompt": "Wan 2.2 Easy Prompt (Koolook)"
 }

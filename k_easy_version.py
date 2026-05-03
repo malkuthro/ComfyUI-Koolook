@@ -22,7 +22,7 @@ class Easy_Version:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("version_string",)
     FUNCTION = "generate_version"
-    CATEGORY = "VFX/Utils"
+    CATEGORY = "Koolook/VFX"
     OUTPUT_NODE = False
 
     def generate_version(self, version):
@@ -36,5 +36,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Easy_Version": "Easy Version"
+    "Easy_Version": "Easy Version (Koolook)"
 }

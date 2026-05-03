@@ -111,5 +111,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "EasyAIPipeline": "Easy AI Pipeline"
+    "EasyAIPipeline": "Easy AI Pipeline (Koolook)"
 }
