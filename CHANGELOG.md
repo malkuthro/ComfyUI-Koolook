@@ -6,6 +6,36 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-03
+
+### Removed (registry hygiene)
+- Untracked the maintainer's local dev workspaces from git: `upscaler_FIX/`
+  and `nuke_CAM_exporter/`. These were never imported by the package's root
+  `__init__.py`, so they had no effect on what ComfyUI loaded at runtime,
+  but the Comfy Registry's static scanner picked up the `NODE_CLASS_MAPPINGS`
+  dicts inside vendored 3rd-party clones and counted them as part of this
+  pack — yielding a misleading "44 nodes / 13 conflicts" badge in
+  ComfyUI-Manager (against `ComfyUI-SuperUltimateVaceTools`,
+  `ComfyUI-multigpu`, etc.). Files removed from index via
+  `git rm -r --cached` (still on the maintainer's local disk) and the two
+  paths are now `.gitignore`d so they cannot leak again.
+- Net effect: published archive shrinks by ~3.7 MB (70 files), Manager's
+  node count drops from 44 to ~32 (the actual runtime registrations:
+  6 root Koolook + ~26 namespaced fork variants), and the spurious
+  conflict warnings disappear. Same class of issue as the v0.1.2 GPL-3.0
+  relicense — vendored 3rd-party code in MAIN, this time without the
+  license-compatibility risk because none of it was ever imported.
+
+### Notes for the maintainer
+- After merging this PR and `git pull`-ing main, your local working tree
+  will lose the `upscaler_FIX/` and `nuke_CAM_exporter/` folders (git
+  applies the deletion). If you want to keep working on those locally,
+  back them up first (`cp -r upscaler_FIX nuke_CAM_exporter ~/backup/`)
+  or restore from history afterwards
+  (`git checkout HEAD~1 -- upscaler_FIX nuke_CAM_exporter`); they will
+  then live as untracked files in your working tree, ignored by the new
+  `.gitignore` rules.
+
 ## [0.1.3] - 2026-05-03
 
 ### Renamed

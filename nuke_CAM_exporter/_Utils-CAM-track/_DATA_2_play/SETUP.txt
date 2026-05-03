@@ -1,2 +1,0 @@
-Video Format: x=1248, y=704
-Duration: 41 frames

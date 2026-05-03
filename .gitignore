@@ -11,3 +11,12 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
+
+# Local maintainer dev workspaces — not part of the published package.
+# These contain vendored 3rd-party clones and debugging scratchpads kept
+# only on the maintainer's disk. Anything in here would otherwise leak
+# into the Comfy Registry archive (where the registry's static scanner
+# would count their `NODE_CLASS_MAPPINGS` against this pack — see
+# CHANGELOG entry for v0.1.4 for the full back-story).
+upscaler_FIX/
+nuke_CAM_exporter/
