@@ -1,0 +1,15 @@
+source_repo: "https://github.com/fxtdstudios/radiance.git"
+source_ref: "v2.3.3 release commit (no clean tag — upstream uses misspelled 'radinace2.3.3')"
+pinned_commit: "f262f47ddfda01ece154bf80c22769b1e4cef795"
+external_checkout_relative_to_forks_root: "radiance-v2.3.3-koolook"
+upstream_tracking_relative_to_forks_root: "radiance-main-upstream"
+external_work_branch: "main"
+license: "GPL-3.0"
+license_verified_at: "2026-05-03"
+notes: |
+  This version folder mirrors only the RadianceVAE4KEncode / RadianceVAE4KDecode
+  *interface surface* from upstream v2.3.3's hdr/vae.py. The Koolook
+  reimplementation skips the 4K cosine-blend tile engine, which conflicts with
+  video VAEs (Wan 2.2, Hunyuan, CogVideoX, LTX) that handle their own
+  temporal/spatial stitching internally. See forks/THIRD_PARTY.md for the
+  full attribution + change log.

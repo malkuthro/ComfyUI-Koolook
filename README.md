@@ -254,4 +254,19 @@ For advanced customizations (e.g., different output formats or additional resize
 - Compatible with nodes like PromptJSON for LLM workflows.
 
 ## License
-MIT License. Feel free to use, modify, and distribute.
+
+**GPL-3.0** (see [`LICENSE`](LICENSE)).
+
+This package incorporates and adapts code from
+[fxtdstudios/radiance](https://github.com/fxtdstudios/radiance) (also
+GPL-3.0) under `forks/radiance_koolook/`. Per GPL-3.0 §5(c), the entire
+work is licensed as GPL-3.0. Attribution and per-fork modification notes
+are tracked in [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md) and
+[`forks/forks_manifest.yaml`](forks/forks_manifest.yaml).
+
+> **Note for downstream users:** any work that incorporates, links to, or
+> derives from `ComfyUI-Koolook` must itself be distributed under GPL-3.0
+> (or a compatible license). If you need a non-copyleft license for any
+> piece of this code, contact the maintainers — some Koolook-original
+> nodes (those with no upstream Radiance lineage) may be available under
+> a more permissive license on request.
