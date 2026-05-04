@@ -6,6 +6,71 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Recursive subdirectories under workflow directories.** Right-click any
+  directory in the Workflows tree → "Create subdirectory…" to nest folders
+  to arbitrary depth (e.g. `UP-scale / Type-A / Sharp`). Each nested
+  directory behaves like a top-level one: it can hold workflows + an
+  Archive subfolder + further subdirectories. The save modal directory
+  picker is **cascading** (multi-step): pick a parent, then a child
+  appears, then a grandchild, etc. — each child level has a `(save in
+  "<path>")` option to stop drilling at that depth. The right-click
+  workflow "Move to…" submenu lists every other path in the tree.
+- **Delete archive (N) on the synthetic Archive folder.** Right-click the
+  Archive folder under any directory → bulk-removes every archived
+  workflow at that level in one confirm. Active workflows in the same
+  directory are untouched.
+- **Drag-and-drop in the workflows tree** (Tier 1 — moves only, no
+  reordering). Drag a workflow onto a directory to move it. Drag a
+  workflow onto an Archive folder to archive it (cross-directory drops
+  move + archive in one go). Drag a directory onto another directory to
+  nest it as a child. Cycle prevention rejects dropping a dir into
+  itself or any of its descendants. Sort within a level stays
+  alphabetical. (Custom ordering would be Tier 2.)
+- **Schema is now recursive** — every directory node has a `workflows`
+  object AND a `directories` object. Existing v0.2 stores load fine:
+  `normalizeWorkflowsStore` treats a missing `directories` as `{}` and
+  the rest of the code assumes it always exists post-normalization.
+
+### Changed
+- **Sidebar tab renamed:** "Curated Nodes" → **"Kforge Labs"**. Tooltip
+  also updated. The tab id (`koolook.curatedNodes`) and the
+  `app.registerExtension` name are unchanged so existing per-user tab
+  state (pinning, ordering) is preserved.
+- **Save modal — `Base on existing` candidates now walk leaf-up to root
+  and dedupe (deepest wins).** Saving into an empty subdirectory like
+  `UP-scale / seedvr2` no longer disables the existing-name actions —
+  the modal pulls active workflows from every ancestor. Ancestor
+  entries are labeled `<name>  ·  in <path>` so the candidate's
+  source directory is unambiguous. The selected destination path is
+  whatever the cascade resolves to — the ancestor source only seeds
+  the workflow name; archive semantics still apply at the destination.
+- **Save modal — `Action` dropdown is now hidden (not just disabled)
+  when no base candidate exists** anywhere in the destination's
+  ancestry. Disabled `<option>` elements render too subtly across
+  browsers; the only useful path in that case is "type a fresh name
+  and save," which the Workflow Name field below already provides.
+  The underlying value is pinned to `new` so submit takes the
+  by-name path.
+- The right-click canvas-node menu item is now **"Add to Kforge Labs"**
+  (was "Add to Curated Sidebar").
+- Directory header counts in the workflows tree now show the total
+  workflows in the **whole subtree** (active + archived + descendants),
+  not just direct children. A parent with empty direct workflows but
+  populated subdirectories no longer shows "0".
+
+### Internal
+- Workflow operations are now path-addressed: every mutator and lookup
+  takes a `string[]` path (e.g. `["UP-scale", "Type-A"]`). The store's
+  internal API: `addDirectory(parentPath, name)`,
+  `renameDirectory(parentPath, old, new)`, `deleteDirectory(parentPath, name)`,
+  `saveWorkflowEntry(path, wfName, graph)`, `archive/unarchive/rename/deleteWorkflow(path, wfName)`,
+  `moveWorkflow(srcPath, wfName, dstPath)`, plus new helpers
+  `listAllDirectoryPaths()` and `pathsEqual(a, b)`.
+- Reserved-name check: subdirectory names cannot be `Archive`
+  (case-insensitive) at any non-root level — collides with the synthetic
+  Archive folder rendered for archived workflows.
+
 ## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)

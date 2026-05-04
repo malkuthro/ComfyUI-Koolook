@@ -4,7 +4,7 @@
 // You normally don't need to edit this. To grow the panel from inside
 // ComfyUI, use either:
 //   • the "+" button at the top of the sidebar (with a canvas node selected), or
-//   • right-click a canvas node → "Add to Curated Sidebar".
+//   • right-click a canvas node → "Add to Kforge Labs".
 //
 // Those additions are stored in the browser's localStorage and surface as
 // the "My Picks" group at the top of the tree.
@@ -18,9 +18,12 @@ export const REPOS = [
     },
 ];
 
+// `TAB_ID` is the stable identifier ComfyUI persists per-user — never rename
+// or existing tab state (pinning, tab order) gets orphaned. The visible
+// title and tooltip can change freely.
 export const TAB_ID = "koolook.curatedNodes";
-export const TAB_TITLE = "Curated Nodes";
-export const TAB_TOOLTIP = "Curated selection of ComfyUI nodes";
+export const TAB_TITLE = "Kforge Labs";
+export const TAB_TOOLTIP = "Kforge Labs — curated nodes & workflows";
 export const TAB_ICON = "pi pi-star";
 export const ROOT_GROUP_LABEL = "Nodes (favorites)";
 export const WORKFLOWS_GROUP_LABEL = "Workflows";
@@ -102,6 +105,9 @@ export function ensureStyle() {
 .koolook-context-danger { color: #ff8888; }
 .koolook-context-sep { height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0; }
 .koolook-context-submenu-arrow { float: right; opacity: 0.5; }
+.koolook-row[draggable="true"] { cursor: grab; }
+.koolook-row[draggable="true"]:active { cursor: grabbing; }
+.koolook-drop-target { background: rgba(80,140,235,0.18) !important; outline: 2px solid rgba(80,140,235,0.6); outline-offset: -2px; }
 `;
     document.head.appendChild(s);
 }

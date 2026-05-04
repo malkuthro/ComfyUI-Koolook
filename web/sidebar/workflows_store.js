@@ -2,6 +2,19 @@
 // Workflows storage (ComfyUI /userdata API with localStorage fallback) +
 // transaction layer + in-memory mutation operations.
 //
+// Schema (recursive, since v0.3 — back-compatible with the v0.2 flat shape):
+//   workflowsCache = { directories: { [name]: DirNode } }
+//   DirNode = { workflows: { [wfName]: WorkflowEntry }, directories: { [name]: DirNode } }
+//
+// Every directory can host workflows AND nested subdirectories at any depth.
+// The root has only `directories` — workflows live exclusively inside named
+// directories. Old flat data without the nested `directories` field still
+// loads fine; `normalizeWorkflowsStore` adds an empty `directories: {}` per
+// node during migration, so a user's existing /userdata file is preserved.
+//
+// All mutator/lookup ops take a `path: string[]` of segment names. The empty
+// path `[]` is the root. Path segments must be non-empty strings.
+//
 // `workflowsCache` is module-private. Outside callers go through the exported
 // helpers — direct access would otherwise hold a stale reference after the
 // cache rebinds during seed/recovery.
@@ -22,33 +35,54 @@ function notifyWorkflowsChanged() {
     window.dispatchEvent(new CustomEvent(WORKFLOWS_CHANGED_EVENT));
 }
 
+// =============================================================================
+// Normalization (with back-compat migration for the pre-v0.3 flat shape)
+// =============================================================================
 function normalizeWorkflowsStore(data) {
     if (!data || typeof data !== "object") return { directories: {} };
     const dirs = data.directories;
     if (!dirs || typeof dirs !== "object") return { directories: {} };
+    const stats = { dropped: 0 };
     const out = {};
-    let dropped = 0;
     for (const [name, dir] of Object.entries(dirs)) {
-        if (!dir || typeof dir !== "object") continue;
-        const wfs = dir.workflows && typeof dir.workflows === "object" ? dir.workflows : {};
-        const cleanedWfs = {};
-        for (const [wfName, wf] of Object.entries(wfs)) {
-            // Drop entries that can't be loaded (missing/non-object graph).
-            // Coerce `archived` to a strict boolean so a stray "false" string
-            // can't accidentally flag an entry as archived.
-            if (!wf || typeof wf !== "object" || !wf.graph || typeof wf.graph !== "object") {
-                dropped += 1;
-                continue;
-            }
-            cleanedWfs[wfName] = { ...wf, archived: wf.archived === true };
-        }
-        out[name] = { workflows: cleanedWfs };
+        const cleaned = normalizeDirNode(dir, stats);
+        if (cleaned) out[name] = cleaned;
     }
-    if (dropped > 0) {
-        console.warn(`[Koolook] dropped ${dropped} malformed workflow entr(y/ies) during normalize`);
+    if (stats.dropped > 0) {
+        console.warn(`[Koolook] dropped ${stats.dropped} malformed workflow entr(y/ies) during normalize`);
     }
     return { directories: out };
 }
+
+function normalizeDirNode(node, stats) {
+    if (!node || typeof node !== "object") return null;
+    const wfs = node.workflows && typeof node.workflows === "object" ? node.workflows : {};
+    const cleanedWfs = {};
+    for (const [wfName, wf] of Object.entries(wfs)) {
+        // Drop entries that can't be loaded (missing/non-object graph).
+        // Coerce `archived` to a strict boolean so a stray "false" string
+        // can't accidentally flag an entry as archived.
+        if (!wf || typeof wf !== "object" || !wf.graph || typeof wf.graph !== "object") {
+            stats.dropped += 1;
+            continue;
+        }
+        cleanedWfs[wfName] = { ...wf, archived: wf.archived === true };
+    }
+    // Recurse into subdirectories. Pre-v0.3 nodes don't have a `directories`
+    // field — give them an empty one so the rest of the code can assume it
+    // always exists.
+    const subs = node.directories && typeof node.directories === "object" ? node.directories : {};
+    const cleanedSubs = {};
+    for (const [subName, subDir] of Object.entries(subs)) {
+        const cleaned = normalizeDirNode(subDir, stats);
+        if (cleaned) cleanedSubs[subName] = cleaned;
+    }
+    return { workflows: cleanedWfs, directories: cleanedSubs };
+}
+
+// =============================================================================
+// Server I/O
+// =============================================================================
 
 // Sentinel for "server reachable but file content is unparseable".
 // Distinct from `undefined` (server unreachable) and `null` (file missing)
@@ -149,6 +183,9 @@ export async function loadWorkflowsStore() {
     return { corrupt: false };
 }
 
+// =============================================================================
+// Transaction layer (commit + rollback + persistMutation)
+// =============================================================================
 async function commit() {
     // Both "server" and "fallback" are user-visible successes — the panel
     // shows the change either way. Only `false` (both backends rejected)
@@ -191,6 +228,9 @@ export async function persistMutation({ mutate, onSuccess, onNoOp, persistFailed
     return false;
 }
 
+// =============================================================================
+// Seeding
+// =============================================================================
 export async function seedWorkflowDefaultsIfNeeded() {
     if (localStorage.getItem(WORKFLOWS_SEEDED_KEY)) return;
     // If existing data is non-empty, respect it and mark seeded.
@@ -232,49 +272,127 @@ export async function seedWorkflowDefaultsIfNeeded() {
 }
 
 // =============================================================================
-// Workflow operations (in-memory; pair every mutation with persistMutation())
+// Path-based directory operations (the public mutator API)
+//
+// `path` is a `string[]` of segment names. `[]` is the root (which has no
+// workflows; only directories live there). Mutators that take a `parentPath`
+// position the operation against that parent directory; e.g.
+// `addDirectory(["UP-scale"], "Type-A")` creates `UP-scale/Type-A`.
+//
+// Subdirectories cannot be named "Archive" (case-insensitive) — that name is
+// reserved by the synthetic Archive folder rendered for archived workflows.
 // =============================================================================
-export function listDirectoryNames() {
-    return Object.keys(workflowsCache.directories || {}).sort(compareNames);
-}
 
-export function dirOf(name) {
-    return workflowsCache.directories[name];
-}
+const ARCHIVE_RESERVED_NAME = "archive";
 
-function ensureDirectory(name) {
-    if (!workflowsCache.directories[name]) {
-        workflowsCache.directories[name] = { workflows: {} };
+// Resolves to the DirNode at `path`, or `undefined` if any segment is missing.
+// `[]` returns a synthetic wrapper around the root (with `directories`
+// pointing at `workflowsCache.directories`) so callers don't need a special
+// case for root vs. nested.
+export function dirOf(path) {
+    if (!Array.isArray(path)) return undefined;
+    if (path.length === 0) {
+        return { workflows: {}, directories: workflowsCache.directories || {} };
     }
-    return workflowsCache.directories[name];
+    let node = { directories: workflowsCache.directories || {} };
+    for (const seg of path) {
+        if (typeof seg !== "string" || !seg) return undefined;
+        if (!node.directories || !node.directories[seg]) return undefined;
+        node = node.directories[seg];
+    }
+    return node;
 }
 
-export function addDirectory(name) {
+// Direct child directory names at `parentPath`, sorted A→Z.
+export function listDirectoryNames(parentPath = []) {
+    const node = dirOf(parentPath);
+    if (!node || !node.directories) return [];
+    return Object.keys(node.directories).sort(compareNames);
+}
+
+// All directory paths in DFS, sorted A→Z at each level. Used by the save
+// modal to populate the directory dropdown as a flat path picker.
+export function listAllDirectoryPaths() {
+    const out = [];
+    const walk = (parentPath) => {
+        for (const name of listDirectoryNames(parentPath)) {
+            const next = [...parentPath, name];
+            out.push(next);
+            walk(next);
+        }
+    };
+    walk([]);
+    return out;
+}
+
+// Internal: walk to `parentPath` and create intermediate directories along
+// the way. Used only by `saveWorkflowEntry` so a save into a freshly-typed
+// new top-level directory always succeeds. Subdirectory creation is explicit
+// (right-click → Create subdirectory…) so we don't auto-create nested paths.
+function ensureDirectoryAtPath(path) {
+    if (!Array.isArray(path) || path.length === 0) return null;
+    let node = { directories: workflowsCache.directories };
+    for (let i = 0; i < path.length; i += 1) {
+        const seg = path[i];
+        if (typeof seg !== "string" || !seg) return null;
+        if (!node.directories) node.directories = {};
+        if (!node.directories[seg]) {
+            node.directories[seg] = { workflows: {}, directories: {} };
+        }
+        node = node.directories[seg];
+    }
+    return node;
+}
+
+// Add a directory at `parentPath` with `name`. Returns false on:
+//   - empty trimmed name
+//   - reserved name "Archive" (case-insensitive) when nested under another
+//     directory (collides with the synthetic Archive folder rendering)
+//   - parent path doesn't exist
+//   - sibling with the same name already exists
+export function addDirectory(parentPath, name) {
     name = (name || "").trim();
     if (!name) return false;
-    if (workflowsCache.directories[name]) return false; // already exists
-    workflowsCache.directories[name] = { workflows: {} };
+    // Type guard mirroring `moveDirectory` — without this, a future caller
+    // passing `undefined` would crash on `parentPath.length`.
+    if (!Array.isArray(parentPath)) return false;
+    // Reserved-name check: "Archive" at root is fine (no synthetic Archive
+    // collides at root because root has no archived workflows of its own),
+    // but inside a directory it would shadow the archived-workflows folder.
+    if (parentPath.length > 0 && name.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
+    const parent = dirOf(parentPath);
+    if (!parent) return false;
+    if (!parent.directories) parent.directories = {};
+    if (parent.directories[name]) return false;
+    parent.directories[name] = { workflows: {}, directories: {} };
     return true;
 }
 
-export function renameDirectory(oldName, newName) {
+export function renameDirectory(parentPath, oldName, newName) {
     newName = (newName || "").trim();
     if (!newName || newName === oldName) return false;
-    if (!workflowsCache.directories[oldName]) return false;
-    if (workflowsCache.directories[newName]) return false;
-    workflowsCache.directories[newName] = workflowsCache.directories[oldName];
-    delete workflowsCache.directories[oldName];
+    if (parentPath.length > 0 && newName.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
+    const parent = dirOf(parentPath);
+    if (!parent || !parent.directories || !parent.directories[oldName]) return false;
+    if (parent.directories[newName]) return false;
+    parent.directories[newName] = parent.directories[oldName];
+    delete parent.directories[oldName];
     return true;
 }
 
-export function deleteDirectory(name) {
-    if (!workflowsCache.directories[name]) return false;
-    delete workflowsCache.directories[name];
+export function deleteDirectory(parentPath, name) {
+    const parent = dirOf(parentPath);
+    if (!parent || !parent.directories || !parent.directories[name]) return false;
+    delete parent.directories[name];
     return true;
 }
 
-export function saveWorkflowEntry(dirName, wfName, graphData) {
-    const dir = ensureDirectory(dirName);
+// =============================================================================
+// Workflow operations (path-addressed)
+// =============================================================================
+export function saveWorkflowEntry(path, wfName, graphData) {
+    const dir = ensureDirectoryAtPath(path);
+    if (!dir) return false;
     let archivedAs = null;
     const existing = dir.workflows[wfName];
     if (existing) {
@@ -297,24 +415,24 @@ export function saveWorkflowEntry(dirName, wfName, graphData) {
     return { archivedAs };
 }
 
-export function archiveWorkflow(dirName, wfName) {
-    const dir = dirOf(dirName);
+export function archiveWorkflow(path, wfName) {
+    const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     dir.workflows[wfName].archived = true;
     return true;
 }
 
-export function unarchiveWorkflow(dirName, wfName) {
-    const dir = dirOf(dirName);
+export function unarchiveWorkflow(path, wfName) {
+    const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName].archived;
     return true;
 }
 
-export function renameWorkflow(dirName, oldWfName, newWfName) {
+export function renameWorkflow(path, oldWfName, newWfName) {
     newWfName = (newWfName || "").trim();
     if (!newWfName || newWfName === oldWfName) return false;
-    const dir = dirOf(dirName);
+    const dir = dirOf(path);
     if (!dir || !dir.workflows[oldWfName]) return false;
     if (dir.workflows[newWfName]) return false;
     dir.workflows[newWfName] = dir.workflows[oldWfName];
@@ -322,26 +440,110 @@ export function renameWorkflow(dirName, oldWfName, newWfName) {
     return true;
 }
 
-export function deleteWorkflow(dirName, wfName) {
-    const dir = dirOf(dirName);
+export function deleteWorkflow(path, wfName) {
+    const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName];
     return true;
 }
 
-export function moveWorkflow(srcDir, wfName, dstDir) {
-    if (srcDir === dstDir) return false;
-    const src = dirOf(srcDir);
+// `srcPath` and `dstPath` must both reference existing directories. Returns
+// false on identical paths, missing source workflow, missing destination,
+// or a name collision in the destination.
+export function moveWorkflow(srcPath, wfName, dstPath) {
+    if (pathsEqual(srcPath, dstPath)) return false;
+    const src = dirOf(srcPath);
     if (!src || !src.workflows[wfName]) return false;
-    const dst = ensureDirectory(dstDir);
-    if (dst.workflows[wfName]) return false; // name collision in destination
+    const dst = dirOf(dstPath);
+    if (!dst) return false;
+    if (dst.workflows[wfName]) return false;
     dst.workflows[wfName] = src.workflows[wfName];
     delete src.workflows[wfName];
     return true;
 }
 
-export function getWorkflowGraph(dirName, wfName) {
-    const dir = dirOf(dirName);
+export function getWorkflowGraph(path, wfName) {
+    const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return null;
     return dir.workflows[wfName].graph || null;
 }
+
+// Delete every archived workflow under the directory at `path`. Returns
+// `{ count }` (number of entries removed) on success, `false` if the
+// directory is missing or has no archived entries. Active (non-archived)
+// workflows in the same directory are untouched. Used by the Archive
+// folder's right-click "Delete archive" action.
+export function clearArchive(path) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows) return false;
+    const archivedNames = Object.entries(dir.workflows)
+        .filter(([, wf]) => wf && wf.archived === true)
+        .map(([n]) => n);
+    if (archivedNames.length === 0) return false;
+    for (const name of archivedNames) delete dir.workflows[name];
+    return { count: archivedNames.length };
+}
+
+// Move the directory at `srcParentPath/name` to live under `dstParentPath`
+// (its name is preserved). Returns false when:
+//   - the source doesn't exist
+//   - the destination parent doesn't exist
+//   - the destination already has a sibling with the same name
+//   - the move would create a cycle (dst is the source itself or any
+//     descendant of the source — you can't drop a folder into itself)
+//   - the source and destination parent are identical (no-op)
+//   - the new location at root level would use the reserved name "Archive"
+//     in a non-root parent (already enforced by addDirectory's check would
+//     not apply here; we re-check explicitly)
+export function moveDirectory(srcParentPath, name, dstParentPath) {
+    name = (name || "").trim();
+    if (!name) return false;
+    if (!Array.isArray(srcParentPath) || !Array.isArray(dstParentPath)) return false;
+    // Same parent → no-op (identical location).
+    if (pathsEqual(srcParentPath, dstParentPath)) return false;
+    // Reserved-name check at the new (non-root) parent.
+    if (dstParentPath.length > 0 && name.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
+    const src = dirOf(srcParentPath);
+    if (!src || !src.directories || !src.directories[name]) return false;
+    const dst = dirOf(dstParentPath);
+    if (!dst) return false;
+    if (!dst.directories) dst.directories = {};
+    if (dst.directories[name]) return false; // collision in destination
+    // Cycle prevention: dstParentPath must not be the source itself or a
+    // descendant. Source path is srcParentPath + [name]; reject any dst
+    // path that begins with that prefix.
+    const srcFullPath = [...srcParentPath, name];
+    if (isPathDescendantOrSame(dstParentPath, srcFullPath)) return false;
+    dst.directories[name] = src.directories[name];
+    delete src.directories[name];
+    return true;
+}
+
+// =============================================================================
+// Path utilities
+// =============================================================================
+export function pathsEqual(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+    return true;
+}
+
+// True when `testPath` equals or is a descendant of `ancestorPath`.
+// e.g. isPathDescendantOrSame(["A","B"], ["A"]) → true (B is under A)
+//      isPathDescendantOrSame(["A"],     ["A","B"]) → false (A is above)
+//      isPathDescendantOrSame(["A","B"], ["A","B"]) → true (same)
+function isPathDescendantOrSame(testPath, ancestorPath) {
+    if (!Array.isArray(testPath) || !Array.isArray(ancestorPath)) return false;
+    if (testPath.length < ancestorPath.length) return false;
+    for (let i = 0; i < ancestorPath.length; i += 1) {
+        if (testPath[i] !== ancestorPath[i]) return false;
+    }
+    return true;
+}
+
+// `isArchiveReservedName` was previously exported but never imported — the
+// reserved-name check is enforced inline by every mutator that creates or
+// renames a directory (`addDirectory`, `renameDirectory`, `moveDirectory`).
+// Removed during a dead-export sweep; revive as an export only if a future
+// caller needs to gate UI before submit (e.g. live-validate the new-dir
+// input in the save modal).

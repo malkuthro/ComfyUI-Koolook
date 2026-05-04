@@ -124,41 +124,162 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
 export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, onSave }) {
     const body = document.createElement("div");
 
-    // ---- Directory ----
+    // ---- Directory (cascading picker) ----
+    // Each cascade level is a <select> showing the immediate children at
+    // that depth. Sub-level selects start with a "(save in <path>)"
+    // sentinel so the user can stop drilling at any level. Subdirectories
+    // are created via right-click; "+ New directory…" at the top level
+    // creates a NEW top-level directory only.
+    const NEW_TOP = "__new__";
+    const SAVE_HERE = "__here__";
+    const topNames = listDirectoryNames([]);
+
     const dirLbl = document.createElement("label");
     dirLbl.className = "koolook-modal-label";
     dirLbl.textContent = "Directory";
     body.appendChild(dirLbl);
 
-    const dirNames = listDirectoryNames();
-    const dirSelect = document.createElement("select");
-    dirSelect.className = "koolook-modal-select";
-    if (dirNames.length === 0) {
-        const opt = document.createElement("option");
-        opt.value = "__new__";
-        opt.textContent = "+ New directory…";
-        dirSelect.appendChild(opt);
-    } else {
-        for (const d of dirNames) {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.textContent = d;
-            if (d === defaultDir) opt.selected = true;
-            dirSelect.appendChild(opt);
-        }
-        const newOpt = document.createElement("option");
-        newOpt.value = "__new__";
-        newOpt.textContent = "+ New directory…";
-        dirSelect.appendChild(newOpt);
-    }
-    body.appendChild(dirSelect);
+    const cascadeContainer = document.createElement("div");
+    body.appendChild(cascadeContainer);
 
     const newDirInput = document.createElement("input");
     newDirInput.className = "koolook-modal-input";
     newDirInput.placeholder = "New directory name";
     newDirInput.style.marginTop = "6px";
-    newDirInput.style.display = dirNames.length === 0 ? "" : "none";
+    newDirInput.style.display = "none";
     body.appendChild(newDirInput);
+
+    // The cascade: cascadeSelects[0] is the top-level <select>, [1] is the
+    // immediate children of [0]'s value, etc. Each child select includes a
+    // "(save in <path>)" option so drilling can stop at any depth.
+    const cascadeSelects = [];
+
+    function buildTopSelect() {
+        const sel = document.createElement("select");
+        sel.className = "koolook-modal-select";
+        for (const name of topNames) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            if (Array.isArray(defaultDir) && defaultDir[0] === name) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        const newOpt = document.createElement("option");
+        newOpt.value = NEW_TOP;
+        newOpt.textContent = "+ New directory…";
+        if (topNames.length === 0) newOpt.selected = true;
+        sel.appendChild(newOpt);
+        sel.addEventListener("change", () => onCascadeChange(0));
+        return sel;
+    }
+
+    function buildChildSelect(level, parentPath) {
+        // Returns a <select> for the children of `parentPath`, or null if
+        // that directory has no children (in which case no further select
+        // is shown — save lands at parentPath).
+        const children = listDirectoryNames(parentPath);
+        if (children.length === 0) return null;
+
+        const sel = document.createElement("select");
+        sel.className = "koolook-modal-select";
+        sel.style.marginTop = "6px";
+
+        const hereOpt = document.createElement("option");
+        hereOpt.value = SAVE_HERE;
+        hereOpt.textContent = `(save in "${parentPath.join(" / ")}")`;
+        sel.appendChild(hereOpt);
+
+        let preselected = false;
+        for (const name of children) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            if (Array.isArray(defaultDir) && defaultDir[level] === name) {
+                opt.selected = true;
+                preselected = true;
+            }
+            sel.appendChild(opt);
+        }
+        // If no descendant of defaultDir matched at this level, default to
+        // "(save here)" so the user doesn't fall accidentally deeper than
+        // they intended.
+        if (!preselected) sel.value = SAVE_HERE;
+        sel.addEventListener("change", () => onCascadeChange(level));
+        return sel;
+    }
+
+    function onCascadeChange(changedLevel) {
+        // Tear down every cascade level deeper than the one that changed.
+        while (cascadeSelects.length > changedLevel + 1) {
+            const old = cascadeSelects.pop();
+            old.remove();
+        }
+
+        const top = cascadeSelects[0];
+        if (top.value === NEW_TOP) {
+            newDirInput.style.display = "";
+            // Tear down child selects too — they don't apply to a brand-new
+            // top-level directory.
+            while (cascadeSelects.length > 1) {
+                const old = cascadeSelects.pop();
+                old.remove();
+            }
+            applyState();
+            return;
+        }
+        newDirInput.style.display = "none";
+
+        // Walk the kept selects to compute the current path. Stop at
+        // SAVE_HERE — anything below it has been torn down already.
+        const path = [top.value];
+        for (let i = 1; i < cascadeSelects.length; i += 1) {
+            const v = cascadeSelects[i].value;
+            if (v === SAVE_HERE) {
+                applyState();
+                return;
+            }
+            path.push(v);
+        }
+
+        // Try to extend the cascade one level deeper if children exist.
+        const deeper = buildChildSelect(path.length, path);
+        if (deeper) {
+            cascadeContainer.appendChild(deeper);
+            cascadeSelects.push(deeper);
+            // If the new level pre-selected a real child (not "save here"),
+            // recurse to build the level after it. This lets `defaultDir`
+            // navigate the cascade without user clicks.
+            if (deeper.value !== SAVE_HERE) {
+                onCascadeChange(cascadeSelects.length - 1);
+                return;
+            }
+        }
+        applyState();
+    }
+
+    function getSelectedPath() {
+        if (cascadeSelects.length === 0) return null;
+        const top = cascadeSelects[0].value;
+        if (top === NEW_TOP) {
+            const t = newDirInput.value.trim();
+            return t ? [t] : null;
+        }
+        const path = [top];
+        for (let i = 1; i < cascadeSelects.length; i += 1) {
+            const v = cascadeSelects[i].value;
+            if (v === SAVE_HERE) break;
+            path.push(v);
+        }
+        return path;
+    }
+
+    // Mount the top-level select and let onCascadeChange drive the rest.
+    const topSelect = buildTopSelect();
+    cascadeContainer.appendChild(topSelect);
+    cascadeSelects.push(topSelect);
+    // If no top-level dirs exist, the only option is "+ New directory…"
+    // and the new-dir input should already be visible.
+    if (topNames.length === 0) newDirInput.style.display = "";
 
     // ---- Base on existing (only shown when the chosen directory has workflows) ----
     const baseLbl = document.createElement("label");
@@ -203,53 +324,99 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     body.appendChild(nameInput);
 
     // ---- Wiring ----
-    function getActiveWorkflowsInCurrentDir() {
-        const v = dirSelect.value;
-        if (v === "__new__") return [];
-        const dir = dirOf(v);
-        if (!dir) return [];
-        return Object.keys(dir.workflows)
-            .filter(n => !dir.workflows[n].archived)
-            .sort(compareNames);
+    // Candidates for "Base on existing": collect every active workflow at
+    // the destination dir AND walk up its ancestors. So if the user picks
+    // an empty subdir like "UP-scale / seedvr2", the parent's workflows
+    // remain available to base on (instead of "Use existing name" /
+    // "Modify existing name" being disabled because the leaf dir is
+    // empty). De-duplication is by name, deepest-first wins (closest to
+    // the destination is the most relevant if names collide).
+    //
+    // The `value` of each option stays the bare name (the existing submit
+    // path uses `baseSelect.value` directly to populate the workflow
+    // name). `textContent` adds a "  ·  in <path>" suffix when the
+    // candidate is from an ancestor, so the user knows which directory
+    // they're basing on.
+    function getCandidatesForBase() {
+        const path = getSelectedPath();
+        if (!path || path.length === 0) return [];
+        // For "+ New directory…" the destination doesn't exist yet — no
+        // base candidates. (Ancestors don't apply: the new dir is at root.)
+        if (cascadeSelects[0].value === NEW_TOP) return [];
+        const seen = new Set();
+        const out = [];
+        for (let i = path.length; i >= 1; i -= 1) {
+            const ancestorPath = path.slice(0, i);
+            const dir = dirOf(ancestorPath);
+            if (!dir || !dir.workflows) continue;
+            const names = Object.keys(dir.workflows)
+                .filter(n => !dir.workflows[n].archived)
+                .sort(compareNames);
+            for (const name of names) {
+                if (seen.has(name)) continue;
+                seen.add(name);
+                out.push({ name, fromPath: ancestorPath, isCurrent: i === path.length });
+            }
+        }
+        return out;
     }
 
-    function rebuildBaseOptions(names) {
+    function rebuildBaseOptions(candidates) {
         const previous = baseSelect.value;
         baseSelect.innerHTML = "";
-        for (const n of names) {
+        for (const c of candidates) {
             const opt = document.createElement("option");
-            opt.value = n;
-            opt.textContent = n;
+            opt.value = c.name;
+            opt.textContent = c.isCurrent
+                ? c.name
+                : `${c.name}  ·  in ${c.fromPath.join(" / ")}`;
             baseSelect.appendChild(opt);
         }
-        if (names.includes(previous)) baseSelect.value = previous;
+        if (candidates.some(c => c.name === previous)) baseSelect.value = previous;
     }
 
     function applyState({ refocusName = false } = {}) {
-        const dirIsNew = dirSelect.value === "__new__";
-        newDirInput.style.display = dirIsNew ? "" : "none";
+        // newDirInput visibility is managed by onCascadeChange — it's tied
+        // to whether the top select is on "+ New directory…", not to
+        // anything applyState recomputes here.
+        const dirIsNew = cascadeSelects[0]?.value === NEW_TOP;
+        const candidates = dirIsNew ? [] : getCandidatesForBase();
+        const hasBase = candidates.length > 0;
 
-        const activeNames = dirIsNew ? [] : getActiveWorkflowsInCurrentDir();
-        const hasBase = activeNames.length > 0;
-
-        // Base on existing — visible only when the chosen directory has active workflows.
+        // Base on existing — visible whenever the destination dir OR any of
+        // its ancestors has active workflows. (Empty leaf dirs no longer
+        // disable the existing-name actions when the parent has things to
+        // base on.)
         if (hasBase) {
             baseLbl.style.display = "";
             baseSelect.style.display = "";
-            rebuildBaseOptions(activeNames);
+            rebuildBaseOptions(candidates);
         } else {
             baseLbl.style.display = "none";
             baseSelect.style.display = "none";
         }
 
-        // Action options — disable "Use existing" / "Modify existing" when no base is available.
-        for (const opt of actionSelect.options) {
-            if (opt.value === "use_existing" || opt.value === "modify_existing") {
-                opt.disabled = !hasBase;
+        // Action — hide the whole dropdown when there's nothing to base on.
+        // "Use existing" and "Modify existing" are meaningless without a
+        // base, and disabled <option> elements render subtly across browsers
+        // (the user just sees a "New name" they can't change). With no base,
+        // the only useful action is a fresh save by name — the Workflow Name
+        // field below already covers that case, so the dropdown is just
+        // noise. With a base, restore the full action picker.
+        if (hasBase) {
+            actionLbl.style.display = "";
+            actionSelect.style.display = "";
+            for (const opt of actionSelect.options) {
+                if (opt.value === "use_existing" || opt.value === "modify_existing") {
+                    opt.disabled = false;
+                }
             }
-        }
-        if (!hasBase && actionSelect.value !== "new") {
-            actionSelect.value = "new";
+        } else {
+            actionLbl.style.display = "none";
+            actionSelect.style.display = "none";
+            // Pin the underlying value to "new" so submit takes the Workflow
+            // Name path.
+            if (actionSelect.value !== "new") actionSelect.value = "new";
         }
 
         // Workflow name — visible only when needed.
@@ -278,10 +445,6 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
         }
     }
 
-    dirSelect.addEventListener("change", () => {
-        if (dirSelect.value === "__new__") newDirInput.focus();
-        applyState();
-    });
     actionSelect.addEventListener("change", () => applyState({ refocusName: true }));
     baseSelect.addEventListener("change", () => {
         if (actionSelect.value === "modify_existing") {
@@ -289,14 +452,24 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
         }
     });
 
+    // Drive the initial cascade — onCascadeChange recurses to honor
+    // `defaultDir` if any deeper levels need pre-selection. Then
+    // applyState() runs to compute the rest of the modal.
+    onCascadeChange(0);
     applyState();
+    if (cascadeSelects[0].value === NEW_TOP) newDirInput.focus();
 
     let overlay;
     const submit = async () => {
-        let dir = dirSelect.value;
-        if (dir === "__new__") {
-            dir = newDirInput.value.trim();
-            if (!dir) { newDirInput.focus(); return; }
+        // `dir` is a path array drawn from the cascade. "+ New directory…"
+        // yields a new top-level (single-segment) path once the user types
+        // a name; existing-dir selections yield the deepest path they
+        // drilled to before stopping at "(save in <path>)".
+        const dir = getSelectedPath();
+        if (!dir || dir.length === 0) {
+            // Top is "__new__" with empty input — prompt for a name.
+            if (cascadeSelects[0].value === NEW_TOP) newDirInput.focus();
+            return;
         }
         const action = actionSelect.value;
         let name;

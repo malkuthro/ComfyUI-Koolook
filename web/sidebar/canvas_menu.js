@@ -2,7 +2,7 @@
 // Right-click context menu on canvas nodes — adds to favorites.
 //
 // Patches `LGraphCanvas.prototype.getNodeMenuOptions` (wrap-not-replace) so the
-// "Add to Curated Sidebar" item appears on every node's right-click menu —
+// "Add to Kforge Labs" item appears on every node's right-click menu —
 // including nodes from other packs. The patch is idempotent so a soft refresh
 // doesn't stack duplicate entries.
 // =============================================================================
@@ -18,7 +18,7 @@ export function patchCanvasMenu() {
     // Idempotency: this is a global prototype mutation that affects every
     // pack's right-click menu. If the extension re-loads (HMR, soft refresh,
     // multiple registerExtension calls) we'd otherwise stack duplicate
-    // "Add to Curated Sidebar" entries on every node.
+    // "Add to Kforge Labs" entries on every node.
     if (C.prototype.__koolookCuratedPatched) return;
     C.prototype.__koolookCuratedPatched = true;
     const orig = C.prototype.getNodeMenuOptions;
@@ -26,7 +26,7 @@ export function patchCanvasMenu() {
         const options = orig.apply(this, arguments);
         options.push(null);
         options.push({
-            content: "Add to Curated Sidebar",
+            content: "Add to Kforge Labs",
             callback: () => {
                 if (!node || !node.type) return;
                 const status = addToMyPicks(node.type);

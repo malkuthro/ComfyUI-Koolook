@@ -88,8 +88,8 @@ export function canvasIsNonEmpty() {
     }
 }
 
-export async function loadWorkflowOntoCanvas(dirName, wfName) {
-    const graph = getWorkflowGraph(dirName, wfName);
+export async function loadWorkflowOntoCanvas(dirPath, wfName) {
+    const graph = getWorkflowGraph(dirPath, wfName);
     if (!graph) {
         toast(`Workflow not found: ${wfName}`);
         return;
