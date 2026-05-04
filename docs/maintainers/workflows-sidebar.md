@@ -77,7 +77,7 @@ location.reload();
 
 - **Selection saves are partial graphs.** Only the selected nodes + links between them survive; links into/out of non-selected nodes are nulled out, so the loaded workflow never has dangling references.
 - **Workflow tab name comes from `app.loadGraphData(graph, true, true, name, {})`'s 4th arg.** The tab flips from "Unsaved Workflow (N)" to the saved name, and Ctrl+S pre-fills with that name. (Verified against `Comfy-Org/ComfyUI_frontend` `src/scripts/app.ts`.)
-- **Folder expansion state persists across re-renders** (the `pathStates` Map in `koolook_sidebar.js`). Saving never collapses the directory you were viewing.
+- **Folder expansion state persists across re-renders** (the `pathStates` Map in `web/sidebar/tree.js`). Saving never collapses the directory you were viewing.
 - **Archive sub-folder is rendered *above* active workflows** in each directory, so the latest active workflow sits closest to the bottom — easy to spot.
 - **No auto-pruning of archives.** Re-saving the same name many times leaves many timestamped archive entries. Right-click → Delete to remove individual ones when no longer useful.
 - **Same-pattern distribution as `curated_defaults.json`** — see [`curated-sidebar.md`](curated-sidebar.md) for the seeding semantics that also apply here.

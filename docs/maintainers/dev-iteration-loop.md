@@ -6,7 +6,7 @@ round-trip.
 
 ## The loop
 
-1. Edit `web/koolook_sidebar.js` (or related JSON) in the worktree.
+1. Edit `web/koolook_sidebar.js` or any module under `web/sidebar/` (or related JSON) in the worktree.
 2. `python scripts/sync_to_dev.py` — copies runtime files into your live
    ComfyUI `custom_nodes/<koolook>/`. Reads `KOLOOK_COMFYUI_DEV_PATH` from `.env`.
 3. Restart ComfyUI; verify visually.
@@ -52,11 +52,11 @@ deleting `/userdata/koolook_workflows.json`, or wiping browser data does.
 - **Defensive fallbacks** when calling a newer ComfyUI API surface —
   multiple property paths inside try/catch so older frontends still work.
 - **Persist folder expansion state across re-renders** so saving doesn't
-  collapse the user's view (the `pathStates` Map in `koolook_sidebar.js`).
+  collapse the user's view (the `pathStates` Map in `web/sidebar/tree.js`).
 
 ## Files this loop touches most
 
-- [`web/koolook_sidebar.js`](../../web/koolook_sidebar.js) — sidebar implementation
+- [`web/koolook_sidebar.js`](../../web/koolook_sidebar.js) — sidebar entry (boots the extension; module bodies live in [`web/sidebar/`](../../web/sidebar/))
 - [`web/curated_defaults.json`](../../web/curated_defaults.json) — node defaults
 - [`web/workflow_defaults.json`](../../web/workflow_defaults.json) — workflow defaults
 - [`scripts/sync_to_dev.py`](../../scripts/sync_to_dev.py) — dev sync helper
