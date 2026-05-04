@@ -578,10 +578,11 @@ function countDescendantsOfRawDir(dir) {
 // Archived workflows are skipped here so the Tags section reflects the
 // active set only — their tags are still persisted on the entry, so a
 // restore (via the Archive folder's right-click) brings them back into
-// the section. Comparison is case-sensitive: "AI" and "ai" appear under
-// separate tag folders. The search filter matches against tag name OR
-// workflow name, so typing a tag narrows to that group, and typing a
-// workflow name keeps every tag the workflow carries.
+// the section. Tag grouping is case-sensitive: "AI" and "ai" produce
+// separate tag folders (the dedupe in `normalizeDirNode` is also
+// case-sensitive). The search filter is case-insensitive substring match
+// against tag name OR workflow name — typing a tag narrows to that group,
+// typing a workflow name keeps every tag the workflow carries.
 // =============================================================================
 function gatherTags(query) {
     const q = (query || "").trim().toLowerCase();
@@ -855,15 +856,25 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 confirmLabel: "Duplicate",
                 onSubmit: (newName) => persistMutation({
                     mutate: () => {
+                        // Re-validate at submit-time. A concurrent action
+                        // (another tab, drag-and-drop) could have deleted
+                        // the source between menu-open and submit. Without
+                        // this guard, `saveWorkflowEntry` would call
+                        // `ensureDirectoryAtPath` and silently re-create
+                        // the parent directory with a clone of the
+                        // captured graph — effectively undoing someone
+                        // else's delete with no feedback.
+                        if (getWorkflowGraph(dirPath, wfName) === null) return false;
                         const cloned = JSON.parse(JSON.stringify(sourceGraph));
                         const result = saveWorkflowEntry(dirPath, newName, cloned);
                         if (!result) return false;
-                        if (sourceTags.length > 0) {
-                            const dir = dirOf(dirPath);
-                            if (dir && dir.workflows[newName]) {
-                                dir.workflows[newName].tags = [...sourceTags];
-                            }
-                        }
+                        // Route tag inheritance through the public `addTag`
+                        // mutator instead of writing `wf.tags` directly, so
+                        // the Duplicate path stays inside the documented
+                        // store API. The whole sequence rides on the same
+                        // persistMutation snapshot — commit failure rolls
+                        // back the save AND the tag adds together.
+                        for (const t of sourceTags) addTag(dirPath, newName, t);
                         return result;
                     },
                     onSuccess: (result) => {
@@ -873,6 +884,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                             toast(`Duplicated to "${newName}".`);
                         }
                     },
+                    onNoOp: () => toast(`Could not duplicate — "${wfName}" no longer exists.`),
                 }),
             });
         },
@@ -883,7 +895,12 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         action: () => {
             showTagsModal({
                 wfName,
-                getCurrentTags: () => getWorkflowTags(dirPath, wfName) || [],
+                // Pass the raw `null` through so the modal can render an
+                // explicit gone-state when the workflow is deleted/moved/
+                // renamed by a concurrent action. Collapsing to `[]` would
+                // silently morph "workflow gone" into "no tags yet" and
+                // accept doomed Add inputs.
+                getCurrentTags: () => getWorkflowTags(dirPath, wfName),
                 onAddTag: (tag, onDone) => persistMutation({
                     mutate: () => addTag(dirPath, wfName, tag),
                     onSuccess: () => { onDone(); toast(`Tagged "${wfName}" with "${tag}".`); },

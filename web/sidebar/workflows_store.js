@@ -73,7 +73,16 @@ function normalizeDirNode(node, stats) {
         if (Array.isArray(wf.tags)) {
             const seen = new Set();
             for (const raw of wf.tags) {
-                const t = String(raw).trim();
+                // Reject non-strings outright instead of coercing — `String(null)`
+                // becomes the literal string `"null"`, which would silently
+                // surface as a garbage tag in the Tags section. The schema
+                // contract is `string[]`; anything else is corruption from a
+                // hand-edited /userdata file or a bug elsewhere.
+                if (typeof raw !== "string") {
+                    stats.dropped += 1;
+                    continue;
+                }
+                const t = raw.trim();
                 if (!t || seen.has(t)) continue;
                 seen.add(t);
                 tags.push(t);
