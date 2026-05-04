@@ -71,6 +71,21 @@ The format is inspired by Keep a Changelog and SemVer.
   (case-insensitive) at any non-root level — collides with the synthetic
   Archive folder rendered for archived workflows.
 
+### Documentation
+- Closed out issue #28 (de-vendor upstream code under `upscaler_FIX/`
+  and `nuke_CAM_exporter/`) by adding the audit-trail layer that the
+  v0.1.4 / v0.1.5 registry-hygiene cleanup deferred:
+  - `forks/THIRD_PARTY.md` gained a "De-vendored upstream code" section
+    listing all six untracked trees with former path, upstream (where
+    pinned) and per-tree provenance notes. Preamble now also documents
+    the publish-history finding that none of these files were ever in
+    a successful Comfy Registry publish.
+  - `forks/forks_manifest.yaml` gained six entries with the `_devendored`
+    suffix and `status: "removed"`, populating `source_repo` /
+    `source_ref` / `local_paths` / `removed_in_release` / `license` per
+    issue #28's acceptance criterion (2). Best-effort where upstream
+    URLs were not pinned at vendor time. Closes #28.
+
 ## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)
