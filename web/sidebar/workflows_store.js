@@ -481,12 +481,60 @@ export function clearArchive(path) {
     return { count: archivedNames.length };
 }
 
+// Move the directory at `srcParentPath/name` to live under `dstParentPath`
+// (its name is preserved). Returns false when:
+//   - the source doesn't exist
+//   - the destination parent doesn't exist
+//   - the destination already has a sibling with the same name
+//   - the move would create a cycle (dst is the source itself or any
+//     descendant of the source — you can't drop a folder into itself)
+//   - the source and destination parent are identical (no-op)
+//   - the new location at root level would use the reserved name "Archive"
+//     in a non-root parent (already enforced by addDirectory's check would
+//     not apply here; we re-check explicitly)
+export function moveDirectory(srcParentPath, name, dstParentPath) {
+    name = (name || "").trim();
+    if (!name) return false;
+    if (!Array.isArray(srcParentPath) || !Array.isArray(dstParentPath)) return false;
+    // Same parent → no-op (identical location).
+    if (pathsEqual(srcParentPath, dstParentPath)) return false;
+    // Reserved-name check at the new (non-root) parent.
+    if (dstParentPath.length > 0 && name.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
+    const src = dirOf(srcParentPath);
+    if (!src || !src.directories || !src.directories[name]) return false;
+    const dst = dirOf(dstParentPath);
+    if (!dst) return false;
+    if (!dst.directories) dst.directories = {};
+    if (dst.directories[name]) return false; // collision in destination
+    // Cycle prevention: dstParentPath must not be the source itself or a
+    // descendant. Source path is srcParentPath + [name]; reject any dst
+    // path that begins with that prefix.
+    const srcFullPath = [...srcParentPath, name];
+    if (isPathDescendantOrSame(dstParentPath, srcFullPath)) return false;
+    dst.directories[name] = src.directories[name];
+    delete src.directories[name];
+    return true;
+}
+
 // =============================================================================
 // Path utilities
 // =============================================================================
 export function pathsEqual(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+    return true;
+}
+
+// True when `testPath` equals or is a descendant of `ancestorPath`.
+// e.g. isPathDescendantOrSame(["A","B"], ["A"]) → true (B is under A)
+//      isPathDescendantOrSame(["A"],     ["A","B"]) → false (A is above)
+//      isPathDescendantOrSame(["A","B"], ["A","B"]) → true (same)
+function isPathDescendantOrSame(testPath, ancestorPath) {
+    if (!Array.isArray(testPath) || !Array.isArray(ancestorPath)) return false;
+    if (testPath.length < ancestorPath.length) return false;
+    for (let i = 0; i < ancestorPath.length; i += 1) {
+        if (testPath[i] !== ancestorPath[i]) return false;
+    }
     return true;
 }
 

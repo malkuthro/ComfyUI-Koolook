@@ -20,6 +20,13 @@ The format is inspired by Keep a Changelog and SemVer.
   Archive folder under any directory → bulk-removes every archived
   workflow at that level in one confirm. Active workflows in the same
   directory are untouched.
+- **Drag-and-drop in the workflows tree** (Tier 1 — moves only, no
+  reordering). Drag a workflow onto a directory to move it. Drag a
+  workflow onto an Archive folder to archive it (cross-directory drops
+  move + archive in one go). Drag a directory onto another directory to
+  nest it as a child. Cycle prevention rejects dropping a dir into
+  itself or any of its descendants. Sort within a level stays
+  alphabetical. (Custom ordering would be Tier 2.)
 - **Schema is now recursive** — every directory node has a `workflows`
   object AND a `directories` object. Existing v0.2 stores load fine:
   `normalizeWorkflowsStore` treats a missing `directories` as `{}` and

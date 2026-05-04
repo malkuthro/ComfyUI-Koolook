@@ -105,6 +105,9 @@ export function ensureStyle() {
 .koolook-context-danger { color: #ff8888; }
 .koolook-context-sep { height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0; }
 .koolook-context-submenu-arrow { float: right; opacity: 0.5; }
+.koolook-row[draggable="true"] { cursor: grab; }
+.koolook-row[draggable="true"]:active { cursor: grabbing; }
+.koolook-drop-target { background: rgba(80,140,235,0.18) !important; outline: 2px solid rgba(80,140,235,0.6); outline-offset: -2px; }
 `;
     document.head.appendChild(s);
 }

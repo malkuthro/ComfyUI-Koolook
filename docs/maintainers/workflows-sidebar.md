@@ -35,6 +35,20 @@ guidance; the underlying logic flows from the resulting `(name, dir)` pair.
 - **Directory row** (any depth): **Create subdirectory…** / Rename / Delete (with confirm if non-empty — the message names workflow + subdirectory counts).
 - **Archive folder** (synthetic — appears only when a directory has archived workflows): **Delete archive (N)** — removes every archived workflow in this directory in one go (active workflows in the same directory are untouched).
 
+## Drag-and-drop (Tier 1 — moves only; reordering is alphabetical)
+
+| Drag | Drop on | Effect |
+|---|---|---|
+| Workflow row | Directory row | Move workflow to that directory (no-op if same dir) |
+| Workflow row | Archive folder | Archive in that directory (move first if cross-dir) |
+| Directory row | Directory row | Nest the dragged dir as a child of the target |
+
+**Cycle prevention:** dragging a directory onto itself, its current parent, or any of its descendants is rejected. **Name collisions** (the destination already has a sibling with the same name) are rejected. **Reserved name:** dropping a directory literally named `Archive` into a non-root parent is rejected (would shadow the synthetic Archive folder).
+
+Visual feedback: drop targets get a blue outline on hover. Failed drops surface a toast.
+
+Sort within a level remains alphabetical — Tier 1 doesn't introduce a custom-order schema. (A future Tier 2 could.)
+
 ## Subdirectories
 
 Every directory can host nested subdirectories at arbitrary depth. Each

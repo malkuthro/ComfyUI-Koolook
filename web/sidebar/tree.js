@@ -41,6 +41,7 @@ import {
     renameWorkflow,
     deleteWorkflow,
     moveWorkflow,
+    moveDirectory,
     clearArchive,
     pathsEqual,
 } from "./workflows_store.js";
@@ -243,7 +244,7 @@ function renderTree({ treeEl, query }) {
 // folders only need to provide segment-relative paths.
 function makeSectionCtx(parentEl, prefix, isFiltered, validPaths) {
     return {
-        folder({ name, count, iconKind, path, startExpanded = false, onContextMenu, build }) {
+        folder({ name, count, iconKind, path, startExpanded = false, onContextMenu, build, draggablePayload, dropTarget }) {
             const fullPath = prefix ? `${prefix}/${path}` : path;
             validPaths.add(fullPath);
             const folder = buildFolder({
@@ -251,6 +252,8 @@ function makeSectionCtx(parentEl, prefix, isFiltered, validPaths) {
                 path: fullPath,
                 forceExpanded: isFiltered,
                 onContextMenu,
+                draggablePayload,
+                dropTarget,
                 childrenBuilder: (children) => {
                     const sub = makeSectionCtx(children, fullPath, isFiltered, validPaths);
                     build(sub);
@@ -268,6 +271,106 @@ function appendDivider(treeEl) {
     const d = document.createElement("div");
     d.className = "koolook-tree-divider";
     treeEl.appendChild(d);
+}
+
+// =============================================================================
+// Drag-and-drop primitives. Workflow leaf rows + directory folder rows are
+// draggable; directory folder rows + the synthetic Archive folder accept
+// drops. The MIME type "application/x-koolook-row" ensures we only react to
+// our own rows (not files / external drags).
+//
+// Drop semantics dispatched by handleDndDrop:
+//   workflow → directory  → moveWorkflow (no-op if same dir)
+//   workflow → Archive    → archive (move to dest dir first if cross-dir)
+//   directory → directory → moveDirectory (cycle-checked in store)
+// =============================================================================
+const DND_MIME = "application/x-koolook-row";
+
+function decorateDraggable(row, payload) {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(DND_MIME, JSON.stringify(payload));
+    });
+}
+
+function decorateDropTarget(row, target) {
+    row.addEventListener("dragover", (e) => {
+        if (!Array.from(e.dataTransfer.types).includes(DND_MIME)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        row.classList.add("koolook-drop-target");
+    });
+    row.addEventListener("dragleave", () => {
+        row.classList.remove("koolook-drop-target");
+    });
+    row.addEventListener("drop", (e) => {
+        row.classList.remove("koolook-drop-target");
+        if (!Array.from(e.dataTransfer.types).includes(DND_MIME)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const raw = e.dataTransfer.getData(DND_MIME);
+        if (!raw) return;
+        let payload;
+        try { payload = JSON.parse(raw); }
+        catch { return; }
+        handleDndDrop(payload, target);
+    });
+}
+
+function handleDndDrop(payload, target) {
+    if (!payload || !target) return;
+    if (payload.type === "workflow") {
+        const srcPath = payload.path;
+        const wfName = payload.name;
+        if (target.kind === "dir") {
+            // No-op when dropped onto its own directory.
+            if (pathsEqual(srcPath, target.path)) return;
+            persistMutation({
+                mutate: () => moveWorkflow(srcPath, wfName, target.path),
+                onSuccess: () => toast(`Moved "${wfName}" to ${target.path.join(" / ")}.`),
+                onNoOp: () => toast(`Could not move (name conflict in destination?).`),
+            });
+            return;
+        }
+        if (target.kind === "archive") {
+            // Drop on Archive folder of dir target.path → archive in that
+            // dir. If the workflow lives in a different dir, move it first.
+            const sameDir = pathsEqual(srcPath, target.path);
+            persistMutation({
+                mutate: () => {
+                    if (!sameDir) {
+                        if (!moveWorkflow(srcPath, wfName, target.path)) return false;
+                    }
+                    return archiveWorkflow(target.path, wfName);
+                },
+                onSuccess: () => {
+                    const where = sameDir ? "" : ` in ${target.path.join(" / ")}`;
+                    toast(`Archived "${wfName}"${where}.`);
+                },
+                onNoOp: () => toast(`Could not archive (name conflict or workflow missing).`),
+            });
+            return;
+        }
+        return;
+    }
+    if (payload.type === "directory") {
+        if (target.kind !== "dir") return; // dirs don't drop onto Archive
+        const srcParentPath = payload.parentPath;
+        const dirName = payload.name;
+        // Same-parent drop is a no-op.
+        if (pathsEqual(srcParentPath, target.path)) return;
+        persistMutation({
+            mutate: () => moveDirectory(srcParentPath, dirName, target.path),
+            onSuccess: () => {
+                const where = target.path.length === 0 ? "(root)" : target.path.join(" / ");
+                toast(`Moved directory "${dirName}" into ${where}.`);
+            },
+            onNoOp: () => toast(`Could not move directory (cycle, name collision, or invalid target).`),
+        });
+    }
 }
 
 // =============================================================================
@@ -456,7 +559,7 @@ function countDescendantsOfRawDir(dir) {
 // =============================================================================
 // DOM helpers
 // =============================================================================
-function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu }) {
+function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu, draggablePayload, dropTarget }) {
     const row = document.createElement("div");
     row.className = "koolook-row";
 
@@ -491,6 +594,8 @@ function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu }) {
 
     row.addEventListener("click", onToggle);
     if (onContextMenu) row.addEventListener("contextmenu", onContextMenu);
+    if (draggablePayload) decorateDraggable(row, draggablePayload);
+    if (dropTarget) decorateDropTarget(row, dropTarget);
     return { row, chevron };
 }
 
@@ -529,7 +634,7 @@ function makeNodeLeafRow({ display, type, removable, onClick }) {
     return row;
 }
 
-function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu }) {
+function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggablePayload }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
     row.title = `${dirName} / ${name}`;
@@ -549,10 +654,11 @@ function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu }) {
 
     row.addEventListener("click", onClick);
     if (onContextMenu) row.addEventListener("contextmenu", onContextMenu);
+    if (draggablePayload) decorateDraggable(row, draggablePayload);
     return row;
 }
 
-function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path = null, forceExpanded = false }) {
+function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path = null, forceExpanded = false, draggablePayload, dropTarget }) {
     // Resolution order:
     //   1. forceExpanded (e.g. search active) — overrides everything
     //   2. pathStates (user has previously toggled this folder)
@@ -578,6 +684,8 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
         count,
         iconKind,
         onContextMenu,
+        draggablePayload,
+        dropTarget,
         onToggle: () => {
             const expanded = wrapper.dataset.expanded !== "false";
             const next = !expanded;
@@ -849,6 +957,7 @@ addSection({
 // the freshest version sits closest to the bottom of the directory.
 function renderGatheredDir(parentCtx, dir) {
     const dirPath = dir.path;
+    const parentPath = dirPath.slice(0, -1);
     const dirDisplay = dirPath.join(" / ");
     const totalInTree = countWorkflowsInGatheredDir(dir);
     parentCtx.folder({
@@ -856,6 +965,10 @@ function renderGatheredDir(parentCtx, dir) {
         count: totalInTree,
         path: dir.name,
         onContextMenu: (e) => directoryRowContextMenu(e, dirPath),
+        // Directory rows are draggable (drag to nest under another dir) and
+        // also drop targets (drop a workflow or another dir onto them).
+        draggablePayload: { type: "directory", parentPath, name: dir.name },
+        dropTarget: { kind: "dir", path: dirPath },
         build: (dirCtx) => {
             for (const sub of dir.subdirs) renderGatheredDir(dirCtx, sub);
             if (dir.archived.length > 0) {
@@ -865,6 +978,9 @@ function renderGatheredDir(parentCtx, dir) {
                     iconKind: "archive",
                     path: "Archive",
                     onContextMenu: (e) => archiveFolderContextMenu(e, dirPath, dir.archived.length),
+                    // Archive folders accept workflow drops only (drop = archive
+                    // in this directory; cross-dir drops move + archive).
+                    dropTarget: { kind: "archive", path: dirPath },
                     build: (archCtx) => {
                         for (const wfName of dir.archived) {
                             archCtx.leaf({
@@ -873,6 +989,7 @@ function renderGatheredDir(parentCtx, dir) {
                                     dirName: dirDisplay,
                                     onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
                                     onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, true),
+                                    draggablePayload: { type: "workflow", path: dirPath, name: wfName },
                                 }),
                             });
                         }
@@ -886,6 +1003,7 @@ function renderGatheredDir(parentCtx, dir) {
                         dirName: dirDisplay,
                         onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
                         onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, false),
+                        draggablePayload: { type: "workflow", path: dirPath, name: wfName },
                     }),
                 });
             }
