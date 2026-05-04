@@ -415,9 +415,12 @@ function gatherDirsAt(parentPath, q, stats) {
 
         const subdirs = gatherDirsAt(dirPath, q, stats);
 
-        // Drop the entry only when the directory contributes nothing visible
-        // — neither matched workflows of its own nor any matched descendants.
-        if (active.length === 0 && archived.length === 0 && subdirs.length === 0) continue;
+        // Under an active search, drop entries that contributed nothing
+        // (no matched workflows of their own, no matched descendants) so
+        // the filtered tree only shows paths leading to a hit. With NO
+        // search, keep every directory that exists — including freshly-
+        // created empty subdirs — so the tree mirrors the actual store.
+        if (q && active.length === 0 && archived.length === 0 && subdirs.length === 0) continue;
 
         out.push({ name: dirName, path: dirPath, active, archived, subdirs });
         stats.total += active.length + archived.length;
