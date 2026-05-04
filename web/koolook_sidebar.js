@@ -139,6 +139,9 @@ function loadUserPicks() {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed.filter(x => typeof x === "string") : [];
     } catch (e) {
+        // Surface corruption so the user has a chance to spot it in the console
+        // before the next saveUserPicks() overwrites the bad blob with a fresh list.
+        console.warn("[Koolook] failed to parse user picks; returning empty list:", e);
         return [];
     }
 }
@@ -146,8 +149,10 @@ function loadUserPicks() {
 function saveUserPicks(picks) {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(picks));
+        return true;
     } catch (e) {
         console.warn("[Koolook] failed to save picks:", e);
+        return false;
     }
 }
 
@@ -184,7 +189,14 @@ async function seedDefaultsIfNeeded() {
         const picks = (data && Array.isArray(data.picks))
             ? data.picks.filter(p => typeof p === "string")
             : [];
-        if (picks.length > 0) saveUserPicks(picks);
+        if (picks.length > 0) {
+            // Only mark seeded if the save actually landed — otherwise the next
+            // page load retries instead of being permanently blocked by the flag.
+            if (!saveUserPicks(picks)) {
+                console.warn("[Koolook] seed save failed; will retry on next load");
+                return;
+            }
+        }
         localStorage.setItem(SEEDED_KEY, "1");
         console.log(`[Koolook] seeded ${picks.length} default pick(s)`);
     } catch (e) {
@@ -246,10 +258,25 @@ function normalizeWorkflowsStore(data) {
     const dirs = data.directories;
     if (!dirs || typeof dirs !== "object") return { directories: {} };
     const out = {};
+    let dropped = 0;
     for (const [name, dir] of Object.entries(dirs)) {
         if (!dir || typeof dir !== "object") continue;
         const wfs = dir.workflows && typeof dir.workflows === "object" ? dir.workflows : {};
-        out[name] = { workflows: { ...wfs } };
+        const cleanedWfs = {};
+        for (const [wfName, wf] of Object.entries(wfs)) {
+            // Drop entries that can't be loaded (missing/non-object graph).
+            // Coerce `archived` to a strict boolean so a stray "false" string
+            // can't accidentally flag an entry as archived.
+            if (!wf || typeof wf !== "object" || !wf.graph || typeof wf.graph !== "object") {
+                dropped += 1;
+                continue;
+            }
+            cleanedWfs[wfName] = { ...wf, archived: wf.archived === true };
+        }
+        out[name] = { workflows: cleanedWfs };
+    }
+    if (dropped > 0) {
+        console.warn(`[Koolook] dropped ${dropped} malformed workflow entr(y/ies) during normalize`);
     }
     return { directories: out };
 }
@@ -304,11 +331,24 @@ async function loadWorkflowsStore() {
                 workflowsCache = normalizeWorkflowsStore(JSON.parse(raw));
                 return workflowsCache;
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.warn("[Koolook] failed to parse localStorage workflows fallback:", e);
+        }
         workflowsCache = { directories: {} };
         return workflowsCache;
     }
     workflowsCache = normalizeWorkflowsStore(fromServer);
+    // Reconciliation hint: if /userdata loaded successfully but an old fallback
+    // blob is still present, the user may have unsaved work from a prior outage.
+    // We don't auto-merge (risk of clobbering) — surface it so they can recover
+    // manually from DevTools if needed.
+    if (localStorage.getItem(WORKFLOWS_FALLBACK_KEY)) {
+        console.warn(
+            `[Koolook] /userdata loaded, but a stale localStorage fallback exists ` +
+            `at "${WORKFLOWS_FALLBACK_KEY}". If workflows you saved during a previous ` +
+            `outage are missing, recover from there before clearing.`
+        );
+    }
     return workflowsCache;
 }
 
@@ -337,7 +377,12 @@ async function seedWorkflowDefaultsIfNeeded() {
         const seedDirCount = Object.keys(normalized.directories).length;
         if (seedDirCount > 0) {
             workflowsCache = normalized;
-            await persistWorkflowsToServer(workflowsCache);
+            // Only mark seeded if the persist actually landed — otherwise the
+            // next page load retries instead of being permanently blocked.
+            if (!(await persistWorkflowsToServer(workflowsCache))) {
+                console.warn("[Koolook] seed persist failed; will retry on next load");
+                return;
+            }
         }
         localStorage.setItem(WORKFLOWS_SEEDED_KEY, "1");
         console.log(`[Koolook] seeded ${seedDirCount} default workflow director(y/ies)`);
@@ -1672,30 +1717,45 @@ function renderPanel(container) {
     });
     wfRow.appendChild(newDirBtn);
 
+    // Shared save handler for both buttons. Keeps "save → mark visible → commit
+    // → toast" flow in one place; toasts a failure if commit() returns false so
+    // the user isn't told a write succeeded when both /userdata and the
+    // localStorage fallback failed.
+    const saveAndToast = async (graph, name, dir) => {
+        const result = saveWorkflowEntry(dir, name, graph);
+        pathStates.set("workflows", true);
+        pathStates.set(`workflows/${dir}`, true);
+        const ok = await commit();
+        if (!ok) {
+            toast(`Save failed — could not write "${name}". See console.`);
+            return;
+        }
+        if (result.archivedAs) {
+            toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
+        } else {
+            toast(`Saved "${name}" in ${dir}.`);
+        }
+    };
+
     const saveCanvasBtn = document.createElement("button");
     saveCanvasBtn.className = "koolook-add-btn koolook-icon-btn";
     saveCanvasBtn.innerHTML = '<span class="pi pi-save"></span>';
     saveCanvasBtn.title = "Save entire canvas as a workflow";
     saveCanvasBtn.addEventListener("click", () => {
+        // Check emptiness first so a serialize() throw doesn't get misreported
+        // as "Canvas is empty" — distinct toasts for distinct failure modes.
+        if (!canvasIsNonEmpty()) {
+            toast("Canvas is empty.");
+            return;
+        }
         const graph = serializeFullCanvas();
         if (!graph || !graph.nodes || graph.nodes.length === 0) {
-            toast("Canvas is empty.");
+            toast("Failed to serialize canvas. See console.");
             return;
         }
         showSaveWorkflowModal({
             titleSuffix: "entire canvas",
-            onSave: async ({ name, dir }) => {
-                const result = saveWorkflowEntry(dir, name, graph);
-                // Make sure the directory we just saved into is visible after re-render.
-                pathStates.set("workflows", true);
-                pathStates.set(`workflows/${dir}`, true);
-                await commit();
-                if (result.archivedAs) {
-                    toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
-                } else {
-                    toast(`Saved "${name}" in ${dir}.`);
-                }
-            },
+            onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
         });
     });
     wfRow.appendChild(saveCanvasBtn);
@@ -1712,18 +1772,7 @@ function renderPanel(container) {
         }
         showSaveWorkflowModal({
             titleSuffix: `${graph.nodes.length} selected node${graph.nodes.length === 1 ? "" : "s"}`,
-            onSave: async ({ name, dir }) => {
-                const result = saveWorkflowEntry(dir, name, graph);
-                // Make sure the directory we just saved into is visible after re-render.
-                pathStates.set("workflows", true);
-                pathStates.set(`workflows/${dir}`, true);
-                await commit();
-                if (result.archivedAs) {
-                    toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
-                } else {
-                    toast(`Saved "${name}" in ${dir}.`);
-                }
-            },
+            onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
         });
     });
     wfRow.appendChild(saveSelectionBtn);
