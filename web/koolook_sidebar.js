@@ -156,13 +156,15 @@ function saveUserPicks(picks) {
     }
 }
 
+// Tri-state: "added" | "duplicate" | "failed". Callers need to distinguish
+// "save failed" from "already in list" so the user isn't told a write
+// succeeded when localStorage rejected it (quota / private mode).
 function addToMyPicks(typeName) {
-    if (!typeName) return false;
+    if (!typeName) return "failed";
     const picks = loadUserPicks();
-    if (picks.includes(typeName)) return false;
+    if (picks.includes(typeName)) return "duplicate";
     picks.push(typeName);
-    saveUserPicks(picks);
-    return true;
+    return saveUserPicks(picks) ? "added" : "failed";
 }
 
 function removeFromMyPicks(typeName) {
@@ -281,19 +283,38 @@ function normalizeWorkflowsStore(data) {
     return { directories: out };
 }
 
+// Sentinel for "server reachable but file content is unparseable".
+// Distinct from `undefined` (server unreachable) and `null` (file missing)
+// so callers can refuse to auto-seed on top of a corrupt-but-existing file.
+const SERVER_FILE_CORRUPT = Symbol("workflows-server-corrupt");
+
 async function fetchWorkflowsFromServer() {
+    let resp;
     try {
-        const resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}`);
-        if (resp.status === 404) return null;
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const text = await resp.text();
-        return text ? JSON.parse(text) : null;
+        resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}`);
     } catch (e) {
-        console.warn("[Koolook] /userdata read failed, using localStorage fallback:", e);
-        return undefined; // sentinel: server unreachable
+        console.warn("[Koolook] /userdata read failed (network):", e);
+        return undefined;
+    }
+    if (resp.status === 404) return null;
+    if (!resp.ok) {
+        console.warn(`[Koolook] /userdata read returned HTTP ${resp.status}`);
+        return undefined;
+    }
+    const text = await resp.text();
+    if (!text || !text.trim()) return null;
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        console.error("[Koolook] /userdata workflow file is unreadable; refusing to auto-recover:", e);
+        return SERVER_FILE_CORRUPT;
     }
 }
 
+// Returns "server" | "fallback" | false. Callers that care about durability
+// (specifically the seeders) should only treat "server" as a success — a
+// "fallback"-only write is per-browser and won't reach future page loads if
+// /userdata becomes reachable again.
 async function persistWorkflowsToServer(store) {
     const json = JSON.stringify(store, null, 2);
     try {
@@ -303,12 +324,12 @@ async function persistWorkflowsToServer(store) {
             body: json,
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return true;
+        return "server";
     } catch (e) {
         console.warn("[Koolook] /userdata write failed, using localStorage fallback:", e);
         try {
             localStorage.setItem(WORKFLOWS_FALLBACK_KEY, json);
-            return true;
+            return "fallback";
         } catch (e2) {
             console.error("[Koolook] both /userdata and localStorage write failed:", e2);
             return false;
@@ -316,12 +337,21 @@ async function persistWorkflowsToServer(store) {
     }
 }
 
+// Returns { corrupt: false } on normal load (cache populated), or
+// { corrupt: true } when /userdata reachable but file content is unparseable —
+// the caller (setup) must skip seeding so we don't clobber the corrupt-but-
+// recoverable file with stock defaults.
 async function loadWorkflowsStore() {
     const fromServer = await fetchWorkflowsFromServer();
+    if (fromServer === SERVER_FILE_CORRUPT) {
+        toast("Workflow file on /userdata is unreadable. Refusing to auto-recover; check console.");
+        workflowsCache = { directories: {} };
+        return { corrupt: true };
+    }
     if (fromServer === null) {
         // Server reachable, file just doesn't exist yet — return empty.
         workflowsCache = { directories: {} };
-        return workflowsCache;
+        return { corrupt: false };
     }
     if (fromServer === undefined) {
         // Server unreachable — try localStorage fallback.
@@ -329,33 +359,69 @@ async function loadWorkflowsStore() {
             const raw = localStorage.getItem(WORKFLOWS_FALLBACK_KEY);
             if (raw) {
                 workflowsCache = normalizeWorkflowsStore(JSON.parse(raw));
-                return workflowsCache;
+                return { corrupt: false };
             }
         } catch (e) {
             console.warn("[Koolook] failed to parse localStorage workflows fallback:", e);
         }
         workflowsCache = { directories: {} };
-        return workflowsCache;
+        return { corrupt: false };
     }
     workflowsCache = normalizeWorkflowsStore(fromServer);
-    // Reconciliation hint: if /userdata loaded successfully but an old fallback
-    // blob is still present, the user may have unsaved work from a prior outage.
-    // We don't auto-merge (risk of clobbering) — surface it so they can recover
-    // manually from DevTools if needed.
+    // Reconciliation: /userdata loaded successfully but a stale fallback blob
+    // from an earlier outage still exists. We don't auto-merge (risk of
+    // clobbering) but we surface it visibly so the user knows where to recover.
     if (localStorage.getItem(WORKFLOWS_FALLBACK_KEY)) {
         console.warn(
             `[Koolook] /userdata loaded, but a stale localStorage fallback exists ` +
             `at "${WORKFLOWS_FALLBACK_KEY}". If workflows you saved during a previous ` +
             `outage are missing, recover from there before clearing.`
         );
+        toast(`Old offline workflow data found in localStorage["${WORKFLOWS_FALLBACK_KEY}"]. See console to recover.`, 4500);
     }
-    return workflowsCache;
+    return { corrupt: false };
 }
 
 async function commit() {
-    const ok = await persistWorkflowsToServer(workflowsCache);
-    if (ok) notifyWorkflowsChanged();
-    return ok;
+    // Both "server" and "fallback" are user-visible successes — the panel
+    // shows the change either way. Only `false` (both backends rejected)
+    // indicates a real loss requiring rollback at the call site.
+    const result = await persistWorkflowsToServer(workflowsCache);
+    if (result) notifyWorkflowsChanged();
+    return result !== false;
+}
+
+// Snapshot the cache so callers can roll back a mutation when commit() fails.
+// Pairs with a `restore()` function that puts the cache back and re-renders.
+function snapshotCache() {
+    const snap = JSON.stringify(workflowsCache);
+    return () => {
+        try {
+            workflowsCache = JSON.parse(snap);
+            notifyWorkflowsChanged();
+        } catch (e) {
+            console.error("[Koolook] cache rollback failed:", e);
+        }
+    };
+}
+
+// Mutate-then-commit with automatic rollback on persist failure. Mutation
+// returning `false` is treated as a no-op (e.g. name collision) and bypasses
+// commit. `onSuccess(result)` and `onNoOp()` callbacks run their own toasts.
+async function persistMutation({ mutate, onSuccess, onNoOp, persistFailedMessage }) {
+    const restore = snapshotCache();
+    const result = mutate();
+    if (result === false) {
+        if (onNoOp) onNoOp();
+        return false;
+    }
+    if (await commit()) {
+        if (onSuccess) onSuccess(result);
+        return true;
+    }
+    restore();
+    toast(persistFailedMessage || "Save failed — change reverted. See console.");
+    return false;
 }
 
 async function seedWorkflowDefaultsIfNeeded() {
@@ -377,10 +443,16 @@ async function seedWorkflowDefaultsIfNeeded() {
         const seedDirCount = Object.keys(normalized.directories).length;
         if (seedDirCount > 0) {
             workflowsCache = normalized;
-            // Only mark seeded if the persist actually landed — otherwise the
-            // next page load retries instead of being permanently blocked.
-            if (!(await persistWorkflowsToServer(workflowsCache))) {
-                console.warn("[Koolook] seed persist failed; will retry on next load");
+            // Only mark seeded if the persist *reached the server* — a
+            // "fallback"-only write is per-browser, and once /userdata
+            // becomes reachable on a later load the empty server file
+            // would otherwise trump the locally-seeded data.
+            const persistResult = await persistWorkflowsToServer(workflowsCache);
+            if (persistResult !== "server") {
+                console.warn(
+                    `[Koolook] seed persist landed in ${persistResult || "neither"}; ` +
+                    `not marking seeded so we retry against /userdata next load.`
+                );
                 return;
             }
         }
@@ -594,6 +666,15 @@ async function loadWorkflowOntoCanvas(dirName, wfName) {
         return;
     }
     const apply = async () => {
+        // Snapshot the current canvas before loading. If loadGraphData throws
+        // partway (missing node type, malformed payload), we restore the
+        // user's prior canvas instead of leaving them with neither workflow.
+        let previousGraph = null;
+        try {
+            if (canvasIsNonEmpty()) previousGraph = app.graph.serialize();
+        } catch (e) {
+            previousGraph = null;
+        }
         try {
             // Passing `wfName` as the 4th arg makes loadGraphData create a
             // temporary workflow tab titled with that name (instead of
@@ -616,6 +697,17 @@ async function loadWorkflowOntoCanvas(dirName, wfName) {
             toast(`Loaded "${wfName}".`);
         } catch (e) {
             console.error("[Koolook] loadGraphData failed:", e);
+            if (previousGraph) {
+                try {
+                    await app.loadGraphData(previousGraph);
+                    toast(`Failed to load "${wfName}". Canvas restored. See console.`);
+                    return;
+                } catch (restoreErr) {
+                    console.error("[Koolook] canvas restore failed:", restoreErr);
+                    toast(`Failed to load "${wfName}". Canvas may be partial. See console.`);
+                    return;
+                }
+            }
             toast(`Failed to load "${wfName}". See console.`);
         }
     };
@@ -654,18 +746,36 @@ function makeModalShell({ title, body, actions }) {
     for (const action of actions) actionsEl.appendChild(action);
     modal.appendChild(actionsEl);
 
+    // Centralized close so every dismissal path (Escape, overlay click, Cancel
+    // button, OK button calling overlay.remove()) tears down the document-level
+    // keydown listener too. Without this, every modal opened leaks one listener.
+    let escHandler = null;
+    const close = () => {
+        if (escHandler) {
+            document.removeEventListener("keydown", escHandler);
+            escHandler = null;
+        }
+        if (overlay.parentNode) overlay.remove();
+    };
+    // Make overlay.remove() route through close so existing call sites that
+    // do `overlay.remove()` continue to work (and clean up the listener too).
+    const origRemove = overlay.remove.bind(overlay);
+    overlay.remove = () => {
+        if (escHandler) {
+            document.removeEventListener("keydown", escHandler);
+            escHandler = null;
+        }
+        origRemove();
+    };
+
     overlay.appendChild(modal);
     overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) overlay.remove();
+        if (e.target === overlay) close();
     });
-    document.addEventListener("keydown", function escHandler(e) {
-        if (e.key === "Escape") {
-            overlay.remove();
-            document.removeEventListener("keydown", escHandler);
-        }
-    });
+    escHandler = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", escHandler);
     document.body.appendChild(overlay);
-    return { overlay, modal };
+    return { overlay, modal, close };
 }
 
 function makeModalButton({ label, primary, danger, onClick }) {
@@ -1321,34 +1431,27 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
         .filter(d => d !== dirName)
         .map(d => ({
             label: `→ ${d}`,
-            action: async () => {
-                if (moveWorkflow(dirName, wfName, d)) {
-                    await commit();
-                    toast(`Moved "${wfName}" to ${d}.`);
-                } else {
-                    toast(`Could not move (name conflict?).`);
-                }
-            },
+            action: () => persistMutation({
+                mutate: () => moveWorkflow(dirName, wfName, d),
+                onSuccess: () => toast(`Moved "${wfName}" to ${d}.`),
+                onNoOp: () => toast(`Could not move (name conflict?).`),
+            }),
         }));
 
     const archiveItem = isArchived
         ? {
             label: "Restore from archive",
-            action: async () => {
-                if (unarchiveWorkflow(dirName, wfName)) {
-                    await commit();
-                    toast(`Restored "${wfName}".`);
-                }
-            },
+            action: () => persistMutation({
+                mutate: () => unarchiveWorkflow(dirName, wfName),
+                onSuccess: () => toast(`Restored "${wfName}".`),
+            }),
         }
         : {
             label: "Move to archive",
-            action: async () => {
-                if (archiveWorkflow(dirName, wfName)) {
-                    await commit();
-                    toast(`Archived "${wfName}".`);
-                }
-            },
+            action: () => persistMutation({
+                mutate: () => archiveWorkflow(dirName, wfName),
+                onSuccess: () => toast(`Archived "${wfName}".`),
+            }),
         };
 
     showContextMenu(event, [
@@ -1364,14 +1467,11 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
                     label: "New name",
                     defaultValue: wfName,
                     confirmLabel: "Rename",
-                    onSubmit: async (newName) => {
-                        if (renameWorkflow(dirName, wfName, newName)) {
-                            await commit();
-                            toast(`Renamed to "${newName}".`);
-                        } else {
-                            toast(`Rename failed (name in use?).`);
-                        }
-                    },
+                    onSubmit: (newName) => persistMutation({
+                        mutate: () => renameWorkflow(dirName, wfName, newName),
+                        onSuccess: () => toast(`Renamed to "${newName}".`),
+                        onNoOp: () => toast(`Rename failed (name in use?).`),
+                    }),
                 });
             },
         },
@@ -1387,12 +1487,10 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
                     message: `"${wfName}" will be removed. This cannot be undone.`,
                     confirmLabel: "Delete",
                     danger: true,
-                    onConfirm: async () => {
-                        if (deleteWorkflow(dirName, wfName)) {
-                            await commit();
-                            toast(`Deleted "${wfName}".`);
-                        }
-                    },
+                    onConfirm: () => persistMutation({
+                        mutate: () => deleteWorkflow(dirName, wfName),
+                        onSuccess: () => toast(`Deleted "${wfName}".`),
+                    }),
                 });
             },
         },
@@ -1412,14 +1510,11 @@ function directoryRowContextMenu(event, dirName) {
                     label: "New name",
                     defaultValue: dirName,
                     confirmLabel: "Rename",
-                    onSubmit: async (newName) => {
-                        if (renameDirectory(dirName, newName)) {
-                            await commit();
-                            toast(`Renamed to "${newName}".`);
-                        } else {
-                            toast(`Rename failed (name in use?).`);
-                        }
-                    },
+                    onSubmit: (newName) => persistMutation({
+                        mutate: () => renameDirectory(dirName, newName),
+                        onSuccess: () => toast(`Renamed to "${newName}".`),
+                        onNoOp: () => toast(`Rename failed (name in use?).`),
+                    }),
                 });
             },
         },
@@ -1434,12 +1529,10 @@ function directoryRowContextMenu(event, dirName) {
                         message: `"${dirName}" will be removed.`,
                         confirmLabel: "Delete",
                         danger: true,
-                        onConfirm: async () => {
-                            if (deleteDirectory(dirName)) {
-                                await commit();
-                                toast(`Deleted directory "${dirName}".`);
-                            }
-                        },
+                        onConfirm: () => persistMutation({
+                            mutate: () => deleteDirectory(dirName),
+                            onSuccess: () => toast(`Deleted directory "${dirName}".`),
+                        }),
                     });
                 } else {
                     const count = Object.keys(dir.workflows).length;
@@ -1448,12 +1541,10 @@ function directoryRowContextMenu(event, dirName) {
                         message: `"${dirName}" contains ${count} workflow${count === 1 ? "" : "s"}. They will be permanently deleted.`,
                         confirmLabel: "Delete all",
                         danger: true,
-                        onConfirm: async () => {
-                            if (deleteDirectory(dirName)) {
-                                await commit();
-                                toast(`Deleted "${dirName}" and its ${count} workflow${count === 1 ? "" : "s"}.`);
-                            }
-                        },
+                        onConfirm: () => persistMutation({
+                            mutate: () => deleteDirectory(dirName),
+                            onSuccess: () => toast(`Deleted "${dirName}" and its ${count} workflow${count === 1 ? "" : "s"}.`),
+                        }),
                     });
                 }
             },
@@ -1659,14 +1750,22 @@ function renderPanel(container) {
             return;
         }
         let added = 0;
+        let duplicates = 0;
+        let failed = 0;
         for (const t of types) {
-            if (addToMyPicks(t)) added += 1;
+            const status = addToMyPicks(t);
+            if (status === "added") added += 1;
+            else if (status === "duplicate") duplicates += 1;
+            else failed += 1;
         }
         if (added > 0) {
             const noun = added === 1 ? "node" : "nodes";
             toast(`Added ${added} ${noun} to favorites.`);
             notifyPicksChanged();
-        } else {
+        }
+        if (failed > 0) {
+            toast(`Failed to save ${failed} pick${failed === 1 ? "" : "s"}. See console.`);
+        } else if (added === 0 && duplicates > 0) {
             toast("Already in favorites.");
         }
     });
@@ -1705,36 +1804,33 @@ function renderPanel(container) {
             label: "Directory name",
             placeholder: "e.g. Inpainting",
             confirmLabel: "Create",
-            onSubmit: async (name) => {
-                if (addDirectory(name)) {
-                    await commit();
-                    toast(`Directory "${name}" created.`);
-                } else {
-                    toast(`Directory "${name}" already exists.`);
-                }
-            },
+            onSubmit: (name) => persistMutation({
+                mutate: () => addDirectory(name),
+                onSuccess: () => toast(`Directory "${name}" created.`),
+                onNoOp: () => toast(`Directory "${name}" already exists.`),
+            }),
         });
     });
     wfRow.appendChild(newDirBtn);
 
-    // Shared save handler for both buttons. Keeps "save → mark visible → commit
-    // → toast" flow in one place; toasts a failure if commit() returns false so
-    // the user isn't told a write succeeded when both /userdata and the
-    // localStorage fallback failed.
+    // Shared save handler for both buttons. Uses persistMutation so the cache
+    // mutation rolls back automatically if both /userdata and the localStorage
+    // fallback rejected the write — the user isn't told a save succeeded when
+    // nothing was persisted, and the in-memory cache stays consistent with disk.
     const saveAndToast = async (graph, name, dir) => {
-        const result = saveWorkflowEntry(dir, name, graph);
         pathStates.set("workflows", true);
         pathStates.set(`workflows/${dir}`, true);
-        const ok = await commit();
-        if (!ok) {
-            toast(`Save failed — could not write "${name}". See console.`);
-            return;
-        }
-        if (result.archivedAs) {
-            toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
-        } else {
-            toast(`Saved "${name}" in ${dir}.`);
-        }
+        await persistMutation({
+            mutate: () => saveWorkflowEntry(dir, name, graph),
+            onSuccess: (result) => {
+                if (result.archivedAs) {
+                    toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
+                } else {
+                    toast(`Saved "${name}" in ${dir}.`);
+                }
+            },
+            persistFailedMessage: `Save failed — could not write "${name}". See console.`,
+        });
     };
 
     const saveCanvasBtn = document.createElement("button");
@@ -1818,6 +1914,12 @@ function patchCanvasMenu() {
         console.warn("[Koolook] LGraphCanvas.getNodeMenuOptions not available; right-click menu skipped.");
         return;
     }
+    // Idempotency: this is a global prototype mutation that affects every
+    // pack's right-click menu. If the extension re-loads (HMR, soft refresh,
+    // multiple registerExtension calls) we'd otherwise stack duplicate
+    // "Add to Curated Sidebar" entries on every node.
+    if (C.prototype.__koolookCuratedPatched) return;
+    C.prototype.__koolookCuratedPatched = true;
     const orig = C.prototype.getNodeMenuOptions;
     C.prototype.getNodeMenuOptions = function (node) {
         const options = orig.apply(this, arguments);
@@ -1826,11 +1928,14 @@ function patchCanvasMenu() {
             content: "Add to Curated Sidebar",
             callback: () => {
                 if (!node || !node.type) return;
-                if (addToMyPicks(node.type)) {
+                const status = addToMyPicks(node.type);
+                if (status === "added") {
                     toast(`Added "${node.title || node.type}" to favorites.`);
                     notifyPicksChanged();
-                } else {
+                } else if (status === "duplicate") {
                     toast("Already in favorites.");
+                } else {
+                    toast(`Failed to save "${node.title || node.type}". See console.`);
                 }
             },
         });
@@ -1849,8 +1954,12 @@ app.registerExtension({
             return;
         }
         await seedDefaultsIfNeeded();
-        await loadWorkflowsStore();
-        await seedWorkflowDefaultsIfNeeded();
+        const loadResult = await loadWorkflowsStore();
+        // Skip workflow seeding when /userdata file is corrupt — we don't want
+        // to overwrite a recoverable-but-unparseable file with stock defaults.
+        if (!loadResult.corrupt) {
+            await seedWorkflowDefaultsIfNeeded();
+        }
         app.extensionManager.registerSidebarTab({
             id: TAB_ID,
             title: TAB_TITLE,
