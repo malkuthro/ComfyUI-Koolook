@@ -56,6 +56,10 @@ guess a path.
 This is a development convenience only — anything worth shipping still
 goes through the normal PR + release flow described below.
 
+The broader iteration pattern (trigger phrases, what survives across
+re-syncs vs what doesn't, push/publish gates) is captured in
+[`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
+
 ## Curated Nodes sidebar — distributed defaults
 
 The "Curated Nodes" ComfyUI sidebar tab (implemented in
