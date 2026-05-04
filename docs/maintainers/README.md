@@ -28,4 +28,4 @@ and should be kept in sync with these prose docs.
 | `license-pre-check` | Runs *before* any third-party fork; refuses to proceed on incompatible licenses. The principles also apply when a human is doing it manually. |
 | `add-external-fork` | The `forks/` workflow — clone outside MAIN, register in `forks_manifest.yaml`, namespace the IDs. Phase 0 calls `license-pre-check`. |
 | `docs-sync` | Find-and-replace a version tag (or any string token) across docs, code constants, and manifests in one controlled pass. Used during fork wrapper version bumps. |
-| `menu` | Lists all project skills with one-liners — quick inventory when you can't remember what's available. |
+| `menu-comfy` | Lists all project skills with one-liners — quick inventory when you can't remember what's available. Distinct from the global `/menu` skill so the two don't collide. |
