@@ -1,10 +1,12 @@
 // =============================================================================
-// Sidebar tree — data gathering, DOM row factories, folder builder, context
-// menus for workflow/directory rows, the tree-rebuild dispatcher, and the
-// panel renderer (search, action bars, tree mount, event subscriptions).
+// Sidebar tree — section-registry engine, data gathering, DOM row factories,
+// folder builder, context menus for workflow/directory rows, and the panel
+// renderer (search, action bars, tree mount, event subscriptions).
 //
 // `pathStates` is module-private — folder expansion state survives across
 // re-renders triggered by saves, picks-changed events, or storage events.
+// Stale path keys are pruned every render against the set of paths actually
+// emitted, so renames and deletes don't leak entries.
 // =============================================================================
 import {
     REPOS,
@@ -55,11 +57,215 @@ import {
 } from "./modals.js";
 
 // =============================================================================
-// Folder expansion state — persisted across re-renders so saving (or any
-// other action that triggers a tree rebuild) doesn't collapse what the user
-// was looking at. Map<path, boolean>; truthy = expanded.
+// Folder expansion state — Map<path, boolean>; truthy = expanded.
+// Path keys are auto-prefixed by the engine with the owning section's id, so
+// section authors only write segment-relative paths.
 // =============================================================================
 const pathStates = new Map();
+
+// Paths flagged by `pinExpanded` to be force-opened on the next render. The
+// set is consumed each render: kept entries are written to pathStates and the
+// set is cleared. Used by save flows that mutate state and want the
+// destination folder open after the resulting re-render.
+const pinnedPaths = new Set();
+
+// Section registry. Sections render in declaration order, separated by
+// dividers. Built-in sections register at module load (bottom of this file).
+const SECTIONS = [];
+
+// =============================================================================
+// Engine — public surface (3 functions)
+// =============================================================================
+
+/**
+ * @typedef {Object} FolderOpts
+ * @property {string} name
+ * @property {number} [count]
+ * @property {string} [iconKind]                      "favorites" | "workflows"
+ *                                                    | "archive" | "folder".
+ * @property {string} path                            Segment-relative; engine
+ *                                                    prefixes with section.id.
+ * @property {boolean} [startExpanded=false]
+ * @property {(e: MouseEvent) => void} [onContextMenu]
+ * @property {(sub: SectionCtx) => void} build        Populate the sub-folder.
+ *
+ * @typedef {Object} SectionCtx
+ * @property {*} data                                 Result returned by `gather`.
+ *                                                    Top-level ctx only; nested
+ *                                                    builds close over their
+ *                                                    own data via the outer
+ *                                                    `build` scope.
+ * @property {string} query                           Lowercased+trimmed search.
+ * @property {boolean} isFiltered                     True when query is non-empty.
+ * @property {(opts: FolderOpts) => void} folder      Append a sub-folder.
+ * @property {(opts: { row: HTMLElement }) => void} leaf
+ *                                                    Append a leaf row.
+ *
+ * @typedef {Object} SectionSpec
+ * @property {string} id                              Stable; used as the
+ *                                                    pathState root for
+ *                                                    this section.
+ * @property {string} label                           Group folder header.
+ * @property {string} [iconKind]                      Same enum as FolderOpts.
+ * @property {string} [emptyMessage]                  Shown when the section
+ *                                                    gathers nothing AND no
+ *                                                    search is active.
+ * @property {(query: string) => { total: number }} gather
+ *                                                    Returns a result with at
+ *                                                    least `total`. Other
+ *                                                    fields are opaque to
+ *                                                    the engine; the section
+ *                                                    reads them via
+ *                                                    `ctx.data` in `build`.
+ * @property {(ctx: SectionCtx) => void} build        Called when total > 0;
+ *                                                    uses `ctx.folder` and
+ *                                                    `ctx.leaf` to populate
+ *                                                    the section tree.
+ */
+
+/**
+ * Register a tree section.
+ *
+ * @param {SectionSpec} spec
+ */
+function addSection(spec) {
+    SECTIONS.push(spec);
+}
+
+/**
+ * Mark paths as expanded for the next render. The paths must include the
+ * section-id prefix (e.g. "workflows", "workflows/MyDir"). Called from save
+ * flows so the destination folder is open after the resulting re-render.
+ *
+ * @param {string[]} paths
+ */
+function pinExpanded(paths) {
+    for (const p of paths) pinnedPaths.add(p);
+}
+
+/**
+ * Single render entry point. Idempotent — safe to call from search input,
+ * picks-changed, workflows-changed, or storage events.
+ *
+ * @param {{ treeEl: HTMLElement, query: string }} opts
+ */
+function renderTree({ treeEl, query }) {
+    treeEl.innerHTML = "";
+    const q = (query || "").trim().toLowerCase();
+    const isFiltered = q.length > 0;
+    const validPaths = new Set();
+    // Track which sections actually rendered this pass. Phase 3 only prunes
+    // keys whose section rendered — sections gated empty by a search filter
+    // keep their pathStates entries so clearing the filter restores user
+    // expansions.
+    const renderedSectionIds = new Set();
+
+    // Phase 1: gather every section.
+    const gathered = SECTIONS.map(section => ({
+        section,
+        result: section.gather(q),
+    }));
+
+    // Phase 2: render. Cross-section empty under a non-trivial search emits a
+    // single placeholder; otherwise iterate sections with dividers between
+    // non-empty ones. Phase 3 ALWAYS runs after this, so pins always apply.
+    const anyVisible = gathered.some(({ result }) => result.total > 0);
+    if (!anyVisible && isFiltered) {
+        const empty = document.createElement("div");
+        empty.className = "koolook-empty";
+        empty.textContent = "No nodes or workflows match your search.";
+        treeEl.appendChild(empty);
+    } else {
+        let appended = 0;
+        for (const { section, result } of gathered) {
+            if (result.total === 0) {
+                // Per-section empty placeholder only when not filtered. Under
+                // filter, the cross-section "no matches" message handles it.
+                if (!isFiltered && section.emptyMessage) {
+                    if (appended > 0) appendDivider(treeEl);
+                    const el = document.createElement("div");
+                    el.className = "koolook-empty";
+                    el.textContent = section.emptyMessage;
+                    treeEl.appendChild(el);
+                    appended += 1;
+                }
+                continue;
+            }
+
+            if (appended > 0) appendDivider(treeEl);
+
+            renderedSectionIds.add(section.id);
+            const sectionPath = section.id;
+            validPaths.add(sectionPath);
+            const sectionFolder = buildFolder({
+                name: section.label,
+                count: result.total,
+                iconKind: section.iconKind,
+                startExpanded: true,
+                path: sectionPath,
+                forceExpanded: isFiltered,
+                childrenBuilder: (children) => {
+                    const ctx = makeSectionCtx(children, sectionPath, isFiltered, validPaths);
+                    ctx.data = result;
+                    ctx.query = q;
+                    ctx.isFiltered = isFiltered;
+                    section.build(ctx);
+                },
+            });
+            treeEl.appendChild(sectionFolder);
+            appended += 1;
+        }
+    }
+
+    // Phase 3: prune pathStates + apply pins. Always runs so pins never leak
+    // across renders. Prune is scoped to keys whose owning section actually
+    // rendered — keys belonging to a section that was gated empty by the
+    // current filter survive untouched, so the user's expansions return when
+    // they clear the filter.
+    const pinned = new Set(pinnedPaths);
+    pinnedPaths.clear();
+    for (const key of [...pathStates.keys()]) {
+        const slashIdx = key.indexOf("/");
+        const sectionId = slashIdx === -1 ? key : key.slice(0, slashIdx);
+        if (!renderedSectionIds.has(sectionId)) continue;
+        if (!validPaths.has(key) && !pinned.has(key)) {
+            pathStates.delete(key);
+        }
+    }
+    for (const p of pinned) pathStates.set(p, true);
+}
+
+// Section ctx — handed to `section.build(ctx)`. Each `ctx.folder({...})` call
+// recurses with a fresh sub-ctx whose path prefix is extended, so nested
+// folders only need to provide segment-relative paths.
+function makeSectionCtx(parentEl, prefix, isFiltered, validPaths) {
+    return {
+        folder({ name, count, iconKind, path, startExpanded = false, onContextMenu, build }) {
+            const fullPath = prefix ? `${prefix}/${path}` : path;
+            validPaths.add(fullPath);
+            const folder = buildFolder({
+                name, count, iconKind, startExpanded,
+                path: fullPath,
+                forceExpanded: isFiltered,
+                onContextMenu,
+                childrenBuilder: (children) => {
+                    const sub = makeSectionCtx(children, fullPath, isFiltered, validPaths);
+                    build(sub);
+                },
+            });
+            parentEl.appendChild(folder);
+        },
+        leaf({ row }) {
+            parentEl.appendChild(row);
+        },
+    };
+}
+
+function appendDivider(treeEl) {
+    const d = document.createElement("div");
+    d.className = "koolook-tree-divider";
+    treeEl.appendChild(d);
+}
 
 // =============================================================================
 // Data gathering — nodes
@@ -471,154 +677,110 @@ function directoryRowContextMenu(event, dirName) {
 }
 
 // =============================================================================
-// Tree rendering
+// Built-in section descriptors. Order here = render order in the panel.
 // =============================================================================
-function rebuildTree(treeEl, query) {
-    treeEl.innerHTML = "";
-    const isFiltered = (query || "").trim().length > 0;
+addSection({
+    id: "nodes",
+    label: ROOT_GROUP_LABEL,
+    iconKind: "favorites",
+    emptyMessage: "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Curated Sidebar.",
+    gather(q) {
+        const auto = gatherNodesByRepo(q);
+        const user = gatherUserPickPacks(q);
+        const packs = [...auto, ...user]
+            .filter(p => p.total > 0)
+            .sort((a, b) => compareNames(a.label, b.label));
+        const total = packs.reduce((acc, p) => acc + p.total, 0);
+        return { packs, total };
+    },
+    build(ctx) {
+        for (const pack of ctx.data.packs) {
+            ctx.folder({
+                name: pack.label,
+                count: pack.total,
+                path: pack.label,
+                build: (packCtx) => {
+                    for (const cat of pack.categories) {
+                        packCtx.folder({
+                            name: cat.name,
+                            count: cat.nodes.length,
+                            path: cat.name,
+                            build: (catCtx) => {
+                                for (const n of cat.nodes) {
+                                    catCtx.leaf({
+                                        row: makeNodeLeafRow({
+                                            display: n.display,
+                                            type: n.type,
+                                            removable: !!pack.isUserPicks,
+                                            onClick: () => insertNode(n.type),
+                                        }),
+                                    });
+                                }
+                            },
+                        });
+                    }
+                },
+            });
+        }
+    },
+});
 
-    // ------ Gather both sections first so we know whether to render a divider ------
-    const autoPacks = gatherNodesByRepo(query);
-    const userPickPacks = gatherUserPickPacks(query);
-    const allPacks = [...autoPacks, ...userPickPacks]
-        .filter(p => p.total > 0)
-        .sort((a, b) => compareNames(a.label, b.label));
-    const nodesTotal = allPacks.reduce((acc, p) => acc + p.total, 0);
-    const showNodes = nodesTotal > 0;
-
-    const wf = gatherWorkflows(query);
-    const showWorkflows = wf.directories.length > 0;
-
-    // Search returned nothing across both sections.
-    if (!showNodes && !showWorkflows && isFiltered) {
-        const empty = document.createElement("div");
-        empty.className = "koolook-empty";
-        empty.textContent = "No nodes or workflows match your search.";
-        treeEl.appendChild(empty);
-        return;
-    }
-
-    // ------ Nodes section ------
-    if (showNodes) {
-        const nodesGroup = buildFolder({
-            name: ROOT_GROUP_LABEL,
-            count: nodesTotal,
-            iconKind: "favorites",
-            startExpanded: true,
-            path: "nodes",
-            forceExpanded: isFiltered,
-            childrenBuilder: (rootChildren) => {
-                for (const pack of allPacks) {
-                    const packFolder = buildFolder({
-                        name: pack.label,
-                        count: pack.total,
-                        startExpanded: false,
-                        path: `nodes/${pack.label}`,
-                        forceExpanded: isFiltered,
-                        childrenBuilder: (packChildren) => {
-                            for (const cat of pack.categories) {
-                                const catFolder = buildFolder({
-                                    name: cat.name,
-                                    count: cat.nodes.length,
-                                    startExpanded: false,
-                                    path: `nodes/${pack.label}/${cat.name}`,
-                                    forceExpanded: isFiltered,
-                                    childrenBuilder: (catChildren) => {
-                                        for (const n of cat.nodes) {
-                                            catChildren.appendChild(makeNodeLeafRow({
-                                                display: n.display,
-                                                type: n.type,
-                                                removable: !!pack.isUserPicks,
-                                                onClick: () => insertNode(n.type),
-                                            }));
-                                        }
-                                    },
-                                });
-                                packChildren.appendChild(catFolder);
-                            }
-                        },
-                    });
-                    rootChildren.appendChild(packFolder);
-                }
-            },
-        });
-        treeEl.appendChild(nodesGroup);
-    } else if (!isFiltered) {
-        const empty = document.createElement("div");
-        empty.className = "koolook-empty";
-        empty.textContent = "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Curated Sidebar.";
-        treeEl.appendChild(empty);
-    }
-
-    // ------ Divider between sections ------
-    if (showNodes && showWorkflows) {
-        const divider = document.createElement("div");
-        divider.className = "koolook-tree-divider";
-        treeEl.appendChild(divider);
-    }
-
-    // ------ Workflows section ------
-    if (showWorkflows) {
-        const workflowsGroup = buildFolder({
-            name: WORKFLOWS_GROUP_LABEL,
-            count: wf.total,
-            iconKind: "workflows",
-            startExpanded: true,
-            path: "workflows",
-            forceExpanded: isFiltered,
-            childrenBuilder: (wfChildren) => {
-                for (const dir of wf.directories) {
-                    const totalInDir = dir.active.length + dir.archived.length;
-                    const dirFolder = buildFolder({
-                        name: dir.name,
-                        count: totalInDir,
-                        startExpanded: false,
-                        path: `workflows/${dir.name}`,
-                        forceExpanded: isFiltered,
-                        onContextMenu: (e) => directoryRowContextMenu(e, dir.name),
-                        childrenBuilder: (dirChildren) => {
-                            // Archive first, then active — so the latest (active)
-                            // workflow is closest to the bottom of the directory.
-                            if (dir.archived.length > 0) {
-                                const archiveFolder = buildFolder({
-                                    name: "Archive",
-                                    count: dir.archived.length,
-                                    iconKind: "archive",
-                                    startExpanded: false,
-                                    path: `workflows/${dir.name}/Archive`,
-                                    forceExpanded: isFiltered,
-                                    childrenBuilder: (archiveChildren) => {
-                                        for (const wfName of dir.archived) {
-                                            archiveChildren.appendChild(makeWorkflowLeafRow({
-                                                name: wfName,
-                                                dirName: dir.name,
-                                                onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
-                                                onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, true),
-                                            }));
-                                        }
-                                    },
-                                });
-                                dirChildren.appendChild(archiveFolder);
-                            }
-                            for (const wfName of dir.active) {
-                                dirChildren.appendChild(makeWorkflowLeafRow({
-                                    name: wfName,
-                                    dirName: dir.name,
-                                    onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
-                                    onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, false),
-                                }));
-                            }
-                        },
-                    });
-                    wfChildren.appendChild(dirFolder);
-                }
-            },
-        });
-        treeEl.appendChild(workflowsGroup);
-    }
-    // (When workflows is empty and not filtered, we silently hide the section;
-    // the toolbar above still lets the user create a directory or save a workflow.)
-}
+addSection({
+    id: "workflows",
+    label: WORKFLOWS_GROUP_LABEL,
+    iconKind: "workflows",
+    // No emptyMessage — when the workflow store is empty and no search is
+    // active, we silently hide the section. The toolbar above still lets the
+    // user create a directory or save a workflow.
+    gather(q) {
+        return gatherWorkflows(q);
+    },
+    build(ctx) {
+        for (const dir of ctx.data.directories) {
+            const totalInDir = dir.active.length + dir.archived.length;
+            ctx.folder({
+                name: dir.name,
+                count: totalInDir,
+                path: dir.name,
+                onContextMenu: (e) => directoryRowContextMenu(e, dir.name),
+                build: (dirCtx) => {
+                    // Archive first, then active — so the latest (active)
+                    // workflow is closest to the bottom of the directory.
+                    if (dir.archived.length > 0) {
+                        dirCtx.folder({
+                            name: "Archive",
+                            count: dir.archived.length,
+                            iconKind: "archive",
+                            path: "Archive",
+                            build: (archCtx) => {
+                                for (const wfName of dir.archived) {
+                                    archCtx.leaf({
+                                        row: makeWorkflowLeafRow({
+                                            name: wfName,
+                                            dirName: dir.name,
+                                            onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
+                                            onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, true),
+                                        }),
+                                    });
+                                }
+                            },
+                        });
+                    }
+                    for (const wfName of dir.active) {
+                        dirCtx.leaf({
+                            row: makeWorkflowLeafRow({
+                                name: wfName,
+                                dirName: dir.name,
+                                onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
+                                onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, false),
+                            }),
+                        });
+                    }
+                },
+            });
+        }
+    },
+});
 
 // =============================================================================
 // Panel rendering
@@ -736,8 +898,9 @@ export function renderPanel(container) {
     // fallback rejected the write — the user isn't told a save succeeded when
     // nothing was persisted, and the in-memory cache stays consistent with disk.
     const saveAndToast = async (graph, name, dir) => {
-        pathStates.set("workflows", true);
-        pathStates.set(`workflows/${dir}`, true);
+        // Pin the workflows section + destination dir so the resulting
+        // re-render leaves them open. Pins are consumed on next render.
+        pinExpanded(["workflows", `workflows/${dir}`]);
         await persistMutation({
             mutate: () => saveWorkflowEntry(dir, name, graph),
             onSuccess: (result) => {
@@ -803,22 +966,22 @@ export function renderPanel(container) {
     tree.className = "koolook-tree";
     container.appendChild(tree);
 
-    rebuildTree(tree, "");
+    renderTree({ treeEl: tree, query: "" });
 
     // ---- Search wiring ----
     let debounce = null;
     search.addEventListener("input", (e) => {
         const q = e.target.value;
         if (debounce) clearTimeout(debounce);
-        debounce = setTimeout(() => rebuildTree(tree, q), 60);
+        debounce = setTimeout(() => renderTree({ treeEl: tree, query: q }), 60);
     });
 
     // ---- Event subscriptions for live re-rendering ----
-    window.addEventListener(PICKS_CHANGED_EVENT, () => rebuildTree(tree, search.value));
-    window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => rebuildTree(tree, search.value));
+    window.addEventListener(PICKS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
+    window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
     window.addEventListener("storage", (e) => {
         if (e.key === STORAGE_KEY || e.key === WORKFLOWS_FALLBACK_KEY) {
-            rebuildTree(tree, search.value);
+            renderTree({ treeEl: tree, query: search.value });
         }
     });
 }
