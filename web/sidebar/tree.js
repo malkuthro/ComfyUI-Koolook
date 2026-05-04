@@ -30,6 +30,7 @@ import {
 import {
     persistMutation,
     listDirectoryNames,
+    listAllDirectoryPaths,
     dirOf,
     addDirectory,
     renameDirectory,
@@ -40,6 +41,7 @@ import {
     renameWorkflow,
     deleteWorkflow,
     moveWorkflow,
+    pathsEqual,
 } from "./workflows_store.js";
 import {
     serializeFullCanvas,
@@ -375,18 +377,32 @@ function gatherUserPickPacks(query) {
 }
 
 // =============================================================================
-// Data gathering — workflows
+// Data gathering — workflows (recursive)
+//
+// Each output entry has shape:
+//   { name, path, active, archived, subdirs }
+// where `path` is the full string[] address and `subdirs` is the recursive
+// list of child entries with the same shape. Empty subtrees (no matching
+// active, archived, or subdirs) are dropped, so a search-narrowed render
+// only includes paths that produced at least one visible row.
 // =============================================================================
 function gatherWorkflows(query) {
     const q = (query || "").trim().toLowerCase();
-    const out = [];
-    let total = 0;
+    const stats = { total: 0 };
+    const directories = gatherDirsAt([], q, stats);
+    return { directories, total: stats.total };
+}
 
-    for (const dirName of listDirectoryNames()) {
-        const dir = dirOf(dirName);
-        const allNames = Object.keys(dir.workflows || {});
+function gatherDirsAt(parentPath, q, stats) {
+    const out = [];
+    for (const dirName of listDirectoryNames(parentPath)) {
+        const dirPath = [...parentPath, dirName];
+        const dir = dirOf(dirPath);
+        if (!dir) continue;
+
         const matches = (n) => !q || n.toLowerCase().includes(q) || dirName.toLowerCase().includes(q);
 
+        const allNames = Object.keys(dir.workflows || {});
         const active = [];
         const archived = [];
         for (const n of allNames) {
@@ -396,12 +412,41 @@ function gatherWorkflows(query) {
         }
         active.sort(compareNames);
         archived.sort(compareNames);
-        if (active.length === 0 && archived.length === 0) continue;
-        out.push({ name: dirName, active, archived });
-        total += active.length + archived.length;
-    }
 
-    return { directories: out, total };
+        const subdirs = gatherDirsAt(dirPath, q, stats);
+
+        // Drop the entry only when the directory contributes nothing visible
+        // — neither matched workflows of its own nor any matched descendants.
+        if (active.length === 0 && archived.length === 0 && subdirs.length === 0) continue;
+
+        out.push({ name: dirName, path: dirPath, active, archived, subdirs });
+        stats.total += active.length + archived.length;
+    }
+    return out;
+}
+
+// Recursive count of every workflow (active + archived) under a gathered
+// directory entry, including all descendants. Used for the dir's header
+// count so a parent dir with subdirs but no direct workflows doesn't show
+// "0" while clearly hosting things underneath.
+function countWorkflowsInGatheredDir(dir) {
+    let count = dir.active.length + dir.archived.length;
+    for (const sub of dir.subdirs) count += countWorkflowsInGatheredDir(sub);
+    return count;
+}
+
+// Recursive counts on a raw DirNode (not the gathered shape) for delete-
+// confirmation messages. Returns { workflows, subdirs } totals.
+function countDescendantsOfRawDir(dir) {
+    if (!dir) return { workflows: 0, subdirs: 0 };
+    let workflows = Object.keys(dir.workflows || {}).length;
+    let subdirs = 0;
+    for (const child of Object.values(dir.directories || {})) {
+        const sub = countDescendantsOfRawDir(child);
+        workflows += sub.workflows;
+        subdirs += 1 + sub.subdirs;
+    }
+    return { workflows, subdirs };
 }
 
 // =============================================================================
@@ -549,15 +594,16 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
 // =============================================================================
 // Context-menu wiring for workflow rows
 // =============================================================================
-function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
-    const dirNames = listDirectoryNames();
-    const moveItems = dirNames
-        .filter(d => d !== dirName)
-        .map(d => ({
-            label: `→ ${d}`,
+function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
+    // The "Move to…" submenu lists every other directory path in the tree
+    // so a workflow can be relocated across nesting levels in one click.
+    const moveItems = listAllDirectoryPaths()
+        .filter(p => !pathsEqual(p, dirPath))
+        .map(p => ({
+            label: `→ ${p.join(" / ")}`,
             action: () => persistMutation({
-                mutate: () => moveWorkflow(dirName, wfName, d),
-                onSuccess: () => toast(`Moved "${wfName}" to ${d}.`),
+                mutate: () => moveWorkflow(dirPath, wfName, p),
+                onSuccess: () => toast(`Moved "${wfName}" to ${p.join(" / ")}.`),
                 onNoOp: () => toast(`Could not move (name conflict?).`),
             }),
         }));
@@ -566,14 +612,14 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
         ? {
             label: "Restore from archive",
             action: () => persistMutation({
-                mutate: () => unarchiveWorkflow(dirName, wfName),
+                mutate: () => unarchiveWorkflow(dirPath, wfName),
                 onSuccess: () => toast(`Restored "${wfName}".`),
             }),
         }
         : {
             label: "Move to archive",
             action: () => persistMutation({
-                mutate: () => archiveWorkflow(dirName, wfName),
+                mutate: () => archiveWorkflow(dirPath, wfName),
                 onSuccess: () => toast(`Archived "${wfName}".`),
             }),
         };
@@ -581,7 +627,7 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
     showContextMenu(event, [
         {
             label: "Load",
-            action: () => loadWorkflowOntoCanvas(dirName, wfName),
+            action: () => loadWorkflowOntoCanvas(dirPath, wfName),
         },
         {
             label: "Rename…",
@@ -592,7 +638,7 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
                     defaultValue: wfName,
                     confirmLabel: "Rename",
                     onSubmit: (newName) => persistMutation({
-                        mutate: () => renameWorkflow(dirName, wfName, newName),
+                        mutate: () => renameWorkflow(dirPath, wfName, newName),
                         onSuccess: () => toast(`Renamed to "${newName}".`),
                         onNoOp: () => toast(`Rename failed (name in use?).`),
                     }),
@@ -612,7 +658,7 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
                     confirmLabel: "Delete",
                     danger: true,
                     onConfirm: () => persistMutation({
-                        mutate: () => deleteWorkflow(dirName, wfName),
+                        mutate: () => deleteWorkflow(dirPath, wfName),
                         onSuccess: () => toast(`Deleted "${wfName}".`),
                     }),
                 });
@@ -621,11 +667,31 @@ function workflowRowContextMenu(event, dirName, wfName, isArchived = false) {
     ]);
 }
 
-function directoryRowContextMenu(event, dirName) {
-    const dir = dirOf(dirName);
-    const isEmpty = !dir || Object.keys(dir.workflows || {}).length === 0;
+function directoryRowContextMenu(event, dirPath) {
+    const dir = dirOf(dirPath);
+    const dirName = dirPath[dirPath.length - 1];
+    const parentPath = dirPath.slice(0, -1);
+    const displayPath = dirPath.join(" / ");
+    const counts = countDescendantsOfRawDir(dir);
+    const isEmpty = counts.workflows === 0 && counts.subdirs === 0;
 
     showContextMenu(event, [
+        {
+            label: "Create subdirectory…",
+            action: () => {
+                showInputModal({
+                    title: `Create subdirectory under "${displayPath}"`,
+                    label: "Name",
+                    placeholder: "e.g. Type-A",
+                    confirmLabel: "Create",
+                    onSubmit: (name) => persistMutation({
+                        mutate: () => addDirectory(dirPath, name),
+                        onSuccess: () => toast(`Created "${name}" in ${displayPath}.`),
+                        onNoOp: () => toast(`Could not create — name in use, empty, or "Archive" reserved.`),
+                    }),
+                });
+            },
+        },
         {
             label: "Rename directory…",
             action: () => {
@@ -635,9 +701,9 @@ function directoryRowContextMenu(event, dirName) {
                     defaultValue: dirName,
                     confirmLabel: "Rename",
                     onSubmit: (newName) => persistMutation({
-                        mutate: () => renameDirectory(dirName, newName),
+                        mutate: () => renameDirectory(parentPath, dirName, newName),
                         onSuccess: () => toast(`Renamed to "${newName}".`),
-                        onNoOp: () => toast(`Rename failed (name in use?).`),
+                        onNoOp: () => toast(`Rename failed — name in use or "Archive" reserved.`),
                     }),
                 });
             },
@@ -650,24 +716,26 @@ function directoryRowContextMenu(event, dirName) {
                 if (isEmpty) {
                     showConfirmModal({
                         title: "Delete empty directory?",
-                        message: `"${dirName}" will be removed.`,
+                        message: `"${displayPath}" will be removed.`,
                         confirmLabel: "Delete",
                         danger: true,
                         onConfirm: () => persistMutation({
-                            mutate: () => deleteDirectory(dirName),
-                            onSuccess: () => toast(`Deleted directory "${dirName}".`),
+                            mutate: () => deleteDirectory(parentPath, dirName),
+                            onSuccess: () => toast(`Deleted directory "${displayPath}".`),
                         }),
                     });
                 } else {
-                    const count = Object.keys(dir.workflows).length;
+                    const parts = [];
+                    if (counts.workflows > 0) parts.push(`${counts.workflows} workflow${counts.workflows === 1 ? "" : "s"}`);
+                    if (counts.subdirs > 0) parts.push(`${counts.subdirs} subdirector${counts.subdirs === 1 ? "y" : "ies"}`);
                     showConfirmModal({
                         title: "Delete non-empty directory?",
-                        message: `"${dirName}" contains ${count} workflow${count === 1 ? "" : "s"}. They will be permanently deleted.`,
+                        message: `"${displayPath}" contains ${parts.join(" and ")}. They will be permanently deleted.`,
                         confirmLabel: "Delete all",
                         danger: true,
                         onConfirm: () => persistMutation({
-                            mutate: () => deleteDirectory(dirName),
-                            onSuccess: () => toast(`Deleted "${dirName}" and its ${count} workflow${count === 1 ? "" : "s"}.`),
+                            mutate: () => deleteDirectory(parentPath, dirName),
+                            onSuccess: () => toast(`Deleted "${displayPath}" and its contents.`),
                         }),
                     });
                 }
@@ -683,7 +751,7 @@ addSection({
     id: "nodes",
     label: ROOT_GROUP_LABEL,
     iconKind: "favorites",
-    emptyMessage: "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Curated Sidebar.",
+    emptyMessage: "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Kforge Labs.",
     gather(q) {
         const auto = gatherNodesByRepo(q);
         const user = gatherUserPickPacks(q);
@@ -736,51 +804,59 @@ addSection({
         return gatherWorkflows(q);
     },
     build(ctx) {
-        for (const dir of ctx.data.directories) {
-            const totalInDir = dir.active.length + dir.archived.length;
-            ctx.folder({
-                name: dir.name,
-                count: totalInDir,
-                path: dir.name,
-                onContextMenu: (e) => directoryRowContextMenu(e, dir.name),
-                build: (dirCtx) => {
-                    // Archive first, then active — so the latest (active)
-                    // workflow is closest to the bottom of the directory.
-                    if (dir.archived.length > 0) {
-                        dirCtx.folder({
-                            name: "Archive",
-                            count: dir.archived.length,
-                            iconKind: "archive",
-                            path: "Archive",
-                            build: (archCtx) => {
-                                for (const wfName of dir.archived) {
-                                    archCtx.leaf({
-                                        row: makeWorkflowLeafRow({
-                                            name: wfName,
-                                            dirName: dir.name,
-                                            onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
-                                            onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, true),
-                                        }),
-                                    });
-                                }
-                            },
-                        });
-                    }
-                    for (const wfName of dir.active) {
-                        dirCtx.leaf({
-                            row: makeWorkflowLeafRow({
-                                name: wfName,
-                                dirName: dir.name,
-                                onClick: () => loadWorkflowOntoCanvas(dir.name, wfName),
-                                onContextMenu: (e) => workflowRowContextMenu(e, dir.name, wfName, false),
-                            }),
-                        });
-                    }
-                },
-            });
-        }
+        for (const dir of ctx.data.directories) renderGatheredDir(ctx, dir);
     },
 });
+
+// Render one gathered directory entry (and its descendants) under
+// `parentCtx`. Layout per directory: subdirectories first (so their own
+// trees nest under the parent), then the synthetic Archive folder if any
+// archived workflows exist at this level, then active workflows last so
+// the freshest version sits closest to the bottom of the directory.
+function renderGatheredDir(parentCtx, dir) {
+    const dirPath = dir.path;
+    const dirDisplay = dirPath.join(" / ");
+    const totalInTree = countWorkflowsInGatheredDir(dir);
+    parentCtx.folder({
+        name: dir.name,
+        count: totalInTree,
+        path: dir.name,
+        onContextMenu: (e) => directoryRowContextMenu(e, dirPath),
+        build: (dirCtx) => {
+            for (const sub of dir.subdirs) renderGatheredDir(dirCtx, sub);
+            if (dir.archived.length > 0) {
+                dirCtx.folder({
+                    name: "Archive",
+                    count: dir.archived.length,
+                    iconKind: "archive",
+                    path: "Archive",
+                    build: (archCtx) => {
+                        for (const wfName of dir.archived) {
+                            archCtx.leaf({
+                                row: makeWorkflowLeafRow({
+                                    name: wfName,
+                                    dirName: dirDisplay,
+                                    onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
+                                    onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, true),
+                                }),
+                            });
+                        }
+                    },
+                });
+            }
+            for (const wfName of dir.active) {
+                dirCtx.leaf({
+                    row: makeWorkflowLeafRow({
+                        name: wfName,
+                        dirName: dirDisplay,
+                        onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
+                        onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, false),
+                    }),
+                });
+            }
+        },
+    });
+}
 
 // =============================================================================
 // Panel rendering
@@ -885,7 +961,9 @@ export function renderPanel(container) {
             placeholder: "e.g. Inpainting",
             confirmLabel: "Create",
             onSubmit: (name) => persistMutation({
-                mutate: () => addDirectory(name),
+                // Top-level directory creation. Subdirectories are created via
+                // right-click → "Create subdirectory…" on an existing folder.
+                mutate: () => addDirectory([], name),
                 onSuccess: () => toast(`Directory "${name}" created.`),
                 onNoOp: () => toast(`Directory "${name}" already exists.`),
             }),
@@ -897,17 +975,25 @@ export function renderPanel(container) {
     // mutation rolls back automatically if both /userdata and the localStorage
     // fallback rejected the write — the user isn't told a save succeeded when
     // nothing was persisted, and the in-memory cache stays consistent with disk.
-    const saveAndToast = async (graph, name, dir) => {
-        // Pin the workflows section + destination dir so the resulting
-        // re-render leaves them open. Pins are consumed on next render.
-        pinExpanded(["workflows", `workflows/${dir}`]);
+    const saveAndToast = async (graph, name, dirPath) => {
+        // Pin the workflows section + every ancestor of the destination dir
+        // so the resulting re-render leaves the whole path open. Pins are
+        // consumed on the next render.
+        const pinKeys = ["workflows"];
+        let cur = "workflows";
+        for (const seg of dirPath) {
+            cur = `${cur}/${seg}`;
+            pinKeys.push(cur);
+        }
+        pinExpanded(pinKeys);
+        const dirDisplay = dirPath.join(" / ");
         await persistMutation({
-            mutate: () => saveWorkflowEntry(dir, name, graph),
+            mutate: () => saveWorkflowEntry(dirPath, name, graph),
             onSuccess: (result) => {
                 if (result.archivedAs) {
-                    toast(`Saved "${name}" in ${dir}. Previous version moved to Archive.`);
+                    toast(`Saved "${name}" in ${dirDisplay}. Previous version moved to Archive.`);
                 } else {
-                    toast(`Saved "${name}" in ${dir}.`);
+                    toast(`Saved "${name}" in ${dirDisplay}.`);
                 }
             },
             persistFailedMessage: `Save failed — could not write "${name}". See console.`,

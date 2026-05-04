@@ -6,6 +6,44 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Recursive subdirectories under workflow directories.** Right-click any
+  directory in the Workflows tree → "Create subdirectory…" to nest folders
+  to arbitrary depth (e.g. `UP-scale / Type-A / Sharp`). Each nested
+  directory behaves like a top-level one: it can hold workflows + an
+  Archive subfolder + further subdirectories. The save modal's directory
+  dropdown lists every path in the tree as a flat list with " / "
+  separators, so saving into a nested path is one click. The right-click
+  workflow "Move to…" submenu likewise lists every other path in the tree.
+- **Schema is now recursive** — every directory node has a `workflows`
+  object AND a `directories` object. Existing v0.2 stores load fine:
+  `normalizeWorkflowsStore` treats a missing `directories` as `{}` and
+  the rest of the code assumes it always exists post-normalization.
+
+### Changed
+- **Sidebar tab renamed:** "Curated Nodes" → **"Kforge Labs"**. Tooltip
+  also updated. The tab id (`koolook.curatedNodes`) and the
+  `app.registerExtension` name are unchanged so existing per-user tab
+  state (pinning, ordering) is preserved.
+- The right-click canvas-node menu item is now **"Add to Kforge Labs"**
+  (was "Add to Curated Sidebar").
+- Directory header counts in the workflows tree now show the total
+  workflows in the **whole subtree** (active + archived + descendants),
+  not just direct children. A parent with empty direct workflows but
+  populated subdirectories no longer shows "0".
+
+### Internal
+- Workflow operations are now path-addressed: every mutator and lookup
+  takes a `string[]` path (e.g. `["UP-scale", "Type-A"]`). The store's
+  internal API: `addDirectory(parentPath, name)`,
+  `renameDirectory(parentPath, old, new)`, `deleteDirectory(parentPath, name)`,
+  `saveWorkflowEntry(path, wfName, graph)`, `archive/unarchive/rename/deleteWorkflow(path, wfName)`,
+  `moveWorkflow(srcPath, wfName, dstPath)`, plus new helpers
+  `listAllDirectoryPaths()` and `pathsEqual(a, b)`.
+- Reserved-name check: subdirectory names cannot be `Archive`
+  (case-insensitive) at any non-root level — collides with the synthetic
+  Archive folder rendered for archived workflows.
+
 ## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)

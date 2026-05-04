@@ -4,7 +4,7 @@
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
 import { compareNames } from "./constants.js";
-import { listDirectoryNames, dirOf } from "./workflows_store.js";
+import { listAllDirectoryPaths, dirOf } from "./workflows_store.js";
 
 function makeModalShell({ title, body, actions }) {
     const overlay = document.createElement("div");
@@ -124,26 +124,31 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
 export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, onSave }) {
     const body = document.createElement("div");
 
-    // ---- Directory ----
+    // ---- Directory (flat path picker) ----
+    // The dropdown lists every directory path in the tree as a flat list
+    // (e.g. "UP-scale", "UP-scale / Type-A"). Subdirectories are created
+    // via right-click on existing directories — "+ New directory…" here
+    // creates a NEW top-level directory only.
     const dirLbl = document.createElement("label");
     dirLbl.className = "koolook-modal-label";
     dirLbl.textContent = "Directory";
     body.appendChild(dirLbl);
 
-    const dirNames = listDirectoryNames();
+    const dirPaths = listAllDirectoryPaths();
+    const defaultDirKey = Array.isArray(defaultDir) ? JSON.stringify(defaultDir) : null;
     const dirSelect = document.createElement("select");
     dirSelect.className = "koolook-modal-select";
-    if (dirNames.length === 0) {
+    if (dirPaths.length === 0) {
         const opt = document.createElement("option");
         opt.value = "__new__";
         opt.textContent = "+ New directory…";
         dirSelect.appendChild(opt);
     } else {
-        for (const d of dirNames) {
+        for (const p of dirPaths) {
             const opt = document.createElement("option");
-            opt.value = d;
-            opt.textContent = d;
-            if (d === defaultDir) opt.selected = true;
+            opt.value = JSON.stringify(p);
+            opt.textContent = p.join(" / ");
+            if (defaultDirKey && opt.value === defaultDirKey) opt.selected = true;
             dirSelect.appendChild(opt);
         }
         const newOpt = document.createElement("option");
@@ -157,7 +162,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     newDirInput.className = "koolook-modal-input";
     newDirInput.placeholder = "New directory name";
     newDirInput.style.marginTop = "6px";
-    newDirInput.style.display = dirNames.length === 0 ? "" : "none";
+    newDirInput.style.display = dirPaths.length === 0 ? "" : "none";
     body.appendChild(newDirInput);
 
     // ---- Base on existing (only shown when the chosen directory has workflows) ----
@@ -206,8 +211,11 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     function getActiveWorkflowsInCurrentDir() {
         const v = dirSelect.value;
         if (v === "__new__") return [];
-        const dir = dirOf(v);
-        if (!dir) return [];
+        let path;
+        try { path = JSON.parse(v); } catch { return []; }
+        if (!Array.isArray(path)) return [];
+        const dir = dirOf(path);
+        if (!dir || !dir.workflows) return [];
         return Object.keys(dir.workflows)
             .filter(n => !dir.workflows[n].archived)
             .sort(compareNames);
@@ -293,10 +301,18 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
 
     let overlay;
     const submit = async () => {
-        let dir = dirSelect.value;
-        if (dir === "__new__") {
-            dir = newDirInput.value.trim();
-            if (!dir) { newDirInput.focus(); return; }
+        // `dir` is a path array. "+ New directory…" yields a new top-level
+        // directory (single-segment path); selecting an existing entry
+        // yields the JSON-encoded path that addresses it.
+        let dir;
+        if (dirSelect.value === "__new__") {
+            const newName = newDirInput.value.trim();
+            if (!newName) { newDirInput.focus(); return; }
+            dir = [newName];
+        } else {
+            try { dir = JSON.parse(dirSelect.value); }
+            catch { newDirInput.focus(); return; }
+            if (!Array.isArray(dir) || dir.length === 0) { newDirInput.focus(); return; }
         }
         const action = actionSelect.value;
         let name;
