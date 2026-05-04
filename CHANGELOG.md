@@ -71,6 +71,12 @@ The format is inspired by Keep a Changelog and SemVer.
   (case-insensitive) at any non-root level — collides with the synthetic
   Archive folder rendered for archived workflows.
 
+### Documentation
+- `forks/THIRD_PARTY.md` now lists the six third-party trees that were
+  untracked from MAIN in the v0.1.4 / v0.1.5 registry-hygiene cleanup,
+  with upstream URLs (where pinned) and per-tree provenance notes for
+  the audit trail. Closes #28.
+
 ## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)

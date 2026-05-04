@@ -91,6 +91,35 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   pipeline and routes color-prepped frames directly to `vae.encode()`.
 - **Last reviewed:** 2026-05-03
 
+## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)
+
+Six third-party trees were untracked from MAIN's git index in the
+v0.1.4 → v0.1.5 registry-hygiene cleanup (`git rm -r --cached`, then
+added to `.gitignore`). They had no runtime effect — nothing in MAIN
+imports them — but the Comfy Registry's static scanner was picking up
+`NODE_CLASS_MAPPINGS` from the vendored copies and counting them
+against this pack (the misleading "44 nodes / 13 conflicts" badge in
+ComfyUI-Manager). All six are listed here for the audit trail.
+
+The corresponding files were either physically moved to the
+maintainer's local `../ComfyUI-Forks-BK/` backup or remain on the
+maintainer's local disk only (gitignored). None of them are part of
+the published package.
+
+| Former path in MAIN | Upstream | Notes |
+|---|---|---|
+| `upscaler_FIX/github_repos/ComfyUI-SuperUltimateVaceTools/` | third-party VACE-tools repo (upstream URL not pinned at vendor time) | 3 files: a `FIXED_code/nodes.py`, a `nodes_original.py` upstream copy, and a `link.txt` shortcut. License unverified. |
+| `upscaler_FIX/github_repos/ComfyUI-multigpu/` | third-party MultiGPU node pack (upstream URL not pinned) | 3 files: a `FIXED_code/distorch_2.py` plus 2 upstream `_orig.py` copies. License unverified. |
+| `upscaler_FIX/github_repos/debugg/` | n/a — local error dumps | 3 markdown files of debugging notes; no upstream. |
+| `nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-Animatedfiff-evolved/` | likely https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved (inferred from folder name) | `nodes_cameractrl.py` + `link.txt`. License unverified. |
+| `nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-kjnodes/` | https://github.com/kijai/ComfyUI-KJNodes | `nodes.py` + `link.txt`. License: GPL-3.0 (see KJNodes entry above for full attribution; this was a separate consumption point unrelated to the `EasyResize_Koolook` reimplementation). |
+| `nuke_CAM_exporter/wrapper_FIX/` | https://github.com/kijai/ComfyUI-WanVideoWrapper | Contained both an upstream `fun_camera/nodes.py` copy and a Koolook-modified version exploring a token-count alignment fix between Wan 14B (21 tokens) and FunCamera (41 tokens). The work was incomplete (per the in-folder `todo_and_resume.md`) and the upstream pin was never recorded — if revisited, treat as a from-scratch port against current upstream. License: assume GPL-3.0 (consistent with kijai's other wrappers); verify before promoting to a tracked fork. |
+
+If any of these is ever revived as a properly-tracked Koolook fork,
+go through [`add-external-fork`](../.claude/skills/add-external-fork/)
+to register it in [`forks_manifest.yaml`](forks_manifest.yaml) with a
+real `pinned_commit` and a `license_verified_at` timestamp.
+
 ## Notes
 
 - Keep this file updated when syncing upstream changes.
