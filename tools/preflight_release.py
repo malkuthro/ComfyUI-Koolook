@@ -48,18 +48,45 @@ MANAGER_EXT_MAP_URL = (
 )
 
 
-# ANSI colors for terminal output (no-op when piped or NO_COLOR set).
+class _HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuses to follow a 30x redirect to a non-https target.
+
+    `urllib.request.urlopen` follows redirects by default; a one-time
+    https URL check at the call site doesn't protect against an
+    intermediate hop redirecting to file:// or http:// (Bandit B310's
+    real concern). This handler re-validates each redirect target.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.startswith("https://"):
+            raise urllib.error.URLError(
+                f"refusing redirect to non-https scheme: {newurl}"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# ANSI escape codes (https://en.wikipedia.org/wiki/ANSI_escape_code).
+# No-op when piped, redirected, or NO_COLOR is set.
+_ANSI = {
+    "red": "31",
+    "green": "32",
+    "yellow": "33",
+    "cyan": "36",
+    "dim": "2",
+}
+
+
 def _color(s: str, code: str) -> str:
     if not sys.stdout.isatty():
         return s
     return f"\033[{code}m{s}\033[0m"
 
 
-def _green(s: str) -> str: return _color(s, "32")
-def _red(s: str) -> str: return _color(s, "31")
-def _yellow(s: str) -> str: return _color(s, "33")
-def _cyan(s: str) -> str: return _color(s, "36")
-def _dim(s: str) -> str: return _color(s, "2")
+def _green(s: str) -> str: return _color(s, _ANSI["green"])
+def _red(s: str) -> str: return _color(s, _ANSI["red"])
+def _yellow(s: str) -> str: return _color(s, _ANSI["yellow"])
+def _cyan(s: str) -> str: return _color(s, _ANSI["cyan"])
+def _dim(s: str) -> str: return _color(s, _ANSI["dim"])
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -92,17 +119,24 @@ def _extract_literal_dict_keys(node: ast.AST) -> set[str]:
     return keys
 
 
-def check_static(verbose: bool = False) -> tuple[bool, set[str], list[str]]:
+def check_static(verbose: bool = False) -> tuple[bool, set[str]]:
     """
-    Walk all .py files, AST-parse each, collect every literal-dict
-    `NODE_CLASS_MAPPINGS = {...}` and every literal `SKIP_VERSION_SUFFIX = {...}`
-    set, and return the union of source IDs plus a list of any parse errors.
+    Walk all .py files, AST-parse each, and collect every literal-dict
+    `NODE_CLASS_MAPPINGS = {...}` source-side key. Returns (ok, ids).
 
-    Caveats: doesn't follow runtime-computed mappings (e.g. dict comprehensions
-    or function calls that produce mappings). For the current Radiance fork,
-    SKIP_VERSION_SUFFIX makes the user-facing IDs match the literal source-dict
-    keys exactly, so AST extraction matches reality. Future fork additions that
-    rely on suffix mangling will need this check extended.
+    What this DOES NOT do (and the workflow check is the safety net):
+      - Follow runtime-computed mappings (dict comprehensions, function
+        calls like `_namespace_mappings(...)` in the v2_3_3 wrapper).
+      - Apply `NAMESPACE_SUFFIX` / `SKIP_VERSION_SUFFIX` logic — the
+        current code only walks `NODE_CLASS_MAPPINGS`, not the fork's
+        suffix-mangling glue.
+
+    For the Radiance Koolook v2_3_3 fork, this happens to work because
+    every exposed VAE ID is in `SKIP_VERSION_SUFFIX`, so the source-dict
+    keys match the user-facing IDs. The first time a non-skipped ID lands
+    in a fork, the workflow-fixture check (4) will surface the mismatch
+    by reporting the suffixed live ID as "missing" — at that point this
+    function should grow SKIP_VERSION_SUFFIX extraction.
     """
     print(_cyan("[1/4] static — AST extraction of NODE_CLASS_MAPPINGS"))
     parse_errors: list[str] = []
@@ -135,19 +169,21 @@ def check_static(verbose: bool = False) -> tuple[bool, set[str], list[str]]:
         print(_red(f"  FAIL — {len(parse_errors)} parse errors:"))
         for err in parse_errors:
             print(_red(f"    {err}"))
-        return False, all_node_ids, parse_errors
+        return False, all_node_ids
 
     if not all_node_ids:
         print(_red("  FAIL — no NODE_CLASS_MAPPINGS literal dicts found anywhere"))
-        return False, all_node_ids, ["no NODE_CLASS_MAPPINGS found"]
+        return False, all_node_ids
 
     print(
         _green(f"  PASS — {files_seen} *.py files parsed, "
-               f"{len(all_node_ids)} unique node IDs collected:")
+               f"{len(all_node_ids)} unique node IDs collected"
+               + (":" if verbose else ""))
     )
-    for nid in sorted(all_node_ids):
-        print(_dim(f"    {nid}"))
-    return True, all_node_ids, []
+    if verbose:
+        for nid in sorted(all_node_ids):
+            print(_dim(f"    {nid}"))
+    return True, all_node_ids
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -157,209 +193,35 @@ def check_static(verbose: bool = False) -> tuple[bool, set[str], list[str]]:
 
 def check_dispatch(verbose: bool = False) -> bool:
     """
-    Run the v2_3_3 VAE wrapper through every rank/VAE-type combination using a
-    FakeTensor stub. No torch dependency — the stub mimics just enough of
-    torch.Tensor to drive the dispatch logic.
+    Run the v2_3_3 VAE wrapper through every rank/VAE-type combination using
+    a FakeTensor stub. No torch dependency — the stub mimics just enough of
+    `torch.Tensor` to drive the dispatch logic.
+
+    Implementation lives in `tools/_preflight_dispatch.py` (extracted to keep
+    this orchestrator under the project's ~400-line file-size guideline).
     """
     print(_cyan("[2/4] dispatch — VAE rank/VAE-type branches"))
-    import types
 
-    class FT:
-        def __init__(self, shape):
-            self.shape = tuple(shape)
-            self.dtype = "float32"
-            self.device = "cpu"
-        @property
-        def ndim(self): return len(self.shape)
-        @property
-        def T(self):
-            s = list(self.shape)
-            if len(s) >= 2:
-                s[-1], s[-2] = s[-2], s[-1]
-            return FT(s)
-        def clone(self): return FT(self.shape)
-        def float(self): return self
-        def __getitem__(self, key):
-            if isinstance(key, tuple) and len(key) == 3 and key[2] is Ellipsis:
-                return FT((self.shape[0],) + self.shape[2:])
-            if isinstance(key, tuple) and len(key) == 4 and key[3] is Ellipsis:
-                return FT((self.shape[0], self.shape[1]) + self.shape[3:])
-            if isinstance(key, tuple) and key[0] is Ellipsis:
-                return FT(self.shape[:-1] + (3,))
-            return self
-        def reshape(self, *a): return FT(a)
-        def to(self, **k): return self
-        def __mul__(self, o): return self
-        def __rmul__(self, o): return self
-        def __pow__(self, o): return self
-        def __sub__(self, o): return self
-        def clamp(self, *a, **k): return self
-        def __matmul__(self, o):
-            return FT(self.shape[:-1] + (o.shape[-1],))
-
-    torch_stub = types.ModuleType("torch")
-    torch_stub.Tensor = FT
-    torch_stub.stack = lambda ts, dim=0: (
-        lambda s: (s.insert(dim, len(ts)), FT(s))[1]
-    )(list(ts[0].shape))
-    torch_stub.cat = lambda ts, dim=0: (
-        lambda s: (s.__setitem__(dim, sum(x.shape[dim] for x in ts)), FT(s))[1]
-    )(list(ts[0].shape))
-    torch_stub.where = lambda c, a, b: a
-    torch_stub.sign = lambda x: x
-    torch_stub.abs = lambda x: x
-    torch_stub.pow = lambda x, p: x
-    torch_stub.tanh = lambda x: x
-    torch_stub.clamp = lambda x, *a, **k: x
-    torch_stub.tensor = lambda *a, **k: FT((3, 3))
-    torch_stub.float32 = "float32"
-    torch_stub.zeros = lambda shape, dtype=None, device=None: FT(shape)
-    nn_F = types.ModuleType("torch.nn.functional")
-    nn_F.pad = lambda x, *a, **k: x
-    nn_F.avg_pool2d = lambda x, *a, **k: x
-    nn_mod = types.ModuleType("torch.nn")
-    nn_mod.functional = nn_F
-    torch_stub.nn = nn_mod
-
-    # Track every sys.modules key we add so the finally block at the end can
-    # pop them cleanly even if any of the exec_module / constructor calls below
-    # raise. Without this, a partial-load failure would leave the torch stub
-    # and the _pf_pkg* entries shadowing real modules for the rest of the run.
-    injected_modules: list[str] = []
-
+    # Lazy import: the sibling module shares the same directory as this file
+    # but isn't importable as `tools._preflight_dispatch` unless tools/ is on
+    # sys.path. Load it directly via importlib so working dir doesn't matter.
     import importlib.util
-    import importlib.machinery
-    pkg_path = REPO_ROOT / "forks" / "radiance_koolook" / "versions" / "v2_3_3"
-
-    try:
-        sys.modules["torch"] = torch_stub
-        injected_modules.append("torch")
-        sys.modules["torch.nn"] = nn_mod
-        injected_modules.append("torch.nn")
-        sys.modules["torch.nn.functional"] = nn_F
-        injected_modules.append("torch.nn.functional")
-
-        pkg_spec = importlib.machinery.ModuleSpec(
-            name="_pf_pkg", loader=None, is_package=True
-        )
-        pkg_spec.submodule_search_locations = [str(pkg_path)]
-        pkg = importlib.util.module_from_spec(pkg_spec)
-        sys.modules["_pf_pkg"] = pkg
-        injected_modules.append("_pf_pkg")
-
-        ch_spec = importlib.util.spec_from_file_location(
-            "_pf_pkg.color_helpers", str(pkg_path / "color_helpers.py")
-        )
-        ch_mod = importlib.util.module_from_spec(ch_spec)
-        sys.modules["_pf_pkg.color_helpers"] = ch_mod
-        injected_modules.append("_pf_pkg.color_helpers")
-        ch_spec.loader.exec_module(ch_mod)
-
-        nv_spec = importlib.util.spec_from_file_location(
-            "_pf_pkg.nodes_vae", str(pkg_path / "nodes_vae.py")
-        )
-        nv_mod = importlib.util.module_from_spec(nv_spec)
-        sys.modules["_pf_pkg.nodes_vae"] = nv_mod
-        injected_modules.append("_pf_pkg.nodes_vae")
-        nv_spec.loader.exec_module(nv_mod)
-
-        return _check_dispatch_run_cases(nv_mod, FT, verbose)
-    finally:
-        # Always pop every module we injected. Catches both the success path
-        # and any exception during exec_module / constructor / case execution.
-        for mod in injected_modules:
-            sys.modules.pop(mod, None)
-
-
-def _check_dispatch_run_cases(nv_mod, FT, verbose: bool) -> bool:
-    """The actual five test cases, factored out so the try/finally above can
-    wrap module injection cleanly. Receives the loaded `nodes_vae` module and
-    the `FakeTensor`-equivalent class via parameters."""
-    class V2D:
-        def encode(self, p):
-            return FT((1, 16, p.shape[1] // 8, p.shape[2] // 8))
-        def decode(self, lat):
-            return FT((lat.shape[0], lat.shape[2] * 8, lat.shape[3] * 8, 3))
-
-    class V3D:
-        latent_dim = 3
-        def encode(self, p):
-            if p.ndim == 5:
-                return FT(
-                    (1, 16, p.shape[1] // 4, p.shape[2] // 8, p.shape[3] // 8)
-                )
-            return FT((1, 16, p.shape[1] // 8, p.shape[2] // 8))
-        def decode(self, lat):
-            if lat.ndim == 5:
-                return FT(
-                    (1, lat.shape[2] * 4, lat.shape[3] * 8, lat.shape[4] * 8, 3)
-                )
-            return FT((lat.shape[0], lat.shape[2] * 8, lat.shape[3] * 8, 3))
-
-    enc = nv_mod.Easy_hdr_VAE_encode()
-    dec = nv_mod.Easy_hdr_VAE_decode()
-    common_enc = dict(
-        source_space="Raw", hdr_mode="Passthrough",
-        exposure=0.0, alpha_handling="Preserve", latent_sampling="sample",
+    spec = importlib.util.spec_from_file_location(
+        "_preflight_dispatch",
+        Path(__file__).resolve().parent / "_preflight_dispatch.py",
     )
-    common_dec = dict(
-        target_space="Raw", exposure_adjust=0.0,
-        hdr_mode="Clip (SDR)", source_space="Linear",
-    )
+    dispatch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dispatch)
 
-    cases: list[tuple[str, callable]] = []
-
-    def case_4d_image():
-        lat, dbg, _ = enc.encode(FT((2, 64, 64, 3)), V2D(), **common_enc)
-        assert lat["samples"].ndim == 4 and "path=image" in dbg
-
-    def case_5d_2dvae():
-        lat, dbg, _ = enc.encode(FT((1, 8, 64, 64, 3)), V2D(), **common_enc)
-        assert (
-            lat["samples"].ndim == 5
-            and lat["samples"].shape[2] == 8
-            and "path=video-iter" in dbg
-        )
-
-    def case_5d_3dvae():
-        lat, dbg, _ = enc.encode(FT((1, 8, 64, 64, 3)), V3D(), **common_enc)
-        assert "path=video-3d" in dbg
-
-    def case_5d_lat_decode():
-        img, dbg = dec.decode({"samples": FT((1, 16, 8, 8, 8))}, V2D(), **common_dec)
-        assert img.ndim == 4 and img.shape[0] == 8 and "path=video-iter" in dbg
-
-    def case_4d_lat_decode():
-        img, dbg = dec.decode({"samples": FT((2, 16, 8, 8))}, V2D(), **common_dec)
-        assert "path=image" in dbg
-
-    cases = [
-        ("4D image, 2D-VAE", case_4d_image),
-        ("5D + 2D-VAE iter", case_5d_2dvae),
-        ("5D + 3D-VAE pass", case_5d_3dvae),
-        ("5D latent decode iter", case_5d_lat_decode),
-        ("4D latent decode pass", case_4d_lat_decode),
-    ]
-
-    failures: list[str] = []
-    for name, fn in cases:
-        try:
-            fn()
-            if verbose:
-                print(_dim(f"    OK {name}"))
-        except Exception as exc:
-            failures.append(f"{name}: {type(exc).__name__}: {exc}")
-
-    # NOTE: sys.modules cleanup is handled by the try/finally in the parent
-    # check_dispatch() function, so we don't need to pop anything here.
+    success, failures = dispatch.run(verbose=verbose, repo_root=REPO_ROOT)
 
     if failures:
         print(_red(f"  FAIL — {len(failures)} dispatch branch(es) broken:"))
         for f in failures:
             print(_red(f"    {f}"))
         return False
-    print(_green(f"  PASS — all {len(cases)} dispatch branches OK"))
-    return True
+    print(_green("  PASS — all 5 dispatch branches OK"))
+    return success
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -375,15 +237,18 @@ def check_manager_meta(actual_ids: set[str], verbose: bool = False) -> bool:
     """
     print(_cyan("[3/4] manager-meta — extension-node-map.json drift"))
     if not MANAGER_EXT_MAP_URL.startswith("https://"):
-        # Defensive: hardcoded URL above is https; this guard ensures any
-        # future edit can't accidentally introduce a non-https scheme that
-        # would let urlopen pick up file:// or other unsafe schemes.
+        # Hardcoded URL above is https; this guard ensures any future edit
+        # can't accidentally introduce a non-https scheme.
         print(_yellow("  SKIP — manager-meta URL is not https"))
         return True
     try:
-        # Bandit B310: urlopen scheme check is enforced by the https guard
-        # one line above; the URL is hardcoded to a github.com raw path.
-        with urllib.request.urlopen(MANAGER_EXT_MAP_URL, timeout=20) as resp:  # nosec B310
+        # Custom opener with a redirect handler that re-validates each hop
+        # for an https scheme — closes the gap that urlopen by default would
+        # follow a 30x to http:// or file:// silently.
+        opener = urllib.request.build_opener(_HttpsOnlyRedirectHandler())
+        # Bandit B310: scheme is enforced by the guard above + the redirect
+        # handler below; the URL is hardcoded to a github.com raw path.
+        with opener.open(MANAGER_EXT_MAP_URL, timeout=20) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
         print(_yellow(f"  SKIP — could not fetch upstream map: {exc}"))
@@ -394,7 +259,17 @@ def check_manager_meta(actual_ids: set[str], verbose: bool = False) -> bool:
         print(_yellow(f"  SKIP — no entry for {REPO_URL} in upstream map yet"))
         return True
 
-    upstream_ids = set(entry[0]) if isinstance(entry, list) and entry else set()
+    # Defensive shape-check: upstream entry should be `[list_of_ids, metadata]`.
+    # Without this, a future schema change at upstream would silently produce
+    # an empty `set()` here and report every one of our IDs as `missing`.
+    if not (isinstance(entry, list) and entry and isinstance(entry[0], list)):
+        print(_yellow(
+            f"  SKIP — upstream entry has unexpected shape: "
+            f"{type(entry).__name__}"
+        ))
+        return True
+
+    upstream_ids = {x for x in entry[0] if isinstance(x, str)}
 
     phantom = upstream_ids - actual_ids
     missing = actual_ids - upstream_ids
@@ -443,20 +318,34 @@ def _looks_like_koolook_id(nid: str) -> bool:
 
 def _extract_workflow_node_types(data: Any) -> set[str]:
     """
-    Handles both ComfyUI canvas format (top-level dict with `nodes` array)
-    and API format (top-level dict where each value has `class_type`).
+    Extract node `type` / `class_type` strings from a workflow JSON.
+    Handles two ComfyUI export formats:
+      - Canvas format: top-level dict with a `nodes` array of {type, ...}.
+      - API format:    top-level dict where every value is a node spec
+                       with a `class_type` key.
+    Returns an empty set if the shape doesn't match either format —
+    caller decides whether that's a soft or hard failure.
     """
-    types: set[str] = set()
-    if isinstance(data, dict) and isinstance(data.get("nodes"), list):
-        for n in data["nodes"]:
-            t = n.get("type")
-            if isinstance(t, str):
-                types.add(t)
-    elif isinstance(data, dict):
-        for _, v in data.items():
-            if isinstance(v, dict) and isinstance(v.get("class_type"), str):
-                types.add(v["class_type"])
-    return types
+    if not isinstance(data, dict):
+        return set()
+
+    # Canvas format
+    if isinstance(data.get("nodes"), list):
+        return {
+            n["type"] for n in data["nodes"]
+            if isinstance(n, dict) and isinstance(n.get("type"), str)
+        }
+
+    # API format — only accept if EVERY value has class_type, so a malformed
+    # canvas (e.g. nodes: null) doesn't accidentally fall through and pull
+    # class_type from unrelated keys.
+    values = list(data.values())
+    if values and all(
+        isinstance(v, dict) and isinstance(v.get("class_type"), str) for v in values
+    ):
+        return {v["class_type"] for v in values}
+
+    return set()
 
 
 def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
@@ -468,10 +357,21 @@ def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
 
     fixtures = sorted(fixtures_dir.glob("*.json"))
     if not fixtures:
+        # If the dir exists with a README but contains no *.json, that's a
+        # regression in fixture coverage (someone deleted them or typoed
+        # the dir name). Fail loudly rather than silently pass.
+        if (fixtures_dir / "README.md").exists():
+            print(_red(
+                "  FAIL — fixtures dir exists with README but no *.json files. "
+                "If this is intentional, delete the README too."
+            ))
+            return False
         print(_yellow("  SKIP — no *.json fixtures present"))
         return True
 
     failures: list[str] = []
+    total_koolook_refs = 0
+
     for fx in fixtures:
         try:
             data = json.loads(fx.read_text(encoding="utf-8"))
@@ -480,13 +380,30 @@ def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
             continue
 
         types = _extract_workflow_node_types(data)
-        koolook_types = {t for t in types if _looks_like_koolook_id(t)}
-        missing = koolook_types - actual_ids
+
+        # Two-pronged matching:
+        #   (a) heuristic match — anything that LOOKS like a Koolook ID by
+        #       the name pattern. Catches drift where a fixture references
+        #       a renamed/removed Koolook ID even if the fork's suffixing
+        #       is opaque to the static check.
+        #   (b) actual_ids match — anything in the AST-extracted set is by
+        #       definition Koolook. Catches IDs that don't fit the heuristic
+        #       (e.g. future Koolook nodes named without an "Easy"/"easy_"
+        #       prefix and without "koolook" in the ID itself).
+        # Union for the "this fixture references N Koolook IDs" report;
+        # heuristic-minus-actual for the "missing ID" failure flag.
+        koolook_by_heuristic = {t for t in types if _looks_like_koolook_id(t)}
+        koolook_by_actual = types & actual_ids
+        koolook_total = koolook_by_heuristic | koolook_by_actual
+        missing = koolook_by_heuristic - actual_ids
+
+        total_koolook_refs += len(koolook_total)
 
         if verbose:
             print(_dim(
                 f"  {fx.name}: {len(types)} types, "
-                f"{len(koolook_types)} look like Koolook, "
+                f"{len(koolook_total)} Koolook (heuristic={len(koolook_by_heuristic)}, "
+                f"actual={len(koolook_by_actual)}), "
                 f"{len(missing)} missing"
             ))
         if missing:
@@ -505,11 +422,6 @@ def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
         )
         return False
 
-    total_koolook_refs = sum(
-        len({t for t in _extract_workflow_node_types(json.loads(fx.read_text("utf-8")))
-             if _looks_like_koolook_id(t)})
-        for fx in fixtures
-    )
     print(_green(
         f"  PASS — {len(fixtures)} fixture(s) reference "
         f"{total_koolook_refs} Koolook node ID(s), all currently registered"
@@ -558,7 +470,7 @@ def main() -> int:
     results: dict[str, bool] = {}
 
     if "static" in to_run:
-        ok, actual_ids, _ = check_static(verbose=args.verbose)
+        ok, actual_ids = check_static(verbose=args.verbose)
         results["static"] = ok
         print()
 
@@ -568,13 +480,13 @@ def main() -> int:
 
     if "manager-meta" in to_run:
         if not actual_ids and "static" not in to_run:
-            ok, actual_ids, _ = check_static(verbose=False)
+            ok, actual_ids = check_static(verbose=False)
         results["manager-meta"] = check_manager_meta(actual_ids, verbose=args.verbose)
         print()
 
     if "workflows" in to_run:
         if not actual_ids and "static" not in to_run:
-            ok, actual_ids, _ = check_static(verbose=False)
+            ok, actual_ids = check_static(verbose=False)
         results["workflows"] = check_workflows(actual_ids, verbose=args.verbose)
         print()
 
