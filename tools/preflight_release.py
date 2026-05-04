@@ -220,34 +220,61 @@ def check_dispatch(verbose: bool = False) -> bool:
     nn_mod = types.ModuleType("torch.nn")
     nn_mod.functional = nn_F
     torch_stub.nn = nn_mod
-    sys.modules["torch"] = torch_stub
-    sys.modules["torch.nn"] = nn_mod
-    sys.modules["torch.nn.functional"] = nn_F
+
+    # Track every sys.modules key we add so the finally block at the end can
+    # pop them cleanly even if any of the exec_module / constructor calls below
+    # raise. Without this, a partial-load failure would leave the torch stub
+    # and the _pf_pkg* entries shadowing real modules for the rest of the run.
+    injected_modules: list[str] = []
 
     import importlib.util
     import importlib.machinery
     pkg_path = REPO_ROOT / "forks" / "radiance_koolook" / "versions" / "v2_3_3"
-    pkg_spec = importlib.machinery.ModuleSpec(
-        name="_pf_pkg", loader=None, is_package=True
-    )
-    pkg_spec.submodule_search_locations = [str(pkg_path)]
-    pkg = importlib.util.module_from_spec(pkg_spec)
-    sys.modules["_pf_pkg"] = pkg
 
-    ch_spec = importlib.util.spec_from_file_location(
-        "_pf_pkg.color_helpers", str(pkg_path / "color_helpers.py")
-    )
-    ch_mod = importlib.util.module_from_spec(ch_spec)
-    sys.modules["_pf_pkg.color_helpers"] = ch_mod
-    ch_spec.loader.exec_module(ch_mod)
+    try:
+        sys.modules["torch"] = torch_stub
+        injected_modules.append("torch")
+        sys.modules["torch.nn"] = nn_mod
+        injected_modules.append("torch.nn")
+        sys.modules["torch.nn.functional"] = nn_F
+        injected_modules.append("torch.nn.functional")
 
-    nv_spec = importlib.util.spec_from_file_location(
-        "_pf_pkg.nodes_vae", str(pkg_path / "nodes_vae.py")
-    )
-    nv_mod = importlib.util.module_from_spec(nv_spec)
-    sys.modules["_pf_pkg.nodes_vae"] = nv_mod
-    nv_spec.loader.exec_module(nv_mod)
+        pkg_spec = importlib.machinery.ModuleSpec(
+            name="_pf_pkg", loader=None, is_package=True
+        )
+        pkg_spec.submodule_search_locations = [str(pkg_path)]
+        pkg = importlib.util.module_from_spec(pkg_spec)
+        sys.modules["_pf_pkg"] = pkg
+        injected_modules.append("_pf_pkg")
 
+        ch_spec = importlib.util.spec_from_file_location(
+            "_pf_pkg.color_helpers", str(pkg_path / "color_helpers.py")
+        )
+        ch_mod = importlib.util.module_from_spec(ch_spec)
+        sys.modules["_pf_pkg.color_helpers"] = ch_mod
+        injected_modules.append("_pf_pkg.color_helpers")
+        ch_spec.loader.exec_module(ch_mod)
+
+        nv_spec = importlib.util.spec_from_file_location(
+            "_pf_pkg.nodes_vae", str(pkg_path / "nodes_vae.py")
+        )
+        nv_mod = importlib.util.module_from_spec(nv_spec)
+        sys.modules["_pf_pkg.nodes_vae"] = nv_mod
+        injected_modules.append("_pf_pkg.nodes_vae")
+        nv_spec.loader.exec_module(nv_mod)
+
+        return _check_dispatch_run_cases(nv_mod, FT, verbose)
+    finally:
+        # Always pop every module we injected. Catches both the success path
+        # and any exception during exec_module / constructor / case execution.
+        for mod in injected_modules:
+            sys.modules.pop(mod, None)
+
+
+def _check_dispatch_run_cases(nv_mod, FT, verbose: bool) -> bool:
+    """The actual five test cases, factored out so the try/finally above can
+    wrap module injection cleanly. Receives the loaded `nodes_vae` module and
+    the `FakeTensor`-equivalent class via parameters."""
     class V2D:
         def encode(self, p):
             return FT((1, 16, p.shape[1] // 8, p.shape[2] // 8))
@@ -323,9 +350,8 @@ def check_dispatch(verbose: bool = False) -> bool:
         except Exception as exc:
             failures.append(f"{name}: {type(exc).__name__}: {exc}")
 
-    # Cleanup torch stub so it doesn't leak to other checks.
-    for mod in ("torch", "torch.nn", "torch.nn.functional"):
-        sys.modules.pop(mod, None)
+    # NOTE: sys.modules cleanup is handled by the try/finally in the parent
+    # check_dispatch() function, so we don't need to pop anything here.
 
     if failures:
         print(_red(f"  FAIL — {len(failures)} dispatch branch(es) broken:"))
@@ -404,9 +430,10 @@ def check_manager_meta(actual_ids: set[str], verbose: bool = False) -> bool:
 # Heuristic: a node `type` value in a workflow JSON is treated as a Koolook
 # pack ID if it matches any of these patterns.
 _KOOLOOK_ID_PATTERNS = [
-    re.compile(r"(?i)koolook"),       # contains "koolook" anywhere
-    re.compile(r"^Easy[A-Z_]"),       # starts with "Easy" + capital/underscore
-    re.compile(r"^easy_[a-z]"),       # starts with "easy_" lower
+    re.compile(r"(?i)koolook"),         # contains "koolook" anywhere
+    re.compile(r"^Easy[A-Z_]"),         # starts with "Easy" + capital/underscore
+    re.compile(r"^easy_[A-Za-z]"),      # starts with "easy_" + any letter
+                                        # (covers easy_ImageBatch with capital I)
 ]
 
 

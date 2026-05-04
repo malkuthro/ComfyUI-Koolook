@@ -420,7 +420,7 @@
         }
       },
       "widgets_values": [
-        "N:/TRK_sync_BIG_N/JOBS/baconx/Toy-Hix/9110/nuke_preComps/tornado-G"
+        "path/to/sequence_a"
       ]
     },
     {
@@ -564,14 +564,14 @@
         81,
         453453453,
         "Place your base folder path in the FIELD below",
-        "N:/TRK_sync_BIG_N/JOBS/baconx/Toy-Hix/9110/nuke_preComps/tornado-G",
+        "path/to/sequence_a",
         ".%04d.exr",
         "UPres-0.3",
         "",
         7,
         false,
         false,
-        "N:/TRK_sync_BIG_N/JOBS/baconx/Toy-Hix/9110/nuke_preComps/tornado-G/UPres-0.3/v003/UPres-0.3__v003.%04d.exr",
+        "path/to/sequence_a/UPres-0.3/v003/UPres-0.3__v003.%04d.exr",
         null,
         null
       ],

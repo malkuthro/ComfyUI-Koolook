@@ -242,7 +242,7 @@
         }
       },
       "widgets_values": [
-        "N:/TRK_sync_BIG_N/JOBS/baconx/Toy-Hix/9110/nuke_preComps/tornado-I"
+        "path/to/sequence_b"
       ],
       "color": "#232",
       "bgcolor": "#353"
@@ -354,14 +354,14 @@
         81,
         453453453,
         "Place your base folder path in the FIELD below",
-        "W:/projects/menneskehavn_3029/ai/Lab R&D/Til Christian/CloseUP_morph_A/ComfyUI_OUT/origVideo_Exrs/v001",
+        "path/to/source_video",
         ".%04d.exr",
         "Source-depth",
         "v2-vikitti",
         1,
         true,
         true,
-        "W:/projects/menneskehavn_3029/ai/Lab R&D/Til Christian/CloseUP_morph_A/ComfyUI_OUT/origVideo_Exrs/v001/Source-depth/v2-vikitti",
+        "path/to/source_depth",
         null,
         null
       ],
