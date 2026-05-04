@@ -178,7 +178,6 @@ function gatherWorkflows(query) {
 
     for (const dirName of listDirectoryNames()) {
         const dir = dirOf(dirName);
-        if (!dir) continue;
         const allNames = Object.keys(dir.workflows || {});
         const matches = (n) => !q || n.toLowerCase().includes(q) || dirName.toLowerCase().includes(q);
 
