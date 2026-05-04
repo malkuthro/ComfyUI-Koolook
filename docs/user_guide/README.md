@@ -1,26 +1,54 @@
-# User guide
+# User Guide
 
-End-user documentation for the nodes shipped by `ComfyUI-Koolook`. Search for a node by display name in ComfyUI (type "koolook" in the node-add menu) and see the corresponding guide here.
+End-user documentation for nodes shipped by `ComfyUI-Koolook`. Pages
+mirror the ComfyUI category each node lives under, so the structure here
+matches what you see when you type "koolook" in the node-add menu.
 
-## Available guides
+Each per-node page includes a **Source** block at the top that records
+whether the node is Koolook-native or imported from a fork — so fork
+attribution is visible without needing a fork-shaped directory tree.
 
-*(Stub — guides are added as they're written. The starter image in [`img/Easy_Image_Batch_v0.1.5.png`](img/Easy_Image_Batch_v0.1.5.png) is the first one queued.)*
+## Browse by category
+
+| ComfyUI menu | Status | Nodes |
+|---|---|---|
+| `Koolook/Pipeline` | 🚧 page TBD | `EasyAIPipeline` |
+| `Koolook/Image` | 🚧 page TBD | `EasyResize_Koolook`, `easy_ImageBatch` |
+| `Koolook/Camera` | 🚧 page TBD | `KoolookLoadCameraPosesAbsolute` |
+| `Koolook/Wan_Video` | 🚧 page TBD | `EasyWan22Prompt` |
+| `Koolook/VAE` | ✅ [`nodes/radiance_koolook_v2_3_3/`](nodes/radiance_koolook_v2_3_3/) | `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode` |
+
+## Cross-cutting concepts
+
+Pages here cover ideas that span more than one node:
+
+- [VAE encode/decode pairing](nodes/radiance_koolook_v2_3_3/encode_decode_pairing.md) — which
+  encoder fields must match the decoder for a clean roundtrip, with
+  worked examples for SDR / HDR / cinema-log / video workflows.
+- [HDR modes deep dive](nodes/radiance_koolook_v2_3_3/hdr_modes.md) — what `Clip (SDR)`,
+  `Soft Clip`, `Compress (Log)`, and `Passthrough` actually do to your
+  pixels before they hit the VAE, with per-pixel worked examples.
 
 ## When to add a guide
 
-If a node has any of:
-- non-obvious input semantics (e.g. aspect-ratio strings, frame indexing conventions),
-- a workflow recipe more useful than the per-input tooltips,
-- a known limitation or compatibility caveat,
+A node deserves a page if it has any of:
 
-→ create a per-node markdown file here, name it after the canonical node ID
-(e.g. `easy_image_batch.md`, `easy_resize_koolook.md`), and add it to the
-"Available guides" table above.
+- Non-obvious input semantics (e.g. aspect-ratio strings, frame indexing
+  conventions).
+- A workflow recipe more useful than the per-input tooltips.
+- A known limitation or compatibility caveat.
+- An encode/decode or input/output pairing relationship with other nodes.
 
-Screenshots and helper images go in [`img/`](img/), named to match the file
-they're embedded in (e.g. `Easy_Image_Batch_v0.1.5.png`).
+Convention:
 
-## Where to find the node IDs
+- One markdown file per canonical node ID, named after the ID
+  (`easy_hdr_vae_encode.md`, `easy_image_batch.md`).
+- Place it in the folder that matches the node's ComfyUI category.
+- Screenshots and helper images go in [`img/`](img/), named to match the
+  page they're embedded in (e.g. `easy_hdr_vae_encode_pairing.png`).
 
-The canonical list is in the project [`README.md`](../../README.md) and
-[`reference/`](../reference/).
+## Where to find the canonical node ID list
+
+The repo [`README.md`](../../README.md) lists all currently-registered
+node IDs and display names. The historical inventory (including removed
+nodes) is in the [`CHANGELOG.md`](../../CHANGELOG.md).

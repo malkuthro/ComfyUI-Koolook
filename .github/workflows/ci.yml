@@ -44,3 +44,20 @@ jobs:
 
       - name: Bandit scan
         run: bandit -r . -x ./.venv,./forks,./upscaler_FIX,./nuke_CAM_exporter -ll
+
+  preflight:
+    name: Pre-flight Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run pre-flight (static + dispatch + workflow fixtures)
+        # manager-meta is skipped on PRs because the upstream node-map drift
+        # is owned by an external repo (ltdrdata/ComfyUI-Manager) and is
+        # tracked separately via issue #44. Re-enable by removing --skip
+        # once that issue is resolved upstream.
+        run: python tools/preflight_release.py --skip manager-meta -v

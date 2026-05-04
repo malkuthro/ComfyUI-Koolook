@@ -18,9 +18,14 @@ and should be kept in sync with these prose docs.
 | [`workflows-sidebar.md`](workflows-sidebar.md) | The "Workflows" section of the same sidebar. Save canvas / save selection / directories / archive on collision / load with named tab. Storage shape, action semantics, reset procedure. |
 | [`dev-iteration-loop.md`](dev-iteration-loop.md) | The fast iteration pattern we used to build the sidebar — the dev-sync loop, agent trigger phrases (`go`, `dev-sync`, paste-JSON), what survives across re-syncs vs what doesn't, push/publish gates. Read this when returning to UI work after a break. |
 
+> **Read this first if you're confused about version numbers:**
+> [`../reference/versioning.md`](../reference/versioning.md) explains the three independent version axes in this codebase (pack version, fork wrapper version, upstream pinned commit) and which skill/doc owns each one. Worth a one-time read before starting any version-bump work.
+
 ## Companion agent skills
 
 | Skill (in `.claude/skills/`) | Mirrors this doc |
 |---|---|
 | `license-pre-check` | Runs *before* any third-party fork; refuses to proceed on incompatible licenses. The principles also apply when a human is doing it manually. |
 | `add-external-fork` | The `forks/` workflow — clone outside MAIN, register in `forks_manifest.yaml`, namespace the IDs. Phase 0 calls `license-pre-check`. |
+| `docs-sync` | Find-and-replace a version tag (or any string token) across docs, code constants, and manifests in one controlled pass. Used during fork wrapper version bumps. |
+| `menu` | Lists all project skills with one-liners — quick inventory when you can't remember what's available. |
