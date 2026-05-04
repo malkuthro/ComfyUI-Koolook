@@ -281,6 +281,34 @@ export async function seedWorkflowDefaultsIfNeeded() {
 //
 // Subdirectories cannot be named "Archive" (case-insensitive) — that name is
 // reserved by the synthetic Archive folder rendered for archived workflows.
+//
+// === Mutator invariants — read this before adding a new mutator ===
+//
+//   1. **Mutate-then-commit, never one without the other.** Every mutator
+//      below mutates `workflowsCache` in place and returns immediately. The
+//      cache change is invisible on disk until a caller pairs the mutator
+//      with `await commit()` (or wraps both in `persistMutation`, which is
+//      the strongly-preferred path because it also handles snapshot/rollback
+//      and the "no-op" return-false convention). A mutator that "succeeds"
+//      without a paired commit silently drops the change on the next
+//      reload — a class of bug we've already shipped + reverted once.
+//
+//   2. **Return `false` for no-op (collisions, missing source, validation
+//      failures), truthy for success.** `persistMutation` treats a `false`
+//      return as a no-op and skips commit. Truthy returns are passed to
+//      `onSuccess(result)` as-is, which is why `saveWorkflowEntry` returns
+//      `{archivedAs}` — the success callback wants to surface that detail.
+//
+//   3. **Mutate in place; don't return new structures.** Callers (and the
+//      transaction layer's snapshot) expect `workflowsCache` to be the
+//      single source of truth. Returning a new structure would silently
+//      detach future reads from the change.
+//
+//   4. **Never replace `workflowsCache` itself except in seed/load paths.**
+//      Outside callers hold no reference to the cache (it's module-private),
+//      but a same-file replacement invalidates any in-flight `restore` or
+//      `commit` callbacks waiting on the closure. The seed/load paths are
+//      the only places that legitimately rebind the binding.
 // =============================================================================
 
 const ARCHIVE_RESERVED_NAME = "archive";
