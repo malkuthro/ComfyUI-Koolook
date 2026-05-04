@@ -324,29 +324,55 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     body.appendChild(nameInput);
 
     // ---- Wiring ----
-    function getActiveWorkflowsInCurrentDir() {
+    // Candidates for "Base on existing": collect every active workflow at
+    // the destination dir AND walk up its ancestors. So if the user picks
+    // an empty subdir like "UP-scale / seedvr2", the parent's workflows
+    // remain available to base on (instead of "Use existing name" /
+    // "Modify existing name" being disabled because the leaf dir is
+    // empty). De-duplication is by name, deepest-first wins (closest to
+    // the destination is the most relevant if names collide).
+    //
+    // The `value` of each option stays the bare name (the existing submit
+    // path uses `baseSelect.value` directly to populate the workflow
+    // name). `textContent` adds a "  ·  in <path>" suffix when the
+    // candidate is from an ancestor, so the user knows which directory
+    // they're basing on.
+    function getCandidatesForBase() {
         const path = getSelectedPath();
         if (!path || path.length === 0) return [];
-        // For an "+ New directory…" with non-empty newDirInput, the path
-        // points at a not-yet-created dir — no existing workflows to base on.
+        // For "+ New directory…" the destination doesn't exist yet — no
+        // base candidates. (Ancestors don't apply: the new dir is at root.)
         if (cascadeSelects[0].value === NEW_TOP) return [];
-        const dir = dirOf(path);
-        if (!dir || !dir.workflows) return [];
-        return Object.keys(dir.workflows)
-            .filter(n => !dir.workflows[n].archived)
-            .sort(compareNames);
+        const seen = new Set();
+        const out = [];
+        for (let i = path.length; i >= 1; i -= 1) {
+            const ancestorPath = path.slice(0, i);
+            const dir = dirOf(ancestorPath);
+            if (!dir || !dir.workflows) continue;
+            const names = Object.keys(dir.workflows)
+                .filter(n => !dir.workflows[n].archived)
+                .sort(compareNames);
+            for (const name of names) {
+                if (seen.has(name)) continue;
+                seen.add(name);
+                out.push({ name, fromPath: ancestorPath, isCurrent: i === path.length });
+            }
+        }
+        return out;
     }
 
-    function rebuildBaseOptions(names) {
+    function rebuildBaseOptions(candidates) {
         const previous = baseSelect.value;
         baseSelect.innerHTML = "";
-        for (const n of names) {
+        for (const c of candidates) {
             const opt = document.createElement("option");
-            opt.value = n;
-            opt.textContent = n;
+            opt.value = c.name;
+            opt.textContent = c.isCurrent
+                ? c.name
+                : `${c.name}  ·  in ${c.fromPath.join(" / ")}`;
             baseSelect.appendChild(opt);
         }
-        if (names.includes(previous)) baseSelect.value = previous;
+        if (candidates.some(c => c.name === previous)) baseSelect.value = previous;
     }
 
     function applyState({ refocusName = false } = {}) {
@@ -354,14 +380,17 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
         // to whether the top select is on "+ New directory…", not to
         // anything applyState recomputes here.
         const dirIsNew = cascadeSelects[0]?.value === NEW_TOP;
-        const activeNames = dirIsNew ? [] : getActiveWorkflowsInCurrentDir();
-        const hasBase = activeNames.length > 0;
+        const candidates = dirIsNew ? [] : getCandidatesForBase();
+        const hasBase = candidates.length > 0;
 
-        // Base on existing — visible only when the chosen directory has active workflows.
+        // Base on existing — visible whenever the destination dir OR any of
+        // its ancestors has active workflows. (Empty leaf dirs no longer
+        // disable the existing-name actions when the parent has things to
+        // base on.)
         if (hasBase) {
             baseLbl.style.display = "";
             baseSelect.style.display = "";
-            rebuildBaseOptions(activeNames);
+            rebuildBaseOptions(candidates);
         } else {
             baseLbl.style.display = "none";
             baseSelect.style.display = "none";
