@@ -569,14 +569,24 @@ function countDescendantsOfRawDir(dir) {
 // =============================================================================
 
 // Toolbar button factory — replaces the four near-identical button-construction
-// blocks in `renderPanel` (export, new-dir, save-canvas, save-selection). Every
-// toolbar button shares the `koolook-add-btn koolook-icon-btn` pair (both
+// blocks in `renderPanel` for icon-only buttons (export, new-dir, save-canvas,
+// save-selection). The "+" Add-to-favorites button (`addBtn`) is text-content
+// only and stays hand-rolled; this factory does not cover that case. Every
+// covered button shares the `koolook-add-btn koolook-icon-btn` pair (both
 // styling rules; the disabled state on `:disabled` lives on `koolook-icon-btn`).
 // `iconClass` is the PrimeIcons class (e.g. `pi pi-download`).
+//
+// The icon span is built with `createElement` + `className` rather than
+// `innerHTML = …${iconClass}…` so a future caller passing a non-static
+// `iconClass` (e.g. data sourced from a workflow or registry) can't inject
+// markup. All current callers pass static literals — this is helper-boundary
+// hardening, not a fix for an active vulnerability.
 function makeToolbarButton({ iconClass, title, onClick }) {
     const btn = document.createElement("button");
     btn.className = "koolook-add-btn koolook-icon-btn";
-    btn.innerHTML = `<span class="${iconClass}"></span>`;
+    const icon = document.createElement("span");
+    icon.className = iconClass;
+    btn.appendChild(icon);
     btn.title = title;
     btn.addEventListener("click", onClick);
     return btn;
@@ -684,9 +694,16 @@ function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggableP
 function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path, forceExpanded = false, draggablePayload, dropTarget }) {
     // `path` is required — every section/sub-section calling site routes
     // through `makeSectionCtx`, which always supplies a non-empty
-    // section-prefixed string. The pathStates branch below assumes a
-    // string key.
-    //
+    // section-prefixed string. The assertion below converts a "future
+    // caller forgot to pass path" regression into a loud failure at the
+    // boundary; without it, a stray `undefined` would silently land in
+    // `pathStates.set(undefined, …)` and pollute one shared key across
+    // every misconfigured folder. The pathStates branch further down
+    // assumes a string key.
+    if (typeof path !== "string" || !path) {
+        throw new Error("buildFolder: `path` must be a non-empty string");
+    }
+
     // Resolution order:
     //   1. forceExpanded (e.g. search active) — overrides everything
     //   2. pathStates (user has previously toggled this folder)

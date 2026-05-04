@@ -304,11 +304,20 @@ export async function seedWorkflowDefaultsIfNeeded() {
 //      single source of truth. Returning a new structure would silently
 //      detach future reads from the change.
 //
-//   4. **Never replace `workflowsCache` itself except in seed/load paths.**
-//      Outside callers hold no reference to the cache (it's module-private),
-//      but a same-file replacement invalidates any in-flight `restore` or
-//      `commit` callbacks waiting on the closure. The seed/load paths are
-//      the only places that legitimately rebind the binding.
+//   4. **Never replace `workflowsCache` itself except in seed / load /
+//      rollback paths.** The three legitimate rebind sites are:
+//        - module init (this file's top-level `let workflowsCache = …`)
+//        - `loadWorkflowsStore` and `seedWorkflowDefaultsIfNeeded`
+//          (re-binding the cache to a freshly-normalized server payload
+//          or a default seed)
+//        - the closure returned by `snapshotCache()` running rollback
+//          inside `persistMutation` — this rebind is what makes commit
+//          failure recoverable
+//      Outside callers hold no reference to the cache (it's
+//      module-private), so external rebinds are impossible. The constraint
+//      is internal: a fifth rebind site added by a future contributor for
+//      any other reason would break the snapshot/restore semantics that
+//      `persistMutation` depends on.
 // =============================================================================
 
 const ARCHIVE_RESERVED_NAME = "archive";
