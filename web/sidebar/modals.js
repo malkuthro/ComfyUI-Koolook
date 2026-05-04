@@ -503,6 +503,92 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
 }
 
 // =============================================================================
+// Tags modal — adds/removes tags one at a time, each via its own
+// persistMutation (passed in by the caller). The modal itself stays open until
+// the user clicks Close, so several edits can be made in a row. Chip rendering
+// reads from `getCurrentTags` after every successful mutation, so the live
+// state matches what the caller persisted.
+// =============================================================================
+export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag }) {
+    const body = document.createElement("div");
+
+    const lbl = document.createElement("label");
+    lbl.className = "koolook-modal-label";
+    lbl.textContent = "Current tags";
+    body.appendChild(lbl);
+
+    const chipsContainer = document.createElement("div");
+    chipsContainer.className = "koolook-tags-chips";
+    body.appendChild(chipsContainer);
+
+    function renderChips() {
+        chipsContainer.innerHTML = "";
+        const tags = getCurrentTags();
+        if (!tags || tags.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "koolook-tags-empty";
+            empty.textContent = "No tags yet.";
+            chipsContainer.appendChild(empty);
+            return;
+        }
+        for (const tag of tags) {
+            const chip = document.createElement("span");
+            chip.className = "koolook-tag-chip";
+            const name = document.createElement("span");
+            name.textContent = tag;
+            chip.appendChild(name);
+            const x = document.createElement("span");
+            x.className = "koolook-tag-chip-x";
+            x.textContent = "×";
+            x.title = `Remove "${tag}"`;
+            x.addEventListener("click", () => {
+                onRemoveTag(tag, () => renderChips());
+            });
+            chip.appendChild(x);
+            chipsContainer.appendChild(chip);
+        }
+    }
+    renderChips();
+
+    const addLbl = document.createElement("label");
+    addLbl.className = "koolook-modal-label";
+    addLbl.textContent = "Add tag";
+    body.appendChild(addLbl);
+
+    const addRow = document.createElement("div");
+    addRow.className = "koolook-tag-add-row";
+    body.appendChild(addRow);
+
+    const input = document.createElement("input");
+    input.className = "koolook-modal-input";
+    input.placeholder = "tag name";
+    addRow.appendChild(input);
+
+    const submit = () => {
+        const v = input.value.trim();
+        if (!v) { input.focus(); return; }
+        onAddTag(v, () => {
+            input.value = "";
+            renderChips();
+            input.focus();
+        });
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+
+    const addBtn = makeModalButton({ label: "Add", primary: true, onClick: submit });
+    addRow.appendChild(addBtn);
+
+    let overlay;
+    const close = makeModalButton({ label: "Close", onClick: () => overlay.remove() });
+    ({ overlay } = makeModalShell({
+        title: `Tags for "${wfName}"`,
+        body,
+        actions: [close],
+    }));
+    setTimeout(() => input.focus(), 0);
+}
+
+// =============================================================================
 // Context menu helper
 // =============================================================================
 export function showContextMenu(event, items) {

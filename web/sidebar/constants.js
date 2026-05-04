@@ -108,6 +108,13 @@ export function ensureStyle() {
 .koolook-row[draggable="true"] { cursor: grab; }
 .koolook-row[draggable="true"]:active { cursor: grabbing; }
 .koolook-drop-target { background: rgba(80,140,235,0.18) !important; outline: 2px solid rgba(80,140,235,0.6); outline-offset: -2px; }
+.koolook-tags-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; min-height: 22px; align-items: center; }
+.koolook-tags-empty { opacity: 0.55; font-size: 12px; }
+.koolook-tag-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 2px 4px 2px 9px; font-size: 11px; line-height: 1.4; }
+.koolook-tag-chip-x { cursor: pointer; opacity: 0.6; padding: 0 4px; font-size: 13px; line-height: 1; border-radius: 50%; }
+.koolook-tag-chip-x:hover { opacity: 1; color: #ff7777; background: rgba(255,255,255,0.06); }
+.koolook-tag-add-row { display: flex; gap: 6px; align-items: center; }
+.koolook-tag-add-row .koolook-modal-input { flex: 1; }
 `;
     document.head.appendChild(s);
 }

@@ -7,6 +7,29 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Right-click "Duplicate…"** on any workflow row in the sidebar tree.
+  Opens a name modal pre-filled with `<name> (copy)`; saving deep-clones
+  the source graph into a new entry in the same directory. The duplicate
+  inherits the source's tags so the user's categorization carries over.
+  Same-name duplicates fall through to the existing archive-on-collision
+  behavior in `saveWorkflowEntry`. (Closes #58.)
+- **Right-click "Tags…"** on any workflow row. Opens a chip-style modal
+  to view, add, and remove the workflow's tags one at a time. Each
+  edit fires its own `persistMutation` so changes survive a mid-edit
+  close. (Part of #56.)
+- **Tags sidebar section.** A new section between Workflows lists every
+  tag in use across the active workflow tree. Each tag becomes a folder
+  whose entries are the tagged workflows (sorted A→Z); click loads the
+  workflow from its real directory. Archived workflows are filtered
+  out of the section so the active view stays clean — their tags are
+  still preserved on the entry, so a restore from the Archive folder
+  brings them back. Search matches tag name OR workflow name. (Part
+  of #56.)
+- **Right-click "+ New directory…" / "+ New subdirectory under <path>…"**
+  in the workflow row's Move-to flow. Both create a fresh directory and
+  move the workflow into it as one atomic mutation; if the move can't
+  land, the new directory is rolled back so the cache never leaks an
+  empty orphan. (Closes #57.)
 - **Recursive subdirectories under workflow directories.** Right-click any
   directory in the Workflows tree → "Create subdirectory…" to nest folders
   to arbitrary depth (e.g. `UP-scale / Type-A / Sharp`). Each nested
@@ -70,6 +93,18 @@ The format is inspired by Keep a Changelog and SemVer.
 - Reserved-name check: subdirectory names cannot be `Archive`
   (case-insensitive) at any non-root level — collides with the synthetic
   Archive folder rendered for archived workflows.
+- **Workflow entries gain optional `tags: string[]`.** `normalizeDirNode`
+  trims, drops empties, and dedupes case-sensitively, so old entries
+  without a tags field load as `tags: []` and the rest of the code can
+  assume the field always exists. New mutators in `workflows_store.js`:
+  `getWorkflowTags(path, wfName)`, `addTag(path, wfName, tag)`,
+  `removeTag(path, wfName, tag)`. `getWorkflowGraph(path, wfName)` is
+  now also exported so the duplicate flow can deep-clone without
+  reaching into the cache directly.
+- **`showTagsModal` in `modals.js`** — chip-row UI with add/remove
+  callbacks, mirrors the existing `showInputModal` / `showConfirmModal`
+  surface so the modal shell, escape-key teardown, and overlay-click
+  dismissal stay centralized.
 
 ### Documentation
 - Closed out issue #28 (de-vendor upstream code under `upscaler_FIX/`
