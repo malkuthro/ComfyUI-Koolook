@@ -14,6 +14,7 @@ and should be kept in sync with these prose docs.
 | [`releasing.md`](releasing.md) | Canonical step-by-step release procedure: branch → PR → publish-validate → squash-merge → tag → GitHub Release. Anti-patterns to avoid. The per-release tickbox mirror is [`.github/ISSUE_TEMPLATE/release_checklist.md`](../../.github/ISSUE_TEMPLATE/release_checklist.md). |
 | [`registry-api.md`](registry-api.md) | The Comfy Registry's undocumented version-management endpoints (deprecate, delete, query) reverse-engineered while cleaning up v0.1.0–0.1.5. Includes ready-to-paste curl commands and an optional GitHub Actions workflow YAML for codified version management. |
 | [`node-versioning.md`](node-versioning.md) | Hard-won rules for changing `INPUT_TYPES` / `RETURN_TYPES` / class names without breaking saved user workflows. The five rules + the suffix-version pattern (`MyNode` → `MyNodeV2`) + the alias-then-deprecate migration path. |
+| [`curated-sidebar.md`](curated-sidebar.md) | The "Curated Nodes" sidebar tab workflow. How to capture your in-ComfyUI favorites and ship them as the package's default via `web/curated_defaults.json`. Storage keys, data flow, reset procedure. |
 
 ## Companion agent skills
 

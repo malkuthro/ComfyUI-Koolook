@@ -1,4 +1,13 @@
 {
-  "_comment": "Default curated picks shipped with the package. Generated via the Export button in the Curated Nodes sidebar tab. Each entry is a registered ComfyUI node ID. Users get this list seeded into their browser on first load; subsequent customizations live in localStorage and are never overwritten by package updates.",
-  "picks": []
+  "picks": [
+    "GetImageSizeAndCount",
+    "GetNode",
+    "ImageScaleBy",
+    "LoadEXR",
+    "NukeConstant",
+    "NukeOCIOColorSpace",
+    "SaveEXRFrames",
+    "Text Multiline",
+    "easy showAnything"
+  ]
 }
