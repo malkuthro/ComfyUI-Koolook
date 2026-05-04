@@ -353,6 +353,9 @@ function ensureDirectoryAtPath(path) {
 export function addDirectory(parentPath, name) {
     name = (name || "").trim();
     if (!name) return false;
+    // Type guard mirroring `moveDirectory` — without this, a future caller
+    // passing `undefined` would crash on `parentPath.length`.
+    if (!Array.isArray(parentPath)) return false;
     // Reserved-name check: "Archive" at root is fine (no synthetic Archive
     // collides at root because root has no archived workflows of its own),
     // but inside a directory it would shadow the archived-workflows folder.
@@ -538,6 +541,9 @@ function isPathDescendantOrSame(testPath, ancestorPath) {
     return true;
 }
 
-export function isArchiveReservedName(name) {
-    return typeof name === "string" && name.trim().toLowerCase() === ARCHIVE_RESERVED_NAME;
-}
+// `isArchiveReservedName` was previously exported but never imported — the
+// reserved-name check is enforced inline by every mutator that creates or
+// renames a directory (`addDirectory`, `renameDirectory`, `moveDirectory`).
+// Removed during a dead-export sweep; revive as an export only if a future
+// caller needs to gate UI before submit (e.g. live-validate the new-dir
+// input in the save modal).

@@ -37,6 +37,21 @@ The format is inspired by Keep a Changelog and SemVer.
   also updated. The tab id (`koolook.curatedNodes`) and the
   `app.registerExtension` name are unchanged so existing per-user tab
   state (pinning, ordering) is preserved.
+- **Save modal — `Base on existing` candidates now walk leaf-up to root
+  and dedupe (deepest wins).** Saving into an empty subdirectory like
+  `UP-scale / seedvr2` no longer disables the existing-name actions —
+  the modal pulls active workflows from every ancestor. Ancestor
+  entries are labeled `<name>  ·  in <path>` so the candidate's
+  source directory is unambiguous. The selected destination path is
+  whatever the cascade resolves to — the ancestor source only seeds
+  the workflow name; archive semantics still apply at the destination.
+- **Save modal — `Action` dropdown is now hidden (not just disabled)
+  when no base candidate exists** anywhere in the destination's
+  ancestry. Disabled `<option>` elements render too subtly across
+  browsers; the only useful path in that case is "type a fresh name
+  and save," which the Workflow Name field below already provides.
+  The underlying value is pinned to `new` so submit takes the
+  by-name path.
 - The right-click canvas-node menu item is now **"Add to Kforge Labs"**
   (was "Add to Curated Sidebar").
 - Directory header counts in the workflows tree now show the total

@@ -362,6 +362,14 @@ function handleDndDrop(payload, target) {
         const dirName = payload.name;
         // Same-parent drop is a no-op.
         if (pathsEqual(srcParentPath, target.path)) return;
+        // Self-drop (drop a dir onto its own row) is also a no-op. The
+        // same-parent guard above misses this for root-level dirs because
+        // the dir's own row carries `target.path = [...srcParentPath, name]`,
+        // which doesn't equal `srcParentPath`. Without this check the
+        // cycle guard in `moveDirectory` would still reject the move, but
+        // the user would see a misleading "cycle, name collision, or
+        // invalid target" toast for what's just a no-op gesture.
+        if (pathsEqual([...srcParentPath, dirName], target.path)) return;
         persistMutation({
             mutate: () => moveDirectory(srcParentPath, dirName, target.path),
             onSuccess: () => {
