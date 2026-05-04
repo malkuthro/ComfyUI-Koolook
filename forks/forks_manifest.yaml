@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-05-03"
+updated_at: "2026-05-04"
 external_forks:
   root_relative_to_main: "../ComfyUI-Forks"
   root_env_var: "KOLOOK_FORKS_DIR"
@@ -75,3 +75,98 @@ entries:
     sync_state: "manual"
     license: "unknown"
     notes: "Prompt parameter taxonomy inspired by external docs; no direct vendored code tracked yet."
+
+  # --- De-vendored trees (untracked in v0.1.4 / v0.1.5 registry-hygiene cleanup) ---
+  # All six were vendored locally without proper pinning; none were part of any
+  # published Comfy Registry archive (early publishes failed; first successful
+  # publish was post-cleanup). See forks/THIRD_PARTY.md "De-vendored upstream
+  # code" section for the full audit trail.
+
+  - id: "vace_tools_devendored"
+    name: "ComfyUI-SuperUltimateVaceTools (DE-VENDORED in v0.1.4)"
+    source_repo: "unknown — upstream URL not pinned at vendor time"
+    source_ref: "unknown"
+    pinned_commit: null
+    local_paths:
+      - "upscaler_FIX/github_repos/ComfyUI-SuperUltimateVaceTools/FIXED_code/nodes.py"
+      - "upscaler_FIX/github_repos/ComfyUI-SuperUltimateVaceTools/nodes_original.py"
+      - "upscaler_FIX/github_repos/ComfyUI-SuperUltimateVaceTools/link.txt"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "unverified"
+    notes: "Untracked via `git rm -r --cached` in v0.1.4. Not part of any published Comfy Registry archive. Backup may exist on maintainer's local disk under ../ComfyUI-Forks-BK/. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."
+
+  - id: "multigpu_devendored"
+    name: "ComfyUI-multigpu (DE-VENDORED in v0.1.4)"
+    source_repo: "unknown — upstream URL not pinned at vendor time"
+    source_ref: "unknown"
+    pinned_commit: null
+    local_paths:
+      - "upscaler_FIX/github_repos/ComfyUI-multigpu/FIXED_code/distorch_2.py"
+      - "upscaler_FIX/github_repos/ComfyUI-multigpu/distorch_2_orig.py"
+      - "upscaler_FIX/github_repos/ComfyUI-multigpu/nodes_orig.py"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "unverified"
+    notes: "Untracked via `git rm -r --cached` in v0.1.4. Not part of any published Comfy Registry archive. Backup may exist on maintainer's local disk under ../ComfyUI-Forks-BK/. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."
+
+  - id: "debugg_dumps_devendored"
+    name: "Local debugg/ error dumps (DE-VENDORED in v0.1.4)"
+    source_repo: "n/a — local-only debugging notes, not third-party code"
+    source_ref: "n/a"
+    pinned_commit: null
+    local_paths:
+      - "upscaler_FIX/github_repos/debugg/error_2.md"
+      - "upscaler_FIX/github_repos/debugg/error_3.md"
+      - "upscaler_FIX/github_repos/debugg/errors.md"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "n/a"
+    notes: "Not third-party — three local markdown files of debugging notes. Listed for completeness with the other five trees from issue #28's checklist. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."
+
+  - id: "animatediff_evolved_devendored"
+    name: "ComfyUI-AnimateDiff-Evolved (DE-VENDORED in v0.1.4)"
+    source_repo: "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved (inferred — on-disk folder typo'd as 'Comfyui-Animatedfiff-evolved')"
+    source_ref: "unknown — vendored without version pin"
+    pinned_commit: null
+    local_paths:
+      - "nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-Animatedfiff-evolved/nodes_cameractrl.py"
+      - "nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-Animatedfiff-evolved/link.txt"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "unverified"
+    notes: "Untracked via `git rm -r --cached` in v0.1.4. Not part of any published Comfy Registry archive. The on-disk folder name preserved an upstream-name typo. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."
+
+  - id: "kjnodes_camera_track_devendored"
+    name: "ComfyUI-KJNodes — camera-track consumption point (DE-VENDORED in v0.1.4)"
+    source_repo: "https://github.com/kijai/ComfyUI-KJNodes"
+    source_ref: "unknown — vendored without version pin"
+    pinned_commit: null
+    local_paths:
+      - "nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-kjnodes/nodes.py"
+      - "nuke_CAM_exporter/_Utils-CAM-track/Github-Repos/Comfyui-kjnodes/link.txt"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-03"
+    notes: "Distinct from the `easy_resize_inspiration` entry above — that one is a fresh-write reimplementation in MAIN; this was a separate raw-copy consumption point inside the Nuke camera-track tooling. Untracked via `git rm -r --cached` in v0.1.4. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."
+
+  - id: "wan_video_wrapper_fun_camera_devendored"
+    name: "ComfyUI-WanVideoWrapper fun_camera fix (DE-VENDORED in v0.1.4)"
+    source_repo: "https://github.com/kijai/ComfyUI-WanVideoWrapper"
+    source_ref: "unknown — incomplete WIP fix; upstream pin never recorded"
+    pinned_commit: null
+    local_paths:
+      - "nuke_CAM_exporter/wrapper_FIX/wrapper_fun_camera_ORIG-code/nodes.py"
+      - "nuke_CAM_exporter/wrapper_FIX/wrapper_fun_camera_MODIF-code/nodes.py"
+      - "nuke_CAM_exporter/wrapper_FIX/todo_and_resume.md"
+    status: "removed"
+    removed_at: "2026-05-03"
+    removed_in_release: "0.1.4 / 0.1.5"
+    license: "assumed GPL-3.0 (consistent with kijai's other wrappers); verify before any future revival"
+    notes: "Both upstream fun_camera/nodes.py and a Koolook-modified version exploring a token-count alignment fix between Wan 14B (21 tokens) and FunCamera (41 tokens). Incomplete per the in-folder todo_and_resume.md. Untracked via `git rm -r --cached` in v0.1.4. If revisited, redo from scratch against current upstream after running license-pre-check. See forks/THIRD_PARTY.md 'De-vendored upstream code' section."

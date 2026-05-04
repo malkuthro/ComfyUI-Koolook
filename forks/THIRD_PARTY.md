@@ -104,7 +104,25 @@ ComfyUI-Manager). All six are listed here for the audit trail.
 The corresponding files were either physically moved to the
 maintainer's local `../ComfyUI-Forks-BK/` backup or remain on the
 maintainer's local disk only (gitignored). None of them are part of
-the published package.
+the published package — the early v0.1.0 / v0.1.1 / v0.1.3 push-to-main
+publishes to the Comfy Registry all failed (verified via
+`gh run list --workflow=publish.yml`), and the first successful
+Registry publish was the `v0.1.4-prep` dispatch on 2026-05-03, by
+which point all six trees had already been untracked. The historical
+GitHub release source tarballs do still contain these files (git
+history is permanent by design), but those are not on any user's
+ComfyUI install path.
+
+Each of the six is also registered in
+[`forks_manifest.yaml`](forks_manifest.yaml) with `status: "removed"`,
+`removed_in_release`, and best-effort `source_repo` / `local_paths` —
+see the entries with the `_devendored` suffix.
+
+Folder names below are reproduced verbatim from the v0.1.3 tree,
+including any upstream-name typos and casing variants (e.g.
+`Comfyui-Animatedfiff-evolved` and the lowercase `Comfyui-` prefixes
+on two rows) — intentional historical record, not authoring
+inconsistency.
 
 | Former path in MAIN | Upstream | Notes |
 |---|---|---|
