@@ -465,6 +465,22 @@ export function getWorkflowGraph(path, wfName) {
     return dir.workflows[wfName].graph || null;
 }
 
+// Delete every archived workflow under the directory at `path`. Returns
+// `{ count }` (number of entries removed) on success, `false` if the
+// directory is missing or has no archived entries. Active (non-archived)
+// workflows in the same directory are untouched. Used by the Archive
+// folder's right-click "Delete archive" action.
+export function clearArchive(path) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows) return false;
+    const archivedNames = Object.entries(dir.workflows)
+        .filter(([, wf]) => wf && wf.archived === true)
+        .map(([n]) => n);
+    if (archivedNames.length === 0) return false;
+    for (const name of archivedNames) delete dir.workflows[name];
+    return { count: archivedNames.length };
+}
+
 // =============================================================================
 // Path utilities
 // =============================================================================

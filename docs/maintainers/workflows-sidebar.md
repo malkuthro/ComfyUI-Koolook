@@ -33,6 +33,7 @@ guidance; the underlying logic flows from the resulting `(name, dir)` pair.
 
 - **Workflow row**: Load / Rename / `→ <other path>` (lists every other directory in the tree) / Move to archive (or Restore from archive if already archived) / Delete.
 - **Directory row** (any depth): **Create subdirectory…** / Rename / Delete (with confirm if non-empty — the message names workflow + subdirectory counts).
+- **Archive folder** (synthetic — appears only when a directory has archived workflows): **Delete archive (N)** — removes every archived workflow in this directory in one go (active workflows in the same directory are untouched).
 
 ## Subdirectories
 

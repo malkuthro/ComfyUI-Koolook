@@ -41,6 +41,7 @@ import {
     renameWorkflow,
     deleteWorkflow,
     moveWorkflow,
+    clearArchive,
     pathsEqual,
 } from "./workflows_store.js";
 import {
@@ -670,6 +671,36 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
     ]);
 }
 
+// Right-click on the synthetic Archive folder. The Archive folder isn't a
+// real DirNode — it's rendered for any dir with `archived: true` workflows
+// at this level. The only useful bulk op is "delete every archived entry
+// here in one go"; per-entry restore/delete still works on each archived
+// workflow's own row.
+function archiveFolderContextMenu(event, dirPath, archivedCount) {
+    const dirDisplay = dirPath.join(" / ");
+    const noun = `${archivedCount} archived workflow${archivedCount === 1 ? "" : "s"}`;
+    showContextMenu(event, [
+        {
+            label: `Delete archive (${archivedCount})`,
+            danger: true,
+            action: () => {
+                showConfirmModal({
+                    title: "Delete archived workflows?",
+                    message: `${noun} in "${dirDisplay}" will be permanently deleted. Active workflows in this directory are not affected.`,
+                    confirmLabel: "Delete archive",
+                    danger: true,
+                    onConfirm: () => persistMutation({
+                        mutate: () => clearArchive(dirPath),
+                        onSuccess: (result) => toast(
+                            `Deleted ${result.count} archived workflow${result.count === 1 ? "" : "s"} in "${dirDisplay}".`
+                        ),
+                    }),
+                });
+            },
+        },
+    ]);
+}
+
 function directoryRowContextMenu(event, dirPath) {
     const dir = dirOf(dirPath);
     const dirName = dirPath[dirPath.length - 1];
@@ -833,6 +864,7 @@ function renderGatheredDir(parentCtx, dir) {
                     count: dir.archived.length,
                     iconKind: "archive",
                     path: "Archive",
+                    onContextMenu: (e) => archiveFolderContextMenu(e, dirPath, dir.archived.length),
                     build: (archCtx) => {
                         for (const wfName of dir.archived) {
                             archCtx.leaf({

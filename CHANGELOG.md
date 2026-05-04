@@ -11,10 +11,15 @@ The format is inspired by Keep a Changelog and SemVer.
   directory in the Workflows tree → "Create subdirectory…" to nest folders
   to arbitrary depth (e.g. `UP-scale / Type-A / Sharp`). Each nested
   directory behaves like a top-level one: it can hold workflows + an
-  Archive subfolder + further subdirectories. The save modal's directory
-  dropdown lists every path in the tree as a flat list with " / "
-  separators, so saving into a nested path is one click. The right-click
-  workflow "Move to…" submenu likewise lists every other path in the tree.
+  Archive subfolder + further subdirectories. The save modal directory
+  picker is **cascading** (multi-step): pick a parent, then a child
+  appears, then a grandchild, etc. — each child level has a `(save in
+  "<path>")` option to stop drilling at that depth. The right-click
+  workflow "Move to…" submenu lists every other path in the tree.
+- **Delete archive (N) on the synthetic Archive folder.** Right-click the
+  Archive folder under any directory → bulk-removes every archived
+  workflow at that level in one confirm. Active workflows in the same
+  directory are untouched.
 - **Schema is now recursive** — every directory node has a `workflows`
   object AND a `directories` object. Existing v0.2 stores load fine:
   `normalizeWorkflowsStore` treats a missing `directories` as `{}` and
