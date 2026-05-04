@@ -56,6 +56,29 @@ guess a path.
 This is a development convenience only — anything worth shipping still
 goes through the normal PR + release flow described below.
 
+The broader iteration pattern (trigger phrases, what survives across
+re-syncs vs what doesn't, push/publish gates) is captured in
+[`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
+
+## Curated Nodes sidebar — distributed defaults
+
+The "Curated Nodes" ComfyUI sidebar tab (implemented in
+`web/koolook_sidebar.js`) seeds users' localStorage from
+`web/curated_defaults.json` on first load. To update the distributed
+default favorites list:
+
+1. Customize picks inside ComfyUI (sidebar `+` / `×` / right-click → Add).
+2. Click the ↓ Export button → JSON copied to clipboard.
+3. Paste into `web/curated_defaults.json`, replacing the file contents.
+4. Commit + push (does **not** trigger publish — only `pyproject.toml`
+   changes merged to `main` do).
+
+Full workflow including reset / verification steps:
+[`docs/maintainers/curated-sidebar.md`](docs/maintainers/curated-sidebar.md).
+The seeder runs exactly once per browser, so existing users keep their
+personalized list when defaults change — the new default only reaches
+fresh installs and users who clear browser data.
+
 ## Releasing
 
 - The canonical release procedure is `docs/maintainers/releasing.md`. Follow it for every

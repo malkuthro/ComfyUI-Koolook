@@ -1,0 +1,4 @@
+{
+  "_comment": "Default workflows shipped with the package. Same pattern as curated_defaults.json: seeded once into the user's /userdata on first ComfyUI load with empty workflow storage. Each entry is a directory containing one or more workflows. Workflows are full ComfyUI graph JSON (the same shape app.graph.serialize() produces).",
+  "directories": {}
+}

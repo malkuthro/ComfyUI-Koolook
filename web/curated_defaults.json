@@ -1,0 +1,13 @@
+{
+  "picks": [
+    "GetImageSizeAndCount",
+    "GetNode",
+    "ImageScaleBy",
+    "LoadEXR",
+    "NukeConstant",
+    "NukeOCIOColorSpace",
+    "SaveEXRFrames",
+    "Text Multiline",
+    "easy showAnything"
+  ]
+}
