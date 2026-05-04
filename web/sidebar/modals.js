@@ -396,14 +396,27 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
             baseSelect.style.display = "none";
         }
 
-        // Action options — disable "Use existing" / "Modify existing" when no base is available.
-        for (const opt of actionSelect.options) {
-            if (opt.value === "use_existing" || opt.value === "modify_existing") {
-                opt.disabled = !hasBase;
+        // Action — hide the whole dropdown when there's nothing to base on.
+        // "Use existing" and "Modify existing" are meaningless without a
+        // base, and disabled <option> elements render subtly across browsers
+        // (the user just sees a "New name" they can't change). With no base,
+        // the only useful action is a fresh save by name — the Workflow Name
+        // field below already covers that case, so the dropdown is just
+        // noise. With a base, restore the full action picker.
+        if (hasBase) {
+            actionLbl.style.display = "";
+            actionSelect.style.display = "";
+            for (const opt of actionSelect.options) {
+                if (opt.value === "use_existing" || opt.value === "modify_existing") {
+                    opt.disabled = false;
+                }
             }
-        }
-        if (!hasBase && actionSelect.value !== "new") {
-            actionSelect.value = "new";
+        } else {
+            actionLbl.style.display = "none";
+            actionSelect.style.display = "none";
+            // Pin the underlying value to "new" so submit takes the Workflow
+            // Name path.
+            if (actionSelect.value !== "new") actionSelect.value = "new";
         }
 
         // Workflow name — visible only when needed.
