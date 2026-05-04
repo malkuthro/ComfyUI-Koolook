@@ -166,7 +166,9 @@ def check_dispatch(verbose: bool = False) -> bool:
 
     class FT:
         def __init__(self, shape):
-            self.shape = tuple(shape); self.dtype = "float32"; self.device = "cpu"
+            self.shape = tuple(shape)
+            self.dtype = "float32"
+            self.device = "cpu"
         @property
         def ndim(self): return len(self.shape)
         @property
@@ -215,7 +217,8 @@ def check_dispatch(verbose: bool = False) -> bool:
     nn_F = types.ModuleType("torch.nn.functional")
     nn_F.pad = lambda x, *a, **k: x
     nn_F.avg_pool2d = lambda x, *a, **k: x
-    nn_mod = types.ModuleType("torch.nn"); nn_mod.functional = nn_F
+    nn_mod = types.ModuleType("torch.nn")
+    nn_mod.functional = nn_F
     torch_stub.nn = nn_mod
     sys.modules["torch"] = torch_stub
     sys.modules["torch.nn"] = nn_mod
@@ -248,8 +251,8 @@ def check_dispatch(verbose: bool = False) -> bool:
     class V2D:
         def encode(self, p):
             return FT((1, 16, p.shape[1] // 8, p.shape[2] // 8))
-        def decode(self, l):
-            return FT((l.shape[0], l.shape[2] * 8, l.shape[3] * 8, 3))
+        def decode(self, lat):
+            return FT((lat.shape[0], lat.shape[2] * 8, lat.shape[3] * 8, 3))
 
     class V3D:
         latent_dim = 3
@@ -259,12 +262,12 @@ def check_dispatch(verbose: bool = False) -> bool:
                     (1, 16, p.shape[1] // 4, p.shape[2] // 8, p.shape[3] // 8)
                 )
             return FT((1, 16, p.shape[1] // 8, p.shape[2] // 8))
-        def decode(self, l):
-            if l.ndim == 5:
+        def decode(self, lat):
+            if lat.ndim == 5:
                 return FT(
-                    (1, l.shape[2] * 4, l.shape[3] * 8, l.shape[4] * 8, 3)
+                    (1, lat.shape[2] * 4, lat.shape[3] * 8, lat.shape[4] * 8, 3)
                 )
-            return FT((l.shape[0], l.shape[2] * 8, l.shape[3] * 8, 3))
+            return FT((lat.shape[0], lat.shape[2] * 8, lat.shape[3] * 8, 3))
 
     enc = nv_mod.Easy_hdr_VAE_encode()
     dec = nv_mod.Easy_hdr_VAE_decode()
@@ -345,8 +348,16 @@ def check_manager_meta(actual_ids: set[str], verbose: bool = False) -> bool:
     not in our code) and missing IDs (in our code but not in upstream).
     """
     print(_cyan("[3/4] manager-meta — extension-node-map.json drift"))
+    if not MANAGER_EXT_MAP_URL.startswith("https://"):
+        # Defensive: hardcoded URL above is https; this guard ensures any
+        # future edit can't accidentally introduce a non-https scheme that
+        # would let urlopen pick up file:// or other unsafe schemes.
+        print(_yellow("  SKIP — manager-meta URL is not https"))
+        return True
     try:
-        with urllib.request.urlopen(MANAGER_EXT_MAP_URL, timeout=20) as resp:
+        # Bandit B310: urlopen scheme check is enforced by the https guard
+        # one line above; the URL is hardcoded to a github.com raw path.
+        with urllib.request.urlopen(MANAGER_EXT_MAP_URL, timeout=20) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
         print(_yellow(f"  SKIP — could not fetch upstream map: {exc}"))
@@ -540,7 +551,6 @@ def main() -> int:
         results["workflows"] = check_workflows(actual_ids, verbose=args.verbose)
         print()
 
-    passed = [n for n, ok in results.items() if ok]
     failed = [n for n, ok in results.items() if not ok]
 
     print(_cyan("Summary"))
