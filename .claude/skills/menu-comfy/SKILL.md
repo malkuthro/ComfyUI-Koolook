@@ -1,21 +1,24 @@
 ---
-name: menu
-description: List all project-level skills available under .claude/skills/ with their one-line descriptions, so the maintainer can browse what tools are available without remembering each one. Use when the user types /menu, "list skills", "what skills do we have", or "show me the skill index". This is the project-specific inventory; user-level skills under ~/.claude/skills/ are listed separately when relevant.
+name: menu-comfy
+description: List all project-level skills for ComfyUI-Koolook under .claude/skills/ with their one-line descriptions, so the maintainer can browse what tools are available without remembering each one. Use when the user types /menu-comfy, "list project skills", "what project skills do we have", or "show me the project skill index". This is the project-specific inventory; user-level skills under ~/.claude/skills/ are listed separately by the global /menu skill.
 ---
 
-# menu
+# menu-comfy
 
-Quick inventory of the project-level skills under `.claude/skills/`.
-Run when the user wants a one-look overview of what's available without
-having to remember each skill by name.
+Quick inventory of the project-level skills under `.claude/skills/` for
+ComfyUI-Koolook. Run when the user wants a one-look overview of what's
+available without having to remember each skill by name.
+
+The name is deliberately distinct from the global `/menu` skill so the
+two don't collide on the same trigger.
 
 ## Trigger phrases
 
-- `/menu`
-- "list skills"
-- "what skills do we have"
-- "show me the skill index"
-- "skill menu"
+- `/menu-comfy`
+- "list project skills"
+- "what project skills do we have"
+- "show me the project skill index"
+- "comfy skill menu"
 
 ## Procedure
 
@@ -46,7 +49,7 @@ having to remember each skill by name.
 5. **End with a short reminder** of how to add new skills:
    *"To add a new project skill: create `.claude/skills/<name>/SKILL.md`
    with YAML frontmatter (`name:`, `description:`) and a markdown body
-   describing the procedure. Re-run `/menu` to see it appear here."*
+   describing the procedure. Re-run `/menu-comfy` to see it appear here."*
 
 ## Output format
 
@@ -60,10 +63,10 @@ Match this layout (substitute real values):
 | docs-sync | Find-and-replace a version tag across docs, code, and manifests in one controlled pass. | `/docs-sync <old> <new>` |
 | add-external-fork | Set up an external upstream repository as a pinned reference checkout under ../ComfyUI-Forks. | `/add-external-fork` |
 | license-pre-check | Run a license-compatibility audit before incorporating any third-party code. | `/license-pre-check` |
-| menu | List all project-level skills with their one-line descriptions. | `/menu` |
+| menu-comfy | List all project-level skills with their one-line descriptions. | `/menu-comfy` |
 
 To add a new project skill: create `.claude/skills/<name>/SKILL.md`
-with YAML frontmatter and a markdown body. Re-run `/menu` to see it.
+with YAML frontmatter and a markdown body. Re-run `/menu-comfy` to see it.
 ```
 
 ## Safety guardrails
