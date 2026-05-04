@@ -67,7 +67,7 @@ const pathStates = new Map();
 // set is consumed each render: kept entries are written to pathStates and the
 // set is cleared. Used by save flows that mutate state and want the
 // destination folder open after the resulting re-render.
-let pinnedPaths = new Set();
+const pinnedPaths = new Set();
 
 // Section registry. Sections render in declaration order, separated by
 // dividers. Built-in sections register at module load (bottom of this file).
@@ -78,29 +78,53 @@ const SECTIONS = [];
 // =============================================================================
 
 /**
- * Register a tree section.
+ * @typedef {Object} FolderOpts
+ * @property {string} name
+ * @property {number} [count]
+ * @property {string} [iconKind]                      "favorites" | "workflows"
+ *                                                    | "archive" | "folder".
+ * @property {string} path                            Segment-relative; engine
+ *                                                    prefixes with section.id.
+ * @property {boolean} [startExpanded=false]
+ * @property {(e: MouseEvent) => void} [onContextMenu]
+ * @property {(sub: SectionCtx) => void} build        Populate the sub-folder.
+ *
+ * @typedef {Object} SectionCtx
+ * @property {*} data                                 Result returned by `gather`.
+ *                                                    Top-level ctx only; nested
+ *                                                    builds close over their
+ *                                                    own data via the outer
+ *                                                    `build` scope.
+ * @property {string} query                           Lowercased+trimmed search.
+ * @property {boolean} isFiltered                     True when query is non-empty.
+ * @property {(opts: FolderOpts) => void} folder      Append a sub-folder.
+ * @property {(opts: { row: HTMLElement }) => void} leaf
+ *                                                    Append a leaf row.
  *
  * @typedef {Object} SectionSpec
- * @property {string} id                                Stable; used as the
- *                                                     pathState root for
- *                                                     this section.
- * @property {string} label                            Group folder header.
- * @property {string} [iconKind]                       "favorites" | "workflows"
- *                                                     | "archive" | "folder".
- * @property {string} [emptyMessage]                   Shown when the section
- *                                                     gathers nothing AND no
- *                                                     search is active.
+ * @property {string} id                              Stable; used as the
+ *                                                    pathState root for
+ *                                                    this section.
+ * @property {string} label                           Group folder header.
+ * @property {string} [iconKind]                      Same enum as FolderOpts.
+ * @property {string} [emptyMessage]                  Shown when the section
+ *                                                    gathers nothing AND no
+ *                                                    search is active.
  * @property {(query: string) => { total: number }} gather
- *                                                     Returns a result with at
- *                                                     least `total`. Other
- *                                                     fields are opaque to
- *                                                     the engine; the section
- *                                                     reads them via
- *                                                     `ctx.data` in `build`.
- * @property {(ctx: SectionCtx) => void} build         Called when total > 0;
- *                                                     uses `ctx.folder` and
- *                                                     `ctx.leaf` to populate
- *                                                     the section tree.
+ *                                                    Returns a result with at
+ *                                                    least `total`. Other
+ *                                                    fields are opaque to
+ *                                                    the engine; the section
+ *                                                    reads them via
+ *                                                    `ctx.data` in `build`.
+ * @property {(ctx: SectionCtx) => void} build        Called when total > 0;
+ *                                                    uses `ctx.folder` and
+ *                                                    `ctx.leaf` to populate
+ *                                                    the section tree.
+ */
+
+/**
+ * Register a tree section.
  *
  * @param {SectionSpec} spec
  */
@@ -130,6 +154,11 @@ function renderTree({ treeEl, query }) {
     const q = (query || "").trim().toLowerCase();
     const isFiltered = q.length > 0;
     const validPaths = new Set();
+    // Track which sections actually rendered this pass. Phase 3 only prunes
+    // keys whose section rendered — sections gated empty by a search filter
+    // keep their pathStates entries so clearing the filter restores user
+    // expansions.
+    const renderedSectionIds = new Set();
 
     // Phase 1: gather every section.
     const gathered = SECTIONS.map(section => ({
@@ -137,63 +166,68 @@ function renderTree({ treeEl, query }) {
         result: section.gather(q),
     }));
 
-    // Cross-section empty under a non-trivial search.
+    // Phase 2: render. Cross-section empty under a non-trivial search emits a
+    // single placeholder; otherwise iterate sections with dividers between
+    // non-empty ones. Phase 3 ALWAYS runs after this, so pins always apply.
     const anyVisible = gathered.some(({ result }) => result.total > 0);
     if (!anyVisible && isFiltered) {
         const empty = document.createElement("div");
         empty.className = "koolook-empty";
         empty.textContent = "No nodes or workflows match your search.";
         treeEl.appendChild(empty);
-        // Don't prune pathStates while showing search-empty — clearing the
-        // search will re-render with the user's prior expansions intact.
-        return;
-    }
-
-    // Phase 2: render section by section, with dividers between non-empty ones.
-    let appended = 0;
-    for (const { section, result } of gathered) {
-        if (result.total === 0) {
-            // Per-section empty placeholder only when not filtered. Under
-            // filter, the cross-section "no matches" message handles it.
-            if (!isFiltered && section.emptyMessage) {
-                if (appended > 0) appendDivider(treeEl);
-                const el = document.createElement("div");
-                el.className = "koolook-empty";
-                el.textContent = section.emptyMessage;
-                treeEl.appendChild(el);
-                appended += 1;
+    } else {
+        let appended = 0;
+        for (const { section, result } of gathered) {
+            if (result.total === 0) {
+                // Per-section empty placeholder only when not filtered. Under
+                // filter, the cross-section "no matches" message handles it.
+                if (!isFiltered && section.emptyMessage) {
+                    if (appended > 0) appendDivider(treeEl);
+                    const el = document.createElement("div");
+                    el.className = "koolook-empty";
+                    el.textContent = section.emptyMessage;
+                    treeEl.appendChild(el);
+                    appended += 1;
+                }
+                continue;
             }
-            continue;
+
+            if (appended > 0) appendDivider(treeEl);
+
+            renderedSectionIds.add(section.id);
+            const sectionPath = section.id;
+            validPaths.add(sectionPath);
+            const sectionFolder = buildFolder({
+                name: section.label,
+                count: result.total,
+                iconKind: section.iconKind,
+                startExpanded: true,
+                path: sectionPath,
+                forceExpanded: isFiltered,
+                childrenBuilder: (children) => {
+                    const ctx = makeSectionCtx(children, sectionPath, isFiltered, validPaths);
+                    ctx.data = result;
+                    ctx.query = q;
+                    ctx.isFiltered = isFiltered;
+                    section.build(ctx);
+                },
+            });
+            treeEl.appendChild(sectionFolder);
+            appended += 1;
         }
-
-        if (appended > 0) appendDivider(treeEl);
-
-        const sectionPath = section.id;
-        validPaths.add(sectionPath);
-        const sectionFolder = buildFolder({
-            name: section.label,
-            count: result.total,
-            iconKind: section.iconKind,
-            startExpanded: true,
-            path: sectionPath,
-            forceExpanded: isFiltered,
-            childrenBuilder: (children) => {
-                const ctx = makeSectionCtx(children, sectionPath, isFiltered, validPaths);
-                ctx.data = result;
-                ctx.query = q;
-                ctx.isFiltered = isFiltered;
-                section.build(ctx);
-            },
-        });
-        treeEl.appendChild(sectionFolder);
-        appended += 1;
     }
 
-    // Phase 3: prune pathStates entries for paths that didn't render this
-    // pass. Pinned paths are kept (and force-opened) for this render.
-    const pinned = pinnedPaths;
-    pinnedPaths = new Set();
+    // Phase 3: prune pathStates + apply pins. Always runs so pins never leak
+    // across renders. Prune is scoped to keys whose owning section actually
+    // rendered — keys belonging to a section that was gated empty by the
+    // current filter survive untouched, so the user's expansions return when
+    // they clear the filter.
+    const pinned = new Set(pinnedPaths);
+    pinnedPaths.clear();
     for (const key of [...pathStates.keys()]) {
+        const slashIdx = key.indexOf("/");
+        const sectionId = slashIdx === -1 ? key : key.slice(0, slashIdx);
+        if (!renderedSectionIds.has(sectionId)) continue;
         if (!validPaths.has(key) && !pinned.has(key)) {
             pathStates.delete(key);
         }
