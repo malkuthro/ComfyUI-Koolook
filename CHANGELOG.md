@@ -6,7 +6,7 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-## [0.1.10] - 2026-05-04
+## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)
 - Dropped `Easy_Version` (and the `k_easy_version.py` source) — the
