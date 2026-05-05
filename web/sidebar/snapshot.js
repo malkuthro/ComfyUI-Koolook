@@ -118,8 +118,14 @@ export async function applySnapshot(snapshot) {
 //                                              [path, modified_at, size]
 // =============================================================================
 
+// ComfyUI's userdata routes are `/userdata/{file}` — a SINGLE URL segment.
+// Subdirectory paths must be collapsed into one segment by URL-encoding
+// the slash, exactly like ComfyUI's own frontend api.ts does:
+// `/userdata/${encodeURIComponent("workflows/MyFlow.json")}` →
+// `/userdata/workflows%2FMyFlow.json`. Sending literal slashes hits a
+// non-matching route and gets 405.
 function presetFilePath(name) {
-    return `${PRESETS_DIR}/${encodeURIComponent(name)}.json`;
+    return encodeURIComponent(`${PRESETS_DIR}/${name}.json`);
 }
 
 // Returns an array of `{name, exportedAt, workflowCount, pickCount}` for
@@ -164,7 +170,11 @@ export async function listPresets() {
     // entries — corrupt files surface in the console for debugging.
     const previews = await Promise.all(entries.map(async (relPath) => {
         try {
-            const content = await fetch(`/userdata/${relPath}`);
+            // `relPath` comes back from the listing endpoint with literal
+            // slashes; encode the whole thing so it matches ComfyUI's
+            // single-segment `/userdata/{file}` route. Same fix as
+            // `presetFilePath` above.
+            const content = await fetch(`/userdata/${encodeURIComponent(relPath)}`);
             if (!content.ok) return null;
             const text = await content.text();
             const obj = JSON.parse(text);
