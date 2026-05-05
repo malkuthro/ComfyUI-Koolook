@@ -67,13 +67,20 @@ function makeModalButton({ label, primary, danger, onClick }) {
     return btn;
 }
 
+// Tiny factory for the small-caps label rows above modal inputs/selects.
+// Replaces the four-line `createElement` + `className` + `textContent` +
+// `appendChild` block that appears 7× across the modal helpers below.
+function modalLabel(text) {
+    const lbl = document.createElement("label");
+    lbl.className = "koolook-modal-label";
+    lbl.textContent = text;
+    return lbl;
+}
+
 export function showInputModal({ title, label, defaultValue, placeholder, confirmLabel, onSubmit }) {
     const body = document.createElement("div");
 
-    const lbl = document.createElement("label");
-    lbl.className = "koolook-modal-label";
-    lbl.textContent = label || "Name";
-    body.appendChild(lbl);
+    body.appendChild(modalLabel(label || "Name"));
 
     const input = document.createElement("input");
     input.className = "koolook-modal-input";
@@ -130,14 +137,22 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     // sentinel so the user can stop drilling at any level. Subdirectories
     // are created via right-click; "+ New directory…" at the top level
     // creates a NEW top-level directory only.
+    //
+    // The leading double-underscores on cascade sentinels (`__new__`,
+    // `__here__`) are deliberate: real directory names cannot start with
+    // double-underscore in any current store, so the sentinel can never
+    // collide with a user-created directory's name when stored as a
+    // <select>'s `value`. The action values are bare lowercase strings
+    // because they're only ever compared against the action <select>'s
+    // own `value`, which we control.
     const NEW_TOP = "__new__";
     const SAVE_HERE = "__here__";
+    const ACTION_NEW = "new";
+    const ACTION_USE_EXISTING = "use_existing";
+    const ACTION_MODIFY_EXISTING = "modify_existing";
     const topNames = listDirectoryNames([]);
 
-    const dirLbl = document.createElement("label");
-    dirLbl.className = "koolook-modal-label";
-    dirLbl.textContent = "Directory";
-    body.appendChild(dirLbl);
+    body.appendChild(modalLabel("Directory"));
 
     const cascadeContainer = document.createElement("div");
     body.appendChild(cascadeContainer);
@@ -282,9 +297,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     if (topNames.length === 0) newDirInput.style.display = "";
 
     // ---- Base on existing (only shown when the chosen directory has workflows) ----
-    const baseLbl = document.createElement("label");
-    baseLbl.className = "koolook-modal-label";
-    baseLbl.textContent = "Base on existing";
+    const baseLbl = modalLabel("Base on existing");
     body.appendChild(baseLbl);
 
     const baseSelect = document.createElement("select");
@@ -292,17 +305,15 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     body.appendChild(baseSelect);
 
     // ---- Action ----
-    const actionLbl = document.createElement("label");
-    actionLbl.className = "koolook-modal-label";
-    actionLbl.textContent = "Action";
+    const actionLbl = modalLabel("Action");
     body.appendChild(actionLbl);
 
     const actionSelect = document.createElement("select");
     actionSelect.className = "koolook-modal-select";
     [
-        { value: "new", label: "New name" },
-        { value: "use_existing", label: "Use existing name (archive previous)" },
-        { value: "modify_existing", label: "Modify existing name" },
+        { value: ACTION_NEW, label: "New name" },
+        { value: ACTION_USE_EXISTING, label: "Use existing name (archive previous)" },
+        { value: ACTION_MODIFY_EXISTING, label: "Modify existing name" },
     ].forEach(a => {
         const opt = document.createElement("option");
         opt.value = a.value;
@@ -312,9 +323,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     body.appendChild(actionSelect);
 
     // ---- Workflow name (only shown when needed) ----
-    const nameLbl = document.createElement("label");
-    nameLbl.className = "koolook-modal-label";
-    nameLbl.textContent = "Workflow name";
+    const nameLbl = modalLabel("Workflow name");
     body.appendChild(nameLbl);
 
     const nameInput = document.createElement("input");
@@ -407,7 +416,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
             actionLbl.style.display = "";
             actionSelect.style.display = "";
             for (const opt of actionSelect.options) {
-                if (opt.value === "use_existing" || opt.value === "modify_existing") {
+                if (opt.value === ACTION_USE_EXISTING || opt.value === ACTION_MODIFY_EXISTING) {
                     opt.disabled = false;
                 }
             }
@@ -416,19 +425,19 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
             actionSelect.style.display = "none";
             // Pin the underlying value to "new" so submit takes the Workflow
             // Name path.
-            if (actionSelect.value !== "new") actionSelect.value = "new";
+            if (actionSelect.value !== ACTION_NEW) actionSelect.value = ACTION_NEW;
         }
 
         // Workflow name — visible only when needed.
         const action = actionSelect.value;
-        if (action === "use_existing") {
+        if (action === ACTION_USE_EXISTING) {
             // Name comes from the base; field is irrelevant.
             nameLbl.style.display = "none";
             nameInput.style.display = "none";
         } else {
             nameLbl.style.display = "";
             nameInput.style.display = "";
-            if (action === "modify_existing" && baseSelect.value) {
+            if (action === ACTION_MODIFY_EXISTING && baseSelect.value) {
                 nameInput.value = baseSelect.value;
                 nameInput.readOnly = false;
                 if (refocusName) {
@@ -447,7 +456,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
 
     actionSelect.addEventListener("change", () => applyState({ refocusName: true }));
     baseSelect.addEventListener("change", () => {
-        if (actionSelect.value === "modify_existing") {
+        if (actionSelect.value === ACTION_MODIFY_EXISTING) {
             nameInput.value = baseSelect.value;
         }
     });
@@ -465,23 +474,28 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
         // yields a new top-level (single-segment) path once the user types
         // a name; existing-dir selections yield the deepest path they
         // drilled to before stopping at "(save in <path>)".
-        const dir = getSelectedPath();
-        if (!dir || dir.length === 0) {
+        const dirPath = getSelectedPath();
+        if (!dirPath || dirPath.length === 0) {
             // Top is "__new__" with empty input — prompt for a name.
             if (cascadeSelects[0].value === NEW_TOP) newDirInput.focus();
             return;
         }
         const action = actionSelect.value;
         let name;
-        if (action === "use_existing") {
+        if (action === ACTION_USE_EXISTING) {
             name = (baseSelect.value || "").trim();
-            if (!name) { actionSelect.value = "new"; applyState(); nameInput.focus(); return; }
+            if (!name) { actionSelect.value = ACTION_NEW; applyState(); nameInput.focus(); return; }
         } else {
             name = nameInput.value.trim();
             if (!name) { nameInput.focus(); return; }
         }
         overlay.remove();
-        await onSave({ name, dir });
+        // `dirPath` is a string[] of segment names (`["UP-scale", "Type-A"]`).
+        // Renamed from the historical `dir` field on this contract so callers
+        // match the codebase-wide convention (`dirPath` for arrays of
+        // segments, `dirName` for single-segment strings, `dir` for resolved
+        // DirNode objects).
+        await onSave({ name, dirPath });
     };
 
     nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
@@ -517,10 +531,7 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
 export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag }) {
     const body = document.createElement("div");
 
-    const lbl = document.createElement("label");
-    lbl.className = "koolook-modal-label";
-    lbl.textContent = "Current tags";
-    body.appendChild(lbl);
+    body.appendChild(modalLabel("Current tags"));
 
     const chipsContainer = document.createElement("div");
     chipsContainer.className = "koolook-tags-chips";
@@ -572,10 +583,7 @@ export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag })
         }
     }
 
-    const addLbl = document.createElement("label");
-    addLbl.className = "koolook-modal-label";
-    addLbl.textContent = "Add tag";
-    body.appendChild(addLbl);
+    body.appendChild(modalLabel("Add tag"));
 
     const addRow = document.createElement("div");
     addRow.className = "koolook-tag-add-row";

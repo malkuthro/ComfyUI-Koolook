@@ -73,6 +73,11 @@ export async function seedDefaultsIfNeeded() {
             // page load retries instead of being permanently blocked by the flag.
             if (!saveUserPicks(picks)) {
                 console.warn("[Koolook] seed save failed; will retry on next load");
+                // Surface the failure in the UI too — the console-only path
+                // is invisible to anyone who hasn't opened DevTools, and the
+                // most common cause (full or quota-restricted localStorage)
+                // is something the user can act on.
+                toast("Could not seed default favorites — localStorage write rejected. See console.");
                 return;
             }
         }

@@ -134,6 +134,12 @@ async function fetchWorkflowsFromServer() {
     }
 }
 
+// ComfyUI's /userdata endpoint requires `?overwrite=true` to allow POST over
+// an existing file; without it the server 409s on every save after the
+// first. The flag is part of the endpoint contract — pinned here as a named
+// constant so the contract is visible at a glance.
+const USERDATA_OVERWRITE_QUERY = "?overwrite=true";
+
 // Returns "server" | "fallback" | false. Callers that care about durability
 // (specifically the seeders) should only treat "server" as a success — a
 // "fallback"-only write is per-browser and won't reach future page loads if
@@ -141,7 +147,7 @@ async function fetchWorkflowsFromServer() {
 async function persistWorkflowsToServer(store) {
     const json = JSON.stringify(store, null, 2);
     try {
-        const resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}?overwrite=true`, {
+        const resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}${USERDATA_OVERWRITE_QUERY}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: json,

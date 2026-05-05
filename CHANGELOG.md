@@ -6,7 +6,61 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Changed
+- **Save selection toast distinguishes "no selection" from "selection
+  points at deleted nodes."** Previously both produced the generic
+  "Select one or more nodes on the canvas first." Now the deleted-node
+  case (selection set non-empty but every id refers to a removed node,
+  common after undo/redo) shows "Selected node(s) no longer exist.
+  Click a node on the canvas to re-select." `serializeSelection`
+  returns a discriminated `{ kind: "empty" | "stale" | "ok", graph? }`
+  result so the caller can route messaging precisely.
+- **Curated-defaults seed failure now toasts.** When
+  `seedDefaultsIfNeeded` writes the seed list to localStorage and the
+  write is rejected (full disk, browser quota, private mode), users
+  see a toast pointing at the console instead of getting a silent
+  console-only warning.
+
 ### Internal (sidebar tidiness pass — no behavior change)
+- **Lifted save-modal action sentinels and the cascade picker
+  sentinels into named constants** at the top of `showSaveWorkflowModal`
+  in `web/sidebar/modals.js` (`ACTION_NEW`, `ACTION_USE_EXISTING`,
+  `ACTION_MODIFY_EXISTING`, alongside the existing `NEW_TOP` /
+  `SAVE_HERE`). Magic strings (`"new"`, `"use_existing"`,
+  `"modify_existing"`) are gone from the function body.
+- **Section-id constants** (`SECTION_ID_NODES`, `SECTION_ID_WORKFLOWS`,
+  `SECTION_ID_TAGS`) lifted to module scope in `web/sidebar/tree.js`.
+  The `pinExpanded` save-flow callsite now references the constant
+  instead of the literal `"workflows"` string, so a future section-id
+  rename only needs the constant updated.
+- **`modalLabel(text)`** factory in `web/sidebar/modals.js` replaces
+  the seven repetitions of the four-line `createElement("label")` +
+  `className` + `textContent` + `appendChild` pattern.
+- **`USERDATA_OVERWRITE_QUERY = "?overwrite=true"`** named constant in
+  `web/sidebar/workflows_store.js`. ComfyUI's userdata API requires
+  this flag to allow POST over an existing file; pinning it as a
+  constant makes the contract visible at a glance.
+- **`buildFolder` no longer round-trips folder-expansion state through
+  `wrapper.dataset.expanded`.** The DOM dataset forces every value
+  to a string (and led to the slightly awkward `!== "false"` read);
+  expansion state now lives in a closure variable. `pathStates` is
+  the canonical store for cross-render persistence — the dataset was
+  just mirroring it for reads.
+- **`subcategoryFor` fallback path now logs a `console.warn`** with
+  the offending category and `categoryRoot`. Reachable only via a
+  logic error (typically a stale `REPOS` entry whose `categoryRoot`
+  no longer matches the upstream node category prefix); previously
+  it silently rewrote the category, masking the misconfig.
+- **Save-modal `onSave` callback contract renamed `dir` → `dirPath`**
+  to match the codebase-wide convention (`dirPath` for arrays of
+  segments, `dirName` for single segments, `dir` for resolved
+  DirNode objects). Caller updates in `tree.js` paired.
+- **`makeToolbarButton({iconClass, title, onClick})`** factory in
+  `web/sidebar/tree.js` replaces the four near-identical button-construction
+  blocks in `renderPanel` (export, new-dir, save-canvas, save-selection).
+  Each block was 5–7 lines of `createElement` / `className` / `innerHTML`
+  / `title` / `addEventListener`; calls collapse to 4-line factory invocations.
+  No behavior change. Closes the "extract `makeToolbarButton`" item on #47.
 - **`makeToolbarButton({iconClass, title, onClick})`** factory in
   `web/sidebar/tree.js` replaces the four near-identical button-construction
   blocks in `renderPanel` (export, new-dir, save-canvas, save-selection).
