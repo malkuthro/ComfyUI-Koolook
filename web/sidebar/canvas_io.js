@@ -104,35 +104,6 @@ export function canvasIsNonEmpty() {
     }
 }
 
-// Returns `true` when a workflow file already exists at
-// `/userdata/workflows/<wfName>.json` on the ComfyUI server.
-//
-// Why we care: workflows we load via `loadGraphData(..., wfName, {})` become
-// **temporary** workflow tabs in ComfyUI's frontend. Per
-// `Comfy-Org/ComfyUI_frontend/src/stores/userFileStore.ts`, save calls pass
-// `overwrite: this.isPersisted` — `false` for temporary workflows. If the
-// user clicks ComfyUI's native save on a Koolook-loaded tab whose name
-// matches an existing native workflow file, the server returns 409 because
-// the POST didn't authorize an overwrite. This pre-load check lets us
-// suffix the tab name when a collision exists, so save-back writes a
-// clean new artifact instead of 409-ing.
-//
-// HEAD avoids transferring the file body. If the deployment doesn't
-// support HEAD (rare), the catch falls through and we behave as before
-// — the user's worst case is the same 409 they already know how to
-// work around with Save As.
-async function existingNativeWorkflowFileExists(wfName) {
-    try {
-        const resp = await fetch(
-            `/userdata/workflows/${encodeURIComponent(wfName)}.json`,
-            { method: "HEAD" }
-        );
-        return resp.ok;
-    } catch (e) {
-        return false;
-    }
-}
-
 export async function loadWorkflowOntoCanvas(dirPath, wfName) {
     const graph = getWorkflowGraph(dirPath, wfName);
     if (!graph) {
@@ -149,38 +120,26 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
         } catch (e) {
             previousGraph = null;
         }
-        // Resolve a collision-free tab name. If a native ComfyUI workflow file
-        // already exists at `workflows/<wfName>.json`, append `(Koolook)` so
-        // ComfyUI's native save flow doesn't 409 (its POST passes
-        // `overwrite=false` for temporary tabs by design — see comment on
-        // `existingNativeWorkflowFileExists`). When there's no collision, the
-        // bare name is used so the tab stays clean.
-        const collides = await existingNativeWorkflowFileExists(wfName);
-        const tabName = collides ? `${wfName} (Koolook)` : wfName;
         try {
-            // Passing `tabName` as the 4th arg makes loadGraphData create a
+            // Passing `wfName` as the 4th arg makes loadGraphData create a
             // temporary workflow tab titled with that name (instead of
             // "Unsaved Workflow (N)"). Frontend reference: ComfyUI_frontend
             // src/scripts/app.ts (loadGraphData) →
             // workflowService.afterLoadNewGraph → createNewTemporary, which
-            // builds path `workflows/<tabName>.json` and binds it to the tab.
-            await app.loadGraphData(graph, true, true, tabName, {});
+            // builds path `workflows/<wfName>.json` and binds it to the tab.
+            await app.loadGraphData(graph, true, true, wfName, {});
 
             // Defensive fallback for frontends that didn't honor the 4th arg.
             try {
                 const wf = app.extensionManager?.workflow?.activeWorkflow;
-                if (wf && wf.isTemporary && typeof wf.rename === "function" && wf.filename !== tabName) {
-                    await wf.rename(`workflows/${tabName}.json`);
+                if (wf && wf.isTemporary && typeof wf.rename === "function" && wf.filename !== wfName) {
+                    await wf.rename(`workflows/${wfName}.json`);
                 }
             } catch (e) {
                 console.warn("[Koolook] workflow rename fallback failed:", e);
             }
 
-            if (collides) {
-                toast(`Loaded "${wfName}" as "${tabName}" — a native workflow file with the original name already exists.`);
-            } else {
-                toast(`Loaded "${wfName}".`);
-            }
+            toast(`Loaded "${wfName}".`);
         } catch (e) {
             console.error("[Koolook] loadGraphData failed:", e);
             if (previousGraph) {
