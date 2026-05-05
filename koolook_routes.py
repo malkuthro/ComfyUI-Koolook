@@ -89,12 +89,28 @@ def _read_settings() -> dict:
 
 
 def _write_settings(data: dict) -> None:
-    """Persist the settings JSON. Raises web.HTTPInternalServerError on failure."""
+    """Persist the settings JSON atomically.
+
+    Writes to ``<settings>.tmp`` then ``os.replace`` to the final name —
+    so an interrupted process or concurrent write can't leave a truncated
+    file that ``_read_settings`` would silently revert to ``{}`` on next
+    load (silently dropping the user's saved ``libraryPath``).
+
+    Raises ``web.HTTPInternalServerError`` on failure.
+    """
     path = _settings_file_path()
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(str(tmp_path), str(path))
     except OSError as exc:
+        # Best-effort cleanup of the tmp file so it doesn't accumulate.
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
         raise web.HTTPInternalServerError(
             reason=f"Could not write settings file: {exc}"
         ) from exc
@@ -138,6 +154,39 @@ def _validate_filename(name: object) -> str:
             )
         )
     return name
+
+
+def _resolve_within_base(base: Path, name: str) -> Path:
+    """Compute ``base / name`` and verify the resolved path stays under
+    ``base`` after symlinks are followed. Defense-in-depth against a
+    symlink planted inside the configured library dir (plausible on a
+    facility shared mount with weak permissions) redirecting reads/writes
+    off-share.
+
+    Raises ``web.HTTPBadRequest`` on any escape (broken or hostile symlink).
+    Returns the joined path on success — note this is the un-resolved path
+    so the caller can still see the intended filename in error messages,
+    but the ``is_relative_to`` check has already been applied to the
+    resolved form.
+    """
+    file_path = base / name
+    try:
+        resolved_file = file_path.resolve(strict=False)
+        resolved_base = base.resolve(strict=False)
+    except OSError as exc:
+        raise web.HTTPInternalServerError(
+            reason=f"Could not resolve preset path: {exc}"
+        ) from exc
+    try:
+        resolved_file.relative_to(resolved_base)
+    except ValueError as exc:
+        raise web.HTTPBadRequest(
+            reason=(
+                f"Preset path escapes the library directory (likely a symlink "
+                f"planted in the library). Refusing to proceed."
+            )
+        ) from exc
+    return file_path
 
 
 def register_routes(routes) -> None:
@@ -258,7 +307,7 @@ def register_routes(routes) -> None:
     async def get_preset(request):
         name = _validate_filename(request.query.get("name"))
         base, _ = _configured_dir()
-        file_path = base / name
+        file_path = _resolve_within_base(base, name)
         if not file_path.is_file():
             raise web.HTTPNotFound(reason=f"Preset '{name}' not found.")
         try:
@@ -268,6 +317,23 @@ def register_routes(routes) -> None:
                 reason=f"Could not read preset: {exc}"
             ) from exc
         return web.Response(text=content, content_type="application/json")
+
+    @routes.head("/koolook/presets/file")
+    async def head_preset(request):
+        """Cheap existence check used by the client's `presetExists` probe.
+
+        Without this, aiohttp auto-synthesizes HEAD from the GET handler,
+        which still reads the entire file from disk and discards the body
+        — wasteful on multi-MB snapshots over Dropbox/iCloud/NFS-mounted
+        libraries. The dedicated handler does just `is_file()` + status,
+        no body work.
+        """
+        name = _validate_filename(request.query.get("name"))
+        base, _ = _configured_dir()
+        file_path = _resolve_within_base(base, name)
+        if not file_path.is_file():
+            return web.Response(status=404)
+        return web.Response(status=200)
 
     @routes.post("/koolook/presets/file")
     async def post_preset(request):
@@ -288,7 +354,7 @@ def register_routes(routes) -> None:
                 reason=f"Could not create preset directory: {exc}"
             ) from exc
         body = await request.read()
-        file_path = base / name
+        file_path = _resolve_within_base(base, name)
         try:
             file_path.write_bytes(body)
         except OSError as exc:
@@ -301,7 +367,7 @@ def register_routes(routes) -> None:
     async def delete_preset(request):
         name = _validate_filename(request.query.get("name"))
         base, _ = _configured_dir()
-        file_path = base / name
+        file_path = _resolve_within_base(base, name)
         if not file_path.is_file():
             raise web.HTTPNotFound(reason=f"Preset '{name}' not found.")
         try:

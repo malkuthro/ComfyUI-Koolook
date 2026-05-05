@@ -67,9 +67,36 @@ The format is inspired by Keep a Changelog and SemVer.
 - New server-side module `koolook_routes.py` registers the
   `/koolook/presets/*` aiohttp routes on ComfyUI's PromptServer.
   Endpoints: `info`, `list`, `file` (GET/POST/DELETE/HEAD on a single
-  query-string-keyed endpoint), `settings` (GET/POST). Path-traversal
-  protection at the route boundary via a strict filename whitelist
-  regex. The library directory is auto-created on first save.
+  query-string-keyed endpoint, with a dedicated lightweight HEAD
+  handler so existence checks don't read the full file body), and
+  `settings` (GET/POST). Path-traversal protection at the route
+  boundary via a strict filename whitelist regex; symlink protection
+  via post-resolve `is_relative_to` check on every file op. Settings
+  file is written atomically (`tmp + os.replace`) so an interrupted
+  process can't truncate the user's saved library path. The library
+  directory is auto-created on first save.
+- `replaceAllWorkflows` now uses the same `snapshotCache` rollback
+  primitive as `persistMutation` so a snapshot apply that fails to
+  persist rolls the in-memory cache back to its pre-call state — the
+  load is fully atomic. The `workflows_store.js` mutator-invariants
+  doc block lists `replaceAllWorkflows` as the fourth legitimate
+  rebind site.
+- The Load dialog now gates the `currentPresetName` tracker on
+  `picksOk && workflowsOk`. Partial-failure paths clear the tracker
+  so the next Save forces a fresh name prompt rather than offering
+  to overwrite the on-disk preset with corrupted half-state.
+- The Load dialog clears the tracker if the user deletes the
+  currently-loaded preset.
+- Client-side `sanitizeName` now mirrors the server's filename
+  whitelist regex — invalid characters collapse to `_` rather than
+  hitting an opaque HTTP 400 from the server. The `presetExists`
+  probe is now tri-state (true/false/null); the Save flow refuses
+  to write when it can't reach the library to verify the name.
+- Server error reasons are surfaced via `await resp.text()` rather
+  than `resp.statusText`, since HTTP/2 (RFC 7540) strips reason
+  phrases — behind any HTTP/2-terminating proxy `statusText` is
+  empty and the server's helpful "read-only mount" / "invalid
+  filename" / "parent missing" messages would otherwise be lost.
 
 ### Changed
 - **Save selection toast distinguishes "no selection" from "selection

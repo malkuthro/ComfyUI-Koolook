@@ -42,15 +42,23 @@ export const SNAPSHOT_VERSION = 1;
 // Filename hygiene
 // =============================================================================
 
-// User-typed names need to survive filesystem + URL roundtripping. Strip
-// path separators and control characters, collapse runs of whitespace, trim.
-// Empty after normalization → null (caller should reject).
+// User-typed names need to survive filesystem + URL roundtripping AND
+// match the server's filename whitelist (see `_FILENAME_RE` in
+// `koolook_routes.py`: `^[A-Za-z0-9 _.()\-]+\.json$`). The server
+// validates at the route boundary; we mirror the same rules here so a
+// reasonable-looking name doesn't sail through the form only to fail
+// with an opaque HTTP 400 toast at save time.
+//
+// Strategy: replace anything outside the server whitelist with `_`,
+// collapse whitespace runs, trim. Empty after normalization → null
+// (caller should reject before submit).
 export function sanitizeName(raw) {
     if (typeof raw !== "string") return null;
     const cleaned = raw
-        .replace(/[\\/]+/g, "-")            // path separators
-        // eslint-disable-next-line no-control-regex
-        .replace(/[\x00-\x1f\x7f]/g, "")     // control chars
+        // Replace any character outside the server's whitelist with `_`
+        // — `+`, `&`, `'`, `,`, `;`, `[]`, accented letters, emoji, etc.
+        // all collapse to underscores rather than triggering a 400.
+        .replace(/[^A-Za-z0-9 _.()\-]+/g, "_")
         .replace(/\s+/g, " ")
         .trim();
     return cleaned || null;
@@ -161,6 +169,20 @@ const ROUTE_LIST = "/koolook/presets/list";
 const ROUTE_FILE = "/koolook/presets/file";
 const ROUTE_SETTINGS = "/koolook/presets/settings";
 
+// Read a non-OK response's reason for a user-facing toast. Prefers the
+// response body (always available, carries aiohttp's `reason=` text),
+// then `resp.statusText` (HTTP/1.1 only — HTTP/2 strips reason phrases
+// per RFC 7540, so behind any HTTP/2-terminating proxy this is empty),
+// then `HTTP <status>` as a last resort. Async because we have to await
+// the body read.
+async function readErrorReason(resp) {
+    try {
+        const body = (await resp.text()).trim();
+        if (body) return body;
+    } catch (e) { /* fall through */ }
+    return resp.statusText || `HTTP ${resp.status}`;
+}
+
 function fileQuery(fileName) {
     return `?name=${encodeURIComponent(`${fileName}.json`)}`;
 }
@@ -177,7 +199,16 @@ async function loadPreview(fullName) {
         if (!resp.ok) return null;
         const text = await resp.text();
         const obj = JSON.parse(text);
-        if (obj.kind !== SNAPSHOT_KIND) return null;
+        if (obj.kind !== SNAPSHOT_KIND) {
+            // Non-snapshot JSON in the library directory (someone dropped a
+            // workflow export, a settings file, etc.). Log so a "library
+            // appears empty" symptom is debuggable from the console.
+            console.warn(
+                `[Koolook] preset "${fullName}" skipped — kind="${obj.kind}", ` +
+                `expected "${SNAPSHOT_KIND}".`
+            );
+            return null;
+        }
         return {
             // Display name comes from inside the file; the filename is the
             // storage key. They should match, but a hand-edited file might
@@ -235,8 +266,7 @@ export async function saveSettings(libraryPath) {
         body: JSON.stringify({ libraryPath: libraryPath || "" }),
     });
     if (!resp.ok) {
-        const reason = resp.statusText || `HTTP ${resp.status}`;
-        throw new Error(`Could not save settings: ${reason}.`);
+        throw new Error(`Could not save settings: ${await readErrorReason(resp)}.`);
     }
     return await resp.json();
 }
@@ -278,7 +308,7 @@ export async function listPresets() {
 export async function readPreset(fileName) {
     const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`);
     if (!resp.ok) {
-        throw new Error(`Could not read preset "${fileName}" (HTTP ${resp.status}).`);
+        throw new Error(`Could not read preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
     const text = await resp.text();
     let parsed;
@@ -300,20 +330,32 @@ export async function writePreset(fileName, snapshot) {
         body: JSON.stringify(snapshot, null, 2),
     });
     if (!resp.ok) {
-        const reason = resp.statusText || `HTTP ${resp.status}`;
-        throw new Error(`Could not save preset "${fileName}": ${reason}.`);
+        throw new Error(`Could not save preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
     return true;
 }
 
-// Returns true if a preset with `fileName` exists. Implemented as HEAD
-// — server returns 404 cleanly when missing.
+// Returns ``true`` / ``false`` for present/absent, ``null`` when the
+// existence check itself couldn't run (network down, server error).
+// Caller distinguishes:
+//   - `false` → safe to write without the overwrite-confirm prompt
+//   - `null`  → don't trust either branch; surface a "library
+//                unreachable" warning rather than silently writing
+//   - `true`  → ask for overwrite confirmation before writing
+//
+// Server has a dedicated HEAD handler that does just `is_file()` + status,
+// so this is a cheap probe even on multi-MB snapshots over Dropbox/NFS.
 export async function presetExists(fileName) {
     try {
         const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "HEAD" });
-        return resp.ok;
+        if (resp.ok) return true;
+        if (resp.status === 404) return false;
+        // 5xx, 4xx other than 404, opaque proxy errors → unreachable.
+        console.warn(`[Koolook] presetExists: server returned HTTP ${resp.status}`);
+        return null;
     } catch (e) {
-        return false;
+        console.warn("[Koolook] presetExists: network failure:", e);
+        return null;
     }
 }
 
@@ -322,42 +364,9 @@ export async function presetExists(fileName) {
 export async function deletePreset(fileName) {
     const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "DELETE" });
     if (!resp.ok) {
-        const reason = resp.statusText || `HTTP ${resp.status}`;
-        throw new Error(`Could not delete preset "${fileName}": ${reason}.`);
+        throw new Error(`Could not delete preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
     return true;
-}
-
-// =============================================================================
-// Local-disk download / upload (for cross-server transfer)
-// =============================================================================
-
-// Trigger a browser download of the snapshot JSON. Filename is the snapshot's
-// own `name` (sanitized) + `.json`.
-export function downloadSnapshotAsFile(snapshot) {
-    const fileName = sanitizeName(snapshot.name) || "koolook-snapshot";
-    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${fileName}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-}
-
-// Read a File (from <input type="file">) as JSON and validate as a snapshot.
-// Returns the validated snapshot, or throws.
-export async function readSnapshotFile(file) {
-    const text = await file.text();
-    let parsed;
-    try {
-        parsed = JSON.parse(text);
-    } catch (e) {
-        throw new Error(`File "${file.name}" is not valid JSON.`);
-    }
-    return validateSnapshot(parsed);
 }
 
 // =============================================================================

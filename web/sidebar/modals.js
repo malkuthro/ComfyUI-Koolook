@@ -944,12 +944,23 @@ export function showSaveSnapshotDialog({
             return;
         }
         // For Save-as-new only: check existence + prompt to overwrite.
-        // The "overwrite current" path skipped this prompt by design.
+        // The "overwrite current" path skipped this prompt by design
+        // (the user already confirmed via the three-way dialog).
+        //
+        // `presetExists` is now tri-state: true / false / null. The
+        // null case means the existence check itself failed (network
+        // down, server error) — refuse to silently write, since we
+        // can't tell whether we'd be clobbering an existing preset.
         if (confirmOverwrite) {
-            let exists = false;
-            try { exists = await presetExists(sanitized); }
-            catch (e) { /* assume not, fall through */ }
-            if (exists) {
+            const exists = await presetExists(sanitized);
+            if (exists === null) {
+                toast(
+                    "Cannot reach the preset library to verify name. " +
+                    "Save canceled — check Settings or your connection."
+                );
+                return;
+            }
+            if (exists === true) {
                 showConfirmModal({
                     title: "Overwrite existing preset?",
                     message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
@@ -1018,6 +1029,7 @@ export function showLoadSnapshotDialog({
     deletePreset,
     applySnapshot,
     setCurrentPresetName,
+    getCurrentPresetName,
     getLibraryInfo,
     onToast,
 }) {
@@ -1101,18 +1113,29 @@ export function showLoadSnapshotDialog({
                 try {
                     const snap = await readPreset(preview.fileName);
                     const { picksOk, workflowsOk } = await applySnapshot(snap);
-                    setCurrentPresetName(preview.fileName);
                     close();
+                    // Gate the tracker on FULL success only. A partial-apply
+                    // (one of picks / workflows persisted, the other didn't)
+                    // leaves on-disk and in-memory state inconsistent — if
+                    // we tracked the preset name anyway, the next Save would
+                    // default to "Save over '<name>'?" and overwrite the
+                    // saved preset with the corrupted half-state. Clear the
+                    // tracker on partial failure so the next Save forces a
+                    // fresh name prompt.
                     if (picksOk && workflowsOk) {
+                        setCurrentPresetName(preview.fileName);
                         toast(`Loaded preset "${preview.displayName}".`);
                     } else if (picksOk || workflowsOk) {
+                        setCurrentPresetName(null);
                         toast(
-                            `Loaded "${preview.displayName}" — partial: ` +
+                            `Loaded "${preview.displayName}" — PARTIAL: ` +
                             `picks ${picksOk ? "OK" : "FAIL"}, ` +
-                            `workflows ${workflowsOk ? "OK" : "FAIL"}. See console.`
+                            `workflows ${workflowsOk ? "OK" : "FAIL"}. ` +
+                            `Reload to recover prior state. Tracker cleared.`
                         );
                     } else {
-                        toast(`Loaded "${preview.displayName}" in memory but persist failed. See console.`);
+                        setCurrentPresetName(null);
+                        toast(`Loaded "${preview.displayName}" in memory but persist failed. Reload to recover.`);
                     }
                 } catch (e) {
                     console.error("[Koolook] preset load failed:", e);
@@ -1131,6 +1154,14 @@ export function showLoadSnapshotDialog({
             onConfirm: async () => {
                 try {
                     await deletePreset(preview.fileName);
+                    // If the deleted preset was the one tracked as
+                    // "currently loaded," clear the tracker. Otherwise
+                    // the next Save would offer to "Save over '<deleted>'"
+                    // and silently re-create the file.
+                    if (typeof getCurrentPresetName === "function" &&
+                        getCurrentPresetName() === preview.fileName) {
+                        setCurrentPresetName(null);
+                    }
                     toast(`Deleted "${preview.displayName}".`);
                     await refresh();
                 } catch (e) {

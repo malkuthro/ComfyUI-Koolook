@@ -1351,6 +1351,7 @@ export function renderPanel(container) {
         deletePreset,
         applySnapshot,
         setCurrentPresetName,
+        getCurrentPresetName,
         getLibraryInfo,
         onToast: toast,
     });
