@@ -64,7 +64,20 @@ import {
     showContextMenu,
     showTagsModal,
     showInstallMissingModal,
+    showSnapshotModal,
 } from "./modals.js";
+import {
+    sanitizeName,
+    gatherSnapshot,
+    applySnapshot,
+    listPresets,
+    readPreset,
+    writePreset,
+    presetExists,
+    deletePreset,
+    downloadSnapshotAsFile,
+    readSnapshotFile,
+} from "./snapshot.js";
 
 // =============================================================================
 // Built-in section IDs. These are also pathState key prefixes — every
@@ -1312,6 +1325,60 @@ export function renderPanel(container) {
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
+
+    // Helper: open the snapshot modal at a given starting tab. The modal
+    // takes capability functions instead of importing snapshot.js itself,
+    // so the UI module stays UI-only and snapshot logic stays in its own
+    // module.
+    const openSnapshotModal = (initialTab) => showSnapshotModal({
+        initialTab,
+        listPresets,
+        readPreset,
+        writePreset,
+        presetExists,
+        deletePreset,
+        gatherSnapshot,
+        applySnapshot,
+        downloadSnapshotAsFile,
+        readSnapshotFile,
+        sanitizeName,
+        onToast: toast,
+    });
+
+    // ---- Row 0: Snapshot library action bar (top-level kit ops) ----
+    // Mirrors the Nodes/Workflows action-row pattern but lives above the
+    // search field — these are infrequent meta-actions (save/load the
+    // whole Kforge Labs state as a named preset) and shouldn't be
+    // mixed into the per-section toolbars.
+    const snapshotRow = document.createElement("div");
+    snapshotRow.className = "koolook-actions-row";
+
+    const snapshotLabel = document.createElement("span");
+    snapshotLabel.className = "koolook-actions-label";
+    snapshotLabel.textContent = "Snapshot";
+    snapshotRow.appendChild(snapshotLabel);
+
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-download",
+        title: "Load a saved snapshot (replaces current state)",
+        onClick: () => openSnapshotModal("load"),
+    }));
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-upload",
+        title: "Save current state as a named snapshot",
+        onClick: () => openSnapshotModal("save"),
+    }));
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cog",
+        title: "Manage snapshot library (download / upload / delete)",
+        onClick: () => openSnapshotModal("manage"),
+    }));
+
+    container.appendChild(snapshotRow);
+
+    const dividerBeforeSearch = document.createElement("div");
+    dividerBeforeSearch.className = "koolook-tree-divider";
+    container.appendChild(dividerBeforeSearch);
 
     // ---- Row 1: Search ----
     const searchRow = document.createElement("div");

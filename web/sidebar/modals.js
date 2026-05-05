@@ -854,6 +854,416 @@ export function showInstallMissingModal({ picks }) {
 }
 
 // =============================================================================
+// Snapshot / preset library modal — three tabs (Load / Save / Manage) over
+// the same list of presets stored in /userdata/koolook-presets/. The caller
+// passes capability functions instead of importing from snapshot.js directly,
+// so this file stays UI-only and the snapshot logic stays in its own module.
+//
+// Capabilities (all required):
+//   listPresets()                 → Promise<Preview[]>
+//   readPreset(fileName)          → Promise<Snapshot>   (validated)
+//   writePreset(fileName, snap)   → Promise<true>       (throws on failure)
+//   presetExists(fileName)        → Promise<boolean>
+//   deletePreset(fileName)        → Promise<true>       (throws on failure)
+//   gatherSnapshot(name)          → Snapshot            (synchronous)
+//   applySnapshot(snap)           → Promise<{picksOk, workflowsOk}>
+//   downloadSnapshotAsFile(snap)  → void
+//   readSnapshotFile(file)        → Promise<Snapshot>   (validated)
+//   sanitizeName(raw)             → string | null
+//
+// Where Preview is `{displayName, fileName, exportedAt, workflowCount, pickCount}`.
+// =============================================================================
+export function showSnapshotModal({
+    initialTab = "load",
+    listPresets,
+    readPreset,
+    writePreset,
+    presetExists,
+    deletePreset,
+    gatherSnapshot,
+    applySnapshot,
+    downloadSnapshotAsFile,
+    readSnapshotFile,
+    sanitizeName,
+    onToast,
+}) {
+    const toast = onToast || (() => {});
+    const body = document.createElement("div");
+
+    // --- Tab strip ---
+    const tabStrip = document.createElement("div");
+    tabStrip.className = "koolook-snapshot-tabs";
+    body.appendChild(tabStrip);
+
+    const tabPane = document.createElement("div");
+    tabPane.className = "koolook-snapshot-tab-pane";
+    body.appendChild(tabPane);
+
+    let activeTab = initialTab;
+    let overlay;
+    const close = () => overlay.remove();
+
+    const tabs = [
+        { id: "load", label: "Load" },
+        { id: "save", label: "Save" },
+        { id: "manage", label: "Manage" },
+    ];
+
+    function renderTabStrip() {
+        tabStrip.innerHTML = "";
+        for (const tab of tabs) {
+            const el = document.createElement("div");
+            el.className = "koolook-snapshot-tab";
+            if (tab.id === activeTab) el.classList.add("koolook-snapshot-tab-active");
+            el.textContent = tab.label;
+            el.addEventListener("click", () => {
+                activeTab = tab.id;
+                renderAll();
+            });
+            tabStrip.appendChild(el);
+        }
+    }
+
+    async function renderAll() {
+        renderTabStrip();
+        tabPane.innerHTML = "";
+        if (activeTab === "load") await renderLoad();
+        else if (activeTab === "save") renderSave();
+        else if (activeTab === "manage") await renderManage();
+    }
+
+    function renderEmpty(text) {
+        const el = document.createElement("div");
+        el.className = "koolook-snapshot-empty";
+        el.textContent = text;
+        return el;
+    }
+
+    function renderLoading() {
+        return renderEmpty("Loading…");
+    }
+
+    function formatPreviewMeta(p) {
+        const parts = [];
+        const wf = p.workflowCount;
+        const pk = p.pickCount;
+        parts.push(`${wf} workflow${wf === 1 ? "" : "s"}`);
+        parts.push(`${pk} pick${pk === 1 ? "" : "s"}`);
+        if (p.exportedAt) {
+            try {
+                const d = new Date(p.exportedAt);
+                if (!isNaN(d.getTime())) {
+                    parts.push(`exported ${d.toLocaleDateString()}`);
+                }
+            } catch (e) { /* noop */ }
+        }
+        return parts.join(" · ");
+    }
+
+    // ---- Load tab ----
+    async function renderLoad() {
+        tabPane.appendChild(renderLoading());
+        let previews;
+        try {
+            previews = await listPresets();
+        } catch (e) {
+            console.warn("[Koolook] listPresets failed:", e);
+            previews = [];
+        }
+        if (activeTab !== "load") return;        // user switched mid-await
+        tabPane.innerHTML = "";
+        if (previews.length === 0) {
+            tabPane.appendChild(renderEmpty(
+                "No presets yet. Switch to Save to create your first one."
+            ));
+            return;
+        }
+        const list = document.createElement("div");
+        list.className = "koolook-snapshot-list";
+        for (const p of previews) {
+            const row = document.createElement("div");
+            row.className = "koolook-snapshot-row";
+            const info = document.createElement("div");
+            info.className = "koolook-snapshot-row-info";
+            info.title = `Click to load "${p.displayName}"`;
+            const name = document.createElement("div");
+            name.className = "koolook-snapshot-row-name";
+            name.textContent = p.displayName;
+            info.appendChild(name);
+            const meta = document.createElement("div");
+            meta.className = "koolook-snapshot-row-meta";
+            meta.textContent = formatPreviewMeta(p);
+            info.appendChild(meta);
+            info.addEventListener("click", () => promptApplyPreset(p));
+            row.appendChild(info);
+            list.appendChild(row);
+        }
+        tabPane.appendChild(list);
+    }
+
+    function promptApplyPreset(preview) {
+        showConfirmModal({
+            title: "Replace current state?",
+            message:
+                `Loading "${preview.displayName}" will replace your current ` +
+                `picks and workflows with the snapshot's contents (` +
+                `${formatPreviewMeta(preview)}). This cannot be undone.`,
+            confirmLabel: "Load preset",
+            danger: true,
+            onConfirm: async () => {
+                try {
+                    const snap = await readPreset(preview.fileName);
+                    const { picksOk, workflowsOk } = await applySnapshot(snap);
+                    close();
+                    if (picksOk && workflowsOk) {
+                        toast(`Loaded preset "${preview.displayName}".`);
+                    } else if (picksOk || workflowsOk) {
+                        toast(
+                            `Loaded "${preview.displayName}" — partial: ` +
+                            `picks ${picksOk ? "OK" : "FAIL"}, ` +
+                            `workflows ${workflowsOk ? "OK" : "FAIL"}. See console.`
+                        );
+                    } else {
+                        toast(`Loaded "${preview.displayName}" in memory but persist failed. See console.`);
+                    }
+                } catch (e) {
+                    console.error("[Koolook] preset load failed:", e);
+                    toast(`Could not load "${preview.displayName}": ${e.message}`);
+                }
+            },
+        });
+    }
+
+    // ---- Save tab ----
+    function renderSave() {
+        const today = new Date().toISOString().slice(0, 10);
+        const defaultName = `preset ${today}`;
+
+        tabPane.appendChild(modalLabel("Snapshot name"));
+        const input = document.createElement("input");
+        input.className = "koolook-modal-input";
+        input.value = defaultName;
+        input.placeholder = "e.g. Wan video kit";
+        tabPane.appendChild(input);
+
+        const hint = document.createElement("div");
+        hint.style.cssText = "font-size: 11px; opacity: 0.55; margin: 8px 0 12px; line-height: 1.45;";
+        hint.textContent =
+            "Saves a snapshot containing your current picks and workflows. " +
+            "Stored at /userdata/koolook-presets/<name>.json — share or sync " +
+            "that file to move your kit between machines.";
+        tabPane.appendChild(hint);
+
+        const actionRow = document.createElement("div");
+        actionRow.style.cssText = "display: flex; gap: 8px; justify-content: flex-end;";
+        const saveBtn = makeModalButton({
+            label: "Save snapshot",
+            primary: true,
+            onClick: () => trySave(input.value),
+        });
+        actionRow.appendChild(saveBtn);
+        tabPane.appendChild(actionRow);
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") trySave(input.value);
+        });
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+    }
+
+    async function trySave(rawName) {
+        const sanitized = sanitizeName(rawName);
+        if (!sanitized) {
+            toast("Snapshot name is empty after stripping unsafe characters.");
+            return;
+        }
+        const snap = gatherSnapshot(sanitized);
+        let exists;
+        try {
+            exists = await presetExists(sanitized);
+        } catch (e) {
+            exists = false;
+        }
+        if (exists) {
+            showConfirmModal({
+                title: "Overwrite existing preset?",
+                message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
+                confirmLabel: "Overwrite",
+                danger: true,
+                onConfirm: () => doSave(sanitized, snap),
+            });
+        } else {
+            doSave(sanitized, snap);
+        }
+    }
+
+    async function doSave(fileName, snap) {
+        try {
+            await writePreset(fileName, snap);
+            close();
+            toast(`Saved preset "${fileName}".`);
+        } catch (e) {
+            console.error("[Koolook] preset save failed:", e);
+            toast(`Could not save preset: ${e.message}`);
+        }
+    }
+
+    // ---- Manage tab ----
+    async function renderManage() {
+        const uploadRow = document.createElement("div");
+        uploadRow.style.cssText = "display: flex; gap: 8px; align-items: center; margin-bottom: 12px;";
+        const uploadLabel = document.createElement("span");
+        uploadLabel.style.cssText = "font-size: 11px; opacity: 0.7;";
+        uploadLabel.textContent = "Add a snapshot file from disk:";
+        uploadRow.appendChild(uploadLabel);
+        const uploadInput = document.createElement("input");
+        uploadInput.type = "file";
+        uploadInput.accept = "application/json,.json";
+        uploadInput.style.cssText = "font-size: 11px;";
+        uploadInput.addEventListener("change", () => handleUpload(uploadInput.files));
+        uploadRow.appendChild(uploadInput);
+        tabPane.appendChild(uploadRow);
+
+        const listWrap = document.createElement("div");
+        tabPane.appendChild(listWrap);
+        listWrap.appendChild(renderLoading());
+
+        let previews;
+        try {
+            previews = await listPresets();
+        } catch (e) {
+            previews = [];
+        }
+        if (activeTab !== "manage") return;
+        listWrap.innerHTML = "";
+        if (previews.length === 0) {
+            listWrap.appendChild(renderEmpty("No presets to manage yet."));
+            return;
+        }
+        const list = document.createElement("div");
+        list.className = "koolook-snapshot-list";
+        for (const p of previews) {
+            const row = document.createElement("div");
+            row.className = "koolook-snapshot-row";
+            const info = document.createElement("div");
+            info.className = "koolook-snapshot-row-info";
+            info.style.cursor = "default";
+            const name = document.createElement("div");
+            name.className = "koolook-snapshot-row-name";
+            name.textContent = p.displayName;
+            info.appendChild(name);
+            const meta = document.createElement("div");
+            meta.className = "koolook-snapshot-row-meta";
+            meta.textContent = formatPreviewMeta(p);
+            info.appendChild(meta);
+            row.appendChild(info);
+
+            const actions = document.createElement("div");
+            actions.className = "koolook-snapshot-row-actions";
+
+            const dlBtn = document.createElement("button");
+            dlBtn.className = "koolook-snapshot-row-btn";
+            dlBtn.textContent = "Download";
+            dlBtn.title = "Download this preset as a JSON file";
+            dlBtn.addEventListener("click", () => handleDownload(p));
+            actions.appendChild(dlBtn);
+
+            const delBtn = document.createElement("button");
+            delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
+            delBtn.textContent = "Delete";
+            delBtn.title = "Delete this preset";
+            delBtn.addEventListener("click", () => handleDelete(p));
+            actions.appendChild(delBtn);
+
+            row.appendChild(actions);
+            list.appendChild(row);
+        }
+        listWrap.appendChild(list);
+    }
+
+    async function handleDownload(preview) {
+        try {
+            const snap = await readPreset(preview.fileName);
+            downloadSnapshotAsFile(snap);
+            toast(`Downloaded "${preview.displayName}".`);
+        } catch (e) {
+            console.error("[Koolook] preset download failed:", e);
+            toast(`Could not download "${preview.displayName}": ${e.message}`);
+        }
+    }
+
+    function handleDelete(preview) {
+        showConfirmModal({
+            title: "Delete preset?",
+            message: `"${preview.displayName}" will be removed from /userdata/koolook-presets/. This cannot be undone.`,
+            confirmLabel: "Delete",
+            danger: true,
+            onConfirm: async () => {
+                try {
+                    await deletePreset(preview.fileName);
+                    toast(`Deleted "${preview.displayName}".`);
+                    if (activeTab === "manage") await renderAll();
+                } catch (e) {
+                    console.error("[Koolook] preset delete failed:", e);
+                    toast(`Could not delete "${preview.displayName}": ${e.message}`);
+                }
+            },
+        });
+    }
+
+    async function handleUpload(files) {
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        let snap;
+        try {
+            snap = await readSnapshotFile(file);
+        } catch (e) {
+            console.warn("[Koolook] uploaded snapshot rejected:", e);
+            toast(e.message);
+            return;
+        }
+        const baseName = sanitizeName(snap.name) ||
+                          sanitizeName(file.name.replace(/\.json$/i, "")) ||
+                          "imported snapshot";
+        let exists;
+        try {
+            exists = await presetExists(baseName);
+        } catch (e) {
+            exists = false;
+        }
+        const doImport = async () => {
+            try {
+                await writePreset(baseName, snap);
+                toast(`Imported snapshot "${baseName}" into the library.`);
+                if (activeTab === "manage") await renderAll();
+            } catch (e) {
+                console.error("[Koolook] preset import failed:", e);
+                toast(`Could not import "${baseName}": ${e.message}`);
+            }
+        };
+        if (exists) {
+            showConfirmModal({
+                title: "Overwrite existing preset?",
+                message: `A snapshot named "${baseName}" already exists in the library. Overwrite it with the uploaded file?`,
+                confirmLabel: "Overwrite",
+                danger: true,
+                onConfirm: doImport,
+            });
+        } else {
+            doImport();
+        }
+    }
+
+    // ---- Mount ----
+    const closeBtn = makeModalButton({ label: "Close", onClick: () => overlay.remove() });
+    ({ overlay } = makeModalShell({
+        title: "Snapshot library",
+        body,
+        actions: [closeBtn],
+    }));
+    renderAll();
+}
+
+// =============================================================================
 // Context menu helper
 // =============================================================================
 export function showContextMenu(event, items) {

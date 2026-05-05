@@ -20,6 +20,30 @@ The format is inspired by Keep a Changelog and SemVer.
   drives the four-phase UI (discovery → confirm → progress → result).
   403s from Manager's security gate are surfaced as actionable language
   ("your security level forbids git-URL installs") rather than raw HTTP.
+- **Snapshot library** — save your full Kforge Labs state (curated picks +
+  the entire workflows store including tags + archive) as a named preset.
+  New top-level **Snapshot** action row above the search field with three
+  icon buttons:
+  - **Load** — opens the snapshot modal at the Load tab. Lists every preset
+    in `/userdata/koolook-presets/` with metadata (workflow count · pick
+    count · export date). Click a row → confirm "Replace current state?"
+    → restores both stores in one go.
+  - **Save** — opens at the Save tab. Single text field with default
+    `preset YYYY-MM-DD`, fully editable. Submit writes the snapshot to
+    `/userdata/koolook-presets/<name>.json`. Existing-name save prompts
+    to overwrite.
+  - **Manage** — opens at the Manage tab. Per-row Download (saves the
+    snapshot JSON to your Downloads folder for cross-server transfer),
+    Delete (with confirm), plus a top-of-tab Upload action that imports
+    a JSON snapshot from disk into the library.
+  Use cases: take your kit between machines (copy `koolook-presets/` or
+  sync the userdata folder via Dropbox/iCloud/Drive), share a curated
+  preset with a teammate via download → drop → upload, or run a facility-
+  wide shared library by pointing every workstation at the same ComfyUI
+  server. Storage uses ComfyUI's standard userdata API; snapshot files
+  carry a `kind: "koolook-snapshot"` discriminator + `version` field for
+  future schema migrations. Closes the "save to a custom location, take
+  it elsewhere" piece of #46.
 
 ### Changed
 - **Save selection toast distinguishes "no selection" from "selection

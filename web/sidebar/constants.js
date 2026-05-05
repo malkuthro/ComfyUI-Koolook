@@ -120,6 +120,23 @@ export function ensureStyle() {
 .koolook-install-unresolved-summary { cursor: pointer; font-size: 11px; opacity: 0.75; margin-top: 4px; }
 .koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
 .koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
+.koolook-snapshot-tabs { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; }
+.koolook-snapshot-tab { padding: 6px 12px; cursor: pointer; font-size: 12px; opacity: 0.65; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.koolook-snapshot-tab:hover { opacity: 0.9; }
+.koolook-snapshot-tab-active { opacity: 1; border-bottom-color: var(--p-primary-color, rgba(100,150,255,0.7)); }
+.koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
+.koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.koolook-snapshot-row:last-child { border-bottom: none; }
+.koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }
+.koolook-snapshot-row-info:hover .koolook-snapshot-row-name { color: var(--p-primary-color, rgba(120,170,255,1)); }
+.koolook-snapshot-row-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-snapshot-row-meta { font-size: 11px; opacity: 0.55; margin-top: 2px; }
+.koolook-snapshot-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.koolook-snapshot-row-btn { padding: 3px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid rgba(255,255,255,0.08); border-radius: 3px; cursor: pointer; color: inherit; font-size: 11px; }
+.koolook-snapshot-row-btn:hover { background: rgba(255,255,255,0.08); }
+.koolook-snapshot-row-btn-danger:hover { background: rgba(220,80,80,0.25); border-color: rgba(220,80,80,0.4); }
+.koolook-snapshot-empty { padding: 20px; opacity: 0.5; font-size: 12px; text-align: center; }
+.koolook-snapshot-tab-pane { min-height: 200px; }
 `;
     document.head.appendChild(s);
 }

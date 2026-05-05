@@ -570,6 +570,37 @@ export function removeTag(path, wfName, tag) {
     return true;
 }
 
+// =============================================================================
+// Snapshot / preset support — bulk replace + read-only export of the cache.
+// Used by the snapshot library flow (#46 item 1).
+// =============================================================================
+
+// Replace the entire `workflowsCache` with a freshly-normalized version of
+// `rawStore` and persist the result. The caller has just deserialized a
+// snapshot file and wants the in-memory + on-disk state to mirror it
+// exactly. Returns `true` on successful persist (server or localStorage
+// fallback), `false` if both backends rejected the write — in which case
+// the cache is still rebound in memory, but the next reload will revert
+// to disk.
+//
+// Bypasses `persistMutation` because the entire cache is being replaced;
+// snapshot-and-restore on failure would require holding the previous
+// store in memory, and the caller has the original snapshot file on disk
+// if rollback is needed.
+export async function replaceAllWorkflows(rawStore) {
+    workflowsCache = normalizeWorkflowsStore(rawStore);
+    const result = await persistWorkflowsToServer(workflowsCache);
+    if (result) notifyWorkflowsChanged();
+    return result !== false;
+}
+
+// Deep-cloned read-only view of `workflowsCache` for the snapshot export
+// flow. Returning a clone (rather than the live ref) keeps callers from
+// accidentally mutating cache state through the export pipeline.
+export function getAllWorkflowsForExport() {
+    return JSON.parse(JSON.stringify(workflowsCache));
+}
+
 // Delete every archived workflow under the directory at `path`. Returns
 // `{ count }` (number of entries removed) on success, `false` if the
 // directory is missing or has no archived entries. Active (non-archived)
