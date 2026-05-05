@@ -16,6 +16,8 @@ import {
     WORKFLOWS_FALLBACK_KEY,
     PICKS_CHANGED_EVENT,
     WORKFLOWS_CHANGED_EVENT,
+    GROUP_MODE_KEY,
+    GROUP_MODE_DEFAULT,
     ensureStyle,
     toast,
     compareNames,
@@ -69,6 +71,7 @@ import {
     showLoadSnapshotDialog,
     showSnapshotSettingsDialog,
 } from "./modals.js";
+import { attachHoverPreview, teardownPreview } from "./node_preview.js";
 import {
     sanitizeName,
     gatherSnapshot,
@@ -237,6 +240,13 @@ export function spotlightAddedPicks(typeNames) {
  * @param {{ treeEl: HTMLElement, query: string }} opts
  */
 function renderTree({ treeEl, query }) {
+    // Tear down any active hover preview before detaching rows. `innerHTML
+    // = ""` removes leaf rows without firing `mouseleave`, so a card that
+    // was up at the moment of re-render would otherwise leak — its anchor
+    // gone, the card's `pointer-events: none` blocks user dismissal, and
+    // it'd persist until the next successful hover. The preview module
+    // owns a singleton card; one call clears whatever's live.
+    teardownPreview();
     treeEl.innerHTML = "";
     const q = (query || "").trim().toLowerCase();
     const isFiltered = q.length > 0;
@@ -617,6 +627,178 @@ function gatherUserPickPacks(query) {
 }
 
 // =============================================================================
+// Data gathering — category-first mode
+//
+// Groups every visible pick by its node-class CATEGORY path, ignoring REPOS
+// affiliation. Path segments that look the same after canonical-key
+// normalization merge into one folder — `Image/Upscaling` and
+// `image/upscaling` collapse to a single subtree. Display label is the
+// most-common original casing seen for that key (ties → first-seen, by
+// Map iteration order).
+//
+// Output shape (recursive `CategoryNode`):
+//   {
+//     children: Map<canonicalKey, CategoryNode>,  // sub-categories
+//     displayCounts: Map<originalCasing, count>,  // for label resolution
+//     nodes: [{ type, display, packLabel, isUserPick, unresolved? }],
+//   }
+// The root node has empty `displayCounts` (it's never rendered as a folder).
+// =============================================================================
+
+// Canonical key for a single category-path segment. Lowercase + strip
+// internal whitespace/underscores/hyphens so `style_model`, `StyleModel`,
+// and `style model` all collapse to `stylemodel`. Segments are not
+// stemmed (singular vs plural keep distinct) — see issue #73 for the
+// deliberate "no Levenshtein" tradeoff.
+function canonicalSegment(s) {
+    return String(s).toLowerCase().replace(/[\s_\-]+/g, "");
+}
+
+// Resolves a folder's display label from the count map of original
+// casings seen. Picks the most common; ties → first-seen. Map iteration
+// is insertion order, which mirrors `Object.entries(registry)` walk
+// order in `gatherNodesByCategory` — stable across renders for a given
+// registry state. Empty maps are only valid for synthetic buckets like
+// `(uncategorized)`, where the caller pre-seeds the label.
+function pickDisplayLabel(displayCounts) {
+    let best = null;
+    let bestCount = -1;
+    for (const [name, count] of displayCounts) {
+        if (count > bestCount) {
+            best = name;
+            bestCount = count;
+        }
+    }
+    return best;
+}
+
+function ensureSyntheticBucket(root, label) {
+    if (!root.children.has(label)) {
+        root.children.set(label, {
+            displayCounts: new Map([[label, 1]]),
+            children: new Map(),
+            nodes: [],
+        });
+    }
+    return root.children.get(label);
+}
+
+// Recursive count of every leaf node under a CategoryNode (including itself
+// and all descendants). Used to drive each folder's header count so a
+// parent that contains only sub-folders still shows a meaningful total.
+function countNodesInCategoryNode(node) {
+    let c = node.nodes.length;
+    for (const child of node.children.values()) c += countNodesInCategoryNode(child);
+    return c;
+}
+
+function gatherNodesByCategory(query) {
+    const q = (query || "").trim().toLowerCase();
+    const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
+    const userPicks = new Set(loadUserPicks());
+
+    // Phase 1: collect the same union as repo-mode — REPOS-driven auto-pulled
+    // nodes plus user picks. `candidates` is keyed by node type so the two
+    // sources merge cleanly (a user pick that's also in a REPOS pack only
+    // appears once, but is still flagged removable).
+    const candidates = new Map();
+    for (const repo of REPOS) {
+        const root = repo.categoryRoot || "";
+        if (repo.select !== "all" || !root) continue;
+        for (const [type, nc] of Object.entries(registry)) {
+            const cat = (nc && nc.category) || "";
+            if (cat !== root && !cat.startsWith(root + "/")) continue;
+            const display = (nc && nc.title) || type;
+            if (repo.excludePatterns && repo.excludePatterns.some(re => re.test(display))) continue;
+            candidates.set(type, { display, category: cat, isUserPick: false });
+        }
+    }
+    for (const type of userPicks) {
+        if (candidates.has(type)) {
+            candidates.get(type).isUserPick = true;
+            continue;
+        }
+        const nc = registry[type];
+        if (!nc) {
+            // Pack not currently loaded. Repo mode silently drops these;
+            // category mode surfaces them under "(unresolved)" so the user
+            // can see what they picked even before installing the pack.
+            candidates.set(type, { display: type, category: null, isUserPick: true, unresolved: true });
+            continue;
+        }
+        const cat = nc.category || "";
+        const display = nc.title || type;
+        candidates.set(type, { display, category: cat, isUserPick: true });
+    }
+
+    // Phase 2: build the canonical-key tree from the collected candidates,
+    // applying the search filter at leaf insertion time.
+    const root = { displayCounts: new Map(), children: new Map(), nodes: [] };
+    for (const [type, info] of candidates) {
+        if (!matchesQuery(info.display, type, q)) continue;
+        if (info.unresolved) {
+            const bucket = ensureSyntheticBucket(root, "(unresolved)");
+            bucket.nodes.push({
+                type,
+                display: info.display,
+                packLabel: null,
+                isUserPick: true,
+                unresolved: true,
+            });
+            continue;
+        }
+        const cat = info.category || "";
+        const segs = cat.split("/").map(s => s.trim()).filter(Boolean);
+        if (segs.length === 0) {
+            const bucket = ensureSyntheticBucket(root, "(uncategorized)");
+            bucket.nodes.push({ type, display: info.display, packLabel: null, isUserPick: info.isUserPick });
+            continue;
+        }
+        // Pack label = first segment. In ComfyUI, custom-node packs typically
+        // namespace their categories with the pack name (e.g. `KJNodes/image`),
+        // so the first segment is a serviceable proxy for "which pack does
+        // this come from" — used for the small badge on category-mode leaves.
+        const packLabel = segs[0];
+        let cur = root;
+        for (const seg of segs) {
+            const ck = canonicalSegment(seg);
+            if (!cur.children.has(ck)) {
+                cur.children.set(ck, {
+                    displayCounts: new Map(),
+                    children: new Map(),
+                    nodes: [],
+                });
+            }
+            const nextNode = cur.children.get(ck);
+            nextNode.displayCounts.set(seg, (nextNode.displayCounts.get(seg) || 0) + 1);
+            cur = nextNode;
+        }
+        cur.nodes.push({ type, display: info.display, packLabel, isUserPick: info.isUserPick });
+    }
+    return root;
+}
+
+// =============================================================================
+// Group mode — read/write the user's chosen mode for the Nodes section.
+// Two values: "repo" (default) and "category". Anything else falls back to
+// the default so a stray localStorage value can't lock the panel into a
+// broken state.
+// =============================================================================
+function loadGroupMode() {
+    try {
+        const v = localStorage.getItem(GROUP_MODE_KEY);
+        return v === "category" || v === "repo" ? v : GROUP_MODE_DEFAULT;
+    } catch {
+        return GROUP_MODE_DEFAULT;
+    }
+}
+
+function saveGroupMode(mode) {
+    if (mode !== "repo" && mode !== "category") return;
+    try { localStorage.setItem(GROUP_MODE_KEY, mode); } catch { /* quota / disabled */ }
+}
+
+// =============================================================================
 // Data gathering — workflows (recursive)
 //
 // Each output entry has shape:
@@ -809,10 +991,14 @@ function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu, draggab
     return { row, chevron };
 }
 
-function makeNodeLeafRow({ display, type, removable, onClick }) {
+function makeNodeLeafRow({ display, type, removable, onClick, packBadge, unresolved, breadcrumb }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
-    row.title = type;
+    if (unresolved) row.classList.add("koolook-leaf-unresolved");
+    // Breadcrumb-equipped rows under search-flatten mode also surface the
+    // origin path in the row tooltip (`type` is still appended) so a hover
+    // confirms exactly which folder the leaf would live under in the tree.
+    row.title = breadcrumb ? `${breadcrumb} › ${type}` : type;
 
     const chevron = document.createElement("span");
     chevron.className = "koolook-chevron";
@@ -822,10 +1008,37 @@ function makeNodeLeafRow({ display, type, removable, onClick }) {
     dot.className = "koolook-leaf-dot";
     row.appendChild(dot);
 
+    // The name cell holds an optional dim-grey breadcrumb prefix (set under
+    // search-flatten mode) followed by the node's display name. We avoid
+    // innerHTML and build text nodes instead — display strings come from
+    // `nc.title` and breadcrumbs from category labels, both of which can in
+    // principle contain user-controlled HTML if a custom-node author
+    // included markup in `CATEGORY` or class attributes.
     const nameEl = document.createElement("span");
     nameEl.className = "koolook-name";
-    nameEl.textContent = display;
+    if (breadcrumb) {
+        const crumb = document.createElement("span");
+        crumb.className = "koolook-leaf-crumb";
+        crumb.textContent = `${breadcrumb} › `;
+        nameEl.appendChild(crumb);
+        nameEl.appendChild(document.createTextNode(display));
+    } else {
+        nameEl.textContent = display;
+    }
     row.appendChild(nameEl);
+
+    // Pack badge — only emitted in category mode by the caller. The first
+    // segment of the node's CATEGORY path doubles as a serviceable pack
+    // label (most custom-node packs namespace categories with the pack
+    // name), so users still see "where this came from" even when the tree
+    // is grouped by type rather than source.
+    if (packBadge) {
+        const badge = document.createElement("span");
+        badge.className = "koolook-pack-badge";
+        badge.textContent = packBadge;
+        badge.title = `Pack: ${packBadge}`;
+        row.appendChild(badge);
+    }
 
     if (removable) {
         const rm = document.createElement("span");
@@ -841,6 +1054,10 @@ function makeNodeLeafRow({ display, type, removable, onClick }) {
     }
 
     row.addEventListener("click", onClick);
+    // Hover preview — every leaf gets one. The card looks up the live
+    // node class on hover (lazy), so leaves whose pack isn't loaded
+    // still get a "Pack not loaded" stub instead of silently no-oping.
+    attachHoverPreview(row, type);
     return row;
 }
 
@@ -1258,15 +1475,35 @@ addSection({
     iconKind: "favorites",
     emptyMessage: "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Kforge Labs.",
     gather(q) {
+        const mode = loadGroupMode();
+        if (mode === "category") {
+            const tree = gatherNodesByCategory(q);
+            return { mode, tree, total: countNodesInCategoryNode(tree) };
+        }
         const auto = gatherNodesByRepo(q);
         const user = gatherUserPickPacks(q);
         const packs = [...auto, ...user]
             .filter(p => p.total > 0)
             .sort((a, b) => compareNames(a.label, b.label));
         const total = packs.reduce((acc, p) => acc + p.total, 0);
-        return { packs, total };
+        return { mode: "repo", packs, total };
     },
     build(ctx) {
+        // Search-flatten branch: under any non-empty query the Nodes section
+        // collapses to a flat list of matching leaves with breadcrumb
+        // prefixes, regardless of group mode. The tree's spatial signal is
+        // already mostly lost once a query has narrowed the set, so a flat
+        // sorted list with breadcrumb prefixes scans faster than a forest
+        // of forced-open folder spines. Workflows / Tags sections retain
+        // their existing tree-under-filter behavior.
+        if (ctx.isFiltered) {
+            emitNodesFlatSearchResults(ctx);
+            return;
+        }
+        if (ctx.data.mode === "category") {
+            emitCategoryTreeChildren(ctx, ctx.data.tree);
+            return;
+        }
         for (const pack of ctx.data.packs) {
             ctx.folder({
                 name: pack.label,
@@ -1297,6 +1534,118 @@ addSection({
         }
     },
 });
+
+// Flat-list emitters for the Nodes section under search. Both group modes
+// produce the same `{ display, type, breadcrumb, packBadge?, removable,
+// unresolved? }` shape so the leaf factory call is uniform downstream.
+// Sorted by display name (case-insensitive); breadcrumb is a `›`-joined
+// path of the folder labels the leaf would live under in the un-filtered
+// tree, so the user retains the spatial-origin signal.
+
+function emitNodesFlatSearchResults(ctx) {
+    const items = [];
+    if (ctx.data.mode === "category") {
+        collectFlatFromCategoryTree(ctx.data.tree, [], items);
+    } else {
+        collectFlatFromRepoMode(ctx.data.packs, items);
+    }
+    items.sort((a, b) => compareNames(a.display, b.display));
+    for (const item of items) {
+        ctx.leaf({
+            row: makeNodeLeafRow({
+                display: item.display,
+                type: item.type,
+                breadcrumb: item.breadcrumb,
+                packBadge: item.packBadge || null,
+                unresolved: !!item.unresolved,
+                removable: !!item.removable,
+                onClick: () => insertNode(item.type),
+            }),
+        });
+    }
+}
+
+function collectFlatFromCategoryTree(node, ancestorLabels, out) {
+    for (const n of node.nodes) {
+        out.push({
+            display: n.display,
+            type: n.type,
+            packBadge: n.packLabel || null,
+            unresolved: !!n.unresolved,
+            removable: !!n.isUserPick,
+            breadcrumb: ancestorLabels.length ? ancestorLabels.join(" › ") : null,
+        });
+    }
+    for (const child of node.children.values()) {
+        const label = pickDisplayLabel(child.displayCounts);
+        // Defensive: every non-root node gets a non-empty `displayCounts`
+        // (real categories accumulate in `gatherNodesByCategory`; synthetic
+        // buckets are pre-seeded). A null label here would indicate a future
+        // walker forgot to seed — skip rather than emit a `null › Foo` crumb.
+        if (!label) continue;
+        collectFlatFromCategoryTree(child, [...ancestorLabels, label], out);
+    }
+}
+
+function collectFlatFromRepoMode(packs, out) {
+    for (const pack of packs) {
+        for (const cat of pack.categories) {
+            // Collapse the subcategory out of the breadcrumb when it adds no
+            // info: either the synthetic "(root)" label (`subcategoryFor`'s
+            // marker for nodes whose category equals the repo's
+            // `categoryRoot`) or a duplicate of the pack label itself
+            // (happens for user picks under "(uncategorized)" where both
+            // labels collapse to the same synthetic token).
+            const subRedundant = cat.name === "(root)" || cat.name === pack.label;
+            const crumbs = subRedundant ? [pack.label] : [pack.label, cat.name];
+            const breadcrumb = crumbs.join(" › ");
+            for (const n of cat.nodes) {
+                out.push({
+                    display: n.display,
+                    type: n.type,
+                    removable: !!pack.isUserPicks,
+                    breadcrumb,
+                });
+            }
+        }
+    }
+}
+
+// Emits the children of a CategoryNode under `parentCtx`. Recursive: for each
+// sub-folder we call back into ourselves with the child node. Folder paths
+// use the canonical key (not the resolved display label) so the user's
+// expansion state in `pathStates` survives an upstream casing change in
+// the most-common label.
+function emitCategoryTreeChildren(parentCtx, node) {
+    const childEntries = [...node.children.entries()]
+        .map(([ck, child]) => ({
+            ck,
+            child,
+            label: pickDisplayLabel(child.displayCounts) || ck,
+        }))
+        .sort((a, b) => compareNames(a.label, b.label));
+    for (const { ck, child, label } of childEntries) {
+        parentCtx.folder({
+            name: label,
+            count: countNodesInCategoryNode(child),
+            path: ck,
+            build: (sub) => emitCategoryTreeChildren(sub, child),
+        });
+    }
+    const sortedNodes = [...node.nodes].sort((a, b) => compareNames(a.display, b.display));
+    for (const n of sortedNodes) {
+        parentCtx.leaf({
+            row: makeNodeLeafRow({
+                display: n.display,
+                type: n.type,
+                removable: !!n.isUserPick,
+                packBadge: n.packLabel || null,
+                unresolved: !!n.unresolved,
+                onClick: () => insertNode(n.type),
+            }),
+        });
+    }
+}
 
 addSection({
     id: SECTION_ID_WORKFLOWS,
@@ -1419,6 +1768,18 @@ export function renderPanel(container) {
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
+
+    // Forward declarations — `tree` and `search` are created several rows
+    // below, but the Nodes-row mode toggle (built mid-renderPanel) needs to
+    // re-render the tree from its click handler. JS closures bind by
+    // reference, so the handler resolves both at click time, by which point
+    // the assignments below have run. Without these `let` placeholders the
+    // toggle would have to be appended out-of-order.
+    let tree;
+    let search;
+    const rerenderTree = () => {
+        if (tree) renderTree({ treeEl: tree, query: search ? search.value : "" });
+    };
 
     // Three small wrappers over the snapshot dialogs. Each opens directly
     // — no tabbed parent modal — so the user goes from toolbar click to
@@ -1573,7 +1934,7 @@ export function renderPanel(container) {
     searchIcon.className = "pi pi-search koolook-search-icon";
     searchWrap.appendChild(searchIcon);
 
-    const search = document.createElement("input");
+    search = document.createElement("input");
     search.type = "search";
     search.className = "koolook-search";
     search.placeholder = "Search nodes & workflows...";
@@ -1590,6 +1951,52 @@ export function renderPanel(container) {
     nodesLabel.className = "koolook-actions-label";
     nodesLabel.textContent = "Nodes";
     nodesRow.appendChild(nodesLabel);
+
+    // Segmented mode toggle: [📦 by-pack] [🌐 by-category]. The active mode
+    // is highlighted; click switches and re-renders. The choice persists in
+    // localStorage (`GROUP_MODE_KEY`) and survives reloads. We listen for
+    // storage events further down so a second tab updates in lockstep.
+    const modeToggle = document.createElement("div");
+    modeToggle.className = "koolook-mode-toggle";
+
+    function makeModeBtn(modeId, iconClass, title) {
+        const btn = document.createElement("button");
+        btn.className = "koolook-mode-toggle-btn";
+        btn.title = title;
+        btn.dataset.mode = modeId;
+        const icon = document.createElement("span");
+        icon.className = iconClass;
+        btn.appendChild(icon);
+        btn.addEventListener("click", () => {
+            if (loadGroupMode() === modeId) return;
+            saveGroupMode(modeId);
+            refreshModeToggle();
+            rerenderTree();
+        });
+        return btn;
+    }
+
+    const repoModeBtn = makeModeBtn(
+        "repo",
+        "pi pi-database",
+        "Group by pack — each repo's nodes under their original category subtree.",
+    );
+    const categoryModeBtn = makeModeBtn(
+        "category",
+        "pi pi-sitemap",
+        "Group by category — nodes from any pack sharing a CATEGORY path collapse together (case-insensitive).",
+    );
+
+    function refreshModeToggle() {
+        const m = loadGroupMode();
+        repoModeBtn.classList.toggle("koolook-mode-active", m === "repo");
+        categoryModeBtn.classList.toggle("koolook-mode-active", m === "category");
+    }
+    refreshModeToggle();
+
+    modeToggle.appendChild(repoModeBtn);
+    modeToggle.appendChild(categoryModeBtn);
+    nodesRow.appendChild(modeToggle);
 
     const addBtn = document.createElement("button");
     addBtn.className = "koolook-add-btn";
@@ -1760,7 +2167,7 @@ export function renderPanel(container) {
     container.appendChild(dividerBeforeTree);
 
     // ---- Tree (scrollable) ----
-    const tree = document.createElement("div");
+    tree = document.createElement("div");
     tree.className = "koolook-tree";
     container.appendChild(tree);
 
@@ -1778,7 +2185,7 @@ export function renderPanel(container) {
     window.addEventListener(PICKS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
     window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
     window.addEventListener("storage", (e) => {
-        if (e.key === STORAGE_KEY || e.key === WORKFLOWS_FALLBACK_KEY) {
+        if (e.key === STORAGE_KEY || e.key === WORKFLOWS_FALLBACK_KEY || e.key === GROUP_MODE_KEY) {
             renderTree({ treeEl: tree, query: search.value });
         }
     });
