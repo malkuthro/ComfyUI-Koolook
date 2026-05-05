@@ -113,11 +113,37 @@ The format is inspired by Keep a Changelog and SemVer.
   Click a node on the canvas to re-select." `serializeSelection`
   returns a discriminated `{ kind: "empty" | "stale" | "ok", graph? }`
   result so the caller can route messaging precisely.
-- **Curated-defaults seed failure now toasts.** When
-  `seedDefaultsIfNeeded` writes the seed list to localStorage and the
-  write is rejected (full disk, browser quota, private mode), users
-  see a toast pointing at the console instead of getting a silent
-  console-only warning.
+- **`curated_defaults.json` retired in favor of `starter_preset.json`.**
+  Fresh installs no longer get picks seeded directly into localStorage
+  on first load. Instead the bundled `web/starter_preset.json` (full
+  snapshot format — picks + workflows + tags + archive) is copied into
+  the user's snapshot library directory as `starter.json`, and the user
+  opens Snapshot → Load to apply it in one click. The change unifies
+  fresh-install distribution with the per-user snapshot library
+  (#68): the maintainer flow becomes "build state in ComfyUI → click
+  the ↓ Tools-row button → paste over `web/starter_preset.json` →
+  commit." Existing users with non-empty picks are explicitly skipped
+  by the new seeder, so their state is untouched. Removed:
+  `seedDefaultsIfNeeded`, `exportPicks`, `web/curated_defaults.json`,
+  `SEEDED_KEY`, `DEFAULTS_URL`. Added: `seedStarterPresetIfNeeded`,
+  `exportStarterPreset` (both in `web/sidebar/snapshot.js`),
+  `STARTER_SEEDED_KEY`, `STARTER_URL`, `STARTER_PRESET_FILENAME`,
+  `web/starter_preset.json`.
+- **Sidebar toolbar: Tools row split out from Nodes row.** The Export
+  button (now "Export starter preset") and the "Install missing for
+  picks" button moved up out of the Nodes row into a new dedicated
+  **Tools** row above the search field, alongside a new "Drop
+  placeholders onto canvas" button. The Nodes row keeps only the
+  everyday `+` Add button. Reasoning: Export and Install-missing are
+  admin/advanced operations; segregating them keeps the daily flow
+  uncluttered and makes it harder to fire them by accident. The new
+  Drop-placeholders button is the `security_level=normal` escape hatch
+  for "install missing" — it instantiates one placeholder per missing
+  pack on a fresh canvas tab so ComfyUI/Manager's standard "Install
+  Missing Custom Nodes" detection picks them up and routes the install
+  through Manager's UI flow (which doesn't go through
+  `/customnode/install/git_url`'s security gate the way our
+  programmatic call does).
 
 ### Internal (sidebar tidiness pass — no behavior change)
 - **Lifted save-modal action sentinels and the cascade picker

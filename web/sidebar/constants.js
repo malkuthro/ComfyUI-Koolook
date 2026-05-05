@@ -31,9 +31,19 @@ export const WORKFLOWS_GROUP_LABEL = "Workflows";
 // Defaults JSON files live in web/ alongside the entry; this module is one
 // level deeper at web/sidebar/, so the relative URL needs the extra `..`.
 export const STORAGE_KEY = "koolook.curated.userPicks.v1";
-export const SEEDED_KEY = "koolook.curated.seeded.v1";
 export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
-export const DEFAULTS_URL = new URL("../curated_defaults.json", import.meta.url).href;
+
+// Starter preset — a single shipped snapshot file the seeder copies into the
+// user's snapshot library directory on first run (instead of seeding picks
+// directly into localStorage). Carries the full snapshot schema (picks +
+// workflows + tags + archive), so the user gets one Load click for the whole
+// starter state. `STARTER_SEEDED_KEY` is the localStorage flag that says
+// "we've already attempted the seed on this browser, don't retry."
+export const STARTER_SEEDED_KEY = "koolook.starter.seeded.v1";
+export const STARTER_URL = new URL("../starter_preset.json", import.meta.url).href;
+// Filename inside the snapshot library — without `.json`, matches the
+// shape `writePreset(fileName, ...)` expects.
+export const STARTER_PRESET_FILENAME = "starter";
 
 export const WORKFLOWS_USERDATA_PATH = "koolook_workflows.json";
 export const WORKFLOWS_FALLBACK_KEY = "koolook.workflows.fallback.v1";

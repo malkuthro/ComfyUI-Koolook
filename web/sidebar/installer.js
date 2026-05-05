@@ -101,6 +101,33 @@ export function resolvePicksToInstall(picks, urlByNodeId) {
 }
 
 // =============================================================================
+// UI-free discovery helper
+// =============================================================================
+
+// Wraps the detect → loadMappings → resolvePicksToInstall sequence into a
+// single call so non-modal callers (e.g. the "drop placeholders onto canvas"
+// button) can run discovery without paying for the Install-Missing modal.
+//
+// Discriminated result. `ok: true` means we have a usable bucket breakdown;
+// `ok: false` means we hit a precondition failure that should surface as a
+// toast or an in-place message rather than as an empty bucket list.
+//
+//   { ok: true,  result: { alreadyInstalled, willInstall: { byUrl }, unresolved } }
+//   { ok: false, reason: "manager-unreachable" }
+//   { ok: false, reason: "mapping-load-failed", error: Error }
+export async function discoverMissingPacks(picks) {
+    const managerOk = await detectManager();
+    if (!managerOk) return { ok: false, reason: "manager-unreachable" };
+    let mappings;
+    try {
+        mappings = await loadMappings();
+    } catch (e) {
+        return { ok: false, reason: "mapping-load-failed", error: e };
+    }
+    return { ok: true, result: resolvePicksToInstall(picks, mappings.urlByNodeId) };
+}
+
+// =============================================================================
 // Install queue dispatch
 // =============================================================================
 

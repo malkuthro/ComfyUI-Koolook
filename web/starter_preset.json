@@ -1,0 +1,23 @@
+{
+  "kind": "koolook-snapshot",
+  "version": 1,
+  "name": "starter",
+  "exportedAt": "2026-05-05T14:30:00.000Z",
+  "picks": [
+    "Frames Slice",
+    "GetImageSizeAndCount",
+    "GetNode",
+    "ImageScaleBy",
+    "LoadEXR",
+    "NukeConstant",
+    "NukeOCIOColorSpace",
+    "RepeatImageBatch",
+    "ReplaceImagesInBatch",
+    "SaveEXRFrames",
+    "Text Multiline",
+    "easy showAnything"
+  ],
+  "workflows": {
+    "directories": {}
+  }
+}

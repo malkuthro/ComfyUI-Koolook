@@ -34,6 +34,12 @@
 // =============================================================================
 import { loadUserPicks, setAllPicks, notifyPicksChanged } from "./picks_store.js";
 import { replaceAllWorkflows, getAllWorkflowsForExport } from "./workflows_store.js";
+import {
+    STARTER_SEEDED_KEY,
+    STARTER_URL,
+    STARTER_PRESET_FILENAME,
+    toast,
+} from "./constants.js";
 
 export const SNAPSHOT_KIND = "koolook-snapshot";
 export const SNAPSHOT_VERSION = 1;
@@ -115,6 +121,132 @@ export async function applySnapshot(snapshot) {
     if (picksOk) notifyPicksChanged();
     const workflowsOk = await replaceAllWorkflows(snapshot.workflows);
     return { picksOk, workflowsOk };
+}
+
+// =============================================================================
+// Starter preset distribution — replaces the legacy curated_defaults.json
+// pick-only seed with a full snapshot file shipped at web/starter_preset.json.
+// On a fresh install the seeder copies it into the user's snapshot library
+// (via the same /koolook/presets/file endpoint the Save dialog uses), so it
+// shows up as one entry called "starter" in the Load dialog. The user gets
+// one click to populate picks + workflows + tags + archive — and full agency
+// to delete or edit it later, since it's just a regular preset on disk.
+// =============================================================================
+
+// Seed the bundled starter preset into the user's snapshot library iff:
+//   • we haven't already attempted on this browser (`STARTER_SEEDED_KEY`),
+//   • the user is fresh (no existing picks — existing users keep their state),
+//   • the library is reachable AND has no preset called "starter" yet.
+//
+// If the seed succeeds, toast the user so they know the Load dialog now has
+// something to apply. On any reachability failure (server down, fetch error)
+// we deliberately DON'T set the seeded flag — the next page load retries.
+export async function seedStarterPresetIfNeeded() {
+    if (localStorage.getItem(STARTER_SEEDED_KEY)) return;
+
+    // Existing user with non-empty picks → already seeded by the legacy
+    // curated_defaults.json flow. Mark and skip; their state is theirs.
+    if (loadUserPicks().length > 0) {
+        localStorage.setItem(STARTER_SEEDED_KEY, "1");
+        return;
+    }
+
+    // Existence probe — `presetExists` returns true/false/null where null
+    // means the library is unreachable. We bail without setting the flag on
+    // null so a server hiccup doesn't permanently skip the seed.
+    let exists;
+    try {
+        exists = await presetExists(STARTER_PRESET_FILENAME);
+    } catch (e) {
+        console.warn("[Koolook] starter seed: presetExists threw:", e);
+        return;
+    }
+    if (exists === null) {
+        console.warn("[Koolook] starter seed: library unreachable, retrying next load");
+        return;
+    }
+    if (exists === true) {
+        // Already there — facility-shared library, or a re-install on a
+        // machine that previously had it. Mark and move on.
+        localStorage.setItem(STARTER_SEEDED_KEY, "1");
+        return;
+    }
+
+    // Fetch the bundled preset from the package's web/ folder. A 4xx/5xx or
+    // a parse error means the package is broken; mark seeded so we don't
+    // retry forever, and log so the maintainer notices.
+    let preset;
+    try {
+        const resp = await fetch(STARTER_URL);
+        if (!resp.ok) {
+            console.warn(`[Koolook] starter_preset.json HTTP ${resp.status}; skipping seed`);
+            localStorage.setItem(STARTER_SEEDED_KEY, "1");
+            return;
+        }
+        preset = await resp.json();
+    } catch (e) {
+        console.warn("[Koolook] failed to fetch starter_preset.json:", e);
+        localStorage.setItem(STARTER_SEEDED_KEY, "1");
+        return;
+    }
+
+    // Validate before writing — we don't want to seed a malformed file into
+    // every fresh install. validateSnapshot throws with a user-readable
+    // message; we just log it (no toast — fresh users shouldn't see scary
+    // errors about a feature they haven't discovered yet).
+    try {
+        validateSnapshot(preset);
+    } catch (e) {
+        console.warn("[Koolook] starter_preset.json failed validation:", e.message);
+        localStorage.setItem(STARTER_SEEDED_KEY, "1");
+        return;
+    }
+
+    try {
+        await writePreset(STARTER_PRESET_FILENAME, preset);
+    } catch (e) {
+        console.warn("[Koolook] starter preset write failed (retrying next load):", e.message);
+        // Don't set the flag — a read-only mount or network blip should
+        // self-heal on the user's next launch.
+        return;
+    }
+
+    localStorage.setItem(STARTER_SEEDED_KEY, "1");
+    console.log(`[Koolook] seeded starter preset into snapshot library as "${STARTER_PRESET_FILENAME}.json"`);
+    toast(`Starter preset "${STARTER_PRESET_FILENAME}" added — open Snapshot → Load to populate picks & workflows.`);
+}
+
+// Maintainer flow: capture the current full state as the bundled starter
+// preset for the next release. Copies a JSON-formatted snapshot to clipboard
+// (with download fallback) so the maintainer can paste it over
+// `web/starter_preset.json` in the repo.
+//
+// Distinct from the regular Snapshot Save flow — that writes to the user's
+// snapshot library directory (per-user state). This writes nothing to disk;
+// it just hands the maintainer the JSON for a repo-side commit.
+export async function exportStarterPreset() {
+    const snapshot = gatherSnapshot(STARTER_PRESET_FILENAME);
+    const json = JSON.stringify(snapshot, null, 2) + "\n";
+    const pickN = snapshot.picks.length;
+    const wfN = countWorkflowsInStore(snapshot.workflows);
+    const summary = `${pickN} pick${pickN === 1 ? "" : "s"} · ${wfN} workflow${wfN === 1 ? "" : "s"}`;
+    try {
+        await navigator.clipboard.writeText(json);
+        toast(`Copied starter preset to clipboard (${summary}). Paste into web/starter_preset.json.`);
+        return;
+    } catch (e) {
+        console.warn("[Koolook] clipboard write failed, falling back to download:", e);
+    }
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "starter_preset.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`Downloaded starter_preset.json (${summary}). Replace the file in web/ with it.`);
 }
 
 // =============================================================================
