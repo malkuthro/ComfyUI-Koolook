@@ -7,13 +7,26 @@ The target path is read from the KOLOOK_COMFYUI_DEV_PATH environment
 variable (loaded from `.env` at the repo root if present). The variable
 is intentionally kept out of the committed tree — see `.env.example`.
 
+`KOLOOK_COMFYUI_DEV_PATH` should point at the eventual Koolook
+subdirectory inside `custom_nodes/`, NOT at the `custom_nodes/` parent.
+Example layouts:
+    macOS:   /Volumes/Data/ComfyUI/custom_nodes/ComfyUI-Koolook
+    Windows: C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook
+
 Usage:
     python scripts/sync_to_dev.py            # copy all runtime files
     python scripts/sync_to_dev.py --dry-run  # show what would copy
+    python scripts/sync_to_dev.py --init     # first-run: create the
+                                             # target folder if missing
+                                             # (parent custom_nodes/ must
+                                             # already exist), then sync
 
 Exit codes:
     0  success
-    2  KOLOOK_COMFYUI_DEV_PATH unset or target missing
+    2  KOLOOK_COMFYUI_DEV_PATH unset, parent missing, or target missing
+       (without --init)
+    3  --init refused: parent is not an existing directory or doesn't
+       resemble a ComfyUI custom_nodes/ folder
 
 This script never reaches outside the repo, never deletes anything in
 the source, and only touches paths under the configured target. It does
@@ -40,7 +53,6 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "k_easy_image_batch.py",
     "k_easy_resize.py",
     "k_easy_track.py",
-    "k_easy_version.py",
     "k_easy_wan22_prompt.py",
     "forks",
     "web",
@@ -97,12 +109,73 @@ def sync(target: Path, dry_run: bool) -> int:
     return copied
 
 
+def _looks_like_custom_nodes(parent: Path) -> bool:
+    """Heuristic: parent is named `custom_nodes` OR sits inside a
+    directory named `ComfyUI`. A bit conservative — saves the user from
+    a `KOLOOK_COMFYUI_DEV_PATH` typo that would otherwise create a fresh
+    `ComfyUI-Koolook/` somewhere unexpected on disk."""
+    if parent.name == "custom_nodes":
+        return True
+    grandparent = parent.parent
+    return grandparent.name.lower() == "comfyui" and parent.is_dir()
+
+
+def ensure_target(target: Path, init: bool) -> int | None:
+    """Validate the target. Returns an exit code (2 or 3) on error,
+    or None on success (with target now guaranteed to exist as a dir)."""
+    if target.exists():
+        if not target.is_dir():
+            print(f"target is not a directory: {target}", file=sys.stderr)
+            return 2
+        return None
+    # Target is missing.
+    if not init:
+        print(
+            f"target does not exist: {target}\n"
+            f"first time on this machine? re-run with --init to create it.",
+            file=sys.stderr,
+        )
+        return 2
+    parent = target.parent
+    if not parent.exists() or not parent.is_dir():
+        print(
+            f"--init refused: parent does not exist: {parent}\n"
+            f"check KOLOOK_COMFYUI_DEV_PATH — the *parent* (typically a "
+            f"ComfyUI custom_nodes/ folder) must already be in place.",
+            file=sys.stderr,
+        )
+        return 3
+    if not _looks_like_custom_nodes(parent):
+        print(
+            f"--init refused: parent doesn't look like a ComfyUI "
+            f"custom_nodes/ folder: {parent}\n"
+            f"expected the parent to be named 'custom_nodes' or to sit "
+            f"inside a 'ComfyUI' directory. If this really is your "
+            f"ComfyUI install, create the target manually with "
+            f"`mkdir -p \"{target}\"` and re-run without --init.",
+            file=sys.stderr,
+        )
+        return 3
+    target.mkdir(parents=False, exist_ok=False)
+    print(f"created target: {target}")
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would be copied without touching the target.",
+    )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help=(
+            "Create the target directory if it doesn't exist. The parent "
+            "(typically a ComfyUI custom_nodes/ folder) must already be "
+            "in place. Use on first-run only."
+        ),
     )
     args = parser.parse_args()
 
@@ -118,12 +191,9 @@ def main() -> int:
         return 2
 
     target = Path(target_str).expanduser()
-    if not target.exists():
-        print(f"target does not exist: {target}", file=sys.stderr)
-        return 2
-    if not target.is_dir():
-        print(f"target is not a directory: {target}", file=sys.stderr)
-        return 2
+    err = ensure_target(target, init=args.init)
+    if err is not None:
+        return err
 
     n = sync(target, dry_run=args.dry_run)
     verb = "would sync" if args.dry_run else "synced"
