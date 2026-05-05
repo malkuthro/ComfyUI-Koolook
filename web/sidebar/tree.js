@@ -779,15 +779,22 @@ const THEME_CLASSIFIERS = [
     {
         key: "utility",
         label: "Utility",
+        // `\bget\b` / `\bset\b` are kept short on purpose — they're the
+        // last-resort net for trivial getter/setter nodes that didn't hit
+        // any earlier classifier. Do NOT generalize them to `/get/` or
+        // `/set/` (no boundaries) without re-walking the upstream pattern
+        // list — un-anchored variants would fish picks out of node names
+        // like "AssetGet…" that should land in their own theme.
         patterns: [/\butil/i, /helper/i, /\btool\b/i, /\bget\b/i, /\bset\b/i, /reroute/i],
     },
 ];
 
 // Returns `{key, label}` of the first classifier whose patterns match the
 // corpus, or `null` if no classifier matched. Walked in order — broader
-// upstream classifiers preempt downstream ones, so "Image Comparer" lands
-// in "Image" even though it also contains the word "compare" (which would
-// match the math classifier later in the list).
+// upstream classifiers preempt downstream ones. "Image Comparer (rgthree)"
+// lands in Image because the corpus contains the word "image", which the
+// Image classifier's `/image/i` pattern matches; ordering would also have
+// protected it (Math is below Image), but the substring hit comes first.
 function classifyTheme(corpus) {
     for (const cls of THEME_CLASSIFIERS) {
         for (const pat of cls.patterns) {
@@ -810,15 +817,16 @@ function classifyTheme(corpus) {
 function extractTheme(typeName, registry) {
     const nc = registry[typeName];
     if (!nc) return { kind: "unresolved" };
-    const cat = (nc && nc.category) || "";
-    const display = (nc && nc.title) || typeName;
+    const cat = nc.category || "";
+    const display = nc.title || typeName;
     const loc = findPackPathForType(typeName);
     const packLabel = loc?.packLabel || "";
 
     // Search corpus combines every signal we have about this node so a
     // keyword in any of them — pack name, category subtree, display title,
-    // raw type ID — counts. Lowercased once for case-insensitive `pat.test`.
-    const corpus = `${packLabel} ${cat} ${display} ${typeName}`.toLowerCase();
+    // raw type ID — counts. No `.toLowerCase()` needed: every classifier
+    // pattern carries the `/i` flag.
+    const corpus = `${packLabel} ${cat} ${display} ${typeName}`;
     const classified = classifyTheme(corpus);
     if (classified) {
         return {
@@ -878,8 +886,11 @@ function gatherNodesByTheme(query) {
             continue;
         }
 
+        // `nc` is guaranteed non-null here: extractTheme() above already
+        // bailed with `kind: "unresolved"` for any type missing from the
+        // registry, and we caught that branch before reaching this line.
         const nc = registry[type];
-        const display = (nc && nc.title) || type;
+        const display = nc.title || type;
         if (!matchesQuery(display, type, q)) continue;
 
         if (result.kind === "uncategorized") {
