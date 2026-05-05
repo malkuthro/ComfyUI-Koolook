@@ -186,6 +186,51 @@ function pinExpanded(paths) {
 }
 
 /**
+ * Spotlight effect for newly-saved picks: collapse every folder under the
+ * Nodes section, then pin the just-added node's pack-folder + subcategory-
+ * folder open. Designed as a pedagogical aid — when the user adds a node
+ * via the toolbar `+` or the right-click "Add to Kforge Labs", the sidebar
+ * snaps to focus on exactly where that node lives in the pack hierarchy,
+ * helping newcomers internalize which pack/category each node belongs to.
+ *
+ * Caller is responsible for triggering a re-render afterwards (typically
+ * via `notifyPicksChanged()`); this function only mutates `pathStates` +
+ * `pinnedPaths`.
+ *
+ * Multi-add (caller passes several types): every pack/subcategory hit by
+ * the additions is pinned open. So adding 5 nodes from 3 packs lights up
+ * all 3 pack folders simultaneously rather than just the last.
+ *
+ * Idempotent / safe: types not in the LiteGraph registry are silently
+ * skipped (no-op). Empty input → no-op (no collapse, no pin).
+ *
+ * @param {string[]} typeNames
+ */
+export function spotlightAddedPicks(typeNames) {
+    if (!Array.isArray(typeNames) || typeNames.length === 0) return;
+    const pathsToExpand = new Set();
+    for (const t of typeNames) {
+        const loc = findPackPathForType(t);
+        if (!loc) continue;
+        pathsToExpand.add(`${SECTION_ID_NODES}/${loc.packLabel}`);
+        pathsToExpand.add(`${SECTION_ID_NODES}/${loc.packLabel}/${loc.sub}`);
+    }
+    if (pathsToExpand.size === 0) return;
+
+    // Collapse every existing Nodes-section entry (the section root + every
+    // pack/subcategory). The render-time fallback (`startExpanded`) keeps
+    // the section header itself open since `addSection` registers it with
+    // `startExpanded: true`; pack folders default to closed, which is what
+    // we want for everything except the spotlighted location.
+    for (const key of [...pathStates.keys()]) {
+        if (key === SECTION_ID_NODES || key.startsWith(SECTION_ID_NODES + "/")) {
+            pathStates.delete(key);
+        }
+    }
+    pinExpanded([...pathsToExpand]);
+}
+
+/**
  * Single render entry point. Idempotent — safe to call from search input,
  * picks-changed, workflows-changed, or storage events.
  *
@@ -441,6 +486,40 @@ function subcategoryFor(category, categoryRoot) {
     );
     const parts = category.split("/");
     return parts.length > 1 ? parts.slice(1).join("/") : category;
+}
+
+// Given a node ID, compute the (packLabel, sub) pair the gather code would
+// place it under in the sidebar. Mirrors the precedence in
+// `gatherNodesByRepo` + `gatherUserPickPacks`: registered REPOS first
+// (`select="all"` matches by category prefix; `select=Array` matches by
+// explicit ID), then the user-picks fallback derives the pack label from
+// the first segment of the node's category.
+//
+// Returns `{packLabel, sub}` on success, `null` if the node isn't in the
+// LiteGraph registry (caller should skip silently — the node won't render
+// in the sidebar either way). Used by `spotlightAddedPicks` to know which
+// folder to expand after a save.
+function findPackPathForType(typeName) {
+    const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
+    const nc = registry[typeName];
+    if (!nc) return null;
+    const cat = (nc && nc.category) || "";
+
+    for (const repo of REPOS) {
+        if (repo.select === "all") {
+            const root = repo.categoryRoot || "";
+            if (root && (cat === root || cat.startsWith(root + "/"))) {
+                return { packLabel: repo.label, sub: subcategoryFor(cat, root) };
+            }
+        } else if (Array.isArray(repo.select)) {
+            if (repo.select.includes(typeName)) {
+                return { packLabel: repo.label, sub: subcategoryFor(cat, repo.categoryRoot || "") };
+            }
+        }
+    }
+
+    const packLabel = cat.split("/")[0] || "(uncategorized)";
+    return { packLabel, sub: subcategoryFor(cat, packLabel) };
 }
 
 function matchesQuery(display, type, q) {
@@ -804,10 +883,18 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
 
     // Resolution order:
     //   1. forceExpanded (e.g. search active) — overrides everything
-    //   2. pathStates (user has previously toggled this folder)
-    //   3. startExpanded (the natural default for this folder)
+    //   2. pinnedPaths (a save/spotlight flow has flagged this for force-open
+    //      on the current render) — Phase 3 writes pins into pathStates AFTER
+    //      Phase 2 builds DOM, so without a direct pinnedPaths read here the
+    //      pin would only take effect on the *next* render. The spotlight
+    //      effect for newly-added picks depends on pinned paths expanding
+    //      on the immediate render.
+    //   3. pathStates (user has previously toggled this folder)
+    //   4. startExpanded (the natural default for this folder)
     let initiallyExpanded;
     if (forceExpanded) {
+        initiallyExpanded = true;
+    } else if (pinnedPaths.has(path)) {
         initiallyExpanded = true;
     } else if (pathStates.has(path)) {
         initiallyExpanded = pathStates.get(path);
@@ -1517,21 +1604,30 @@ export function renderPanel(container) {
         let added = 0;
         let duplicates = 0;
         let failed = 0;
+        const successfulTypes = [];
         for (const t of types) {
             const status = addToMyPicks(t);
             if (status === "added") added += 1;
             else if (status === "duplicate") duplicates += 1;
             else failed += 1;
+            // Spotlight even on duplicates — the user clicked + with this node
+            // selected; reminding them where it lives is the whole feature.
+            if (status !== "failed") successfulTypes.push(t);
         }
+        spotlightAddedPicks(successfulTypes);
         if (added > 0) {
             const noun = added === 1 ? "node" : "nodes";
             toast(`Added ${added} ${noun} to favorites.`);
             notifyPicksChanged();
+        } else if (duplicates > 0 && failed === 0) {
+            toast("Already in favorites.");
+            // Re-render anyway so the spotlight effect lands even on pure-
+            // duplicate clicks. notifyPicksChanged is the agreed-upon trigger
+            // for any sidebar refresh, even when picks didn't actually change.
+            notifyPicksChanged();
         }
         if (failed > 0) {
             toast(`Failed to save ${failed} pick${failed === 1 ? "" : "s"}. See console.`);
-        } else if (added === 0 && duplicates > 0) {
-            toast("Already in favorites.");
         }
     });
     nodesRow.appendChild(addBtn);

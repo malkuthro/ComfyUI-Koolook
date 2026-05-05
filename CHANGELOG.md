@@ -7,6 +7,56 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Drag-link-release menu hoists curated picks to the top.** When the user
+  drags a connection out of a node socket and releases on empty canvas,
+  ComfyUI's compatibility-filtered suggestion list now sorts items in the
+  user's curated picks above everything else, with a `── from your picks ──`
+  separator between hoisted and unhoisted compatible nodes. Implementation
+  monkey-patches `LiteGraph.ContextMenu` and detects the connection-release
+  menu via the `Add Node` + `Add Reroute` operation-sentinel pair (narrow
+  enough that other ContextMenu uses — right-click on a node, on the
+  canvas — are untouched). Purely additive: no compatible nodes are
+  removed, only re-ordered. Wired in `web/sidebar/connection_menu.js`,
+  registered alongside the existing `patchCanvasMenu` in
+  `web/koolook_sidebar.js`.
+- **Spotlight effect on add.** Clicking the toolbar `+` (or the canvas
+  right-click "Add to Kforge Labs") now collapses every Nodes-section
+  pack folder, then auto-expands just the pack + subcategory the just-saved
+  node lives in — a pedagogical aid that helps new users internalize
+  which pack each node belongs to. Multi-select adds light up every hit
+  pack simultaneously. Duplicate adds (already in picks) trigger the
+  same spotlight, since the educational reminder still applies. Helper
+  `findPackPathForType` mirrors the gather code's REPO-precedence-then-
+  user-pick-fallback to locate any node ID's sidebar path; new exported
+  `spotlightAddedPicks(typeNames)` from `web/sidebar/tree.js` does the
+  collapse + pin sequence and is called from both add paths.
+
+### Fixed
+- **`pinExpanded` paths now expand on the immediate render** instead of
+  being delayed by one. `buildFolder`'s expansion-resolution chain gained
+  a `pinnedPaths` check between `forceExpanded` and `pathStates`. Phase 3
+  of `renderTree` writes pins into `pathStates` AFTER Phase 2 has built
+  the DOM, so without the new check the pin had no effect on the current
+  render — only on the next one. Side-effect-free correctness improvement
+  for the workflow-save pinning that already existed; load-bearing for
+  the new spotlight feature above which depends on pinned paths
+  expanding immediately.
+- **Modal drag-out-of-input no longer dismisses the dialog.** The shared
+  modal shell (`makeModalShell`) used by every Koolook dialog gained a
+  mousedown / click-intent check: a click on the overlay now only fires
+  the dismiss when the gesture *started* on the overlay too. Drag-
+  selecting text inside an input field that releases in the overlay's
+  dark area used to trigger `click` with `target=overlay` and dismiss
+  the modal mid-edit; now it stays open. Affects all dialogs including
+  Snapshot Save / Load / Settings, Install Missing, Save Workflow, Tags,
+  Confirm, Input — load-bearing especially for the Snapshot Settings
+  path field where the long absolute path encourages drag-selection.
+- **Snapshot Settings path field shows full path on hover.** Added a
+  `title` attribute synced to the saved library path on every refresh
+  and save, so the user can read the full path without scrolling /
+  selecting inside the narrow input.
+
+### Added (continued)
 - **"Install missing for picks" toolbar button** in the Nodes section
   (`pi-cloud-download` icon, next to Add and Export). Walks the user's
   picks against ComfyUI-Manager's `/customnode/getmappings` mapping,
