@@ -170,6 +170,125 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
 }
 
 // =============================================================================
+// Placeholder workflow for "Install missing via Manager UI" handoff
+// =============================================================================
+
+// Build a fresh workflow that contains one node per missing pack, using a
+// representative node ID from each pack as the node `type`. The pack isn't
+// installed, so ComfyUI renders these as red "missing node type" placeholders
+// — which is exactly what triggers Manager's built-in "Install Missing Custom
+// Nodes" detection (Manager scans the active graph for unknown types and
+// looks them up in its mapping). The user then drives Manager's own UI to
+// install, which goes through Manager's UI-driven install path rather than
+// our programmatic /customnode/install/git_url call — so it works at
+// `security_level=normal` without us monkey-patching anyone's gate.
+//
+// Layout: 4-column grid, 220×100 px cells, starting at (50, 50). Each pack
+// becomes one node, captioned by its representative node ID. Loaded into a
+// fresh tab named "missing-nodes-for-picks" so the user can close it without
+// touching their real workflow.
+//
+// `packsByUrl` is the same Map shape `resolvePicksToInstall().willInstall`
+// returns: gitUrl → array of node IDs from that pack that are missing. We
+// take the first node ID per pack as the placeholder's type. One per pack
+// is enough — Manager dedupes by pack, so dropping 27 nodes from one pack
+// just slows the canvas without telling Manager anything new.
+//
+// Confirms canvas replacement before loading (preserves the user's current
+// graph as a rollback target if `loadGraphData` throws). Returns a
+// discriminated result so the caller can decide how to surface failures.
+export async function dropPlaceholdersForPacks(packsByUrl) {
+    if (!packsByUrl || packsByUrl.size === 0) {
+        return { ok: false, reason: "no-packs" };
+    }
+
+    const cellW = 220, cellH = 100, cols = 4, marginX = 50, marginY = 50;
+    const nodes = [];
+    let nextId = 1;
+    let idx = 0;
+    for (const nodeIds of packsByUrl.values()) {
+        if (!Array.isArray(nodeIds) || nodeIds.length === 0) continue;
+        const repName = nodeIds[0];
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        nodes.push({
+            id: nextId++,
+            type: repName,
+            pos: [marginX + col * cellW, marginY + row * cellH],
+            size: [cellW - 20, cellH - 20],
+            flags: {},
+            order: idx,
+            mode: 0,
+            inputs: [],
+            outputs: [],
+            properties: { "Node name for S&R": repName },
+            widgets_values: [],
+        });
+        idx++;
+    }
+
+    if (nodes.length === 0) return { ok: false, reason: "no-nodes" };
+
+    const graph = {
+        last_node_id: nextId - 1,
+        last_link_id: 0,
+        nodes,
+        links: [],
+        groups: [],
+        config: {},
+        extra: {},
+        version: 0.4,
+    };
+
+    const apply = async () => {
+        let previousGraph = null;
+        try {
+            if (canvasIsNonEmpty()) previousGraph = app.graph.serialize();
+        } catch (e) {
+            previousGraph = null;
+        }
+        try {
+            await app.loadGraphData(graph, true, true, "missing-nodes-for-picks", {});
+            toast(
+                `Dropped ${nodes.length} placeholder${nodes.length === 1 ? "" : "s"}. ` +
+                `Open Manager → "Install Missing Custom Nodes" to install.`
+            );
+            return { ok: true, count: nodes.length };
+        } catch (e) {
+            console.error("[Koolook] dropPlaceholders loadGraphData failed:", e);
+            if (previousGraph) {
+                try {
+                    await app.loadGraphData(previousGraph);
+                    toast("Failed to drop placeholders. Canvas restored. See console.");
+                    return { ok: false, reason: "load-failed", error: e };
+                } catch (restoreErr) {
+                    console.error("[Koolook] canvas restore failed:", restoreErr);
+                }
+            }
+            toast("Failed to drop placeholders. See console.");
+            return { ok: false, reason: "load-failed", error: e };
+        }
+    };
+
+    if (canvasIsNonEmpty()) {
+        return new Promise(resolve => {
+            showConfirmModal({
+                title: "Replace current workflow?",
+                message:
+                    `This will replace your canvas with ${nodes.length} placeholder ` +
+                    `node${nodes.length === 1 ? "" : "s"} (one per missing pack). ` +
+                    `Manager's "Install Missing Custom Nodes" will then offer to install ` +
+                    `them. Save your current work first if you have anything unsaved.`,
+                confirmLabel: "Replace canvas",
+                danger: true,
+                onConfirm: async () => resolve(await apply()),
+            });
+        });
+    }
+    return await apply();
+}
+
+// =============================================================================
 // Node insertion
 // =============================================================================
 function placeAtCanvasCenter(node) {

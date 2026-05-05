@@ -25,7 +25,6 @@ import {
     removeFromMyPicks,
     notifyPicksChanged,
     addToMyPicks,
-    exportPicks,
 } from "./picks_store.js";
 import {
     persistMutation,
@@ -56,7 +55,9 @@ import {
     loadWorkflowOntoCanvas,
     insertNode,
     getSelectedNodeTypes,
+    dropPlaceholdersForPacks,
 } from "./canvas_io.js";
+import { discoverMissingPacks } from "./installer.js";
 import {
     showInputModal,
     showConfirmModal,
@@ -82,6 +83,7 @@ import {
     saveSettings,
     getCurrentPresetName,
     setCurrentPresetName,
+    exportStarterPreset,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -1392,6 +1394,83 @@ export function renderPanel(container) {
 
     container.appendChild(snapshotRow);
 
+    // ---- Row 0b: Tools (admin/advanced — not for daily use) ----
+    // Sits between the Snapshot row and the search field. Holds power-user
+    // utilities a typical user shouldn't trigger by accident: exporting the
+    // curated_defaults.json (maintainer flow), the Manager-driven install of
+    // missing packs (only useful on a fresh install or after wiping nodes),
+    // and the canvas-handoff fallback for `security_level=normal` users
+    // (drops placeholder nodes so Manager's own "Install Missing Custom
+    // Nodes" UI takes over). Keeping these out of the per-section toolbars
+    // declutters the everyday Add/Save flow.
+    const dividerAfterSnapshot = document.createElement("div");
+    dividerAfterSnapshot.className = "koolook-tree-divider";
+    container.appendChild(dividerAfterSnapshot);
+
+    const toolsRow = document.createElement("div");
+    toolsRow.className = "koolook-actions-row";
+
+    const toolsLabel = document.createElement("span");
+    toolsLabel.className = "koolook-actions-label";
+    toolsLabel.textContent = "Tools";
+    toolsRow.appendChild(toolsLabel);
+
+    toolsRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-download",
+        title: "Export current state as starter_preset.json (copies snapshot JSON to clipboard — paste into web/starter_preset.json to ship as the next release's starter)",
+        onClick: exportStarterPreset,
+    }));
+
+    // "Install missing for picks" — always enabled. The modal itself decides
+    // whether anything actually needs installing (after probing Manager and
+    // walking picks against the live LiteGraph registry), so leaving the
+    // button enabled lets the user trigger the discovery flow whenever they
+    // want a status check, including the "everything's already installed"
+    // confirmation. Click handlers don't read picks here — the modal pulls
+    // a fresh `loadUserPicks()` snapshot at open-time.
+    toolsRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-download",
+        title: "Install missing custom nodes for current picks (via ComfyUI-Manager)",
+        onClick: () => showInstallMissingModal({ picks: loadUserPicks() }),
+    }));
+
+    // "Drop missing onto canvas" — the security_level=normal escape hatch.
+    // Discovery runs the same detect+map+resolve pipeline as the install
+    // modal, then for each missing pack we instantiate one placeholder node
+    // (the pack's first mapped node ID) on a fresh canvas. ComfyUI renders
+    // unknown types as red error nodes, which Manager's "Install Missing
+    // Custom Nodes" feature scans for — so the user gets a one-click
+    // handoff to Manager's UI-driven install path that doesn't go through
+    // /customnode/install/git_url's security gate.
+    toolsRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-th-large",
+        title: "Drop placeholders for missing packs onto canvas — then use Manager's \"Install Missing Custom Nodes\" (works at security_level=normal)",
+        onClick: async () => {
+            const picks = loadUserPicks();
+            if (!picks || picks.length === 0) {
+                toast("No picks to check. Add some favorites first.");
+                return;
+            }
+            const discovery = await discoverMissingPacks(picks);
+            if (!discovery.ok) {
+                if (discovery.reason === "manager-unreachable") {
+                    toast("ComfyUI-Manager isn't reachable — can't resolve picks to packs.");
+                } else {
+                    toast(`Could not load Manager's mapping database: ${discovery.error?.message || discovery.reason}.`);
+                }
+                return;
+            }
+            const byUrl = discovery.result.willInstall.byUrl;
+            if (byUrl.size === 0) {
+                toast("Nothing missing — every pick is installed (or unmapped).");
+                return;
+            }
+            await dropPlaceholdersForPacks(byUrl);
+        },
+    }));
+
+    container.appendChild(toolsRow);
+
     const dividerBeforeSearch = document.createElement("div");
     dividerBeforeSearch.className = "koolook-tree-divider";
     container.appendChild(dividerBeforeSearch);
@@ -1457,24 +1536,10 @@ export function renderPanel(container) {
     });
     nodesRow.appendChild(addBtn);
 
-    nodesRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-download",
-        title: "Export current picks as curated_defaults.json (copies JSON to clipboard)",
-        onClick: exportPicks,
-    }));
-
-    // "Install missing for picks" — always enabled. The modal itself decides
-    // whether anything actually needs installing (after probing Manager and
-    // walking picks against the live LiteGraph registry), so leaving the
-    // button enabled lets the user trigger the discovery flow whenever they
-    // want a status check, including the "everything's already installed"
-    // confirmation. Click handlers don't read picks here — the modal pulls
-    // a fresh `loadUserPicks()` snapshot at open-time.
-    nodesRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-cloud-download",
-        title: "Install missing custom nodes for current picks (via ComfyUI-Manager)",
-        onClick: () => showInstallMissingModal({ picks: loadUserPicks() }),
-    }));
+    // Daily-use Nodes row keeps only the Add (+) button — Export and
+    // Install-missing have been promoted up to the dedicated Tools row above
+    // the search field (they're admin/advanced operations the typical user
+    // shouldn't trigger from the everyday toolbar).
 
     container.appendChild(nodesRow);
 

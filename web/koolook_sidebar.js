@@ -13,7 +13,7 @@ import {
     TAB_TOOLTIP,
     TAB_ICON,
 } from "./sidebar/constants.js";
-import { seedDefaultsIfNeeded } from "./sidebar/picks_store.js";
+import { seedStarterPresetIfNeeded } from "./sidebar/snapshot.js";
 import {
     loadWorkflowsStore,
     seedWorkflowDefaultsIfNeeded,
@@ -28,7 +28,11 @@ app.registerExtension({
             console.warn("[Koolook] extensionManager.registerSidebarTab not available; sidebar not registered.");
             return;
         }
-        await seedDefaultsIfNeeded();
+        // Seeds the bundled starter preset into the user's snapshot library
+        // on first run (replaces the legacy `curated_defaults.json` localStorage
+        // pick-seed). Async-fires server I/O — kept off the critical path so
+        // sidebar tab registration isn't blocked behind it on a slow server.
+        seedStarterPresetIfNeeded();
         const loadResult = await loadWorkflowsStore();
         // Skip workflow seeding when /userdata file is corrupt — we don't want
         // to overwrite a recoverable-but-unparseable file with stock defaults.

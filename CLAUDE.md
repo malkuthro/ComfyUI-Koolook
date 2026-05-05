@@ -60,24 +60,33 @@ The broader iteration pattern (trigger phrases, what survives across
 re-syncs vs what doesn't, push/publish gates) is captured in
 [`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
 
-## Curated Nodes sidebar — distributed defaults
+## Kforge Labs sidebar — starter preset distribution
 
-The "Curated Nodes" ComfyUI sidebar tab (implemented in
-`web/koolook_sidebar.js`) seeds users' localStorage from
-`web/curated_defaults.json` on first load. To update the distributed
-default favorites list:
+The "Kforge Labs" ComfyUI sidebar tab (implemented in
+`web/koolook_sidebar.js`) ships a single bundled snapshot file at
+`web/starter_preset.json`. On first launch the seeder copies it into
+the user's snapshot library directory (the same dir the Snapshot
+Save/Load dialog reads) as `starter.json`. The user opens Snapshot →
+Load, picks `starter`, clicks → picks + workflows + tags + archive
+populated in one go.
 
-1. Customize picks inside ComfyUI (sidebar `+` / `×` / right-click → Add).
-2. Click the ↓ Export button → JSON copied to clipboard.
-3. Paste into `web/curated_defaults.json`, replacing the file contents.
+To update the distributed starter preset:
+
+1. Inside ComfyUI's Kforge Labs tab, dial in the state you want fresh
+   users to see — picks via `+` / `×` / right-click; workflows via the
+   Workflows section; tags via right-click → Tags…
+2. In the **Tools** row (between Snapshot and the search field), click
+   the ↓ button → full snapshot JSON copied to clipboard.
+3. Paste into `web/starter_preset.json`, replacing the file contents.
 4. Commit + push (does **not** trigger publish — only `pyproject.toml`
    changes merged to `main` do).
 
 Full workflow including reset / verification steps:
 [`docs/maintainers/curated-sidebar.md`](docs/maintainers/curated-sidebar.md).
-The seeder runs exactly once per browser, so existing users keep their
-personalized list when defaults change — the new default only reaches
-fresh installs and users who clear browser data.
+The seeder runs exactly once per browser AND skips users with non-empty
+existing picks (legacy curated_defaults.json users), so changing the
+shipped starter doesn't disturb anyone's existing state — the new
+starter only reaches fresh installs and users who clear browser data.
 
 ## Releasing
 
