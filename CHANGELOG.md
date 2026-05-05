@@ -6,6 +6,21 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **"Install missing for picks" toolbar button** in the Nodes section
+  (`pi-cloud-download` icon, next to Add and Export). Walks the user's
+  picks against ComfyUI-Manager's `/customnode/getmappings` mapping,
+  buckets into already-installed / will-install / unresolved, queues
+  unique git URLs through `/customnode/install/git_url`, polls
+  `/manager/queue/status` to drive a progress bar, and prompts to
+  reboot. Works on any install with ComfyUI-Manager loaded; falls back
+  to a clipboard URL list (with a `comfy node install` hint) if Manager
+  isn't reachable. New module `web/sidebar/installer.js` holds the
+  Manager-API client + resolver; the modal in `web/sidebar/modals.js`
+  drives the four-phase UI (discovery → confirm → progress → result).
+  403s from Manager's security gate are surfaced as actionable language
+  ("your security level forbids git-URL installs") rather than raw HTTP.
+
 ### Changed
 - **Save selection toast distinguishes "no selection" from "selection
   points at deleted nodes."** Previously both produced the generic

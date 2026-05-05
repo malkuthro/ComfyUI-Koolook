@@ -63,6 +63,7 @@ import {
     showSaveWorkflowModal,
     showContextMenu,
     showTagsModal,
+    showInstallMissingModal,
 } from "./modals.js";
 
 // =============================================================================
@@ -1377,6 +1378,19 @@ export function renderPanel(container) {
         iconClass: "pi pi-download",
         title: "Export current picks as curated_defaults.json (copies JSON to clipboard)",
         onClick: exportPicks,
+    }));
+
+    // "Install missing for picks" — always enabled. The modal itself decides
+    // whether anything actually needs installing (after probing Manager and
+    // walking picks against the live LiteGraph registry), so leaving the
+    // button enabled lets the user trigger the discovery flow whenever they
+    // want a status check, including the "everything's already installed"
+    // confirmation. Click handlers don't read picks here — the modal pulls
+    // a fresh `loadUserPicks()` snapshot at open-time.
+    nodesRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-download",
+        title: "Install missing custom nodes for current picks (via ComfyUI-Manager)",
+        onClick: () => showInstallMissingModal({ picks: loadUserPicks() }),
     }));
 
     container.appendChild(nodesRow);

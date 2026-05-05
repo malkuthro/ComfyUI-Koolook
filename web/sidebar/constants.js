@@ -114,6 +114,12 @@ export function ensureStyle() {
 .koolook-tag-chip-x:hover { opacity: 1; color: #ff7777; background: rgba(255,255,255,0.06); }
 .koolook-tag-add-row { display: flex; gap: 6px; align-items: center; }
 .koolook-tag-add-row .koolook-modal-input { flex: 1; }
+.koolook-install-stat-line { font-size: 12px; line-height: 1.5; padding: 1px 0; }
+.koolook-install-stat-line.koolook-install-stat-fail { color: #ff8888; }
+.koolook-install-unresolved { font-size: 11px; opacity: 0.75; margin-top: 4px; padding: 6px 8px; background: rgba(255,255,255,0.04); border-radius: 4px; word-break: break-all; max-height: 110px; overflow-y: auto; }
+.koolook-install-unresolved-summary { cursor: pointer; font-size: 11px; opacity: 0.75; margin-top: 4px; }
+.koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
+.koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
 `;
     document.head.appendChild(s);
 }
