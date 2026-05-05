@@ -61,12 +61,34 @@ function normalizeDirNode(node, stats) {
     for (const [wfName, wf] of Object.entries(wfs)) {
         // Drop entries that can't be loaded (missing/non-object graph).
         // Coerce `archived` to a strict boolean so a stray "false" string
-        // can't accidentally flag an entry as archived.
+        // can't accidentally flag an entry as archived. Coerce `tags` to a
+        // clean string[] (trim, drop empties, dedupe) so old entries without
+        // a tags field load with `tags: []` and the rest of the code can
+        // assume the field always exists.
         if (!wf || typeof wf !== "object" || !wf.graph || typeof wf.graph !== "object") {
             stats.dropped += 1;
             continue;
         }
-        cleanedWfs[wfName] = { ...wf, archived: wf.archived === true };
+        const tags = [];
+        if (Array.isArray(wf.tags)) {
+            const seen = new Set();
+            for (const raw of wf.tags) {
+                // Reject non-strings outright instead of coercing — `String(null)`
+                // becomes the literal string `"null"`, which would silently
+                // surface as a garbage tag in the Tags section. The schema
+                // contract is `string[]`; anything else is corruption from a
+                // hand-edited /userdata file or a bug elsewhere.
+                if (typeof raw !== "string") {
+                    stats.dropped += 1;
+                    continue;
+                }
+                const t = raw.trim();
+                if (!t || seen.has(t)) continue;
+                seen.add(t);
+                tags.push(t);
+            }
+        }
+        cleanedWfs[wfName] = { ...wf, archived: wf.archived === true, tags };
     }
     // Recurse into subdirectories. Pre-v0.3 nodes don't have a `directories`
     // field — give them an empty one so the rest of the code can assume it
@@ -503,6 +525,43 @@ export function getWorkflowGraph(path, wfName) {
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return null;
     return dir.workflows[wfName].graph || null;
+}
+
+// =============================================================================
+// Per-workflow tag operations. Tags are insertion-ordered string[] on each
+// workflow entry. Comparison is case-sensitive: "AI" and "ai" are distinct.
+// `normalizeDirNode` guarantees `tags` is always an array on cached entries,
+// but the mutators still defensively coerce so a freshly-saved workflow that
+// hasn't gone through normalize still gets sane behavior.
+// =============================================================================
+export function getWorkflowTags(path, wfName) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows[wfName]) return null;
+    const tags = dir.workflows[wfName].tags;
+    return Array.isArray(tags) ? [...tags] : [];
+}
+
+export function addTag(path, wfName, tag) {
+    tag = (tag || "").trim();
+    if (!tag) return false;
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows[wfName]) return false;
+    const wf = dir.workflows[wfName];
+    if (!Array.isArray(wf.tags)) wf.tags = [];
+    if (wf.tags.includes(tag)) return false;
+    wf.tags.push(tag);
+    return true;
+}
+
+export function removeTag(path, wfName, tag) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows[wfName]) return false;
+    const wf = dir.workflows[wfName];
+    if (!Array.isArray(wf.tags)) return false;
+    const idx = wf.tags.indexOf(tag);
+    if (idx < 0) return false;
+    wf.tags.splice(idx, 1);
+    return true;
 }
 
 // Delete every archived workflow under the directory at `path`. Returns

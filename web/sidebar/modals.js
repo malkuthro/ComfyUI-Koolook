@@ -503,6 +503,119 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
 }
 
 // =============================================================================
+// Tags modal — adds/removes tags one at a time, each via its own
+// persistMutation (passed in by the caller). The modal itself stays open until
+// the user clicks Close, so several edits can be made in a row. Chip rendering
+// reads from `getCurrentTags` after every successful mutation, so the live
+// state matches what the caller persisted.
+//
+// `getCurrentTags()` returns `null` when the underlying workflow no longer
+// exists (deleted/moved/renamed by a concurrent action). We surface this as
+// an explicit "gone" state — empty placeholder + disabled add input — so the
+// user doesn't keep typing tags into a modal that can't persist them.
+// =============================================================================
+export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag }) {
+    const body = document.createElement("div");
+
+    const lbl = document.createElement("label");
+    lbl.className = "koolook-modal-label";
+    lbl.textContent = "Current tags";
+    body.appendChild(lbl);
+
+    const chipsContainer = document.createElement("div");
+    chipsContainer.className = "koolook-tags-chips";
+    body.appendChild(chipsContainer);
+
+    let input;
+    let addBtn;
+    function renderChips() {
+        chipsContainer.innerHTML = "";
+        const tags = getCurrentTags();
+        if (tags === null) {
+            // Workflow disappeared between menu-open and now. Stay open so
+            // the user sees the explicit reason instead of a generic "no
+            // tags" placeholder, and disable the add path so a second click
+            // can't fire a doomed persistMutation.
+            const empty = document.createElement("span");
+            empty.className = "koolook-tags-empty";
+            empty.textContent = "Workflow no longer exists.";
+            chipsContainer.appendChild(empty);
+            if (input) {
+                input.disabled = true;
+                input.placeholder = "(workflow gone)";
+            }
+            if (addBtn) addBtn.disabled = true;
+            return;
+        }
+        if (tags.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "koolook-tags-empty";
+            empty.textContent = "No tags yet.";
+            chipsContainer.appendChild(empty);
+            return;
+        }
+        for (const tag of tags) {
+            const chip = document.createElement("span");
+            chip.className = "koolook-tag-chip";
+            const name = document.createElement("span");
+            name.textContent = tag;
+            chip.appendChild(name);
+            const x = document.createElement("span");
+            x.className = "koolook-tag-chip-x";
+            x.textContent = "×";
+            x.title = `Remove "${tag}"`;
+            x.addEventListener("click", () => {
+                onRemoveTag(tag, () => renderChips());
+            });
+            chip.appendChild(x);
+            chipsContainer.appendChild(chip);
+        }
+    }
+
+    const addLbl = document.createElement("label");
+    addLbl.className = "koolook-modal-label";
+    addLbl.textContent = "Add tag";
+    body.appendChild(addLbl);
+
+    const addRow = document.createElement("div");
+    addRow.className = "koolook-tag-add-row";
+    body.appendChild(addRow);
+
+    input = document.createElement("input");
+    input.className = "koolook-modal-input";
+    input.placeholder = "tag name";
+    addRow.appendChild(input);
+
+    const submit = () => {
+        if (input.disabled) return;
+        const v = input.value.trim();
+        if (!v) { input.focus(); return; }
+        onAddTag(v, () => {
+            input.value = "";
+            renderChips();
+            input.focus();
+        });
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+
+    addBtn = makeModalButton({ label: "Add", primary: true, onClick: submit });
+    addRow.appendChild(addBtn);
+
+    // Now that input + addBtn exist, run the initial render so the
+    // gone-state branch can disable them if the workflow is already missing.
+    renderChips();
+
+    let overlay;
+    const close = makeModalButton({ label: "Close", onClick: () => overlay.remove() });
+    ({ overlay } = makeModalShell({
+        title: `Tags for "${wfName}"`,
+        body,
+        actions: [close],
+    }));
+    setTimeout(() => { if (!input.disabled) input.focus(); }, 0);
+}
+
+// =============================================================================
 // Context menu helper
 // =============================================================================
 export function showContextMenu(event, items) {

@@ -44,6 +44,10 @@ import {
     moveDirectory,
     clearArchive,
     pathsEqual,
+    getWorkflowGraph,
+    getWorkflowTags,
+    addTag,
+    removeTag,
 } from "./workflows_store.js";
 import {
     serializeFullCanvas,
@@ -58,6 +62,7 @@ import {
     showConfirmModal,
     showSaveWorkflowModal,
     showContextMenu,
+    showTagsModal,
 } from "./modals.js";
 
 // =============================================================================
@@ -565,6 +570,55 @@ function countDescendantsOfRawDir(dir) {
 }
 
 // =============================================================================
+// Data gathering — tags (DFS walk over the workflow tree).
+//
+// Each output entry has shape:
+//   { name, entries: [{ wfName, path }, ...] }
+// `path` is the full directory string[] address of the workflow's home dir.
+// Archived workflows are skipped here so the Tags section reflects the
+// active set only — their tags are still persisted on the entry, so a
+// restore (via the Archive folder's right-click) brings them back into
+// the section. Tag grouping is case-sensitive: "AI" and "ai" produce
+// separate tag folders (the dedupe in `normalizeDirNode` is also
+// case-sensitive). The search filter is case-insensitive substring match
+// against tag name OR workflow name — typing a tag narrows to that group,
+// typing a workflow name keeps every tag the workflow carries.
+// =============================================================================
+function gatherTags(query) {
+    const q = (query || "").trim().toLowerCase();
+    const tagMap = new Map();
+
+    const walk = (parentPath) => {
+        for (const dirName of listDirectoryNames(parentPath)) {
+            const dirPath = [...parentPath, dirName];
+            const dir = dirOf(dirPath);
+            if (!dir) continue;
+            for (const [wfName, wf] of Object.entries(dir.workflows || {})) {
+                if (wf.archived === true) continue;
+                const tags = Array.isArray(wf.tags) ? wf.tags : [];
+                if (tags.length === 0) continue;
+                for (const tag of tags) {
+                    if (q && !tag.toLowerCase().includes(q) && !wfName.toLowerCase().includes(q)) continue;
+                    if (!tagMap.has(tag)) tagMap.set(tag, []);
+                    tagMap.get(tag).push({ wfName, path: dirPath });
+                }
+            }
+            walk(dirPath);
+        }
+    };
+    walk([]);
+
+    const tags = [...tagMap.entries()]
+        .map(([name, entries]) => ({
+            name,
+            entries: entries.sort((a, b) => compareNames(a.wfName, b.wfName)),
+        }))
+        .sort((a, b) => compareNames(a.name, b.name));
+    const total = tags.reduce((acc, t) => acc + t.entries.length, 0);
+    return { tags, total };
+}
+
+// =============================================================================
 // DOM helpers
 // =============================================================================
 
@@ -765,6 +819,45 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
             }),
         }));
 
+    // "+ New directory…" / "+ New subdirectory under …" both create a fresh
+    // directory and move the workflow into it as one atomic mutation. If
+    // the move couldn't land we manually undo the dir add so we don't leak
+    // an empty orphan; in practice that branch is unreachable (the new dir
+    // is empty so the move can't collide), but the explicit cleanup keeps a
+    // future regression from silently leaving stray directories behind.
+    function moveToNewDirAction(parentPath, parentLabel) {
+        showInputModal({
+            title: parentLabel
+                ? `New subdirectory under "${parentLabel}"`
+                : "New top-level directory",
+            label: "Name",
+            placeholder: "e.g. drafts",
+            confirmLabel: "Create & Move",
+            onSubmit: (name) => persistMutation({
+                mutate: () => {
+                    if (!addDirectory(parentPath, name)) return false;
+                    const target = [...parentPath, name];
+                    if (!moveWorkflow(dirPath, wfName, target)) {
+                        deleteDirectory(parentPath, name);
+                        return false;
+                    }
+                    return target;
+                },
+                onSuccess: (target) => toast(`Moved "${wfName}" to ${target.join(" / ")}.`),
+                onNoOp: () => toast(`Could not create — name in use, empty, or "Archive" reserved.`),
+            }),
+        });
+    }
+
+    const newDirItem = {
+        label: "+ New directory…",
+        action: () => moveToNewDirAction([], null),
+    };
+    const newSubdirItem = {
+        label: `+ New subdirectory under "${dirPath.join(" / ")}"…`,
+        action: () => moveToNewDirAction(dirPath, dirPath.join(" / ")),
+    };
+
     const archiveItem = isArchived
         ? {
             label: "Restore from archive",
@@ -780,6 +873,84 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 onSuccess: () => toast(`Archived "${wfName}".`),
             }),
         };
+
+    const duplicateItem = {
+        label: "Duplicate…",
+        action: () => {
+            const sourceGraph = getWorkflowGraph(dirPath, wfName);
+            if (!sourceGraph) {
+                toast("Could not duplicate — workflow not found.");
+                return;
+            }
+            // Capture tags at modal-open time so a same-name duplicate (which
+            // archives the original via `saveWorkflowEntry`) still inherits
+            // the source's categorization onto the new active entry.
+            const sourceTags = getWorkflowTags(dirPath, wfName) || [];
+            showInputModal({
+                title: "Duplicate workflow",
+                label: "New name",
+                defaultValue: `${wfName} (copy)`,
+                confirmLabel: "Duplicate",
+                onSubmit: (newName) => persistMutation({
+                    mutate: () => {
+                        // Re-validate at submit-time. A concurrent action
+                        // (another tab, drag-and-drop) could have deleted
+                        // the source between menu-open and submit. Without
+                        // this guard, `saveWorkflowEntry` would call
+                        // `ensureDirectoryAtPath` and silently re-create
+                        // the parent directory with a clone of the
+                        // captured graph — effectively undoing someone
+                        // else's delete with no feedback.
+                        if (getWorkflowGraph(dirPath, wfName) === null) return false;
+                        const cloned = JSON.parse(JSON.stringify(sourceGraph));
+                        const result = saveWorkflowEntry(dirPath, newName, cloned);
+                        if (!result) return false;
+                        // Route tag inheritance through the public `addTag`
+                        // mutator instead of writing `wf.tags` directly, so
+                        // the Duplicate path stays inside the documented
+                        // store API. The whole sequence rides on the same
+                        // persistMutation snapshot — commit failure rolls
+                        // back the save AND the tag adds together.
+                        for (const t of sourceTags) addTag(dirPath, newName, t);
+                        return result;
+                    },
+                    onSuccess: (result) => {
+                        if (result && result.archivedAs) {
+                            toast(`Duplicated to "${newName}" — previous "${newName}" archived as "${result.archivedAs}".`);
+                        } else {
+                            toast(`Duplicated to "${newName}".`);
+                        }
+                    },
+                    onNoOp: () => toast(`Could not duplicate — "${wfName}" no longer exists.`),
+                }),
+            });
+        },
+    };
+
+    const tagsItem = {
+        label: "Tags…",
+        action: () => {
+            showTagsModal({
+                wfName,
+                // Pass the raw `null` through so the modal can render an
+                // explicit gone-state when the workflow is deleted/moved/
+                // renamed by a concurrent action. Collapsing to `[]` would
+                // silently morph "workflow gone" into "no tags yet" and
+                // accept doomed Add inputs.
+                getCurrentTags: () => getWorkflowTags(dirPath, wfName),
+                onAddTag: (tag, onDone) => persistMutation({
+                    mutate: () => addTag(dirPath, wfName, tag),
+                    onSuccess: () => { onDone(); toast(`Tagged "${wfName}" with "${tag}".`); },
+                    onNoOp: () => toast(`Could not add — empty or already tagged.`),
+                }),
+                onRemoveTag: (tag, onDone) => persistMutation({
+                    mutate: () => removeTag(dirPath, wfName, tag),
+                    onSuccess: () => { onDone(); toast(`Removed tag "${tag}" from "${wfName}".`); },
+                    onNoOp: () => toast(`Tag "${tag}" was not present.`),
+                }),
+            });
+        },
+    };
 
     showContextMenu(event, [
         {
@@ -802,8 +973,19 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 });
             },
         },
+        duplicateItem,
+        tagsItem,
         archiveItem,
-        ...(moveItems.length > 0 ? [null, ...moveItems] : []),
+        // Move section — separator first; existing-path entries (when any),
+        // then a separator, then the always-available new-dir / new-subdir
+        // entries. Skipping the inner separator when there are no existing
+        // paths keeps the menu visually clean for a fresh store with one
+        // directory.
+        null,
+        ...moveItems,
+        ...(moveItems.length > 0 ? [null] : []),
+        newDirItem,
+        newSubdirItem,
         null,
         {
             label: "Delete",
@@ -992,6 +1174,44 @@ addSection({
     },
     build(ctx) {
         for (const dir of ctx.data.directories) renderGatheredDir(ctx, dir);
+    },
+});
+
+// Tags section — flat list of tag folders, each containing the workflows
+// carrying that tag. Workflows that share a tag appear under the tag folder
+// regardless of which directory they live in. Click loads the workflow from
+// its real path; the right-click menu operates on the workflow at its
+// canonical location, so renames/moves originating here update the same
+// underlying entry the Workflows section shows.
+addSection({
+    id: "tags",
+    label: "Tags",
+    iconKind: "folder",
+    // No emptyMessage — until any workflow carries a tag, the section stays
+    // silent rather than nag the user about an empty feature.
+    gather(q) {
+        return gatherTags(q);
+    },
+    build(ctx) {
+        for (const tag of ctx.data.tags) {
+            ctx.folder({
+                name: tag.name,
+                count: tag.entries.length,
+                path: tag.name,
+                build: (tagCtx) => {
+                    for (const entry of tag.entries) {
+                        tagCtx.leaf({
+                            row: makeWorkflowLeafRow({
+                                name: entry.wfName,
+                                dirName: entry.path.join(" / "),
+                                onClick: () => loadWorkflowOntoCanvas(entry.path, entry.wfName),
+                                onContextMenu: (e) => workflowRowContextMenu(e, entry.path, entry.wfName, false),
+                            }),
+                        });
+                    }
+                },
+            });
+        }
     },
 });
 
