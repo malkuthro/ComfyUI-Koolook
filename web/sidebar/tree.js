@@ -629,22 +629,30 @@ function gatherUserPickPacks(query) {
 }
 
 // =============================================================================
-// Data gathering — category-first mode
+// Data gathering — theme-first mode
 //
-// Groups every visible pick by its node-class CATEGORY path, ignoring REPOS
-// affiliation. Path segments that look the same after canonical-key
-// normalization merge into one folder — `Image/Upscaling` and
-// `image/upscaling` collapse to a single subtree. Display label is the
-// most-common original casing seen for that key (ties → first-seen, by
-// Map iteration order).
+// Groups every user pick by a single semantic theme — independent of which
+// pack the node ships from. Picks-only (no REPOS-driven auto-pulled nodes)
+// because the user's mental model is "show me my image-related favorites in
+// one place," not "show me every image-related node ComfyUI knows about."
 //
-// Output shape (recursive `CategoryNode`):
-//   {
-//     children: Map<canonicalKey, CategoryNode>,  // sub-categories
-//     displayCounts: Map<originalCasing, count>,  // for label resolution
-//     nodes: [{ type, display, packLabel, isUserPick, unresolved? }],
-//   }
-// The root node has empty `displayCounts` (it's never rendered as a folder).
+// Theme extraction (`extractTheme`):
+//   1. Read the node's CATEGORY string from its registered class.
+//   2. Look up the source pack via `findPackPathForType` (the same
+//      precedence the toolbar `+` button uses for spotlight).
+//   3. If the FIRST CATEGORY segment matches the pack label (after
+//      canonical-key normalization — case + whitespace + underscore +
+//      hyphen folded), strip it. The next segment is the theme.
+//   4. Otherwise the first segment is already the theme.
+//   5. Canonicalize the theme key for cross-pack merging so
+//      `KJNodes/image/...`, `Koolook/Image/...`, and `image/...` all
+//      land in the same bucket regardless of casing.
+//
+// Output shape (flat — no nested folders within a theme):
+//   Map<canonicalThemeKey, {
+//     displayLabels: Map<originalCasing, count>,   // for label resolution
+//     nodes: [{ type, display, isUserPick, unresolved? }],
+//   }>
 // =============================================================================
 
 // Canonical key for a single category-path segment. Lowercase + strip
@@ -658,10 +666,9 @@ function canonicalSegment(s) {
 
 // Resolves a folder's display label from the count map of original
 // casings seen. Picks the most common; ties → first-seen. Map iteration
-// is insertion order, which mirrors `Object.entries(registry)` walk
-// order in `gatherNodesByCategory` — stable across renders for a given
-// registry state. Empty maps are only valid for synthetic buckets like
-// `(uncategorized)`, where the caller pre-seeds the label.
+// is insertion order, which mirrors the gather walk order — stable
+// across renders for a given registry state. Empty maps are only valid
+// for synthetic buckets where the caller pre-seeds the label.
 function pickDisplayLabel(displayCounts) {
     let best = null;
     let bestCount = -1;
@@ -674,110 +681,241 @@ function pickDisplayLabel(displayCounts) {
     return best;
 }
 
-function ensureSyntheticBucket(root, label) {
-    if (!root.children.has(label)) {
-        root.children.set(label, {
-            displayCounts: new Map([[label, 1]]),
-            children: new Map(),
-            nodes: [],
-        });
+// =============================================================================
+// Theme classifier — broad semantic buckets via keyword substring match.
+//
+// The strict canonical-segment approach (`image` ≠ `images` ≠ `Image-Save`)
+// produces too many tiny buckets — "image", "images", "HQ-Image-Save",
+// "rgthree/Image Comparer", "upscaling/Upscale Image By" all fragment apart
+// even though the user mentally lumps them all under "Image."
+//
+// This classifier folds anything that mentions an image-related word
+// (image / img / pixel / color / upscale / resize / etc.) into a single
+// "Image" bucket regardless of which pack or subcategory the node lives
+// under. First classifier whose pattern matches the search corpus wins.
+//
+// Corpus = pack name + full category path + node display title + node ID,
+// lower-cased. Searching all four fields catches:
+//   • "HQ-Image-Save" (pack name has "image")
+//   • "rgthree/Image Comparer" (display title has "image")
+//   • "EasyAIPipeline" (type ID has "pipeline")
+//
+// Keyword choices favor breadth — adjust this list when a future pick
+// lands in the wrong bucket. Patterns deeper in the list act as fallbacks
+// for picks the broader earlier patterns missed.
+// =============================================================================
+const THEME_CLASSIFIERS = [
+    {
+        key: "image",
+        label: "Image",
+        patterns: [
+            /\bimg\b/i, /image/i, /pixel/i,
+            /color/i, /\bocio\b/i, /\bexr\b/i, /\bhdr\b/i,
+            /upscal/i, /resize/i, /comparer/i, /\btile\b/i,
+            /frame/i, /thumbnail/i,
+        ],
+    },
+    {
+        key: "video",
+        label: "Video",
+        patterns: [/video/i, /\bwan\b/i, /hunyuan/i, /cogvideo/i, /\bltx\b/i, /motion/i, /sequence/i],
+    },
+    {
+        key: "mask",
+        label: "Mask",
+        patterns: [/\bmask/i, /\balpha\b/i, /segment/i, /matte/i, /rmbg/i],
+    },
+    {
+        key: "audio",
+        label: "Audio",
+        patterns: [/audio/i, /\bwav\b/i, /\bsound\b/i],
+    },
+    {
+        key: "model",
+        label: "Model",
+        patterns: [
+            /model/i, /checkpoint/i, /\blora\b/i, /\bvae\b/i, /\bclip\b/i,
+            /controlnet/i, /ipadapter/i, /diffusion/i, /\bunet\b/i,
+        ],
+    },
+    {
+        key: "sampler",
+        label: "Sampler",
+        patterns: [/sampler/i, /scheduler/i, /\bnoise\b/i, /\bsigma\b/i],
+    },
+    {
+        key: "conditioning",
+        label: "Conditioning",
+        patterns: [/condition/i, /\bembed/i, /tokeniz/i],
+    },
+    {
+        key: "text",
+        label: "Text & Prompt",
+        patterns: [/\btext\b/i, /prompt/i, /\bstring\b/i, /caption/i],
+    },
+    {
+        key: "math",
+        label: "Math & Logic",
+        patterns: [
+            /\bmath\b/i, /\blogic\b/i, /\bint\b/i, /\bfloat\b/i, /\bbool/i,
+            /switch/i, /\bcompare\b/i, /numeric/i,
+        ],
+    },
+    {
+        key: "pipeline",
+        label: "Pipeline & Batch",
+        patterns: [/pipeline/i, /workflow/i, /\bbatch\b/i, /\bcache\b/i],
+    },
+    {
+        key: "io",
+        label: "I/O",
+        patterns: [/\bload\b/i, /\bsave\b/i, /\bfile\b/i, /\bpath\b/i, /import/i, /export/i],
+    },
+    {
+        key: "camera",
+        label: "Camera",
+        patterns: [/camera/i, /\blens\b/i, /\bpose\b/i, /\btrack/i],
+    },
+    {
+        key: "utility",
+        label: "Utility",
+        // `\bget\b` / `\bset\b` are kept short on purpose — they're the
+        // last-resort net for trivial getter/setter nodes that didn't hit
+        // any earlier classifier. Do NOT generalize them to `/get/` or
+        // `/set/` (no boundaries) without re-walking the upstream pattern
+        // list — un-anchored variants would fish picks out of node names
+        // like "AssetGet…" that should land in their own theme.
+        patterns: [/\butil/i, /helper/i, /\btool\b/i, /\bget\b/i, /\bset\b/i, /reroute/i],
+    },
+];
+
+// Returns `{key, label}` of the first classifier whose patterns match the
+// corpus, or `null` if no classifier matched. Walked in order — broader
+// upstream classifiers preempt downstream ones. "Image Comparer (rgthree)"
+// lands in Image because the corpus contains the word "image", which the
+// Image classifier's `/image/i` pattern matches; ordering would also have
+// protected it (Math is below Image), but the substring hit comes first.
+function classifyTheme(corpus) {
+    for (const cls of THEME_CLASSIFIERS) {
+        for (const pat of cls.patterns) {
+            if (pat.test(corpus)) return { key: cls.key, label: cls.label };
+        }
     }
-    return root.children.get(label);
+    return null;
 }
 
-// Recursive count of every leaf node under a CategoryNode (including itself
-// and all descendants). Used to drive each folder's header count so a
-// parent that contains only sub-folders still shows a meaningful total.
-function countNodesInCategoryNode(node) {
-    let c = node.nodes.length;
-    for (const child of node.children.values()) c += countNodesInCategoryNode(child);
-    return c;
+// Per-pick: classify into one of the broad themes above, falling back to
+// the pack-prefix-stripped first CATEGORY segment when no classifier
+// matched. Returns one of:
+//   { kind: "unresolved" }           — pack not loaded, no registry entry
+//   { kind: "uncategorized" }        — pack loaded but CATEGORY empty/missing
+//   { kind: "theme", themeRaw, themeCanonical }
+//
+// The fallback path keeps long-tail picks (a niche pack with no recognizable
+// keywords) in their original-segment bucket rather than collapsing every
+// unrecognized thing into one "(other)" pile.
+function extractTheme(typeName, registry) {
+    const nc = registry[typeName];
+    if (!nc) return { kind: "unresolved" };
+    const cat = nc.category || "";
+    const display = nc.title || typeName;
+    const loc = findPackPathForType(typeName);
+    const packLabel = loc?.packLabel || "";
+
+    // Search corpus combines every signal we have about this node so a
+    // keyword in any of them — pack name, category subtree, display title,
+    // raw type ID — counts. No `.toLowerCase()` needed: every classifier
+    // pattern carries the `/i` flag.
+    const corpus = `${packLabel} ${cat} ${display} ${typeName}`;
+    const classified = classifyTheme(corpus);
+    if (classified) {
+        return {
+            kind: "theme",
+            themeRaw: classified.label,
+            themeCanonical: classified.key,
+        };
+    }
+
+    // Fallback: original pack-prefix-stripped first-segment behavior, so a
+    // niche pick from "MyPack/specialFoo/SomeNode" lands in "specialFoo"
+    // rather than dumping everything unmatched into "(other)".
+    const segs = cat.split("/").map(s => s.trim()).filter(Boolean);
+    if (segs.length === 0) return { kind: "uncategorized" };
+    let themeIdx = 0;
+    if (loc && loc.packLabel && segs.length > 1) {
+        if (canonicalSegment(loc.packLabel) === canonicalSegment(segs[0])) {
+            themeIdx = 1;
+        }
+    }
+    const themeRaw = segs[themeIdx];
+    if (!themeRaw) return { kind: "uncategorized" };
+    return {
+        kind: "theme",
+        themeRaw,
+        themeCanonical: canonicalSegment(themeRaw),
+    };
 }
 
-function gatherNodesByCategory(query) {
+function gatherNodesByTheme(query) {
     const q = (query || "").trim().toLowerCase();
     const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
-    const userPicks = new Set(loadUserPicks());
+    const userPicks = loadUserPicks();
 
-    // Phase 1: collect the same union as repo-mode — REPOS-driven auto-pulled
-    // nodes plus user picks. `candidates` is keyed by node type so the two
-    // sources merge cleanly (a user pick that's also in a REPOS pack only
-    // appears once, but is still flagged removable).
-    const candidates = new Map();
-    for (const repo of REPOS) {
-        const root = repo.categoryRoot || "";
-        if (repo.select !== "all" || !root) continue;
-        for (const [type, nc] of Object.entries(registry)) {
-            const cat = (nc && nc.category) || "";
-            if (cat !== root && !cat.startsWith(root + "/")) continue;
-            const display = (nc && nc.title) || type;
-            if (repo.excludePatterns && repo.excludePatterns.some(re => re.test(display))) continue;
-            candidates.set(type, { display, category: cat, isUserPick: false });
-        }
-    }
-    for (const type of userPicks) {
-        if (candidates.has(type)) {
-            candidates.get(type).isUserPick = true;
-            continue;
-        }
-        const nc = registry[type];
-        if (!nc) {
-            // Pack not currently loaded. Repo mode silently drops these;
-            // category mode surfaces them under "(unresolved)" so the user
-            // can see what they picked even before installing the pack.
-            candidates.set(type, { display: type, category: null, isUserPick: true, unresolved: true });
-            continue;
-        }
-        const cat = nc.category || "";
-        const display = nc.title || type;
-        candidates.set(type, { display, category: cat, isUserPick: true });
-    }
-
-    // Phase 2: build the canonical-key tree from the collected candidates,
-    // applying the search filter at leaf insertion time.
-    const root = { displayCounts: new Map(), children: new Map(), nodes: [] };
-    for (const [type, info] of candidates) {
-        if (!matchesQuery(info.display, type, q)) continue;
-        if (info.unresolved) {
-            const bucket = ensureSyntheticBucket(root, "(unresolved)");
-            bucket.nodes.push({
-                type,
-                display: info.display,
-                packLabel: null,
-                isUserPick: true,
-                unresolved: true,
+    // Map<canonicalThemeKey, { displayLabels: Map<rawLabel, count>, nodes: [...] }>
+    const themes = new Map();
+    const ensureBucket = (key, seedLabel) => {
+        if (!themes.has(key)) {
+            themes.set(key, {
+                displayLabels: seedLabel ? new Map([[seedLabel, 1]]) : new Map(),
+                nodes: [],
             });
+        }
+        return themes.get(key);
+    };
+
+    for (const type of userPicks) {
+        const result = extractTheme(type, registry);
+
+        if (result.kind === "unresolved") {
+            // Pack not loaded — surface the pick under (unresolved) so the
+            // user can see what they picked even before installing the pack.
+            // Display falls back to the bare type since `nc.title` is unreachable.
+            if (!matchesQuery(type, type, q)) continue;
+            const bucket = ensureBucket("(unresolved)", "(unresolved)");
+            bucket.nodes.push({ type, display: type, isUserPick: true, unresolved: true });
             continue;
         }
-        const cat = info.category || "";
-        const segs = cat.split("/").map(s => s.trim()).filter(Boolean);
-        if (segs.length === 0) {
-            const bucket = ensureSyntheticBucket(root, "(uncategorized)");
-            bucket.nodes.push({ type, display: info.display, packLabel: null, isUserPick: info.isUserPick });
+
+        // `nc` is guaranteed non-null here: extractTheme() above already
+        // bailed with `kind: "unresolved"` for any type missing from the
+        // registry, and we caught that branch before reaching this line.
+        const nc = registry[type];
+        const display = nc.title || type;
+        if (!matchesQuery(display, type, q)) continue;
+
+        if (result.kind === "uncategorized") {
+            const bucket = ensureBucket("(uncategorized)", "(uncategorized)");
+            bucket.nodes.push({ type, display, isUserPick: true });
             continue;
         }
-        // Pack label = first segment. In ComfyUI, custom-node packs typically
-        // namespace their categories with the pack name (e.g. `KJNodes/image`),
-        // so the first segment is a serviceable proxy for "which pack does
-        // this come from" — used for the small badge on category-mode leaves.
-        const packLabel = segs[0];
-        let cur = root;
-        for (const seg of segs) {
-            const ck = canonicalSegment(seg);
-            if (!cur.children.has(ck)) {
-                cur.children.set(ck, {
-                    displayCounts: new Map(),
-                    children: new Map(),
-                    nodes: [],
-                });
-            }
-            const nextNode = cur.children.get(ck);
-            nextNode.displayCounts.set(seg, (nextNode.displayCounts.get(seg) || 0) + 1);
-            cur = nextNode;
-        }
-        cur.nodes.push({ type, display: info.display, packLabel, isUserPick: info.isUserPick });
+
+        const bucket = ensureBucket(result.themeCanonical);
+        bucket.displayLabels.set(
+            result.themeRaw,
+            (bucket.displayLabels.get(result.themeRaw) || 0) + 1,
+        );
+        bucket.nodes.push({ type, display, isUserPick: true });
     }
-    return root;
+
+    return themes;
+}
+
+// Total-leaf count across every theme bucket. Drives the section header's
+// count badge so the user sees "N picks" regardless of theme distribution.
+function countNodesInThemes(themes) {
+    let c = 0;
+    for (const bucket of themes.values()) c += bucket.nodes.length;
+    return c;
 }
 
 // =============================================================================
@@ -993,7 +1131,7 @@ function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu, draggab
     return { row, chevron };
 }
 
-function makeNodeLeafRow({ display, type, removable, onClick, packBadge, unresolved, breadcrumb }) {
+function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadcrumb }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
     if (unresolved) row.classList.add("koolook-leaf-unresolved");
@@ -1028,19 +1166,6 @@ function makeNodeLeafRow({ display, type, removable, onClick, packBadge, unresol
         nameEl.textContent = display;
     }
     row.appendChild(nameEl);
-
-    // Pack badge — only emitted in category mode by the caller. The first
-    // segment of the node's CATEGORY path doubles as a serviceable pack
-    // label (most custom-node packs namespace categories with the pack
-    // name), so users still see "where this came from" even when the tree
-    // is grouped by type rather than source.
-    if (packBadge) {
-        const badge = document.createElement("span");
-        badge.className = "koolook-pack-badge";
-        badge.textContent = packBadge;
-        badge.title = `Pack: ${packBadge}`;
-        row.appendChild(badge);
-    }
 
     if (removable) {
         const rm = document.createElement("span");
@@ -1509,8 +1634,8 @@ addSection({
     gather(q) {
         const mode = loadGroupMode();
         if (mode === "category") {
-            const tree = gatherNodesByCategory(q);
-            return { mode, tree, total: countNodesInCategoryNode(tree) };
+            const themes = gatherNodesByTheme(q);
+            return { mode, themes, total: countNodesInThemes(themes) };
         }
         const auto = gatherNodesByRepo(q);
         const user = gatherUserPickPacks(q);
@@ -1533,7 +1658,7 @@ addSection({
             return;
         }
         if (ctx.data.mode === "category") {
-            emitCategoryTreeChildren(ctx, ctx.data.tree);
+            emitThemeChildren(ctx, ctx.data.themes);
             return;
         }
         for (const pack of ctx.data.packs) {
@@ -1568,16 +1693,16 @@ addSection({
 });
 
 // Flat-list emitters for the Nodes section under search. Both group modes
-// produce the same `{ display, type, breadcrumb, packBadge?, removable,
-// unresolved? }` shape so the leaf factory call is uniform downstream.
-// Sorted by display name (case-insensitive); breadcrumb is a `›`-joined
-// path of the folder labels the leaf would live under in the un-filtered
-// tree, so the user retains the spatial-origin signal.
+// produce the same `{ display, type, breadcrumb, removable, unresolved? }`
+// shape so the leaf factory call is uniform downstream. Sorted by display
+// name (case-insensitive); breadcrumb is a `›`-joined path of the folder
+// labels the leaf would live under in the un-filtered tree, so the user
+// retains the spatial-origin signal.
 
 function emitNodesFlatSearchResults(ctx) {
     const items = [];
     if (ctx.data.mode === "category") {
-        collectFlatFromCategoryTree(ctx.data.tree, [], items);
+        collectFlatFromThemes(ctx.data.themes, items);
     } else {
         collectFlatFromRepoMode(ctx.data.packs, items);
     }
@@ -1588,7 +1713,6 @@ function emitNodesFlatSearchResults(ctx) {
                 display: item.display,
                 type: item.type,
                 breadcrumb: item.breadcrumb,
-                packBadge: item.packBadge || null,
                 unresolved: !!item.unresolved,
                 removable: !!item.removable,
                 onClick: () => insertNode(item.type),
@@ -1597,25 +1721,22 @@ function emitNodesFlatSearchResults(ctx) {
     }
 }
 
-function collectFlatFromCategoryTree(node, ancestorLabels, out) {
-    for (const n of node.nodes) {
-        out.push({
-            display: n.display,
-            type: n.type,
-            packBadge: n.packLabel || null,
-            unresolved: !!n.unresolved,
-            removable: !!n.isUserPick,
-            breadcrumb: ancestorLabels.length ? ancestorLabels.join(" › ") : null,
-        });
-    }
-    for (const child of node.children.values()) {
-        const label = pickDisplayLabel(child.displayCounts);
-        // Defensive: every non-root node gets a non-empty `displayCounts`
-        // (real categories accumulate in `gatherNodesByCategory`; synthetic
-        // buckets are pre-seeded). A null label here would indicate a future
-        // walker forgot to seed — skip rather than emit a `null › Foo` crumb.
-        if (!label) continue;
-        collectFlatFromCategoryTree(child, [...ancestorLabels, label], out);
+function collectFlatFromThemes(themes, out) {
+    for (const bucket of themes.values()) {
+        // Theme label = the most common original casing seen across the
+        // picks that landed in this bucket. Falls back to the canonical key
+        // for synthetic buckets where `displayLabels` was pre-seeded with
+        // the bucket name itself.
+        const label = pickDisplayLabel(bucket.displayLabels);
+        for (const n of bucket.nodes) {
+            out.push({
+                display: n.display,
+                type: n.type,
+                unresolved: !!n.unresolved,
+                removable: !!n.isUserPick,
+                breadcrumb: label || null,
+            });
+        }
     }
 }
 
@@ -1643,38 +1764,41 @@ function collectFlatFromRepoMode(packs, out) {
     }
 }
 
-// Emits the children of a CategoryNode under `parentCtx`. Recursive: for each
-// sub-folder we call back into ourselves with the child node. Folder paths
-// use the canonical key (not the resolved display label) so the user's
-// expansion state in `pathStates` survives an upstream casing change in
-// the most-common label.
-function emitCategoryTreeChildren(parentCtx, node) {
-    const childEntries = [...node.children.entries()]
-        .map(([ck, child]) => ({
-            ck,
-            child,
-            label: pickDisplayLabel(child.displayCounts) || ck,
+// Emits one folder per theme bucket under `parentCtx`. Each theme folder
+// holds a flat sorted list of its picks — no further nesting. Folder
+// `path` uses the canonical key (not the resolved display label) so the
+// user's expansion state in `pathStates` survives a future upstream
+// casing change in the most-common label for that theme.
+function emitThemeChildren(parentCtx, themes) {
+    const themeEntries = [...themes.entries()]
+        .map(([canonical, bucket]) => ({
+            canonical,
+            bucket,
+            label: pickDisplayLabel(bucket.displayLabels) || canonical,
         }))
         .sort((a, b) => compareNames(a.label, b.label));
-    for (const { ck, child, label } of childEntries) {
+
+    for (const { canonical, bucket, label } of themeEntries) {
         parentCtx.folder({
             name: label,
-            count: countNodesInCategoryNode(child),
-            path: ck,
-            build: (sub) => emitCategoryTreeChildren(sub, child),
-        });
-    }
-    const sortedNodes = [...node.nodes].sort((a, b) => compareNames(a.display, b.display));
-    for (const n of sortedNodes) {
-        parentCtx.leaf({
-            row: makeNodeLeafRow({
-                display: n.display,
-                type: n.type,
-                removable: !!n.isUserPick,
-                packBadge: n.packLabel || null,
-                unresolved: !!n.unresolved,
-                onClick: () => insertNode(n.type),
-            }),
+            count: bucket.nodes.length,
+            path: canonical,
+            build: (sub) => {
+                const sortedNodes = [...bucket.nodes].sort(
+                    (a, b) => compareNames(a.display, b.display),
+                );
+                for (const n of sortedNodes) {
+                    sub.leaf({
+                        row: makeNodeLeafRow({
+                            display: n.display,
+                            type: n.type,
+                            removable: !!n.isUserPick,
+                            unresolved: !!n.unresolved,
+                            onClick: () => insertNode(n.type),
+                        }),
+                    });
+                }
+            },
         });
     }
 }
@@ -1990,6 +2114,13 @@ export function renderPanel(container) {
     searchRow.appendChild(searchWrap);
     container.appendChild(searchRow);
 
+    // Divider between the search field and the Nodes action bar — gives the
+    // search field its own visual zone instead of jamming it against the
+    // first action row beneath it.
+    const dividerAfterSearch = document.createElement("div");
+    dividerAfterSearch.className = "koolook-tree-divider";
+    container.appendChild(dividerAfterSearch);
+
     // ---- Row 2: Nodes action bar ----
     const nodesRow = document.createElement("div");
     nodesRow.className = "koolook-actions-row";
@@ -2025,13 +2156,13 @@ export function renderPanel(container) {
 
     const repoModeBtn = makeModeBtn(
         "repo",
-        "pi pi-database",
+        "pi pi-sitemap",
         "Group by pack — each repo's nodes under their original category subtree.",
     );
     const categoryModeBtn = makeModeBtn(
         "category",
-        "pi pi-sitemap",
-        "Group by category — nodes from any pack sharing a CATEGORY path collapse together (case-insensitive).",
+        "pi pi-bars",
+        "Group by theme — picks regrouped by category theme (e.g. all image nodes together) regardless of source pack.",
     );
 
     function refreshModeToggle() {
@@ -2046,8 +2177,14 @@ export function renderPanel(container) {
     nodesRow.appendChild(modeToggle);
 
     const addBtn = document.createElement("button");
-    addBtn.className = "koolook-add-btn";
-    addBtn.textContent = "+";
+    // Same height as the icon-bar buttons (toolbar pi-* glyphs) — uses an
+    // explicit `pi pi-plus` icon at the same font-size rather than a 16px "+"
+    // text glyph that sat taller than the rest of the row. The dusty-green
+    // accent class flags it as the primary action in the Nodes row.
+    addBtn.className = "koolook-add-btn koolook-icon-btn koolook-add-btn-green";
+    const addBtnIcon = document.createElement("i");
+    addBtnIcon.className = "pi pi-plus";
+    addBtn.appendChild(addBtnIcon);
     addBtn.title = "Add the selected canvas node(s) to favorites";
     addBtn.addEventListener("click", () => {
         const types = getSelectedNodeTypes();

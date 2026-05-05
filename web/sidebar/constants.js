@@ -38,7 +38,10 @@ export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
 // path, with case-insensitive merging). Persisted in localStorage so the
 // chosen mode survives reloads.
 export const GROUP_MODE_KEY = "koolook.groupMode.v1";
-export const GROUP_MODE_DEFAULT = "repo";
+// Theme mode is the better default for newcomers — they're more likely to
+// think "where are my image nodes?" than "which pack is this from?". Existing
+// users with localStorage already set keep whatever mode they chose.
+export const GROUP_MODE_DEFAULT = "category";
 
 // Starter preset — a single shipped snapshot file the seeder copies into the
 // user's snapshot library directory on first run (instead of seeding picks
@@ -81,7 +84,7 @@ export function ensureStyle() {
     const s = document.createElement("style");
     s.id = STYLE_ID;
     s.textContent = `
-.koolook-sidebar { display: flex; flex-direction: column; height: 100%; font-size: 13px; user-select: none; }
+.koolook-sidebar { display: flex; flex-direction: column; height: 100%; font-size: 13px; user-select: none; padding-top: 10px; }
 .koolook-search-row { margin: 6px; flex-shrink: 0; }
 .koolook-actions-row { display: flex; align-items: center; gap: 4px; padding: 2px 6px; flex-shrink: 0; }
 .koolook-actions-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; font-weight: 600; }
@@ -90,9 +93,15 @@ export function ensureStyle() {
 .koolook-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.55; font-size: 11px; pointer-events: none; }
 .koolook-search { width: 100%; padding: 5px 8px 5px 26px; box-sizing: border-box; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: var(--input-text, inherit); font-size: 12px; outline: none; }
 .koolook-search:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
-.koolook-add-btn { padding: 0 12px; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; cursor: pointer; color: var(--input-text, inherit); font-size: 16px; line-height: 1; flex-shrink: 0; }
+.koolook-add-btn { padding: 0 10px; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; cursor: pointer; color: var(--input-text, inherit); font-size: 12px; line-height: 1; flex-shrink: 0; }
 .koolook-add-btn:hover { background: rgba(255,255,255,0.1); }
 .koolook-add-btn:active { background: rgba(255,255,255,0.15); }
+/* Dusty-green accent on the "+" Add-to-favorites button — distinguishes the
+   primary action in the Nodes row from the neutral toolbar buttons it sits
+   alongside. Same dimensions as koolook-icon-btn; only the colors differ. */
+.koolook-add-btn-green { background: rgba(120, 165, 100, 0.25); border-color: rgba(120, 165, 100, 0.5); }
+.koolook-add-btn-green:hover { background: rgba(120, 165, 100, 0.45); }
+.koolook-add-btn-green:active { background: rgba(120, 165, 100, 0.6); }
 .koolook-icon-btn { padding: 0 10px; font-size: 12px; }
 .koolook-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .koolook-tree { flex: 1; overflow-y: auto; padding: 0 4px 8px; }
@@ -170,7 +179,6 @@ export function ensureStyle() {
 .koolook-mode-toggle-btn { padding: 0 8px; height: 22px; background: transparent; border: none; cursor: pointer; color: inherit; font-size: 11px; opacity: 0.5; line-height: 1; }
 .koolook-mode-toggle-btn:hover { background: rgba(255,255,255,0.06); opacity: 0.85; }
 .koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); opacity: 1; }
-.koolook-pack-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); opacity: 0.7; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
 .koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
 .koolook-preview-card { position: fixed; z-index: 10000; background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.18)); border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; width: 320px; max-width: 90vw; max-height: calc(100vh - 16px); pointer-events: none; overflow: hidden auto; }

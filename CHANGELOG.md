@@ -6,6 +6,28 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Changed
+- **Sidebar second mode — "Theme" instead of "Category".** The sitemap-icon
+  toggle in the Nodes action row now groups picks by **semantic theme**
+  rather than by raw CATEGORY first-segment. The new algorithm strips the
+  source pack's name from the front of each pick's CATEGORY (via the
+  existing `findPackPathForType` precedence) before grouping, so
+  `KJNodes/image/Get`, `Koolook/Image/EasyResize`, and `image/foo` all
+  collapse to one top-level `image` folder. Each theme bucket renders as
+  a flat sorted list — no further sub-folders. Picks-only (no
+  REPOS-driven auto-pulled candidates) so the second mode genuinely
+  reflects "my image-related favorites" rather than "every image-shaped
+  node ComfyUI knows about." Synthetic buckets `(unresolved)` /
+  `(uncategorized)` survive as before.
+- **Pack-name badges removed from leaf rows.** The small dim labels
+  (`Koolook`, `KJNodes`, `EasyUse`) that used to render at the right edge
+  of every leaf in theme mode and in search-flatten are gone. The
+  breadcrumb prefix on search-flatten rows already conveys origin in a
+  cleaner form, and theme mode by definition doesn't care about source
+  pack — the badge was redundant. `makeNodeLeafRow` no longer accepts a
+  `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
+  `constants.js`.
+
 ### Added
 - **Modules — splice a saved cluster into your live canvas instead of
   replacing it.** Tag any saved workflow with the literal tag `module`
