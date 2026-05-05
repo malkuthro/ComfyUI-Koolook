@@ -64,7 +64,25 @@ import {
     showContextMenu,
     showTagsModal,
     showInstallMissingModal,
+    showSaveSnapshotDialog,
+    showLoadSnapshotDialog,
+    showSnapshotSettingsDialog,
 } from "./modals.js";
+import {
+    sanitizeName,
+    gatherSnapshot,
+    applySnapshot,
+    listPresets,
+    readPreset,
+    writePreset,
+    presetExists,
+    deletePreset,
+    getLibraryInfo,
+    getSettings,
+    saveSettings,
+    getCurrentPresetName,
+    setCurrentPresetName,
+} from "./snapshot.js";
 
 // =============================================================================
 // Built-in section IDs. These are also pathState key prefixes — every
@@ -1312,6 +1330,71 @@ export function renderPanel(container) {
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
+
+    // Three small wrappers over the snapshot dialogs. Each opens directly
+    // — no tabbed parent modal — so the user goes from toolbar click to
+    // the right form in one step. Capability functions are passed in
+    // explicitly to keep `modals.js` UI-only (no `snapshot.js` import
+    // crossing the layer).
+    const openSaveDialog = () => showSaveSnapshotDialog({
+        getCurrentPresetName,
+        setCurrentPresetName,
+        presetExists,
+        writePreset,
+        gatherSnapshot,
+        sanitizeName,
+        onToast: toast,
+    });
+    const openLoadDialog = () => showLoadSnapshotDialog({
+        listPresets,
+        readPreset,
+        deletePreset,
+        applySnapshot,
+        setCurrentPresetName,
+        getCurrentPresetName,
+        getLibraryInfo,
+        onToast: toast,
+    });
+    const openSettingsDialog = () => showSnapshotSettingsDialog({
+        getSettings,
+        saveSettings,
+        onToast: toast,
+    });
+
+    // ---- Row 0: Snapshot library action bar (top-level kit ops) ----
+    // Mirrors the Nodes/Workflows action-row pattern but lives above the
+    // search field — these are infrequent meta-actions (save/load the
+    // whole Kforge Labs state as a named preset) and shouldn't be
+    // mixed into the per-section toolbars.
+    const snapshotRow = document.createElement("div");
+    snapshotRow.className = "koolook-actions-row";
+
+    const snapshotLabel = document.createElement("span");
+    snapshotLabel.className = "koolook-actions-label";
+    snapshotLabel.textContent = "Snapshot";
+    snapshotRow.appendChild(snapshotLabel);
+
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-download",
+        title: "Load a saved snapshot (replaces current state)",
+        onClick: openLoadDialog,
+    }));
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cloud-upload",
+        title: "Save current state — overwrites the last-loaded preset, or prompts for a name",
+        onClick: openSaveDialog,
+    }));
+    snapshotRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-cog",
+        title: "Snapshot library settings (where presets are saved on disk)",
+        onClick: openSettingsDialog,
+    }));
+
+    container.appendChild(snapshotRow);
+
+    const dividerBeforeSearch = document.createElement("div");
+    dividerBeforeSearch.className = "koolook-tree-divider";
+    container.appendChild(dividerBeforeSearch);
 
     // ---- Row 1: Search ----
     const searchRow = document.createElement("div");

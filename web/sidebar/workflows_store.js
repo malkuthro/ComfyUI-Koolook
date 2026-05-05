@@ -333,7 +333,8 @@ export async function seedWorkflowDefaultsIfNeeded() {
 //      detach future reads from the change.
 //
 //   4. **Never replace `workflowsCache` itself except in seed / load /
-//      rollback paths.** The three legitimate rebind sites are:
+//      rollback / snapshot-apply paths.** The four legitimate rebind sites
+//      are:
 //        - module init (this file's top-level `let workflowsCache = …`)
 //        - `loadWorkflowsStore` and `seedWorkflowDefaultsIfNeeded`
 //          (re-binding the cache to a freshly-normalized server payload
@@ -341,11 +342,16 @@ export async function seedWorkflowDefaultsIfNeeded() {
 //        - the closure returned by `snapshotCache()` running rollback
 //          inside `persistMutation` — this rebind is what makes commit
 //          failure recoverable
+//        - `replaceAllWorkflows` (snapshot-apply) — bulk-replaces the
+//          entire cache from a deserialized snapshot file, with the same
+//          `snapshotCache()` rollback wrapper as `persistMutation` so the
+//          atomic "swap on persist success, restore on failure" contract
+//          is preserved
 //      Outside callers hold no reference to the cache (it's
 //      module-private), so external rebinds are impossible. The constraint
 //      is internal: a fifth rebind site added by a future contributor for
 //      any other reason would break the snapshot/restore semantics that
-//      `persistMutation` depends on.
+//      `persistMutation` and `replaceAllWorkflows` depend on.
 // =============================================================================
 
 const ARCHIVE_RESERVED_NAME = "archive";
@@ -568,6 +574,47 @@ export function removeTag(path, wfName, tag) {
     if (idx < 0) return false;
     wf.tags.splice(idx, 1);
     return true;
+}
+
+// =============================================================================
+// Snapshot / preset support — bulk replace + read-only export of the cache.
+// Used by the snapshot library flow (#46 item 1).
+// =============================================================================
+
+// Replace the entire `workflowsCache` with a freshly-normalized version of
+// `rawStore` and persist the result atomically. Returns `true` on
+// successful persist (server or localStorage fallback), `false` on full
+// persist rejection — in which case the cache is rolled back to its
+// pre-call state so the in-memory state stays consistent with disk.
+//
+// Atomicity matters because a snapshot apply replaces both pieces of
+// user state (picks + workflows) and the caller's UI presents the
+// "Replace current state?" confirm as a single act. A partially-applied
+// load (cache rebound but persist rejected) would diverge in-memory
+// from disk; the next reload would revert silently and the user would
+// have no signal that the load didn't stick.
+//
+// Bypasses `persistMutation` because the entire cache is being replaced
+// (rather than mutated through a single mutator). Uses `snapshotCache`
+// directly for the same atomic semantics — it's the same primitive
+// `persistMutation` uses internally.
+export async function replaceAllWorkflows(rawStore) {
+    const restore = snapshotCache();
+    workflowsCache = normalizeWorkflowsStore(rawStore);
+    const result = await persistWorkflowsToServer(workflowsCache);
+    if (result === false) {
+        restore();
+        return false;
+    }
+    notifyWorkflowsChanged();
+    return true;
+}
+
+// Deep-cloned read-only view of `workflowsCache` for the snapshot export
+// flow. Returning a clone (rather than the live ref) keeps callers from
+// accidentally mutating cache state through the export pipeline.
+export function getAllWorkflowsForExport() {
+    return JSON.parse(JSON.stringify(workflowsCache));
 }
 
 // Delete every archived workflow under the directory at `path`. Returns

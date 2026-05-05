@@ -48,6 +48,18 @@ export function removeFromMyPicks(typeName) {
     saveUserPicks(loadUserPicks().filter(p => p !== typeName));
 }
 
+// Bulk-replace the entire pick list. Used by the snapshot import flow —
+// the caller has just deserialized a preset and wants picks to mirror it
+// exactly. Filters non-strings defensively (snapshot files are user-
+// editable and may have been hand-touched). Returns true on persist
+// success, false on localStorage rejection (quota / private mode).
+export function setAllPicks(picks) {
+    const cleaned = Array.isArray(picks)
+        ? picks.filter(p => typeof p === "string")
+        : [];
+    return saveUserPicks(cleaned);
+}
+
 export function notifyPicksChanged() {
     window.dispatchEvent(new CustomEvent(PICKS_CHANGED_EVENT));
 }

@@ -854,6 +854,439 @@ export function showInstallMissingModal({ picks }) {
 }
 
 // =============================================================================
+// Snapshot / preset library — three separate dialogs (Save / Load / Settings),
+// one per toolbar button. No tabs, no shared state across them.
+//
+// Capability functions are passed in by the caller instead of imported here,
+// so this file stays UI-only and the snapshot logic stays in its own module
+// (`./snapshot.js`).
+// =============================================================================
+
+// Local helper: today's date in YYYY-MM-DD form for the default name.
+function todayStamp() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+// Local helper: render a preset's metadata line (used by the Load dialog).
+function formatPreviewMeta(p) {
+    const parts = [];
+    parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
+    parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
+    if (p.exportedAt) {
+        try {
+            const d = new Date(p.exportedAt);
+            if (!isNaN(d.getTime())) parts.push(`exported ${d.toLocaleDateString()}`);
+        } catch (e) { /* noop */ }
+    }
+    return parts.join(" · ");
+}
+
+// Local helper: a 3-button confirm modal (Save / Save as new / Cancel) for
+// the Save flow when there's a current preset to overwrite. `showConfirmModal`
+// is 2-button only; we'd need to bend it. Cleaner to assemble directly with
+// `makeModalShell`.
+function showThreeWayDialog({ title, message, primaryLabel, secondaryLabel, cancelLabel, onPrimary, onSecondary }) {
+    const body = document.createElement("div");
+    const msg = document.createElement("div");
+    msg.className = "koolook-modal-message";
+    msg.textContent = message;
+    body.appendChild(msg);
+
+    let overlay;
+    const close = () => overlay.remove();
+
+    const cancel = makeModalButton({
+        label: cancelLabel || "Cancel",
+        onClick: close,
+    });
+    const secondary = makeModalButton({
+        label: secondaryLabel,
+        onClick: () => { close(); onSecondary(); },
+    });
+    const primary = makeModalButton({
+        label: primaryLabel,
+        primary: true,
+        onClick: () => { close(); onPrimary(); },
+    });
+    ({ overlay } = makeModalShell({
+        title,
+        body,
+        actions: [cancel, secondary, primary],
+    }));
+}
+
+// =============================================================================
+// Save flow.
+//
+// One click semantics:
+//   - If a current preset is tracked → confirm "Save over <name>?" with
+//     three options (overwrite / rename / cancel).
+//   - If not → straight to a name prompt with `preset YYYY-MM-DD` default.
+//
+// Save success → updates the tracker so subsequent Save clicks default
+// to overwrite-the-same-one.
+// =============================================================================
+export function showSaveSnapshotDialog({
+    getCurrentPresetName,
+    setCurrentPresetName,
+    presetExists,
+    writePreset,
+    gatherSnapshot,
+    sanitizeName,
+    onToast,
+}) {
+    const toast = onToast || (() => {});
+
+    async function doSave(name, { confirmOverwrite }) {
+        const sanitized = sanitizeName(name);
+        if (!sanitized) {
+            toast("Snapshot name is empty after stripping unsafe characters.");
+            return;
+        }
+        // For Save-as-new only: check existence + prompt to overwrite.
+        // The "overwrite current" path skipped this prompt by design
+        // (the user already confirmed via the three-way dialog).
+        //
+        // `presetExists` is now tri-state: true / false / null. The
+        // null case means the existence check itself failed (network
+        // down, server error) — refuse to silently write, since we
+        // can't tell whether we'd be clobbering an existing preset.
+        if (confirmOverwrite) {
+            const exists = await presetExists(sanitized);
+            if (exists === null) {
+                toast(
+                    "Cannot reach the preset library to verify name. " +
+                    "Save canceled — check Settings or your connection."
+                );
+                return;
+            }
+            if (exists === true) {
+                showConfirmModal({
+                    title: "Overwrite existing preset?",
+                    message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
+                    confirmLabel: "Overwrite",
+                    danger: true,
+                    onConfirm: () => writeAndToast(sanitized),
+                });
+                return;
+            }
+        }
+        writeAndToast(sanitized);
+    }
+
+    async function writeAndToast(name) {
+        try {
+            const snap = gatherSnapshot(name);
+            await writePreset(name, snap);
+            setCurrentPresetName(name);
+            toast(`Saved "${name}".`);
+        } catch (e) {
+            console.error("[Koolook] preset save failed:", e);
+            toast(`Could not save preset: ${e.message}`);
+        }
+    }
+
+    function promptForName(defaultName) {
+        showInputModal({
+            title: "Save snapshot",
+            label: "Snapshot name",
+            defaultValue: defaultName,
+            placeholder: "e.g. Wan video kit",
+            confirmLabel: "Save",
+            onSubmit: (typed) => doSave(typed, { confirmOverwrite: true }),
+        });
+    }
+
+    const current = getCurrentPresetName();
+    if (current) {
+        showThreeWayDialog({
+            title: "Save snapshot",
+            message: `Save current state over "${current}"?`,
+            primaryLabel: "Save",
+            secondaryLabel: "Save as new…",
+            cancelLabel: "Cancel",
+            onPrimary: () => doSave(current, { confirmOverwrite: false }),
+            onSecondary: () => promptForName(`${current} (copy)`),
+        });
+    } else {
+        promptForName(`preset ${todayStamp()}`);
+    }
+}
+
+// =============================================================================
+// Load flow.
+//
+// Single dialog with the preset list. Each row click loads (with confirm),
+// each row's × button deletes (with confirm). Top of the dialog shows the
+// current library path so the user can see where they're loading from.
+//
+// Load success → updates the tracker so a subsequent Save defaults to
+// overwriting that preset.
+// =============================================================================
+export function showLoadSnapshotDialog({
+    listPresets,
+    readPreset,
+    deletePreset,
+    applySnapshot,
+    setCurrentPresetName,
+    getCurrentPresetName,
+    getLibraryInfo,
+    onToast,
+}) {
+    const toast = onToast || (() => {});
+    const body = document.createElement("div");
+
+    const pathLine = document.createElement("div");
+    pathLine.style.cssText = "font-size: 11px; opacity: 0.55; margin-bottom: 10px; word-break: break-all;";
+    pathLine.textContent = "Library: (loading…)";
+    body.appendChild(pathLine);
+
+    const listWrap = document.createElement("div");
+    body.appendChild(listWrap);
+
+    let overlay;
+    const close = () => overlay.remove();
+
+    function renderEmpty(text) {
+        const el = document.createElement("div");
+        el.className = "koolook-snapshot-empty";
+        el.textContent = text;
+        return el;
+    }
+
+    async function refresh() {
+        listWrap.innerHTML = "";
+        listWrap.appendChild(renderEmpty("Loading…"));
+        let previews;
+        try { previews = await listPresets(); }
+        catch (e) { previews = []; }
+        listWrap.innerHTML = "";
+        if (previews.length === 0) {
+            listWrap.appendChild(renderEmpty("No presets in this library yet. Use Save to create one."));
+            return;
+        }
+        const list = document.createElement("div");
+        list.className = "koolook-snapshot-list";
+        for (const p of previews) {
+            const row = document.createElement("div");
+            row.className = "koolook-snapshot-row";
+
+            const info = document.createElement("div");
+            info.className = "koolook-snapshot-row-info";
+            info.title = `Click to load "${p.displayName}"`;
+            const name = document.createElement("div");
+            name.className = "koolook-snapshot-row-name";
+            name.textContent = p.displayName;
+            info.appendChild(name);
+            const meta = document.createElement("div");
+            meta.className = "koolook-snapshot-row-meta";
+            meta.textContent = formatPreviewMeta(p);
+            info.appendChild(meta);
+            info.addEventListener("click", () => promptApply(p));
+            row.appendChild(info);
+
+            const actions = document.createElement("div");
+            actions.className = "koolook-snapshot-row-actions";
+            const delBtn = document.createElement("button");
+            delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
+            delBtn.textContent = "×";
+            delBtn.title = `Delete "${p.displayName}"`;
+            delBtn.addEventListener("click", (e) => { e.stopPropagation(); promptDelete(p); });
+            actions.appendChild(delBtn);
+            row.appendChild(actions);
+
+            list.appendChild(row);
+        }
+        listWrap.appendChild(list);
+    }
+
+    function promptApply(preview) {
+        showConfirmModal({
+            title: "Replace current state?",
+            message:
+                `Loading "${preview.displayName}" will replace your current ` +
+                `picks and workflows with the snapshot's contents (` +
+                `${formatPreviewMeta(preview)}). This cannot be undone.`,
+            confirmLabel: "Load preset",
+            danger: true,
+            onConfirm: async () => {
+                try {
+                    const snap = await readPreset(preview.fileName);
+                    const { picksOk, workflowsOk } = await applySnapshot(snap);
+                    close();
+                    // Gate the tracker on FULL success only. A partial-apply
+                    // (one of picks / workflows persisted, the other didn't)
+                    // leaves on-disk and in-memory state inconsistent — if
+                    // we tracked the preset name anyway, the next Save would
+                    // default to "Save over '<name>'?" and overwrite the
+                    // saved preset with the corrupted half-state. Clear the
+                    // tracker on partial failure so the next Save forces a
+                    // fresh name prompt.
+                    if (picksOk && workflowsOk) {
+                        setCurrentPresetName(preview.fileName);
+                        toast(`Loaded preset "${preview.displayName}".`);
+                    } else if (picksOk || workflowsOk) {
+                        setCurrentPresetName(null);
+                        toast(
+                            `Loaded "${preview.displayName}" — PARTIAL: ` +
+                            `picks ${picksOk ? "OK" : "FAIL"}, ` +
+                            `workflows ${workflowsOk ? "OK" : "FAIL"}. ` +
+                            `Reload to recover prior state. Tracker cleared.`
+                        );
+                    } else {
+                        setCurrentPresetName(null);
+                        toast(`Loaded "${preview.displayName}" in memory but persist failed. Reload to recover.`);
+                    }
+                } catch (e) {
+                    console.error("[Koolook] preset load failed:", e);
+                    toast(`Could not load "${preview.displayName}": ${e.message}`);
+                }
+            },
+        });
+    }
+
+    function promptDelete(preview) {
+        showConfirmModal({
+            title: "Delete preset?",
+            message: `"${preview.displayName}" will be removed from the library. This cannot be undone.`,
+            confirmLabel: "Delete",
+            danger: true,
+            onConfirm: async () => {
+                try {
+                    await deletePreset(preview.fileName);
+                    // If the deleted preset was the one tracked as
+                    // "currently loaded," clear the tracker. Otherwise
+                    // the next Save would offer to "Save over '<deleted>'"
+                    // and silently re-create the file.
+                    if (typeof getCurrentPresetName === "function" &&
+                        getCurrentPresetName() === preview.fileName) {
+                        setCurrentPresetName(null);
+                    }
+                    toast(`Deleted "${preview.displayName}".`);
+                    await refresh();
+                } catch (e) {
+                    console.error("[Koolook] preset delete failed:", e);
+                    toast(`Could not delete "${preview.displayName}": ${e.message}`);
+                }
+            },
+        });
+    }
+
+    const closeBtn = makeModalButton({ label: "Close", onClick: close });
+    ({ overlay } = makeModalShell({
+        title: "Load snapshot",
+        body,
+        actions: [closeBtn],
+    }));
+    refresh();
+    if (typeof getLibraryInfo === "function") {
+        getLibraryInfo().then((info) => {
+            if (info) pathLine.textContent = `Library: ${info.path}`;
+            else pathLine.textContent = "Library path unavailable.";
+        }).catch(() => { pathLine.textContent = "Library path unavailable."; });
+    } else {
+        pathLine.textContent = "";
+    }
+}
+
+// =============================================================================
+// Settings flow.
+//
+// Single dialog with one editable field (library path). Two action buttons:
+// Save (writes the path to the server-side settings file) and Reset to
+// default (clears the saved path; server falls back to env var or built-in
+// default). A read-only line shows the currently-resolved path + source so
+// the user can see what's actually in effect right now.
+// =============================================================================
+export function showSnapshotSettingsDialog({
+    getSettings,
+    saveSettings,
+    onToast,
+}) {
+    const toast = onToast || (() => {});
+    const body = document.createElement("div");
+
+    body.appendChild(modalLabel("Library path"));
+
+    const input = document.createElement("input");
+    input.className = "koolook-modal-input";
+    input.placeholder = "/absolute/path/to/library  (leave empty to use env-var or default)";
+    input.disabled = true;
+    body.appendChild(input);
+
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size: 11px; opacity: 0.55; margin: 8px 0 12px; line-height: 1.5; word-break: break-all;";
+    hint.textContent = "Loading current settings…";
+    body.appendChild(hint);
+
+    let overlay;
+    const close = () => overlay.remove();
+
+    async function refresh() {
+        let settings;
+        try { settings = await getSettings(); }
+        catch (e) { settings = null; }
+        if (!settings) {
+            hint.textContent =
+                "Settings endpoint unavailable — server-side routes not registered. " +
+                "Restart ComfyUI to fix.";
+            return;
+        }
+        input.value = settings.savedLibraryPath || "";
+        input.disabled = false;
+        let sourceLabel;
+        if (settings.source === "settings") sourceLabel = "from this Settings panel";
+        else if (settings.source === "env") sourceLabel = `from ${settings.envVar} env var`;
+        else sourceLabel = "built-in default";
+        hint.textContent =
+            `Currently in effect: ${settings.resolvedPath}\n(source: ${sourceLabel})`;
+        hint.style.whiteSpace = "pre-line";
+    }
+
+    async function doSave(rawValue) {
+        try {
+            const result = await saveSettings(rawValue);
+            const sourceLabel = result.source === "settings"
+                ? "from this Settings panel"
+                : (result.source === "env" ? "from env var" : "built-in default");
+            hint.textContent =
+                `Currently in effect: ${result.resolvedPath}\n(source: ${sourceLabel})`;
+            input.value = result.savedLibraryPath || "";
+            toast(rawValue
+                ? "Library path saved."
+                : "Override cleared — using env var / default."
+            );
+        } catch (e) {
+            console.error("[Koolook] settings save failed:", e);
+            toast(`Could not save settings: ${e.message}`);
+        }
+    }
+
+    refresh();
+
+    const cancel = makeModalButton({ label: "Close", onClick: close });
+    const reset = makeModalButton({
+        label: "Reset to default",
+        onClick: () => doSave(""),
+    });
+    const save = makeModalButton({
+        label: "Save",
+        primary: true,
+        onClick: () => doSave(input.value.trim()),
+    });
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doSave(input.value.trim());
+    });
+
+    ({ overlay } = makeModalShell({
+        title: "Snapshot library settings",
+        body,
+        actions: [cancel, reset, save],
+    }));
+}
+
+
+// =============================================================================
 // Context menu helper
 // =============================================================================
 export function showContextMenu(event, items) {
