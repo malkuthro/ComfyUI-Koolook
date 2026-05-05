@@ -77,6 +77,7 @@ import {
     deletePreset,
     downloadSnapshotAsFile,
     readSnapshotFile,
+    getLibraryInfo,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -1342,6 +1343,7 @@ export function renderPanel(container) {
         downloadSnapshotAsFile,
         readSnapshotFile,
         sanitizeName,
+        getLibraryInfo,
         onToast: toast,
     });
 

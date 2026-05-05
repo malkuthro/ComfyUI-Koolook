@@ -3,10 +3,16 @@
 //
 // A "snapshot" is a single JSON file that captures the full Kforge Labs state
 // — curated picks + the entire workflows store — under a user-chosen name.
-// Multiple snapshots live side-by-side as files inside ComfyUI's userdata
-// at /userdata/koolook-presets/<name>.json, so they're trivially shareable
-// across machines (copy the folder, sync via Dropbox/iCloud/Drive, or use
-// the per-snapshot Download/Upload actions in the Manage tab).
+// Multiple snapshots live side-by-side as files in a configurable filesystem
+// directory served by Koolook's `/koolook/presets/*` endpoints (see
+// `koolook_routes.py`).
+//
+// Storage location:
+//   - Default: `<comfyui-userdata>/koolook-presets/`
+//   - Configurable: set the `KFORGELABS_PRESETS` env var on the ComfyUI
+//     server before launch to point at any absolute filesystem path
+//     (NFS / SMB mount for facility-shared libraries, Dropbox folder for
+//     cross-machine personal sync, etc.).
 //
 // Schema:
 //   {
@@ -21,14 +27,16 @@
 // `kind` + `version` are dispatch fields for future migrations. Anything
 // without `kind === "koolook-snapshot"` is rejected on import — keeps a
 // stray unrelated JSON file from being applied as state.
+//
+// Server-side filename validation: filenames are restricted to a whitelist
+// at the route handler. Anything outside that whitelist returns 400 from
+// the server.
 // =============================================================================
 import { loadUserPicks, setAllPicks, notifyPicksChanged } from "./picks_store.js";
 import { replaceAllWorkflows, getAllWorkflowsForExport } from "./workflows_store.js";
 
 export const SNAPSHOT_KIND = "koolook-snapshot";
 export const SNAPSHOT_VERSION = 1;
-export const PRESETS_DIR = "koolook-presets";
-const USERDATA_OVERWRITE_QUERY = "?overwrite=true";
 
 // =============================================================================
 // Filename hygiene
@@ -102,102 +110,115 @@ export async function applySnapshot(snapshot) {
 }
 
 // =============================================================================
-// Server I/O — list / read / write / delete presets in /userdata/koolook-presets/
+// Server I/O — calls Koolook's `/koolook/presets/*` routes, defined in
+// `koolook_routes.py`. The server reads the `KFORGELABS_PRESETS` env var
+// to decide where on disk the library lives (with a default fallback to
+// `<comfyui-userdata>/koolook-presets/`), so the same client code works
+// for personal-only, NFS/SMB facility-shared, and Dropbox-synced setups.
 //
-// ComfyUI's userdata API:
-//   GET    /userdata/<file>                   → file content
-//   POST   /userdata/<file>?overwrite=...    → write file
-//   DELETE /userdata/<file>                   → delete file (assumed; if
-//                                              the deployment doesn't
-//                                              support it the response
-//                                              just reports an error
-//                                              cleanly)
-//   GET    /userdata?dir=<dir>&recurse=0&split=1
-//                                            → list directory; with split=1,
-//                                              entries are
-//                                              [path, modified_at, size]
+// Routes:
+//   GET    /koolook/presets/info         → {path, isDefault, envVar, exists, writable}
+//   GET    /koolook/presets/list         → array of {name, mtime, size}
+//   GET    /koolook/presets/file?name=…  → file content
+//   POST   /koolook/presets/file?name=…  → write file body
+//   DELETE /koolook/presets/file?name=…  → delete file
+//
+// `name` is always the FULL filename including `.json` extension —
+// matches the server-side validation regex exactly.
 // =============================================================================
 
-function presetFilePath(name) {
-    return `${PRESETS_DIR}/${encodeURIComponent(name)}.json`;
+const ROUTE_INFO = "/koolook/presets/info";
+const ROUTE_LIST = "/koolook/presets/list";
+const ROUTE_FILE = "/koolook/presets/file";
+
+function fileQuery(fileName) {
+    return `?name=${encodeURIComponent(`${fileName}.json`)}`;
 }
 
-// Returns an array of `{name, exportedAt, workflowCount, pickCount}` for
-// each preset in /userdata/koolook-presets/, sorted alphabetically by
-// name (case-insensitive). Returns `[]` on a missing directory or
-// listing error — the modal shows "no presets yet" rather than crashing.
+// Filename → preview metadata. Returns
+// `{displayName, fileName, exportedAt, workflowCount, pickCount}` on
+// success, `null` if the file isn't a valid snapshot. Failed reads are
+// filtered out by `listPresets` so the list shows only valid entries;
+// corrupt files surface in the console for debugging.
+async function loadPreview(fullName) {
+    try {
+        const bareName = fullName.replace(/\.json$/i, "");
+        const resp = await fetch(`${ROUTE_FILE}?name=${encodeURIComponent(fullName)}`);
+        if (!resp.ok) return null;
+        const text = await resp.text();
+        const obj = JSON.parse(text);
+        if (obj.kind !== SNAPSHOT_KIND) return null;
+        return {
+            // Display name comes from inside the file; the filename is the
+            // storage key. They should match, but a hand-edited file might
+            // disagree — trust the file's `name` for display, the filename
+            // for operations.
+            displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
+            fileName: bareName,
+            exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
+            workflowCount: countWorkflowsInStore(obj.workflows),
+            pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
+        };
+    } catch (e) {
+        console.warn(`[Koolook] failed to read preset "${fullName}":`, e);
+        return null;
+    }
+}
+
+// Returns the library's storage path + writability for the Manage tab's
+// info icon tooltip. Returns null if the endpoint isn't reachable (e.g.
+// the server-side routes weren't registered) — caller falls back to a
+// generic message.
+export async function getLibraryInfo() {
+    try {
+        const resp = await fetch(ROUTE_INFO);
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch (e) {
+        console.warn("[Koolook] preset library info unavailable:", e);
+        return null;
+    }
+}
+
+// Returns an array of preview objects, sorted by display name
+// (case-insensitive). Empty array on a missing directory or unreachable
+// server — modal shows an empty state rather than throwing.
 export async function listPresets() {
     let resp;
     try {
-        resp = await fetch(
-            `/userdata?dir=${encodeURIComponent(PRESETS_DIR)}&recurse=0&split=1&full_info=1`
-        );
+        resp = await fetch(ROUTE_LIST);
     } catch (e) {
         console.warn("[Koolook] preset listing failed (network):", e);
         return [];
     }
-    // 404 = directory doesn't exist yet (no presets saved). Treat as empty.
-    if (resp.status === 404) return [];
     if (!resp.ok) {
         console.warn(`[Koolook] preset listing returned HTTP ${resp.status}`);
         return [];
     }
-    let data;
+    let entries;
     try {
-        data = await resp.json();
+        entries = await resp.json();
     } catch (e) {
         console.warn("[Koolook] preset listing JSON parse failed:", e);
         return [];
     }
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(entries)) return [];
 
-    // Each entry under `split=1` is `[path, mtimeSeconds, sizeBytes]`.
-    // Path is relative to the userdata root (so includes the
-    // `koolook-presets/` prefix). Older ComfyUI servers return just the
-    // path string — handle both shapes defensively.
-    const entries = data
-        .map(row => Array.isArray(row) ? row[0] : row)
-        .filter(p => typeof p === "string" && p.toLowerCase().endsWith(".json"));
-
-    // Read each preset's metadata in parallel. Failed reads (corrupt file,
-    // wrong shape, etc.) are filtered out so the list shows only valid
-    // entries — corrupt files surface in the console for debugging.
-    const previews = await Promise.all(entries.map(async (relPath) => {
-        try {
-            const content = await fetch(`/userdata/${relPath}`);
-            if (!content.ok) return null;
-            const text = await content.text();
-            const obj = JSON.parse(text);
-            if (obj.kind !== SNAPSHOT_KIND) return null;
-            const fileName = relPath.split("/").pop().replace(/\.json$/i, "");
-            const decodedName = decodeURIComponent(fileName);
-            return {
-                // Display name comes from inside the file; the filename is
-                // the storage key. They should always match, but a
-                // hand-edited file might disagree — trust the file's name
-                // for display and the filename for ops.
-                displayName: typeof obj.name === "string" && obj.name ? obj.name : decodedName,
-                fileName: decodedName,
-                exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
-                workflowCount: countWorkflowsInStore(obj.workflows),
-                pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
-            };
-        } catch (e) {
-            console.warn(`[Koolook] failed to read preset "${relPath}":`, e);
-            return null;
-        }
-    }));
+    const previews = await Promise.all(entries.map((row) => loadPreview(row.name)));
     return previews
         .filter(p => p !== null)
-        .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
+        .sort((a, b) =>
+            a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+        );
 }
 
 // Read one preset by its filename (no `.json` suffix). Returns the parsed
-// + validated snapshot, or throws.
+// + validated snapshot, throws on read or parse failure.
 export async function readPreset(fileName) {
-    const path = presetFilePath(fileName);
-    const resp = await fetch(`/userdata/${path}`);
-    if (!resp.ok) throw new Error(`Could not read preset "${fileName}" (HTTP ${resp.status}).`);
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`);
+    if (!resp.ok) {
+        throw new Error(`Could not read preset "${fileName}" (HTTP ${resp.status}).`);
+    }
     const text = await resp.text();
     let parsed;
     try {
@@ -208,41 +229,40 @@ export async function readPreset(fileName) {
     return validateSnapshot(parsed);
 }
 
-// Write a snapshot under `fileName`. Returns true on success, throws on
-// failure. The caller is responsible for sanitizing `fileName` upstream.
+// Write a snapshot under `fileName` (no `.json` suffix). Throws on server
+// failure with the server-provided reason — surfaces "read-only mount",
+// "parent missing", "invalid filename" in the user-facing toast.
 export async function writePreset(fileName, snapshot) {
-    const path = presetFilePath(fileName);
-    const resp = await fetch(`/userdata/${path}${USERDATA_OVERWRITE_QUERY}`, {
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snapshot, null, 2),
     });
-    if (!resp.ok) throw new Error(`Could not save preset "${fileName}" (HTTP ${resp.status}).`);
+    if (!resp.ok) {
+        const reason = resp.statusText || `HTTP ${resp.status}`;
+        throw new Error(`Could not save preset "${fileName}": ${reason}.`);
+    }
     return true;
 }
 
-// Returns true if a preset with `fileName` exists. Used for save-time
-// "overwrite?" prompts.
+// Returns true if a preset with `fileName` exists. Implemented as HEAD
+// — server returns 404 cleanly when missing.
 export async function presetExists(fileName) {
     try {
-        const resp = await fetch(
-            `/userdata/${presetFilePath(fileName)}`,
-            { method: "HEAD" }
-        );
+        const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "HEAD" });
         return resp.ok;
     } catch (e) {
         return false;
     }
 }
 
-// Delete a preset. ComfyUI's userdata API supports DELETE; if the
-// deployment doesn't, the caller surfaces the error. No silent fallback —
-// hidden-but-not-deleted files would mislead the user.
+// Delete a preset. Throws on server failure (read-only mount, missing
+// file, etc.) — no silent fallback.
 export async function deletePreset(fileName) {
-    const path = presetFilePath(fileName);
-    const resp = await fetch(`/userdata/${path}`, { method: "DELETE" });
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "DELETE" });
     if (!resp.ok) {
-        throw new Error(`Could not delete preset "${fileName}" (HTTP ${resp.status}).`);
+        const reason = resp.statusText || `HTTP ${resp.status}`;
+        throw new Error(`Could not delete preset "${fileName}": ${reason}.`);
     }
     return true;
 }

@@ -885,6 +885,7 @@ export function showSnapshotModal({
     downloadSnapshotAsFile,
     readSnapshotFile,
     sanitizeName,
+    getLibraryInfo,
     onToast,
 }) {
     const toast = onToast || (() => {});
@@ -1121,6 +1122,39 @@ export function showSnapshotModal({
         uploadInput.style.cssText = "font-size: 11px;";
         uploadInput.addEventListener("change", () => handleUpload(uploadInput.files));
         uploadRow.appendChild(uploadInput);
+
+        // Library-path info icon. Tooltip surfaces where the user's
+        // snapshots actually live + how to override (the env var name).
+        // The fetch is async; we mount a placeholder immediately and
+        // patch the title once the response arrives so the icon never
+        // shows "Loading…" if the user happens to hover instantly.
+        const infoIcon = document.createElement("span");
+        infoIcon.className = "pi pi-info-circle";
+        infoIcon.style.cssText = "margin-left: auto; opacity: 0.5; font-size: 13px; cursor: help;";
+        infoIcon.title = "Library: (loading…)";
+        uploadRow.appendChild(infoIcon);
+        if (typeof getLibraryInfo === "function") {
+            getLibraryInfo().then((info) => {
+                if (!info) {
+                    infoIcon.title =
+                        "Library path unavailable — server-side route not registered. " +
+                        "Restart ComfyUI?";
+                    return;
+                }
+                const writability = info.writable
+                    ? "writable"
+                    : (info.exists ? "READ-ONLY" : "not yet created");
+                const source = info.isDefault
+                    ? `default — set ${info.envVar} to override`
+                    : `from ${info.envVar}`;
+                infoIcon.title =
+                    `Library: ${info.path}\n` +
+                    `Source: ${source}\n` +
+                    `Status: ${writability}`;
+            }).catch(() => {
+                infoIcon.title = "Library path unavailable.";
+            });
+        }
         tabPane.appendChild(uploadRow);
 
         const listWrap = document.createElement("div");

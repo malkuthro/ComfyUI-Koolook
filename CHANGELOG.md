@@ -21,29 +21,46 @@ The format is inspired by Keep a Changelog and SemVer.
   403s from Manager's security gate are surfaced as actionable language
   ("your security level forbids git-URL installs") rather than raw HTTP.
 - **Snapshot library** — save your full Kforge Labs state (curated picks +
-  the entire workflows store including tags + archive) as a named preset.
-  New top-level **Snapshot** action row above the search field with three
-  icon buttons:
+  the entire workflows store including tags + archive) as a named preset
+  to a configurable filesystem path. New top-level **Snapshot** action row
+  above the search field with three icon buttons:
   - **Load** — opens the snapshot modal at the Load tab. Lists every preset
-    in `/userdata/koolook-presets/` with metadata (workflow count · pick
-    count · export date). Click a row → confirm "Replace current state?"
-    → restores both stores in one go.
+    in the library with metadata (workflow count · pick count · export
+    date). Click a row → confirm "Replace current state?" → restores both
+    stores in one go.
   - **Save** — opens at the Save tab. Single text field with default
     `preset YYYY-MM-DD`, fully editable. Submit writes the snapshot to
-    `/userdata/koolook-presets/<name>.json`. Existing-name save prompts
-    to overwrite.
+    `<library>/<name>.json`. Existing-name save prompts to overwrite.
   - **Manage** — opens at the Manage tab. Per-row Download (saves the
     snapshot JSON to your Downloads folder for cross-server transfer),
     Delete (with confirm), plus a top-of-tab Upload action that imports
-    a JSON snapshot from disk into the library.
-  Use cases: take your kit between machines (copy `koolook-presets/` or
-  sync the userdata folder via Dropbox/iCloud/Drive), share a curated
-  preset with a teammate via download → drop → upload, or run a facility-
-  wide shared library by pointing every workstation at the same ComfyUI
-  server. Storage uses ComfyUI's standard userdata API; snapshot files
-  carry a `kind: "koolook-snapshot"` discriminator + `version` field for
-  future schema migrations. Closes the "save to a custom location, take
-  it elsewhere" piece of #46.
+    a JSON snapshot from disk into the library. A small ⓘ icon in the
+    upload row's right edge surfaces the current library path + source
+    (default vs env-var override) + writability status as a hover tooltip.
+- **`KFORGELABS_PRESETS` env var** controls where the snapshot library
+  lives. Set it on the ComfyUI server before launch to point at any
+  absolute filesystem path:
+  - **Personal cross-machine sync:** `~/Dropbox/koolook-presets` and the
+    library follows your machines via Dropbox/iCloud/Drive.
+  - **Facility shared library:** an NFS / SMB mount writable by every
+    workstation. All workstations save to + load from the same library
+    natively, no symlinks or per-machine plumbing.
+  - **Read-only distribution:** point at a path the workstation can read
+    but not write. Save fails cleanly with the server reason in a toast;
+    Load and Download still work.
+  When the env var is unset, the library falls back to
+  `<comfyui-userdata>/koolook-presets/` so unconfigured users get a
+  sensible default. Snapshot files carry a `kind: "koolook-snapshot"`
+  discriminator + `version` field for future schema migrations. Closes
+  the "save to a custom location, take it elsewhere" piece of #46.
+
+### Internal
+- New server-side module `koolook_routes.py` registers `/koolook/presets/*`
+  aiohttp routes on ComfyUI's PromptServer. Path-traversal protection at
+  the route boundary (filename whitelist regex). The new endpoints
+  replace the JS layer's previous direct `/userdata/koolook-presets/`
+  calls — the server now owns where files go, so the library can live
+  anywhere `KFORGELABS_PRESETS` points.
 
 ### Changed
 - **Save selection toast distinguishes "no selection" from "selection
