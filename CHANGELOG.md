@@ -66,12 +66,18 @@ The format is inspired by Keep a Changelog and SemVer.
 ### Internal
 - New server-side module `koolook_routes.py` registers the
   `/koolook/presets/*` aiohttp routes on ComfyUI's PromptServer.
-  Endpoints: `info`, `list`, `file` (GET/POST/DELETE/HEAD on a single
-  query-string-keyed endpoint, with a dedicated lightweight HEAD
-  handler so existence checks don't read the full file body), and
-  `settings` (GET/POST). Path-traversal protection at the route
-  boundary via a strict filename whitelist regex; symlink protection
-  via post-resolve `is_relative_to` check on every file op. Settings
+  Endpoints: `info`, `list`, `file` (GET/POST/DELETE on a single
+  query-string-keyed endpoint, with the GET handler short-circuiting
+  HEAD requests via aiohttp's auto-HEAD-from-GET so existence checks
+  don't read the full file body), and `settings` (GET/POST). The
+  HEAD short-circuit lives inside the GET handler rather than as a
+  dedicated `@routes.head` registration because ComfyUI's
+  mirror-to-`/api` code in `server.py` blindly forwards
+  `RouteDef.kwargs` into a `RouteTableDef.route(...)` closure that
+  rejects `allow_head=False`, so any kwarg-based opt-out crashes
+  startup. Path-traversal protection at the route boundary via a
+  strict filename whitelist regex; symlink protection via
+  post-resolve `is_relative_to` check on every file op. Settings
   file is written atomically (`tmp + os.replace`) so an interrupted
   process can't truncate the user's saved library path. The library
   directory is auto-created on first save.

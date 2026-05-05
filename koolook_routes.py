@@ -305,11 +305,26 @@ def register_routes(routes) -> None:
 
     @routes.get("/koolook/presets/file")
     async def get_preset(request):
+        """Serve preset JSON for ``?name=<name>``; HEAD short-circuits before
+        the file read.
+
+        aiohttp's ``add_get`` auto-registers a HEAD route by default. We
+        can't opt out via ``allow_head=False`` because ComfyUI's
+        mirror-to-/api code in ``server.py`` blindly forwards
+        ``RouteDef.kwargs`` into ``RouteTableDef.route(method, path)
+        (handler, **kwargs)`` whose inner closure rejects unknown
+        kwargs, crashing startup. So this single handler owns both
+        methods, branching on ``request.method`` so a ``presetExists``
+        HEAD probe doesn't have to read multi-MB JSON over
+        Dropbox/iCloud/NFS-mounted libraries just to answer 200/404.
+        """
         name = _validate_filename(request.query.get("name"))
         base, _ = _configured_dir()
         file_path = _resolve_within_base(base, name)
         if not file_path.is_file():
             raise web.HTTPNotFound(reason=f"Preset '{name}' not found.")
+        if request.method == "HEAD":
+            return web.Response(status=200)
         try:
             content = file_path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -317,23 +332,6 @@ def register_routes(routes) -> None:
                 reason=f"Could not read preset: {exc}"
             ) from exc
         return web.Response(text=content, content_type="application/json")
-
-    @routes.head("/koolook/presets/file")
-    async def head_preset(request):
-        """Cheap existence check used by the client's `presetExists` probe.
-
-        Without this, aiohttp auto-synthesizes HEAD from the GET handler,
-        which still reads the entire file from disk and discards the body
-        — wasteful on multi-MB snapshots over Dropbox/iCloud/NFS-mounted
-        libraries. The dedicated handler does just `is_file()` + status,
-        no body work.
-        """
-        name = _validate_filename(request.query.get("name"))
-        base, _ = _configured_dir()
-        file_path = _resolve_within_base(base, name)
-        if not file_path.is_file():
-            return web.Response(status=404)
-        return web.Response(status=200)
 
     @routes.post("/koolook/presets/file")
     async def post_preset(request):
