@@ -33,11 +33,24 @@ function getSelectedNodeIds() {
     }
 }
 
+// Returns a discriminated result so callers can distinguish "user has not
+// selected anything yet" from "user has a selection but every node in it is
+// gone" — those produce different toasts in the UI.
+//
+// Shapes:
+//   { kind: "empty" }   — `selectedIds.size === 0` OR `serializeFullCanvas`
+//                          failed (canvas not ready / threw); caller should
+//                          prompt the user to select something.
+//   { kind: "stale" }   — `selectedIds.size > 0` but none of the IDs match
+//                          a live node on the graph (selection points at
+//                          deleted nodes — common after undo/redo). Caller
+//                          should prompt the user to re-select live nodes.
+//   { kind: "ok", graph } — success.
 export function serializeSelection() {
     const selectedIds = getSelectedNodeIds();
-    if (selectedIds.size === 0) return null;
+    if (selectedIds.size === 0) return { kind: "empty" };
     const full = serializeFullCanvas();
-    if (!full) return null;
+    if (!full) return { kind: "empty" };
 
     const internalLinks = (full.links || []).filter(link =>
         Array.isArray(link) && selectedIds.has(link[1]) && selectedIds.has(link[3])
@@ -66,17 +79,20 @@ export function serializeSelection() {
             return clone;
         });
 
-    if (nodes.length === 0) return null;
+    if (nodes.length === 0) return { kind: "stale" };
 
     return {
-        last_node_id: full.last_node_id,
-        last_link_id: full.last_link_id,
-        nodes,
-        links: internalLinks,
-        groups: [],
-        config: full.config || {},
-        extra: full.extra || {},
-        version: full.version || 0.4,
+        kind: "ok",
+        graph: {
+            last_node_id: full.last_node_id,
+            last_link_id: full.last_link_id,
+            nodes,
+            links: internalLinks,
+            groups: [],
+            config: full.config || {},
+            extra: full.extra || {},
+            version: full.version || 0.4,
+        },
     };
 }
 

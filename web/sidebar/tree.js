@@ -66,6 +66,18 @@ import {
 } from "./modals.js";
 
 // =============================================================================
+// Built-in section IDs. These are also pathState key prefixes — every
+// `pathStates` entry begins with one of these strings followed by `/`. The
+// engine handles the prefixing for paths emitted via `ctx.folder({path: …})`,
+// but `renderPanel`'s save flow has to construct pin keys directly, so the
+// constants are exported here (module-private) instead of duplicated as
+// literals.
+// =============================================================================
+const SECTION_ID_NODES = "nodes";
+const SECTION_ID_WORKFLOWS = "workflows";
+const SECTION_ID_TAGS = "tags";
+
+// =============================================================================
 // Folder expansion state — Map<path, boolean>; truthy = expanded.
 // Path keys are auto-prefixed by the engine with the owning section's id, so
 // section authors only write segment-relative paths.
@@ -395,6 +407,17 @@ function subcategoryFor(category, categoryRoot) {
     if (categoryRoot && category.startsWith(categoryRoot + "/")) {
         return category.slice(categoryRoot.length + 1);
     }
+    // Fallback: the node's category neither equals the repo's `categoryRoot`
+    // nor lives under it. Reachable only via a logic error — typically a
+    // `REPOS` entry whose `categoryRoot` no longer matches the upstream
+    // node's actual category prefix (upstream renamed; repo config is
+    // stale). Surface the misconfig in the console so it's debuggable
+    // instead of producing silently mis-grouped sidebar entries.
+    console.warn(
+        `[Koolook] subcategoryFor fallback fired: category="${category}" did not match ` +
+        `categoryRoot="${categoryRoot}". The repo config may need updating to track an ` +
+        `upstream category rename.`
+    );
     const parts = category.split("/");
     return parts.length > 1 ? parts.slice(1).join("/") : category;
 }
@@ -771,12 +794,19 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
         initiallyExpanded = startExpanded;
     }
 
+    // Track the live expanded state in a closure variable instead of
+    // round-tripping through `wrapper.dataset.expanded`. The DOM dataset
+    // forces every value to a string, which led to the slightly awkward
+    // `!== "false"` read; closure-locality keeps the toggle a plain boolean
+    // and removes one source of truth that wasn't the canonical one
+    // (`pathStates` is the canonical store; the DOM dataset just mirrored
+    // it for reads).
+    let isExpanded = initiallyExpanded;
     const wrapper = document.createElement("div");
-    wrapper.dataset.expanded = initiallyExpanded ? "true" : "false";
 
     const children = document.createElement("div");
     children.className = "koolook-children";
-    if (!initiallyExpanded) children.style.display = "none";
+    if (!isExpanded) children.style.display = "none";
 
     const { row, chevron } = makeFolderRow({
         name,
@@ -786,12 +816,10 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
         draggablePayload,
         dropTarget,
         onToggle: () => {
-            const expanded = wrapper.dataset.expanded !== "false";
-            const next = !expanded;
-            wrapper.dataset.expanded = next ? "true" : "false";
-            chevron.textContent = next ? "▾" : "▸";
-            children.style.display = next ? "" : "none";
-            pathStates.set(path, next);
+            isExpanded = !isExpanded;
+            chevron.textContent = isExpanded ? "▾" : "▸";
+            children.style.display = isExpanded ? "" : "none";
+            pathStates.set(path, isExpanded);
         },
     });
     if (!initiallyExpanded) chevron.textContent = "▸";
@@ -1117,7 +1145,7 @@ function directoryRowContextMenu(event, dirPath) {
 // Built-in section descriptors. Order here = render order in the panel.
 // =============================================================================
 addSection({
-    id: "nodes",
+    id: SECTION_ID_NODES,
     label: ROOT_GROUP_LABEL,
     iconKind: "favorites",
     emptyMessage: "No curated nodes yet. Click + above (with a canvas node selected) or right-click a node on the canvas → Add to Kforge Labs.",
@@ -1163,7 +1191,7 @@ addSection({
 });
 
 addSection({
-    id: "workflows",
+    id: SECTION_ID_WORKFLOWS,
     label: WORKFLOWS_GROUP_LABEL,
     iconKind: "workflows",
     // No emptyMessage — when the workflow store is empty and no search is
@@ -1184,7 +1212,7 @@ addSection({
 // canonical location, so renames/moves originating here update the same
 // underlying entry the Workflows section shows.
 addSection({
-    id: "tags",
+    id: SECTION_ID_TAGS,
     label: "Tags",
     iconKind: "folder",
     // No emptyMessage — until any workflow carries a tag, the section stays
@@ -1396,8 +1424,8 @@ export function renderPanel(container) {
         // Pin the workflows section + every ancestor of the destination dir
         // so the resulting re-render leaves the whole path open. Pins are
         // consumed on the next render.
-        const pinKeys = ["workflows"];
-        let cur = "workflows";
+        const pinKeys = [SECTION_ID_WORKFLOWS];
+        let cur = SECTION_ID_WORKFLOWS;
         for (const seg of dirPath) {
             cur = `${cur}/${seg}`;
             pinKeys.push(cur);
@@ -1435,7 +1463,7 @@ export function renderPanel(container) {
             }
             showSaveWorkflowModal({
                 titleSuffix: "entire canvas",
-                onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
+                onSave: ({ name, dirPath }) => saveAndToast(graph, name, dirPath),
             });
         },
     }));
@@ -1444,14 +1472,24 @@ export function renderPanel(container) {
         iconClass: "pi pi-objects-column",
         title: "Save current selection as a workflow",
         onClick: () => {
-            const graph = serializeSelection();
-            if (!graph) {
+            const result = serializeSelection();
+            if (result.kind === "empty") {
                 toast("Select one or more nodes on the canvas first.");
                 return;
             }
+            if (result.kind === "stale") {
+                // Selection set is non-empty but every id in it points at a
+                // deleted node — typically after an undo or a delete-then-
+                // change-tab sequence. Generic "select one or more" was
+                // misleading because the user *had* selected something; the
+                // canvas just doesn't have it anymore.
+                toast("Selected node(s) no longer exist. Click a node on the canvas to re-select.");
+                return;
+            }
+            const { graph } = result;
             showSaveWorkflowModal({
                 titleSuffix: `${graph.nodes.length} selected node${graph.nodes.length === 1 ? "" : "s"}`,
-                onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
+                onSave: ({ name, dirPath }) => saveAndToast(graph, name, dirPath),
             });
         },
     }));
