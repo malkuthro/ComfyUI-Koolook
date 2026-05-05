@@ -6,6 +6,31 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Internal (sidebar tidiness pass — no behavior change)
+- **`makeToolbarButton({iconClass, title, onClick})`** factory in
+  `web/sidebar/tree.js` replaces the four near-identical button-construction
+  blocks in `renderPanel` (export, new-dir, save-canvas, save-selection).
+  Each block was 5–7 lines of `createElement` / `className` / `innerHTML`
+  / `title` / `addEventListener`; calls collapse to 4-line factory invocations.
+  No behavior change. Closes the "extract `makeToolbarButton`" item on #47.
+- **Dropped duplicate `.koolook-export-btn` CSS class.** It was identical to
+  `.koolook-icon-btn` minus the `:disabled` state. The export button now
+  uses only `.koolook-icon-btn` via `makeToolbarButton`. Closes the
+  "drop duplicate CSS class" item on #47.
+- **`buildFolder({path})` default removed.** `path` is now a required
+  parameter; the previous `path = null` default was unreachable since every
+  caller routes through `makeSectionCtx`, which always supplies a non-empty
+  section-prefixed string. The runtime `if (path && …)` guard inside
+  `buildFolder` is also dropped. Closes the "remove unreachable default"
+  item on #47.
+- **`workflowsCache` mutator invariants documented inline** above the public
+  mutator block in `web/sidebar/workflows_store.js`. Four rules a future
+  contributor needs before adding a new mutator: pair every mutate with a
+  commit (or use `persistMutation`), return `false` for no-op vs. truthy for
+  success, mutate in place, and never replace `workflowsCache` outside the
+  seed/load paths. Closes the "document `workflowsCache` invariants" item
+  on #47.
+
 ### Added
 - **Recursive subdirectories under workflow directories.** Right-click any
   directory in the Workflows tree → "Create subdirectory…" to nest folders

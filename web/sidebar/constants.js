@@ -62,7 +62,6 @@ export function ensureStyle() {
 .koolook-add-btn { padding: 0 12px; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; cursor: pointer; color: var(--input-text, inherit); font-size: 16px; line-height: 1; flex-shrink: 0; }
 .koolook-add-btn:hover { background: rgba(255,255,255,0.1); }
 .koolook-add-btn:active { background: rgba(255,255,255,0.15); }
-.koolook-export-btn { padding: 0 10px; font-size: 12px; }
 .koolook-icon-btn { padding: 0 10px; font-size: 12px; }
 .koolook-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .koolook-tree { flex: 1; overflow-y: auto; padding: 0 4px 8px; }

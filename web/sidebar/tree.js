@@ -567,6 +567,31 @@ function countDescendantsOfRawDir(dir) {
 // =============================================================================
 // DOM helpers
 // =============================================================================
+
+// Toolbar button factory — replaces the four near-identical button-construction
+// blocks in `renderPanel` for icon-only buttons (export, new-dir, save-canvas,
+// save-selection). The "+" Add-to-favorites button (`addBtn`) is text-content
+// only and stays hand-rolled; this factory does not cover that case. Every
+// covered button shares the `koolook-add-btn koolook-icon-btn` pair (both
+// styling rules; the disabled state on `:disabled` lives on `koolook-icon-btn`).
+// `iconClass` is the PrimeIcons class (e.g. `pi pi-download`).
+//
+// The icon span is built with `createElement` + `className` rather than
+// `innerHTML = …${iconClass}…` so a future caller passing a non-static
+// `iconClass` (e.g. data sourced from a workflow or registry) can't inject
+// markup. All current callers pass static literals — this is helper-boundary
+// hardening, not a fix for an active vulnerability.
+function makeToolbarButton({ iconClass, title, onClick }) {
+    const btn = document.createElement("button");
+    btn.className = "koolook-add-btn koolook-icon-btn";
+    const icon = document.createElement("span");
+    icon.className = iconClass;
+    btn.appendChild(icon);
+    btn.title = title;
+    btn.addEventListener("click", onClick);
+    return btn;
+}
+
 function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu, draggablePayload, dropTarget }) {
     const row = document.createElement("div");
     row.className = "koolook-row";
@@ -666,7 +691,19 @@ function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggableP
     return row;
 }
 
-function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path = null, forceExpanded = false, draggablePayload, dropTarget }) {
+function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path, forceExpanded = false, draggablePayload, dropTarget }) {
+    // `path` is required — every section/sub-section calling site routes
+    // through `makeSectionCtx`, which always supplies a non-empty
+    // section-prefixed string. The assertion below converts a "future
+    // caller forgot to pass path" regression into a loud failure at the
+    // boundary; without it, a stray `undefined` would silently land in
+    // `pathStates.set(undefined, …)` and pollute one shared key across
+    // every misconfigured folder. The pathStates branch further down
+    // assumes a string key.
+    if (typeof path !== "string" || !path) {
+        throw new Error("buildFolder: `path` must be a non-empty string");
+    }
+
     // Resolution order:
     //   1. forceExpanded (e.g. search active) — overrides everything
     //   2. pathStates (user has previously toggled this folder)
@@ -674,7 +711,7 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
     let initiallyExpanded;
     if (forceExpanded) {
         initiallyExpanded = true;
-    } else if (path && pathStates.has(path)) {
+    } else if (pathStates.has(path)) {
         initiallyExpanded = pathStates.get(path);
     } else {
         initiallyExpanded = startExpanded;
@@ -700,7 +737,7 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
             wrapper.dataset.expanded = next ? "true" : "false";
             chevron.textContent = next ? "▾" : "▸";
             children.style.display = next ? "" : "none";
-            if (path) pathStates.set(path, next);
+            pathStates.set(path, next);
         },
     });
     if (!initiallyExpanded) chevron.textContent = "▸";
@@ -1088,12 +1125,11 @@ export function renderPanel(container) {
     });
     nodesRow.appendChild(addBtn);
 
-    const exportBtn = document.createElement("button");
-    exportBtn.className = "koolook-add-btn koolook-export-btn";
-    exportBtn.innerHTML = '<span class="pi pi-download"></span>';
-    exportBtn.title = "Export current picks as curated_defaults.json (copies JSON to clipboard)";
-    exportBtn.addEventListener("click", exportPicks);
-    nodesRow.appendChild(exportBtn);
+    nodesRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-download",
+        title: "Export current picks as curated_defaults.json (copies JSON to clipboard)",
+        onClick: exportPicks,
+    }));
 
     container.appendChild(nodesRow);
 
@@ -1111,26 +1147,26 @@ export function renderPanel(container) {
     wfLabel.textContent = "Workflows";
     wfRow.appendChild(wfLabel);
 
-    const newDirBtn = document.createElement("button");
-    newDirBtn.className = "koolook-add-btn koolook-icon-btn";
-    newDirBtn.innerHTML = '<span class="pi pi-folder-open"></span>';
-    newDirBtn.title = "Create new workflow directory";
-    newDirBtn.addEventListener("click", () => {
-        showInputModal({
-            title: "Create directory",
-            label: "Directory name",
-            placeholder: "e.g. Inpainting",
-            confirmLabel: "Create",
-            onSubmit: (name) => persistMutation({
-                // Top-level directory creation. Subdirectories are created via
-                // right-click → "Create subdirectory…" on an existing folder.
-                mutate: () => addDirectory([], name),
-                onSuccess: () => toast(`Directory "${name}" created.`),
-                onNoOp: () => toast(`Directory "${name}" already exists.`),
-            }),
-        });
-    });
-    wfRow.appendChild(newDirBtn);
+    wfRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-folder-open",
+        title: "Create new workflow directory",
+        onClick: () => {
+            showInputModal({
+                title: "Create directory",
+                label: "Directory name",
+                placeholder: "e.g. Inpainting",
+                confirmLabel: "Create",
+                onSubmit: (name) => persistMutation({
+                    // Top-level directory creation. Subdirectories are created
+                    // via right-click → "Create subdirectory…" on an existing
+                    // folder.
+                    mutate: () => addDirectory([], name),
+                    onSuccess: () => toast(`Directory "${name}" created.`),
+                    onNoOp: () => toast(`Directory "${name}" already exists.`),
+                }),
+            });
+        },
+    }));
 
     // Shared save handler for both buttons. Uses persistMutation so the cache
     // mutation rolls back automatically if both /userdata and the localStorage
@@ -1161,45 +1197,44 @@ export function renderPanel(container) {
         });
     };
 
-    const saveCanvasBtn = document.createElement("button");
-    saveCanvasBtn.className = "koolook-add-btn koolook-icon-btn";
-    saveCanvasBtn.innerHTML = '<span class="pi pi-save"></span>';
-    saveCanvasBtn.title = "Save entire canvas as a workflow";
-    saveCanvasBtn.addEventListener("click", () => {
-        // Check emptiness first so a serialize() throw doesn't get misreported
-        // as "Canvas is empty" — distinct toasts for distinct failure modes.
-        if (!canvasIsNonEmpty()) {
-            toast("Canvas is empty.");
-            return;
-        }
-        const graph = serializeFullCanvas();
-        if (!graph || !graph.nodes || graph.nodes.length === 0) {
-            toast("Failed to serialize canvas. See console.");
-            return;
-        }
-        showSaveWorkflowModal({
-            titleSuffix: "entire canvas",
-            onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
-        });
-    });
-    wfRow.appendChild(saveCanvasBtn);
+    wfRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-save",
+        title: "Save entire canvas as a workflow",
+        onClick: () => {
+            // Check emptiness first so a serialize() throw doesn't get
+            // misreported as "Canvas is empty" — distinct toasts for distinct
+            // failure modes.
+            if (!canvasIsNonEmpty()) {
+                toast("Canvas is empty.");
+                return;
+            }
+            const graph = serializeFullCanvas();
+            if (!graph || !graph.nodes || graph.nodes.length === 0) {
+                toast("Failed to serialize canvas. See console.");
+                return;
+            }
+            showSaveWorkflowModal({
+                titleSuffix: "entire canvas",
+                onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
+            });
+        },
+    }));
 
-    const saveSelectionBtn = document.createElement("button");
-    saveSelectionBtn.className = "koolook-add-btn koolook-icon-btn";
-    saveSelectionBtn.innerHTML = '<span class="pi pi-objects-column"></span>';
-    saveSelectionBtn.title = "Save current selection as a workflow";
-    saveSelectionBtn.addEventListener("click", () => {
-        const graph = serializeSelection();
-        if (!graph) {
-            toast("Select one or more nodes on the canvas first.");
-            return;
-        }
-        showSaveWorkflowModal({
-            titleSuffix: `${graph.nodes.length} selected node${graph.nodes.length === 1 ? "" : "s"}`,
-            onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
-        });
-    });
-    wfRow.appendChild(saveSelectionBtn);
+    wfRow.appendChild(makeToolbarButton({
+        iconClass: "pi pi-objects-column",
+        title: "Save current selection as a workflow",
+        onClick: () => {
+            const graph = serializeSelection();
+            if (!graph) {
+                toast("Select one or more nodes on the canvas first.");
+                return;
+            }
+            showSaveWorkflowModal({
+                titleSuffix: `${graph.nodes.length} selected node${graph.nodes.length === 1 ? "" : "s"}`,
+                onSave: ({ name, dir }) => saveAndToast(graph, name, dir),
+            });
+        },
+    }));
 
     container.appendChild(wfRow);
 
