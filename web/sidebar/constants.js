@@ -33,6 +33,13 @@ export const WORKFLOWS_GROUP_LABEL = "Workflows";
 export const STORAGE_KEY = "koolook.curated.userPicks.v1";
 export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
 
+// Group mode for the Nodes section — "repo" (default; group by pack/repo,
+// matching pre-#73 behavior) or "category" (group by node-class CATEGORY
+// path, with case-insensitive merging). Persisted in localStorage so the
+// chosen mode survives reloads.
+export const GROUP_MODE_KEY = "koolook.groupMode.v1";
+export const GROUP_MODE_DEFAULT = "repo";
+
 // Starter preset — a single shipped snapshot file the seeder copies into the
 // user's snapshot library directory on first run (instead of seeding picks
 // directly into localStorage). Carries the full snapshot schema (picks +
@@ -142,6 +149,32 @@ export function ensureStyle() {
 .koolook-snapshot-row-btn:hover { background: rgba(255,255,255,0.08); }
 .koolook-snapshot-row-btn-danger:hover { background: rgba(220,80,80,0.25); border-color: rgba(220,80,80,0.4); }
 .koolook-snapshot-empty { padding: 20px; opacity: 0.5; font-size: 12px; text-align: center; }
+.koolook-mode-toggle { display: inline-flex; gap: 0; margin-right: 4px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; overflow: hidden; }
+.koolook-mode-toggle-btn { padding: 0 8px; height: 22px; background: transparent; border: none; cursor: pointer; color: inherit; font-size: 11px; opacity: 0.5; line-height: 1; }
+.koolook-mode-toggle-btn:hover { background: rgba(255,255,255,0.06); opacity: 0.85; }
+.koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); opacity: 1; }
+.koolook-pack-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); opacity: 0.7; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
+.koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
+.koolook-preview-card { position: fixed; z-index: 10000; background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.18)); border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; width: 320px; max-width: 90vw; max-height: calc(100vh - 16px); pointer-events: none; overflow: hidden auto; }
+.koolook-preview-title { padding: 6px 10px; font-size: 13px; font-weight: 600; color: #fff; }
+.koolook-preview-title-unresolved { background: rgba(180,80,80,0.4); }
+.koolook-preview-cat { padding: 3px 10px 5px; font-size: 10px; opacity: 0.6; border-bottom: 1px solid rgba(255,255,255,0.05); font-family: monospace; }
+.koolook-preview-stub { padding: 10px; font-style: italic; opacity: 0.7; }
+.koolook-preview-io { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(255,255,255,0.06); }
+.koolook-preview-col { padding: 7px 9px; background: var(--comfy-menu-bg, #2a2a2a); }
+.koolook-preview-section-title { font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; }
+.koolook-preview-slot-row { display: flex; align-items: center; gap: 5px; padding: 1px 0; line-height: 1.35; }
+.koolook-preview-slot-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+.koolook-preview-slot-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-preview-slot-name.koolook-preview-slot-optional { opacity: 0.7; font-style: italic; }
+.koolook-preview-slot-type { font-size: 10px; opacity: 0.5; flex-shrink: 0; font-family: monospace; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-preview-empty { opacity: 0.4; font-size: 11px; padding: 1px 0; }
+.koolook-preview-widgets { padding: 6px 9px; border-top: 1px solid rgba(255,255,255,0.06); }
+.koolook-preview-widget-row { display: flex; gap: 6px; padding: 1px 0; line-height: 1.35; }
+.koolook-preview-widget-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-preview-widget-default { opacity: 0.5; font-size: 10px; font-family: monospace; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.koolook-preview-desc { padding: 6px 9px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px; opacity: 0.78; line-height: 1.4; max-height: 100px; overflow: hidden; }
 `;
     document.head.appendChild(s);
 }

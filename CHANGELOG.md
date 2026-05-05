@@ -30,6 +30,84 @@ The format is inspired by Keep a Changelog and SemVer.
   user-pick-fallback to locate any node ID's sidebar path; new exported
   `spotlightAddedPicks(typeNames)` from `web/sidebar/tree.js` does the
   collapse + pin sequence and is called from both add paths.
+- **Group-by-category mode for the Nodes section.** Segmented toggle in
+  the Nodes action row (📦 Repository / 🌐 Category — `pi-database` /
+  `pi-sitemap`); choice persists in localStorage (`koolook.groupMode.v1`)
+  and survives reloads, including cross-tab via the existing `storage`
+  event listener. In repo mode (default) every pick lives under its
+  pack; in category mode picks are regrouped by their node-class
+  `CATEGORY` path, ignoring REPOS affiliation. Categories that look the
+  same after canonical-key normalization
+  (`lower().replace(/[\s_\-]+/g, "")`) collapse into one folder —
+  `Loaders`/`loaders`, `Image/Upscaling`/`image/upscaling`, and
+  `style_model`/`StyleModel`/`style model` all merge. Display label is
+  the most-common original casing seen for that key (ties → first-seen,
+  stable across renders because Map iteration follows insertion order).
+  Ports of the same path under different repos all collapse together,
+  so a Loader from Pack A and a Loader from Pack B share the
+  `Loaders/` folder. Two synthetic top-level buckets surface the edge
+  cases: `(unresolved)` for picks whose pack isn't currently loaded
+  (repo mode silently dropped these — category mode keeps them visible
+  as italic-dim rows), `(uncategorized)` for picks whose node class has
+  no `CATEGORY`. Each leaf in category mode carries a small pack-name
+  badge so users still see "where did this come from" — load-bearing
+  for the existing `↓ Install missing` flow. Folder paths in
+  `pathStates` use the canonical key (not the resolved display label),
+  so an upstream casing change to the most-common label doesn't reset
+  user expansions. Closes the "sort by topic, by what they do" piece
+  of #46. (#73)
+- **Flatten-on-search for the Nodes section.** When the search field is
+  non-empty, the Nodes section drops its tree structure and renders a
+  flat list of matching leaves, sorted by display name, each with a
+  small dim-grey breadcrumb prefix (`Loaders › LoRA › LoraLoader` in
+  category mode, `Pack › Subcategory › Display` in repo mode) so the
+  spatial-origin signal survives. Workflows and Tags sections retain
+  their tree-under-filter behavior — the change is scoped to Nodes
+  only. The breadcrumb collapses redundant synthetic labels: the
+  `(root)` subcategory (which adds no info beyond the pack name) and
+  any subcategory whose label duplicates the pack label (the
+  "(uncategorized)" double-up). Always-flatten on any non-empty query
+  is the deliberate choice over a count-threshold gate; the spatial
+  cue from a tree is mostly already lost once a search has narrowed
+  the set, and a flat sorted list scans faster. (#73)
+- **Hover preview card for sidebar leaf rows.** Mirrors ComfyUI's
+  official Node Library preview ([NodePreview.vue][np-vue]): plain
+  HTML/CSS card with a colored title bar (HSL hue hashed from the
+  `CATEGORY` string), category breadcrumb, two columns of type-colored
+  slot dots (inputs left, outputs right), widgets section with
+  truncated defaults, optional description. Hover a leaf for ~250ms to
+  show; mouseleave dismisses; only one card visible at a time
+  (module-level singleton). Card positions to the right of the row by
+  default (12px offset), flips to the left when it'd overflow the
+  viewport, clamps inside an 8px viewport-padding gutter. Tall cards
+  (a node with many inputs) cap at `calc(100vh - 16px)` and scroll
+  internally rather than clip. `pointer-events: none` on the card so
+  it never intercepts events from rows it floats over. Slot dot
+  colors read ComfyUI's runtime palette
+  (`app.canvas.default_connection_color_byType`, populated at canvas
+  init) first, then fall back to LiteGraph's static
+  `LGraphCanvas.link_type_colors` (mostly empty in stock LiteGraph),
+  then a neutral grey. Widget classification mirrors ComfyUI's
+  frontend rule: scalars (`INT`/`FLOAT`/`STRING`/`BOOLEAN`) and
+  arrays-of-choices (`COMBO`) become widgets, everything else is a
+  connection slot. `INPUT_TYPES()` is read defensively (some
+  custom-node packs throw under unusual conditions); when one does
+  throw, the failure is logged via `console.warn` so a broken pack is
+  visible during debugging. Picks whose pack isn't loaded show a
+  "Pack not loaded" stub card pointing at the Tools-row install
+  button. The hover card additionally tears down on
+  `visibilitychange` (page hidden) and `window.blur` so it doesn't
+  leak across tab switches or focus loss. New module
+  `web/sidebar/node_preview.js` holds the preview engine;
+  `attachHoverPreview(row, type)` is wired inside `makeNodeLeafRow`
+  so every leaf-emit site (repo tree, category tree, search-flat) gets
+  the preview for free. The renderer calls `teardownPreview()` before
+  each `treeEl.innerHTML = ""` — without it, an active card whose
+  anchor row gets detached during a re-render would leak (the
+  `pointer-events: none` card can't be dismissed by clicking it).
+  (#73)
+
+[np-vue]: https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/src/components/node/NodePreview.vue
 
 ### Fixed
 - **`pinExpanded` paths now expand on the immediate render** instead of
