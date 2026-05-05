@@ -58,6 +58,20 @@ export const WORKFLOWS_SEEDED_KEY = "koolook.workflows.seeded.v1";
 export const WORKFLOWS_CHANGED_EVENT = "koolook-workflows-changed";
 export const WORKFLOWS_DEFAULTS_URL = new URL("../workflow_defaults.json", import.meta.url).href;
 
+// Convention-driven "module" classification — a saved workflow tagged with
+// this literal string is treated as a reusable building block (insert into
+// the existing canvas) instead of a full session (replace the canvas).
+//
+// Why a tag instead of a dedicated `isModule` field on the entry? Three
+// reasons: (1) zero schema migration; (2) the Tags section already groups
+// `module`-tagged entries for free; (3) re-tagging an existing saved entry
+// turns it into a module without any data shape change.
+//
+// Comparison is case-sensitive to match `addTag` / `removeTag` semantics in
+// `workflows_store.js`. The literal lives here so future renames (or a
+// "modules also includes `preset`" rule) only need to touch one constant.
+export const MODULE_TAG = "module";
+
 // =============================================================================
 // Styles
 // =============================================================================
@@ -90,6 +104,7 @@ export function ensureStyle() {
 .koolook-workflows-icon { color: #6db4ff; opacity: 0.95; flex-shrink: 0; }
 .koolook-archive-icon { opacity: 0.55; flex-shrink: 0; }
 .koolook-leaf-icon { opacity: 0.7; flex-shrink: 0; font-size: 11px; }
+.koolook-module-icon { color: #7be08a; opacity: 0.95; flex-shrink: 0; font-size: 11px; }
 .koolook-leaf-dot { width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: rgba(255,255,255,0.45); flex-shrink: 0; }
 .koolook-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-count { background: rgba(255,255,255,0.08); padding: 1px 7px; border-radius: 8px; font-size: 11px; opacity: 0.75; }
@@ -109,6 +124,8 @@ export function ensureStyle() {
 .koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
 .koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.koolook-modal-checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; opacity: 0.85; cursor: pointer; user-select: none; }
+.koolook-modal-checkbox-row input[type="checkbox"] { cursor: pointer; }
 .koolook-modal-btn { padding: 6px 14px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; cursor: pointer; font-size: 12px; }
 .koolook-modal-btn:hover { background: rgba(255,255,255,0.1); }
 .koolook-modal-btn-primary { background: rgba(80,140,235,0.35); border-color: rgba(80,140,235,0.55); }

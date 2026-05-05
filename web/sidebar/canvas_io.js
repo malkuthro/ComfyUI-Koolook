@@ -325,6 +325,232 @@ export function insertNode(typeName) {
     app.canvas.setDirty(true, true);
 }
 
+// =============================================================================
+// Workflow insertion (non-destructive — ADDS nodes from a saved workflow into
+// the live canvas instead of replacing it). Sibling to `loadWorkflowOntoCanvas`
+// above; the existing function rebuilds the entire graph via
+// `app.loadGraphData`, which is the right call for "load this workflow as my
+// session", but the wrong one for "drop this preset cluster next to my
+// existing nodes". This primitive is the basis for the Modules feature: a
+// saved selection (typically tagged `module`) that the user wants to splice
+// into whatever they're already building.
+//
+// Mechanics — kept tight because the failure modes are subtle:
+//
+//   1. **Pre-flight missing types.** A saved cluster can reference custom
+//      nodes the user hasn't installed. `app.loadGraphData` masks this by
+//      rendering red error nodes; for an insert that would silently splice
+//      broken stubs into the user's working graph. We check
+//      `LiteGraph.registered_node_types` up-front and abort with a toast if
+//      anything is missing — partial inserts are worse than no insert.
+//
+//   2. **Let the live graph allocate ids.** The saved graph's node ids and
+//      link ids almost certainly collide with what's already on canvas (both
+//      counters reset per saved workflow). Easiest correct fix: deep-clone
+//      the saved graph, then for each cloned node call `node.configure(...)`
+//      (which restores widget values + properties from the JSON) but force
+//      `node.id = -1` before `app.graph.add(node)` so LiteGraph hands out a
+//      fresh id from `last_node_id + 1`. Build an `oldId → newId` map as we
+//      go so links can be reconstructed afterwards.
+//
+//   3. **Recreate links via `node.connect`.** Walking `clone.links` and
+//      calling `originNode.connect(originSlot, targetNode, targetSlot)`
+//      sidesteps link-id remapping entirely — `connect` allocates a fresh
+//      link id from `app.graph.last_link_id + 1`. Cross-boundary references
+//      (links pointing at nodes that weren't part of the saved selection)
+//      are already nulled by `serializeSelection`, so the typical case is a
+//      clean closed sub-graph.
+//
+//   4. **Place the cluster at the viewport center.** Compute the bbox of
+//      the cloned nodes (in their saved coords), then translate every node
+//      by `(viewportCenter - bboxCenter)`. Reuses the same HiDPI-correct
+//      math as `placeAtCanvasCenter` (CSS pixels via `clientWidth`, not the
+//      backing-store buffer). If the canvas isn't laid out yet, we fall
+//      through and place at original coords — same defensive posture as
+//      `placeAtCanvasCenter`.
+//
+//   5. **Select the inserted cluster** so the user can immediately drag it
+//      somewhere else, delete it, or hit Ctrl+C to duplicate. Selection API
+//      varies across LiteGraph forks (`selectNodes` vs. `selectNode(_, true)`
+//      for additive); we try both and swallow failures because selection is
+//      a nice-to-have, not load-critical.
+//
+// Returns `{ ok: true, count }` on success, `{ ok: false, reason }` on any
+// abort path so callers can branch (the right-click menu just toasts; a
+// future drag-onto-canvas path might want to surface a different message).
+// =============================================================================
+
+function placeBboxAtCanvasCenter(nodes) {
+    if (!nodes || nodes.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+        const w = (n.size && n.size[0]) || 200;
+        const h = (n.size && n.size[1]) || 100;
+        const x = (n.pos && n.pos[0]) || 0;
+        const y = (n.pos && n.pos[1]) || 0;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x + w > maxX) maxX = x + w;
+        if (y + h > maxY) maxY = y + h;
+    }
+    if (!isFinite(minX) || !isFinite(minY)) return;
+    const bboxCx = (minX + maxX) / 2;
+    const bboxCy = (minY + maxY) / 2;
+
+    let dx = 0, dy = 0;
+    try {
+        const canvas = app.canvas;
+        const ds = canvas.ds;
+        const cssWidth = canvas.canvas.clientWidth || canvas.canvas.width;
+        const cssHeight = canvas.canvas.clientHeight || canvas.canvas.height;
+        const cx = -ds.offset[0] + cssWidth / (2 * ds.scale);
+        const cy = -ds.offset[1] + cssHeight / (2 * ds.scale);
+        dx = cx - bboxCx;
+        dy = cy - bboxCy;
+    } catch (e) {
+        // Canvas not ready — leave nodes at their saved coords. This matches
+        // `placeAtCanvasCenter`'s posture: don't throw on a layout race.
+    }
+
+    if (dx === 0 && dy === 0) return;
+    for (const n of nodes) {
+        if (!n.pos) n.pos = [0, 0];
+        n.pos[0] += dx;
+        n.pos[1] += dy;
+    }
+}
+
+export async function insertWorkflowOntoCanvas(dirPath, wfName) {
+    const sourceGraph = getWorkflowGraph(dirPath, wfName);
+    if (!sourceGraph) {
+        toast(`Workflow not found: ${wfName}`);
+        return { ok: false, reason: "not-found" };
+    }
+    if (typeof LiteGraph === "undefined") {
+        toast(`Cannot insert "${wfName}" — LiteGraph not available.`);
+        return { ok: false, reason: "no-litegraph" };
+    }
+    // Deep clone — `node.configure` and `placeBboxAtCanvasCenter` both
+    // mutate. We never want to touch the in-memory store copy.
+    const clone = JSON.parse(JSON.stringify(sourceGraph));
+    const nodesRaw = Array.isArray(clone.nodes) ? clone.nodes : [];
+    if (nodesRaw.length === 0) {
+        toast(`"${wfName}" has no nodes to insert.`);
+        return { ok: false, reason: "empty" };
+    }
+
+    // Pre-flight: every node type must be registered. Aborting here is the
+    // entire reason this is a separate primitive from `loadWorkflowOntoCanvas`
+    // — a partial insert with stub nodes silently corrupts the user's graph.
+    const registered = LiteGraph.registered_node_types || {};
+    const missingTypes = [];
+    const seenMissing = new Set();
+    for (const n of nodesRaw) {
+        const t = n && n.type;
+        if (!t) continue;
+        if (!registered[t] && !seenMissing.has(t)) {
+            seenMissing.add(t);
+            missingTypes.push(t);
+        }
+    }
+    if (missingTypes.length > 0) {
+        const sample = missingTypes.slice(0, 3).join(", ");
+        const more = missingTypes.length > 3 ? ` (+${missingTypes.length - 3} more)` : "";
+        toast(
+            `Cannot insert "${wfName}" — missing node type${missingTypes.length === 1 ? "" : "s"}: ` +
+            `${sample}${more}. Install the required pack(s) first.`,
+            4500
+        );
+        console.warn(`[Koolook] insert "${wfName}" aborted; missing types:`, missingTypes);
+        return { ok: false, reason: "missing-types", missingTypes };
+    }
+
+    // Translate the cluster to the viewport center BEFORE creating live
+    // nodes. `placeBboxAtCanvasCenter` writes into `n.pos` on the cloned
+    // entries, which `node.configure(...)` then reads.
+    placeBboxAtCanvasCenter(nodesRaw);
+
+    // Insert nodes; let the live graph allocate ids so nothing collides
+    // with `app.graph.last_node_id`.
+    const oldToNew = new Map();
+    const inserted = [];
+    for (const oldNode of nodesRaw) {
+        const node = LiteGraph.createNode(oldNode.type);
+        if (!node) {
+            // Pre-flight should have caught this; log if it happens anyway
+            // (a registered type whose factory returned null is a LiteGraph
+            // bug or a misregistered pack — we'd rather skip than crash the
+            // whole insert at this point).
+            console.warn(`[Koolook] LiteGraph.createNode("${oldNode.type}") returned null after pre-flight passed`);
+            continue;
+        }
+        try {
+            node.configure(oldNode);
+        } catch (e) {
+            console.warn(`[Koolook] node.configure failed for "${oldNode.type}":`, e);
+        }
+        // configure() restored `node.id` from the saved data — that's the
+        // OLD id. Force re-allocation so we don't collide with the live
+        // graph (or with another inserted node from the same cluster).
+        const oldId = oldNode.id;
+        node.id = -1;
+        app.graph.add(node);
+        if (oldId != null) oldToNew.set(oldId, node.id);
+        inserted.push(node);
+    }
+
+    // Recreate internal links. `serializeSelection` already nulled out
+    // cross-boundary references, but defensively skip any link whose
+    // endpoint we don't have in the remap (covers hand-edited /userdata
+    // files and old saves from before that pruning landed).
+    const linksRaw = Array.isArray(clone.links) ? clone.links : [];
+    let connectedLinks = 0;
+    for (const link of linksRaw) {
+        if (!Array.isArray(link) || link.length < 5) continue;
+        const oldOrigin = link[1];
+        const originSlot = link[2];
+        const oldTarget = link[3];
+        const targetSlot = link[4];
+        const newOrigin = oldToNew.get(oldOrigin);
+        const newTarget = oldToNew.get(oldTarget);
+        if (newOrigin == null || newTarget == null) continue;
+        const originNode = app.graph.getNodeById(newOrigin);
+        const targetNode = app.graph.getNodeById(newTarget);
+        if (!originNode || !targetNode) continue;
+        try {
+            const result = originNode.connect(originSlot, targetNode, targetSlot);
+            if (result) connectedLinks += 1;
+        } catch (e) {
+            console.warn(
+                `[Koolook] link reconnect failed: ${originNode.type}[${originSlot}] → ` +
+                `${targetNode.type}[${targetSlot}]:`, e
+            );
+        }
+    }
+
+    // Selection — best-effort, never block on it.
+    try {
+        if (typeof app.canvas.selectNodes === "function") {
+            app.canvas.selectNodes(inserted);
+        } else if (typeof app.canvas.selectNode === "function") {
+            // Older LiteGraph: additive single-select per node.
+            for (let i = 0; i < inserted.length; i += 1) {
+                app.canvas.selectNode(inserted[i], i > 0);
+            }
+        }
+    } catch (e) {
+        // Don't surface — the nodes are on canvas, selection is just polish.
+    }
+
+    app.canvas.setDirty(true, true);
+    const noun = inserted.length === 1 ? "node" : "nodes";
+    const linkSuffix = connectedLinks > 0
+        ? ` (${connectedLinks} link${connectedLinks === 1 ? "" : "s"})`
+        : "";
+    toast(`Inserted "${wfName}" — ${inserted.length} ${noun}${linkSuffix}.`);
+    return { ok: true, count: inserted.length, links: connectedLinks };
+}
+
 export function getSelectedNodeTypes() {
     try {
         const sel = (app.canvas && app.canvas.selected_nodes) || {};
