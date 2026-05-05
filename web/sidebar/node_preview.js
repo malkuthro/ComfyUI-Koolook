@@ -53,6 +53,22 @@ export function teardownPreview() {
     }
 }
 
+// Tab-switch / window-blur teardown. The card's `pointer-events: none`
+// makes it undismissable by mouse if the user navigates away mid-hover —
+// keyboard-switching ComfyUI sidebar tabs, an overlay/modal stealing
+// focus, or the page going hidden never crosses a row's mouseleave
+// region, so the reactive teardown path doesn't fire. These global
+// listeners cover those gaps. Wired exactly once per module load
+// (top-level), and kept module-private so callers don't rewire them.
+if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) teardownPreview();
+    });
+}
+if (typeof window !== "undefined") {
+    window.addEventListener("blur", teardownPreview);
+}
+
 export function attachHoverPreview(rowEl, type) {
     rowEl.addEventListener("mouseenter", () => {
         teardownPreview();
@@ -252,11 +268,15 @@ function readSlots(nodeClass) {
         } else if (nodeClass.INPUT_TYPES && typeof nodeClass.INPUT_TYPES === "object") {
             inputTypes = nodeClass.INPUT_TYPES;
         }
-    } catch {
+    } catch (e) {
         // Some custom-node packs throw from INPUT_TYPES under unusual
         // conditions (missing sibling deps, lazy imports). Treat as
         // "no input metadata available" and continue — the card still
-        // renders the title + outputs + description.
+        // renders the title + outputs + description. Log so the failure
+        // is visible during pack debugging instead of silently rendering
+        // an empty-looking node. Matches the project-wide convention
+        // (see picks_store.js, canvas_io.js, installer.js).
+        console.warn("[Kforge Labs preview] INPUT_TYPES() threw for", nodeClass.title || "<no title>", e);
         inputTypes = null;
     }
 
@@ -328,12 +348,20 @@ function categoryColor(category) {
 // rather than emitting transparent-dot rows.
 function slotColor(type) {
     const key = String(type);
+    // Both palettes are normally string-keyed maps of CSS color strings,
+    // but a misbehaving custom-node pack could mutate the runtime palette
+    // to hold a non-string (object, function, etc.). Assigning a
+    // non-string to `dot.style.background` silently no-ops, leaving a
+    // transparent dot. Guarding both branches with a `typeof === "string"`
+    // check makes the fallback chain robust against that, so the worst
+    // case is still a visible neutral-grey dot.
     const runtime = (app && app.canvas && app.canvas.default_connection_color_byType) || null;
-    if (runtime && runtime[key] != null) return runtime[key];
+    if (runtime && typeof runtime[key] === "string") return runtime[key];
     const staticMap = (typeof LiteGraph !== "undefined"
         && LiteGraph.LGraphCanvas
         && LiteGraph.LGraphCanvas.link_type_colors) || {};
-    return staticMap[key] || "rgba(180,180,180,0.5)";
+    if (typeof staticMap[key] === "string") return staticMap[key];
+    return "rgba(180,180,180,0.5)";
 }
 
 function truncate(s, n) {
