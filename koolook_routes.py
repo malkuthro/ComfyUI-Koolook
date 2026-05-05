@@ -182,8 +182,8 @@ def _resolve_within_base(base: Path, name: str) -> Path:
     except ValueError as exc:
         raise web.HTTPBadRequest(
             reason=(
-                f"Preset path escapes the library directory (likely a symlink "
-                f"planted in the library). Refusing to proceed."
+                "Preset path escapes the library directory (likely a symlink "
+                "planted in the library). Refusing to proceed."
             )
         ) from exc
     return file_path
