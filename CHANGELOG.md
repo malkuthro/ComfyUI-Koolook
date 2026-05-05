@@ -32,18 +32,6 @@ The format is inspired by Keep a Changelog and SemVer.
   cluster, or a Wan 2.2 prompt module the user wants to drop into many
   workflows. Full reference in
   [`docs/maintainers/workflows-sidebar.md`](docs/maintainers/workflows-sidebar.md#modules--splice-a-saved-cluster-into-your-live-canvas).
-- **Drag-link-release menu hoists curated picks to the top.** When the user
-  drags a connection out of a node socket and releases on empty canvas,
-  ComfyUI's compatibility-filtered suggestion list now sorts items in the
-  user's curated picks above everything else, with a `── from your picks ──`
-  separator between hoisted and unhoisted compatible nodes. Implementation
-  monkey-patches `LiteGraph.ContextMenu` and detects the connection-release
-  menu via the `Add Node` + `Add Reroute` operation-sentinel pair (narrow
-  enough that other ContextMenu uses — right-click on a node, on the
-  canvas — are untouched). Purely additive: no compatible nodes are
-  removed, only re-ordered. Wired in `web/sidebar/connection_menu.js`,
-  registered alongside the existing `patchCanvasMenu` in
-  `web/koolook_sidebar.js`.
 - **Spotlight effect on add.** Clicking the toolbar `+` (or the canvas
   right-click "Add to Kforge Labs") now collapses every Nodes-section
   pack folder, then auto-expands just the pack + subcategory the just-saved
