@@ -6,24 +6,6 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-### Fixed
-- **Loading a Koolook workflow whose name collides with an existing
-  native ComfyUI workflow file no longer breaks ComfyUI's native save.**
-  Before: loading `MyFlow` from the Kforge Labs sidebar named the
-  resulting temporary tab `workflows/MyFlow.json`. If the user already
-  had a native ComfyUI workflow saved at `user/default/workflows/
-  MyFlow.json`, hitting ComfyUI's native save threw a confusing
-  `Error storing user data file 'workflows/MyFlow.json': 409 Conflict`
-  — because ComfyUI's frontend saves temporary tabs with
-  `overwrite=false` (see
-  `Comfy-Org/ComfyUI_frontend/src/stores/userFileStore.ts`), so any
-  name collision with an existing file 409s. Now: `loadWorkflowOntoCanvas`
-  HEADs `/userdata/workflows/<name>.json` before loading and, on a hit,
-  appends ` (Koolook)` to the tab name. The tab still loads, save-back
-  writes a clean new artifact, and the load toast surfaces the renaming
-  so the user knows why. Bare `<name>` is preserved when there's no
-  collision.
-
 ### Changed
 - **Save selection toast distinguishes "no selection" from "selection
   points at deleted nodes."** Previously both produced the generic
