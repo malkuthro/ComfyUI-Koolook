@@ -160,8 +160,18 @@ function placeAtCanvasCenter(node) {
     try {
         const canvas = app.canvas;
         const ds = canvas.ds;
-        const cx = -ds.offset[0] + canvas.canvas.width / (2 * ds.scale);
-        const cy = -ds.offset[1] + canvas.canvas.height / (2 * ds.scale);
+        // `canvas.canvas.width` / `.height` are the BACKING-STORE pixel buffer
+        // dimensions, which on a HiDPI display (Retina/Mac, Windows scaling)
+        // are devicePixelRatio× the visible CSS pixels. LiteGraph's pan/zoom
+        // math is in CSS pixels, so dividing the buffer width by 2 puts the
+        // node at devicePixelRatio× the visible-center distance from the
+        // origin — i.e. way off the right side of the viewport on a 2× Mac
+        // display. Use clientWidth/clientHeight (CSS pixels) instead;
+        // fall back to the buffer dims if the canvas isn't laid out yet.
+        const cssWidth = canvas.canvas.clientWidth || canvas.canvas.width;
+        const cssHeight = canvas.canvas.clientHeight || canvas.canvas.height;
+        const cx = -ds.offset[0] + cssWidth / (2 * ds.scale);
+        const cy = -ds.offset[1] + cssHeight / (2 * ds.scale);
         node.pos = [cx - node.size[0] / 2, cy - node.size[1] / 2];
     } catch (e) {
         // Default position is fine if the canvas isn't ready yet.
