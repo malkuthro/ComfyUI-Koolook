@@ -3,8 +3,17 @@
 // click / Cancel / OK dismissal paths and ties the document-level keydown
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
-import { compareNames } from "./constants.js";
+import { compareNames, toast } from "./constants.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
+import {
+    detectManager,
+    loadMappings,
+    resolvePicksToInstall,
+    queueInstallGitUrl,
+    startQueue,
+    pollUntilDone,
+    reboot,
+} from "./installer.js";
 
 function makeModalShell({ title, body, actions }) {
     const overlay = document.createElement("div");
@@ -621,6 +630,227 @@ export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag })
         actions: [close],
     }));
     setTimeout(() => { if (!input.disabled) input.focus(); }, 0);
+}
+
+// =============================================================================
+// Install missing nodes modal — three phases driven by ComfyUI-Manager's HTTP
+// API.
+//
+//   1. Discovery   — probe Manager, fetch the node-id → git-url mapping,
+//                    bucket picks into already-installed / will-install /
+//                    unresolved.
+//   2. Confirm     — show the counts + per-bucket detail; user clicks Install
+//                    or Copy URL list.
+//   3. Progress    — POST /customnode/install/git_url for each unique URL,
+//                    POST /manager/queue/start, then poll /manager/queue/status
+//                    while updating a progress bar.
+//   4. Result      — summarize successes/failures and offer Reboot.
+//
+// We don't render the unresolved list as a hard-fail block — installs can
+// still proceed for the resolved subset, and the unresolved IDs surface
+// inside a collapsible <details> so the user can act on them separately.
+// =============================================================================
+export function showInstallMissingModal({ picks }) {
+    const body = document.createElement("div");
+
+    const message = document.createElement("div");
+    message.className = "koolook-modal-message";
+    message.textContent = "Checking ComfyUI-Manager…";
+    body.appendChild(message);
+
+    const stats = document.createElement("div");
+    body.appendChild(stats);
+
+    const progress = document.createElement("div");
+    progress.className = "koolook-install-progress";
+    progress.style.display = "none";
+    const progressBar = document.createElement("div");
+    progressBar.className = "koolook-install-progress-bar";
+    progress.appendChild(progressBar);
+    body.appendChild(progress);
+
+    // Track the polling abort so the Cancel button (or modal dismiss) stops
+    // pumping `pollUntilDone` even if installs are still chugging on the
+    // server side. We can't *cancel* an install — Manager doesn't expose a
+    // per-task cancel — so this just disengages our UI loop, not the work.
+    const pollAbort = { aborted: false };
+    let overlay;
+
+    const closeBtn = makeModalButton({
+        label: "Cancel",
+        onClick: () => { pollAbort.aborted = true; overlay.remove(); },
+    });
+    const copyBtn = makeModalButton({ label: "Copy URL list", onClick: () => {} });
+    copyBtn.style.display = "none";
+    const installBtn = makeModalButton({ label: "Install via Manager", primary: true, onClick: () => {} });
+    installBtn.style.display = "none";
+    const rebootBtn = makeModalButton({ label: "Reboot now", primary: true, onClick: () => {} });
+    rebootBtn.style.display = "none";
+
+    ({ overlay } = makeModalShell({
+        title: "Install missing nodes",
+        body,
+        actions: [closeBtn, copyBtn, installBtn, rebootBtn],
+    }));
+
+    function setStatLines(lines) {
+        stats.innerHTML = "";
+        for (const line of lines) {
+            const div = document.createElement("div");
+            div.className = "koolook-install-stat-line";
+            if (line.fail) div.classList.add("koolook-install-stat-fail");
+            div.textContent = line.text;
+            stats.appendChild(div);
+        }
+    }
+
+    function appendUnresolvedDetail(unresolvedIds) {
+        if (unresolvedIds.length === 0) return;
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.className = "koolook-install-unresolved-summary";
+        summary.textContent = `Show unresolved (${unresolvedIds.length})`;
+        details.appendChild(summary);
+        const list = document.createElement("div");
+        list.className = "koolook-install-unresolved";
+        list.textContent = unresolvedIds.join(", ");
+        details.appendChild(list);
+        stats.appendChild(details);
+    }
+
+    // ---- Phase 1: Discovery ----
+    (async () => {
+        const managerOk = await detectManager();
+        if (!managerOk) {
+            message.textContent = "ComfyUI-Manager isn't reachable. Install it via the official ComfyUI installer, or run `comfy node install <pack>` from the CLI for each missing pack.";
+            return;
+        }
+        let mappings;
+        try {
+            mappings = await loadMappings();
+        } catch (e) {
+            console.warn("[Koolook] loadMappings failed:", e);
+            message.textContent = `Could not load Manager's mapping database (${e.message}). In Manager → click "Update DB" or restart ComfyUI, then retry.`;
+            return;
+        }
+        const result = resolvePicksToInstall(picks, mappings.urlByNodeId);
+        const urlCount = result.willInstall.byUrl.size;
+        const willInstallNodeCount = [...result.willInstall.byUrl.values()]
+            .reduce((acc, ids) => acc + ids.length, 0);
+
+        message.textContent = "";
+        const lines = [
+            { text: `Already installed: ${result.alreadyInstalled.length} pick${result.alreadyInstalled.length === 1 ? "" : "s"}` },
+            { text: `Will install: ${urlCount} pack${urlCount === 1 ? "" : "s"} (${willInstallNodeCount} pick${willInstallNodeCount === 1 ? "" : "s"})` },
+        ];
+        if (result.unresolved.length > 0) {
+            lines.push({ text: `Unresolved (no mapping found): ${result.unresolved.length}` });
+        }
+        setStatLines(lines);
+        appendUnresolvedDetail(result.unresolved);
+
+        if (urlCount === 0) {
+            message.textContent = result.alreadyInstalled.length === picks.length && picks.length > 0
+                ? "Every pick is already installed."
+                : "Nothing to install.";
+            closeBtn.textContent = "Close";
+            return;
+        }
+
+        // ---- Phase 2: Confirm ----
+        const urls = [...result.willInstall.byUrl.keys()];
+        copyBtn.style.display = "";
+        installBtn.style.display = "";
+
+        copyBtn.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(urls.join("\n") + "\n");
+                toast(`Copied ${urls.length} git URL${urls.length === 1 ? "" : "s"} to clipboard.`);
+            } catch (e) {
+                console.warn("[Koolook] clipboard write failed:", e);
+                toast("Clipboard write failed — see console for the URL list.");
+                console.log("[Koolook] git URLs:\n" + urls.join("\n"));
+            }
+        });
+
+        installBtn.addEventListener("click", async () => {
+            // Lock buttons so a double-click can't double-queue.
+            installBtn.disabled = true;
+            copyBtn.disabled = true;
+
+            // ---- Phase 3: Progress ----
+            progress.style.display = "";
+            stats.style.display = "none";
+            message.textContent = "Queueing installs…";
+
+            const queueResults = [];
+            for (const url of urls) {
+                if (pollAbort.aborted) break;
+                const r = await queueInstallGitUrl(url);
+                queueResults.push({ url, ...r });
+            }
+
+            const queuedOk = queueResults.filter(r => r.ok).length;
+            if (queuedOk === 0) {
+                progress.style.display = "none";
+                stats.style.display = "";
+                message.textContent = "No installs were accepted.";
+                setStatLines(queueResults.map(r => ({
+                    text: `${r.url} — ${r.message}`,
+                    fail: true,
+                })));
+                closeBtn.textContent = "Close";
+                installBtn.style.display = "none";
+                copyBtn.style.display = "none";
+                return;
+            }
+
+            await startQueue();
+            const finalStatus = await pollUntilDone({
+                onTick: (s) => {
+                    const pct = s.total_count > 0 ? (s.done_count / s.total_count) * 100 : 0;
+                    progressBar.style.width = `${pct}%`;
+                    message.textContent = `Installing… ${s.done_count} of ${s.total_count}`;
+                },
+                signal: pollAbort,
+            });
+
+            // ---- Phase 4: Result ----
+            progress.style.display = "none";
+            stats.style.display = "";
+            installBtn.style.display = "none";
+            copyBtn.style.display = "none";
+
+            const resultLines = [];
+            if (finalStatus) {
+                resultLines.push({
+                    text: `Installed ${finalStatus.done_count} of ${finalStatus.total_count} pack${finalStatus.total_count === 1 ? "" : "s"}.`,
+                });
+            } else {
+                resultLines.push({ text: "Stopped polling — installs may still complete in the background." });
+            }
+            for (const r of queueResults.filter(r => !r.ok)) {
+                resultLines.push({ text: `Failed to queue: ${r.url} — ${r.message}`, fail: true });
+            }
+            if (queuedOk > 0) {
+                resultLines.push({ text: "Restart ComfyUI to load the newly installed nodes." });
+            }
+            message.textContent = "";
+            setStatLines(resultLines);
+            appendUnresolvedDetail(result.unresolved);
+
+            closeBtn.textContent = "Close";
+            if (queuedOk > 0) {
+                rebootBtn.style.display = "";
+                rebootBtn.addEventListener("click", async () => {
+                    rebootBtn.disabled = true;
+                    await reboot();
+                    overlay.remove();
+                    toast("Reboot requested. Reload the page in a few seconds.");
+                });
+            }
+        });
+    })();
 }
 
 // =============================================================================
