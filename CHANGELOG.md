@@ -144,6 +144,27 @@ The format is inspired by Keep a Changelog and SemVer.
 
 [np-vue]: https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/src/components/node/NodePreview.vue
 
+### Changed
+- **Hover preview rebuilt to read like a real node mock.** The original
+  layout (HSL-hashed title strip + two-column slot table + flat widget
+  text list) read as a generic info card. Reworked to mirror upstream
+  `NodePreview.vue` more faithfully: a flat header row (small colored
+  dot + node display name) over a red **PREVIEW** badge, slot rows
+  laid out as a 5-column grid (`[dot] [input-name] [spacer] [output-name] [dot]`)
+  so inputs and outputs line up horizontally as parallel sockets, and
+  widgets rendered as individual rounded pills with `◀ name [spacer]
+  value ▶` chrome to mimic LiteGraph widget UI. **Bigger fix
+  underneath:** `readSlots` and the title / category / description
+  reads were looking at static `nodeClass.INPUT_TYPES` /
+  `RETURN_TYPES` properties, which **don't exist** on
+  ComfyUI-registered nodes — ComfyUI parks the original V1 def at
+  `nodeClass.nodeData` (set by `litegraphService.ts`'s
+  `registerNodeDef` right before `LiteGraph.registerNodeType`). Every
+  card was rendering as just-the-header-and-badge because the slot
+  arrays came back empty. Reading from `nodeData` first (with the old
+  property names as a legacy fallback for non-ComfyUI registered
+  nodes) fixes the empty-card class. (#78)
+
 ### Fixed
 - **`pinExpanded` paths now expand on the immediate render** instead of
   being delayed by one. `buildFolder`'s expansion-resolution chain gained

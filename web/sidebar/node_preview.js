@@ -129,11 +129,9 @@ export function renderPreviewCard(nodeClass, type) {
         // Pack not currently loaded. Same source-of-truth as the
         // (unresolved) bucket in category-mode gather. The stub keeps the
         // hover-preview affordance consistent across resolved/unresolved
-        // picks rather than silently no-oping for missing packs.
-        const title = document.createElement("div");
-        title.className = "koolook-preview-title koolook-preview-title-unresolved";
-        title.textContent = type;
-        card.appendChild(title);
+        // picks rather than silently no-oping for missing packs. Renders
+        // header + stub only, no slot grid — there's nothing to mock.
+        appendHeader(card, type, /* unresolved */ true);
         const stub = document.createElement("div");
         stub.className = "koolook-preview-stub";
         stub.textContent = "Pack not loaded — use the ↓ Install missing button in the Tools row.";
@@ -141,58 +139,48 @@ export function renderPreviewCard(nodeClass, type) {
         return card;
     }
 
-    const cat = (nodeClass.category && String(nodeClass.category)) || "";
-    const titleText = (nodeClass.title && String(nodeClass.title)) || type;
+    // Category / title / description — try the constructor-level properties
+    // first (set by some non-ComfyUI registered nodes), then fall through to
+    // `nodeData` (where ComfyUI's `registerNodeDef` parks the original def).
+    const def = nodeClass.nodeData || null;
+    const cat = (nodeClass.category && String(nodeClass.category))
+        || (def && def.category && String(def.category))
+        || "";
+    const titleText = (nodeClass.title && String(nodeClass.title))
+        || (def && def.display_name && String(def.display_name))
+        || type;
 
-    const title = document.createElement("div");
-    title.className = "koolook-preview-title";
-    title.textContent = titleText;
-    title.style.background = categoryColor(cat);
-    card.appendChild(title);
+    appendHeader(card, titleText, /* unresolved */ false, cat);
 
-    if (cat) {
-        const catEl = document.createElement("div");
-        catEl.className = "koolook-preview-cat";
-        catEl.textContent = cat;
-        card.appendChild(catEl);
-    }
+    // "PREVIEW" badge — purely a visual marker that this is a static mock,
+    // not a live node. Mirrors upstream NodePreview.vue's `_sb_preview_badge`.
+    const badge = document.createElement("div");
+    badge.className = "koolook-preview-badge";
+    badge.textContent = "Preview";
+    card.appendChild(badge);
 
     const slots = readSlots(nodeClass);
-    if (slots.inputs.length > 0 || slots.outputs.length > 0) {
-        const ioGrid = document.createElement("div");
-        ioGrid.className = "koolook-preview-io";
-        ioGrid.appendChild(renderSlotsColumn("Inputs", slots.inputs));
-        ioGrid.appendChild(renderSlotsColumn("Outputs", slots.outputs));
-        card.appendChild(ioGrid);
+    // Slot rows pair inputs and outputs horizontally — row i shows
+    // `[dot] [input[i].name] [spacer] [output[i].name] [dot]`. When one
+    // side is shorter, the other side's later cells are blank. This is
+    // what makes the card read as a node mock: the sockets line up the
+    // same way they do on the real node.
+    const pairCount = Math.max(slots.inputs.length, slots.outputs.length);
+    for (let i = 0; i < pairCount; i++) {
+        appendSlotPairRow(card, slots.inputs[i] || null, slots.outputs[i] || null);
     }
 
-    if (slots.widgets.length > 0) {
-        const wSec = document.createElement("div");
-        wSec.className = "koolook-preview-widgets";
-        const wTitle = document.createElement("div");
-        wTitle.className = "koolook-preview-section-title";
-        wTitle.textContent = "Widgets";
-        wSec.appendChild(wTitle);
-        for (const w of slots.widgets) {
-            const wRow = document.createElement("div");
-            wRow.className = "koolook-preview-widget-row";
-            const name = document.createElement("span");
-            name.className = "koolook-preview-widget-name";
-            name.textContent = w.name;
-            wRow.appendChild(name);
-            const def = document.createElement("span");
-            def.className = "koolook-preview-widget-default";
-            const dStr = w.default !== undefined && w.default !== null
-                ? ` = ${truncate(String(w.default), 32)}`
-                : "";
-            def.textContent = `${w.type}${dStr}`;
-            wRow.appendChild(def);
-            wSec.appendChild(wRow);
-        }
-        card.appendChild(wSec);
+    // Widget rows — each rendered as a rounded "pill" with ◄ ► chrome to
+    // mimic LiteGraph widget UI. The triangles are static glyphs, no
+    // interaction; the value column shows the widget's default (or its
+    // first choice for COMBOs).
+    for (const w of slots.widgets) {
+        appendWidgetRow(card, w);
     }
 
-    const description = nodeClass.description ? String(nodeClass.description).trim() : "";
+    const description = (nodeClass.description && String(nodeClass.description).trim())
+        || (def && def.description && String(def.description).trim())
+        || "";
     if (description) {
         const desc = document.createElement("div");
         desc.className = "koolook-preview-desc";
@@ -203,51 +191,145 @@ export function renderPreviewCard(nodeClass, type) {
     return card;
 }
 
-function renderSlotsColumn(label, slots) {
-    const col = document.createElement("div");
-    col.className = "koolook-preview-col";
+// Header — colored dot + display name. The dot color is derived from the
+// node's category via `categoryColor` so cards from the same category share
+// a hue, making them visually groupable at a glance. Unresolved cards get
+// the same shape with a muted dot and an "italic" title to read as a stub.
+function appendHeader(card, title, unresolved, category) {
+    const header = document.createElement("div");
+    header.className = "koolook-preview-header";
+    if (unresolved) header.classList.add("koolook-preview-header-unresolved");
+    const dot = document.createElement("span");
+    dot.className = "koolook-preview-headdot";
+    dot.style.background = unresolved ? "rgba(180,120,120,0.7)" : categoryColor(category || "");
+    header.appendChild(dot);
+    const titleEl = document.createElement("span");
+    titleEl.className = "koolook-preview-headtitle";
+    titleEl.textContent = title;
+    header.appendChild(titleEl);
+    card.appendChild(header);
+}
 
-    const t = document.createElement("div");
-    t.className = "koolook-preview-section-title";
-    t.textContent = label;
-    col.appendChild(t);
+// One row in the 5-column slot grid: `[dot] [in-name] [middle] [out-name] [dot]`.
+// Either slot may be null when the input/output counts are unequal — the
+// corresponding cells render as empty placeholders so the grid alignment
+// holds.
+function appendSlotPairRow(card, inputSlot, outputSlot) {
+    const row = document.createElement("div");
+    row.className = "koolook-preview-row koolook-preview-row-slot";
 
-    if (slots.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "koolook-preview-empty";
-        empty.textContent = "—";
-        col.appendChild(empty);
-        return col;
-    }
-    for (const slot of slots) {
-        const row = document.createElement("div");
-        row.className = "koolook-preview-slot-row";
+    // Column 1: input dot
+    const inDot = document.createElement("div");
+    inDot.className = "koolook-preview-col";
+    if (inputSlot) {
         const dot = document.createElement("span");
         dot.className = "koolook-preview-slot-dot";
-        dot.style.background = slotColor(slot.type);
-        row.appendChild(dot);
-        const nameEl = document.createElement("span");
-        nameEl.className = "koolook-preview-slot-name";
-        if (slot.optional) nameEl.classList.add("koolook-preview-slot-optional");
-        nameEl.textContent = slot.name;
-        row.appendChild(nameEl);
-        const tEl = document.createElement("span");
-        tEl.className = "koolook-preview-slot-type";
-        tEl.textContent = slot.type;
-        row.appendChild(tEl);
-        col.appendChild(row);
+        dot.style.background = slotColor(inputSlot.type);
+        inDot.appendChild(dot);
     }
-    return col;
+    row.appendChild(inDot);
+
+    // Column 2: input name (left-aligned)
+    const inName = document.createElement("div");
+    inName.className = "koolook-preview-col koolook-preview-col-input";
+    if (inputSlot) {
+        inName.textContent = inputSlot.name;
+        if (inputSlot.optional) inName.classList.add("koolook-preview-slot-optional");
+        inName.title = `${inputSlot.name}: ${inputSlot.type}`;
+    }
+    row.appendChild(inName);
+
+    // Column 3: middle spacer (empty by design)
+    const mid = document.createElement("div");
+    mid.className = "koolook-preview-col koolook-preview-col-middle";
+    row.appendChild(mid);
+
+    // Column 4: output name (right-aligned)
+    const outName = document.createElement("div");
+    outName.className = "koolook-preview-col koolook-preview-col-output";
+    if (outputSlot) {
+        outName.textContent = outputSlot.name;
+        outName.title = `${outputSlot.name}: ${outputSlot.type}`;
+    }
+    row.appendChild(outName);
+
+    // Column 5: output dot
+    const outDot = document.createElement("div");
+    outDot.className = "koolook-preview-col";
+    if (outputSlot) {
+        const dot = document.createElement("span");
+        dot.className = "koolook-preview-slot-dot";
+        dot.style.background = slotColor(outputSlot.type);
+        outDot.appendChild(dot);
+    }
+    row.appendChild(outDot);
+
+    card.appendChild(row);
 }
+
+// Widget pill — same 5-column grid shape as slot rows but with `◄` / `►`
+// triangle glyphs in the dot columns and a rounded-bordered background to
+// read as a LiteGraph widget. Value column truncates long defaults.
+function appendWidgetRow(card, widget) {
+    const row = document.createElement("div");
+    row.className = "koolook-preview-row koolook-preview-row-widget";
+
+    const arrowL = document.createElement("div");
+    arrowL.className = "koolook-preview-col koolook-preview-arrow";
+    arrowL.textContent = "◀";
+    row.appendChild(arrowL);
+
+    const name = document.createElement("div");
+    name.className = "koolook-preview-col koolook-preview-widget-name";
+    name.textContent = widget.name;
+    name.title = `${widget.name} (${widget.type})`;
+    row.appendChild(name);
+
+    const mid = document.createElement("div");
+    mid.className = "koolook-preview-col koolook-preview-col-middle";
+    row.appendChild(mid);
+
+    const value = document.createElement("div");
+    value.className = "koolook-preview-col koolook-preview-widget-value";
+    if (widget.default !== undefined && widget.default !== null) {
+        value.textContent = truncate(String(widget.default), 24);
+    } else {
+        value.textContent = widget.type;
+    }
+    row.appendChild(value);
+
+    const arrowR = document.createElement("div");
+    arrowR.className = "koolook-preview-col koolook-preview-arrow";
+    arrowR.textContent = "▶";
+    row.appendChild(arrowR);
+
+    card.appendChild(row);
+}
+
 
 // =============================================================================
 // Metadata extraction
 //
-// ComfyUI's INPUT_TYPES is convention-driven: each input is `[type, config?]`
-// where `type` is either a string (slot type like "IMAGE", "MODEL", or a
-// scalar widget type like "INT") or an array of choices (a COMBO widget).
-// The same convention is mirrored on the JS side because LiteGraph reads
-// the Python-derived definitions verbatim.
+// ComfyUI doesn't keep `INPUT_TYPES` / `RETURN_TYPES` as static properties on
+// the registered constructor. Instead, the original Python-side node def
+// (the V1 shape returned by `/object_info`) is stashed at `nodeClass.nodeData`
+// during registration (see Comfy-Org/ComfyUI_frontend `litegraphService.ts`
+// `registerNodeDef` — `node.nodeData = nodeDef` right before
+// `LiteGraph.registerNodeType`). `nodeData` exposes:
+//
+//   nodeData.input.required   { name: ["TYPE", config?], ... }   V1 shape
+//   nodeData.input.optional   { name: ["TYPE", config?], ... }   V1 shape
+//   nodeData.output           ["TYPE1", "TYPE2", ...]            V1 shape
+//   nodeData.output_name      ["name1", "name2", ...]            V1 shape
+//   nodeData.description      string
+//   nodeData.category         string
+//   nodeData.display_name     string
+//
+// Plus a parallel V2 transform (`inputs` record / `outputs` array) — we read
+// V1 because it's a 1-to-1 with the Python convention and matches the
+// upstream `INPUT_TYPES` shape exactly. Fall back to direct
+// `nodeClass.INPUT_TYPES` / `RETURN_TYPES` for any future or non-ComfyUI
+// LiteGraph nodes that follow the old convention.
 //
 // "Widget" classification matches ComfyUI's frontend rule: scalar types
 // (INT, FLOAT, STRING, BOOLEAN) and arrays-of-choices (COMBO). Anything
@@ -261,28 +343,34 @@ function readSlots(nodeClass) {
     const widgets = [];
     const outputs = [];
 
-    let inputTypes = null;
-    try {
-        if (typeof nodeClass.INPUT_TYPES === "function") {
-            inputTypes = nodeClass.INPUT_TYPES();
-        } else if (nodeClass.INPUT_TYPES && typeof nodeClass.INPUT_TYPES === "object") {
-            inputTypes = nodeClass.INPUT_TYPES;
+    const def = nodeClass.nodeData || null;
+
+    // Inputs: prefer `nodeData.input` (V1 shape ComfyUI preserves verbatim);
+    // fall back to direct `INPUT_TYPES` for non-ComfyUI registered nodes.
+    let inputBlock = null;
+    if (def && def.input && typeof def.input === "object") {
+        inputBlock = def.input;
+    } else {
+        try {
+            if (typeof nodeClass.INPUT_TYPES === "function") {
+                inputBlock = nodeClass.INPUT_TYPES();
+            } else if (nodeClass.INPUT_TYPES && typeof nodeClass.INPUT_TYPES === "object") {
+                inputBlock = nodeClass.INPUT_TYPES;
+            }
+        } catch (e) {
+            // Some legacy packs throw from INPUT_TYPES under unusual
+            // conditions (missing sibling deps, lazy imports). Log so the
+            // failure is visible during pack debugging instead of silently
+            // rendering an empty-looking node. Matches the project-wide
+            // convention (see picks_store.js, canvas_io.js, installer.js).
+            console.warn("[Kforge Labs preview] INPUT_TYPES() threw for", nodeClass.title || "<no title>", e);
+            inputBlock = null;
         }
-    } catch (e) {
-        // Some custom-node packs throw from INPUT_TYPES under unusual
-        // conditions (missing sibling deps, lazy imports). Treat as
-        // "no input metadata available" and continue — the card still
-        // renders the title + outputs + description. Log so the failure
-        // is visible during pack debugging instead of silently rendering
-        // an empty-looking node. Matches the project-wide convention
-        // (see picks_store.js, canvas_io.js, installer.js).
-        console.warn("[Kforge Labs preview] INPUT_TYPES() threw for", nodeClass.title || "<no title>", e);
-        inputTypes = null;
     }
 
-    if (inputTypes && typeof inputTypes === "object") {
+    if (inputBlock && typeof inputBlock === "object") {
         for (const section of ["required", "optional"]) {
-            const block = inputTypes[section];
+            const block = inputBlock[section];
             if (!block || typeof block !== "object") continue;
             for (const [name, spec] of Object.entries(block)) {
                 if (!Array.isArray(spec) || spec.length === 0) continue;
@@ -310,8 +398,17 @@ function readSlots(nodeClass) {
         }
     }
 
-    const returnTypes = Array.isArray(nodeClass.RETURN_TYPES) ? nodeClass.RETURN_TYPES : [];
-    const returnNames = Array.isArray(nodeClass.RETURN_NAMES) ? nodeClass.RETURN_NAMES : [];
+    // Outputs: prefer `nodeData.output` (parallel `output_name` for labels);
+    // fall back to direct `RETURN_TYPES` / `RETURN_NAMES` on the constructor.
+    let returnTypes = [];
+    let returnNames = [];
+    if (def && Array.isArray(def.output)) {
+        returnTypes = def.output;
+        returnNames = Array.isArray(def.output_name) ? def.output_name : [];
+    } else if (Array.isArray(nodeClass.RETURN_TYPES)) {
+        returnTypes = nodeClass.RETURN_TYPES;
+        returnNames = Array.isArray(nodeClass.RETURN_NAMES) ? nodeClass.RETURN_NAMES : [];
+    }
     for (let i = 0; i < returnTypes.length; i++) {
         const t = returnTypes[i];
         const tStr = typeof t === "string" ? t : String(t);
