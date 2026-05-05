@@ -18,6 +18,7 @@ import {
     WORKFLOWS_CHANGED_EVENT,
     GROUP_MODE_KEY,
     GROUP_MODE_DEFAULT,
+    MODULE_TAG,
     ensureStyle,
     toast,
     compareNames,
@@ -55,6 +56,7 @@ import {
     serializeSelection,
     canvasIsNonEmpty,
     loadWorkflowOntoCanvas,
+    insertWorkflowOntoCanvas,
     insertNode,
     getSelectedNodeTypes,
     dropPlaceholdersForPacks,
@@ -1061,17 +1063,25 @@ function makeNodeLeafRow({ display, type, removable, onClick, packBadge, unresol
     return row;
 }
 
-function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggablePayload }) {
+function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggablePayload, isModule = false }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
-    row.title = `${dirName} / ${name}`;
+    // Module-tagged entries get a distinct hover tooltip so the green icon
+    // isn't the only signal that a left-click does something different. The
+    // `pi pi-plus-circle` class swap is what actually makes them look like
+    // "drop in" affordances rather than "open" affordances.
+    row.title = isModule
+        ? `${dirName} / ${name} — module (left-click to insert into canvas)`
+        : `${dirName} / ${name}`;
 
     const chevron = document.createElement("span");
     chevron.className = "koolook-chevron";
     row.appendChild(chevron);
 
     const icon = document.createElement("span");
-    icon.className = "pi pi-file koolook-leaf-icon";
+    icon.className = isModule
+        ? "pi pi-plus-circle koolook-module-icon"
+        : "pi pi-file koolook-leaf-icon";
     row.appendChild(icon);
 
     const nameEl = document.createElement("span");
@@ -1083,6 +1093,20 @@ function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggableP
     if (onContextMenu) row.addEventListener("contextmenu", onContextMenu);
     if (draggablePayload) decorateDraggable(row, draggablePayload);
     return row;
+}
+
+// Resolve module-ness from the workflow's stored tags. Computed at render
+// time (cheap — small array `.includes` per row) so we don't have to widen
+// the gather pipeline's row shape just to carry one boolean. Returns false
+// for archived entries: archived workflows are old versions; clicking them
+// in the Archive folder should still mean "load to review", not "splice an
+// outdated cluster into my live canvas". The right-click menu on archived
+// rows still exposes both Insert and Load if the user really wants to
+// insert an archived version.
+function isModuleWorkflow(dirPath, wfName) {
+    const tags = getWorkflowTags(dirPath, wfName);
+    if (!Array.isArray(tags)) return false;
+    return tags.includes(MODULE_TAG);
 }
 
 function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path, forceExpanded = false, draggablePayload, dropTarget }) {
@@ -1309,6 +1333,14 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         {
             label: "Load",
             action: () => loadWorkflowOntoCanvas(dirPath, wfName),
+        },
+        {
+            // Non-destructive sibling of Load — splices the saved cluster into
+            // whatever's already on canvas (placed at the viewport center,
+            // inserted nodes selected so the user can immediately drag).
+            // Aborts cleanly if any referenced node type isn't installed.
+            label: "Insert into canvas",
+            action: () => insertWorkflowOntoCanvas(dirPath, wfName),
         },
         {
             label: "Rename…",
@@ -1685,12 +1717,19 @@ addSection({
                 path: tag.name,
                 build: (tagCtx) => {
                     for (const entry of tag.entries) {
+                        // Module-ness is per-workflow, not per-tag-folder —
+                        // a workflow tagged `module` is still a module when
+                        // it shows up under any other tag it carries.
+                        const moduleEntry = isModuleWorkflow(entry.path, entry.wfName);
                         tagCtx.leaf({
                             row: makeWorkflowLeafRow({
                                 name: entry.wfName,
                                 dirName: entry.path.join(" / "),
-                                onClick: () => loadWorkflowOntoCanvas(entry.path, entry.wfName),
+                                onClick: () => moduleEntry
+                                    ? insertWorkflowOntoCanvas(entry.path, entry.wfName)
+                                    : loadWorkflowOntoCanvas(entry.path, entry.wfName),
                                 onContextMenu: (e) => workflowRowContextMenu(e, entry.path, entry.wfName, false),
+                                isModule: moduleEntry,
                             }),
                         });
                     }
@@ -1747,13 +1786,21 @@ function renderGatheredDir(parentCtx, dir) {
                 });
             }
             for (const wfName of dir.active) {
+                const moduleEntry = isModuleWorkflow(dirPath, wfName);
                 dirCtx.leaf({
                     row: makeWorkflowLeafRow({
                         name: wfName,
                         dirName: dirDisplay,
-                        onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
+                        // Module convention: left-click inserts; non-module
+                        // entries left-click loads (replaces canvas, with
+                        // confirm modal as before). Both actions are always
+                        // available via the right-click menu regardless.
+                        onClick: () => moduleEntry
+                            ? insertWorkflowOntoCanvas(dirPath, wfName)
+                            : loadWorkflowOntoCanvas(dirPath, wfName),
                         onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, false),
                         draggablePayload: { type: "workflow", path: dirPath, name: wfName },
+                        isModule: moduleEntry,
                     }),
                 });
             }
@@ -2085,7 +2132,13 @@ export function renderPanel(container) {
     // mutation rolls back automatically if both /userdata and the localStorage
     // fallback rejected the write — the user isn't told a save succeeded when
     // nothing was persisted, and the in-memory cache stays consistent with disk.
-    const saveAndToast = async (graph, name, dirPath) => {
+    //
+    // `asModule` rides the same persistMutation so a commit failure rolls
+    // back BOTH the entry write and the tag add. Doing the addTag in a
+    // separate persistMutation would race: the save could land while the
+    // tag rejected, leaving a "module" entry the user thinks is tagged
+    // but isn't.
+    const saveAndToast = async (graph, name, dirPath, asModule = false) => {
         // Pin the workflows section + every ancestor of the destination dir
         // so the resulting re-render leaves the whole path open. Pins are
         // consumed on the next render.
@@ -2098,12 +2151,18 @@ export function renderPanel(container) {
         pinExpanded(pinKeys);
         const dirDisplay = dirPath.join(" / ");
         await persistMutation({
-            mutate: () => saveWorkflowEntry(dirPath, name, graph),
+            mutate: () => {
+                const result = saveWorkflowEntry(dirPath, name, graph);
+                if (!result) return false;
+                if (asModule) addTag(dirPath, name, MODULE_TAG);
+                return result;
+            },
             onSuccess: (result) => {
+                const moduleSuffix = asModule ? " as module" : "";
                 if (result.archivedAs) {
-                    toast(`Saved "${name}" in ${dirDisplay}. Previous version moved to Archive.`);
+                    toast(`Saved "${name}" in ${dirDisplay}${moduleSuffix}. Previous version moved to Archive.`);
                 } else {
-                    toast(`Saved "${name}" in ${dirDisplay}.`);
+                    toast(`Saved "${name}" in ${dirDisplay}${moduleSuffix}.`);
                 }
             },
             persistFailedMessage: `Save failed — could not write "${name}". See console.`,
@@ -2128,7 +2187,12 @@ export function renderPanel(container) {
             }
             showSaveWorkflowModal({
                 titleSuffix: "entire canvas",
-                onSave: ({ name, dirPath }) => saveAndToast(graph, name, dirPath),
+                // Whole-canvas saves default to NOT being modules — the
+                // typical "save my whole workflow" intent is to keep the
+                // load-replaces-canvas semantics. The checkbox is still
+                // visible so a power user can opt in.
+                defaultModule: false,
+                onSave: ({ name, dirPath, asModule }) => saveAndToast(graph, name, dirPath, asModule),
             });
         },
     }));
@@ -2154,7 +2218,12 @@ export function renderPanel(container) {
             const { graph } = result;
             showSaveWorkflowModal({
                 titleSuffix: `${graph.nodes.length} selected node${graph.nodes.length === 1 ? "" : "s"}`,
-                onSave: ({ name, dirPath }) => saveAndToast(graph, name, dirPath),
+                // Selection saves are the canonical "module" candidate —
+                // small clusters the user wants to splice into other
+                // workflows. Pre-check the box; the user can untick if
+                // they'd rather have replace-on-load semantics.
+                defaultModule: true,
+                onSave: ({ name, dirPath, asModule }) => saveAndToast(graph, name, dirPath, asModule),
             });
         },
     }));

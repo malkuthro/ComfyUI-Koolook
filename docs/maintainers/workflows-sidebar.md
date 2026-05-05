@@ -29,9 +29,46 @@ The archive trigger is a name collision with any existing active entry,
 regardless of which action was selected. The Action dropdown is UX
 guidance; the underlying logic flows from the resulting `(name, dir)` pair.
 
+## Modules — splice a saved cluster into your live canvas
+
+A saved workflow tagged with the literal tag **`module`** behaves like a
+reusable building block: clicking it **inserts** its nodes into the existing
+canvas (placed at the viewport center, freshly id-remapped, internal links
+re-created, the inserted nodes left selected) instead of replacing the
+graph the way a normal Load does.
+
+Typical use cases this is designed for:
+
+- **EXR output stack** — a Save EXR + path-builder + format selector cluster
+  the user wants to drop into any render-time workflow.
+- **Depth-only render** — a depth-map node + preview wired up, ready to be
+  spliced into a wider pipeline.
+- **Wan 2.2 prompt module** — the `EasyWan22Prompt` node + a CLIP encoder
+  + any conditioning glue, saved once, dropped into ten different
+  workflows.
+
+How it works:
+
+| Surface | Behavior |
+|---|---|
+| **Save modal** (selection save) | Includes a **`Save as module`** checkbox, **pre-checked** for selection saves. Whole-canvas saves get the same checkbox but **unchecked** by default. The tag is added in the same atomic `persistMutation` as the save — a commit failure rolls both back. |
+| **Workflows section** | Module-tagged entries get a green **`pi pi-plus-circle`** icon and a distinct hover tooltip. **Left-click inserts** instead of loading. Right-click still offers **both** `Load` and `Insert into canvas` — `Load` stays available for every row regardless of tag. |
+| **Tags section** | Same flip — a workflow tagged `module` is treated as a module no matter which tag folder it shows up under. |
+| **Archive folder** | Archived module entries still left-click to **Load** (they're old versions, treated as "review" rather than "splice"). Right-click still has both Load and Insert. |
+
+Implementation pieces:
+
+- The literal tag string lives in [`web/sidebar/constants.js`](../../web/sidebar/constants.js) as `MODULE_TAG`.
+- The non-destructive insert primitive is `insertWorkflowOntoCanvas(dirPath, wfName)` in [`web/sidebar/canvas_io.js`](../../web/sidebar/canvas_io.js). It pre-flights every referenced node type against `LiteGraph.registered_node_types`, aborts cleanly with a toast when any are missing (a partial insert with stub nodes is worse than no insert), then deep-clones the saved graph, calls `node.configure(...)` per node with `node.id = -1` so `app.graph.add()` allocates fresh ids that can't collide with the live canvas, and finally walks the saved `links[]` to recreate internal connections via `originNode.connect(...)` (which auto-allocates fresh link ids — no manual link remap needed).
+- Bbox-of-cluster placement uses CSS pixels (`clientWidth`/`clientHeight`), not the HiDPI backing buffer — same correction as the existing `placeAtCanvasCenter` helper.
+
+To turn an **existing** saved workflow into a module: right-click → **Tags…**
+→ add `module`. (No re-save needed; the row re-renders on the next
+`workflows-changed` event.) To un-module: remove the `module` tag the same way.
+
 ## Right-click menus
 
-- **Workflow row**: Load / Rename / `→ <other path>` (lists every other directory in the tree) / Move to archive (or Restore from archive if already archived) / Delete.
+- **Workflow row**: Load / **Insert into canvas** / Rename / `→ <other path>` (lists every other directory in the tree) / Move to archive (or Restore from archive if already archived) / Delete.
 - **Directory row** (any depth): **Create subdirectory…** / Rename / Delete (with confirm if non-empty — the message names workflow + subdirectory counts).
 - **Archive folder** (synthetic — appears only when a directory has archived workflows): **Delete archive (N)** — removes every archived workflow in this directory in one go (active workflows in the same directory are untouched).
 

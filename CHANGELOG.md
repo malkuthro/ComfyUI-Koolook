@@ -7,6 +7,31 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Modules — splice a saved cluster into your live canvas instead of
+  replacing it.** Tag any saved workflow with the literal tag `module`
+  and the Kforge Labs sidebar starts treating it as a reusable building
+  block: a green `pi pi-plus-circle` icon replaces the file glyph,
+  left-click **inserts** the cluster at the viewport center (with
+  internal links re-created and the new nodes left selected), and a
+  distinct hover tooltip surfaces the changed semantics. The
+  selection-save modal now ships a **`Save as module`** checkbox
+  (pre-checked for selection saves; unchecked for whole-canvas saves),
+  which adds the `module` tag inside the same `persistMutation` as the
+  entry write so a commit failure rolls back both. The right-click
+  menu on every workflow row gains an explicit **Insert into canvas**
+  entry alongside the existing Load — Load still works on every row,
+  module-tagged or not. New primitive `insertWorkflowOntoCanvas` in
+  `web/sidebar/canvas_io.js` pre-flights every referenced node type
+  against `LiteGraph.registered_node_types` and aborts cleanly when
+  any are missing (a partial insert with stub nodes is worse than no
+  insert), then deep-clones the saved graph, lets `app.graph.add()`
+  allocate fresh node ids so nothing collides with the live canvas,
+  and recreates internal connections via `originNode.connect(...)` so
+  link ids are auto-allocated too — no manual link remap needed.
+  Designed for setups like an EXR-output stack, a depth-only render
+  cluster, or a Wan 2.2 prompt module the user wants to drop into many
+  workflows. Full reference in
+  [`docs/maintainers/workflows-sidebar.md`](docs/maintainers/workflows-sidebar.md#modules--splice-a-saved-cluster-into-your-live-canvas).
 - **Drag-link-release menu hoists curated picks to the top.** When the user
   drags a connection out of a node socket and releases on empty canvas,
   ComfyUI's compatibility-filtered suggestion list now sorts items in the

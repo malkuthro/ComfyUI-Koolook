@@ -149,7 +149,7 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
     ({ overlay } = makeModalShell({ title, body, actions: [cancel, ok] }));
 }
 
-export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, onSave }) {
+export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, defaultModule = false, onSave }) {
     const body = document.createElement("div");
 
     // ---- Directory (cascading picker) ----
@@ -353,6 +353,26 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
     nameInput.placeholder = "My workflow";
     body.appendChild(nameInput);
 
+    // ---- "Save as module" checkbox ----
+    // Tagging the saved entry with the literal `module` tag flips the
+    // sidebar's left-click default from Load to Insert, and re-icons the
+    // row green. The actual `addTag` call lives in the caller's `onSave`
+    // handler so it can ride the same persistMutation snapshot as the
+    // entry write itself — a commit failure rolls back BOTH the save and
+    // the tag in one go. Visually, the checkbox sits below the name field
+    // (the last thing the user touches before clicking Save) so the
+    // intent decision is co-located with the destination decision.
+    const moduleRow = document.createElement("label");
+    moduleRow.className = "koolook-modal-checkbox-row";
+    const moduleCheckbox = document.createElement("input");
+    moduleCheckbox.type = "checkbox";
+    moduleCheckbox.checked = !!defaultModule;
+    moduleRow.appendChild(moduleCheckbox);
+    const moduleText = document.createElement("span");
+    moduleText.textContent = "Save as module (left-click inserts into canvas instead of replacing)";
+    moduleRow.appendChild(moduleText);
+    body.appendChild(moduleRow);
+
     // ---- Wiring ----
     // Candidates for "Base on existing": collect every active workflow at
     // the destination dir AND walk up its ancestors. So if the user picks
@@ -516,7 +536,11 @@ export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, on
         // match the codebase-wide convention (`dirPath` for arrays of
         // segments, `dirName` for single-segment strings, `dir` for resolved
         // DirNode objects).
-        await onSave({ name, dirPath });
+        // `asModule` is the "Save as module" checkbox state. Caller is
+        // expected to fold an `addTag(..., MODULE_TAG)` into the same
+        // persistMutation as the save when truthy, so a commit failure
+        // rolls back both the entry write and the tag together.
+        await onSave({ name, dirPath, asModule: moduleCheckbox.checked });
     };
 
     nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
