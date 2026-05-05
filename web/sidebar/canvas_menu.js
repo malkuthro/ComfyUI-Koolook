@@ -8,6 +8,7 @@
 // =============================================================================
 import { toast } from "./constants.js";
 import { addToMyPicks, notifyPicksChanged } from "./picks_store.js";
+import { spotlightAddedPicks } from "./tree.js";
 
 export function patchCanvasMenu() {
     const C = (typeof LGraphCanvas !== "undefined") ? LGraphCanvas : null;
@@ -32,9 +33,14 @@ export function patchCanvasMenu() {
                 const status = addToMyPicks(node.type);
                 if (status === "added") {
                     toast(`Added "${node.title || node.type}" to favorites.`);
+                    spotlightAddedPicks([node.type]);
                     notifyPicksChanged();
                 } else if (status === "duplicate") {
                     toast("Already in favorites.");
+                    // Spotlight on duplicate too — the user reached for this
+                    // exact node; remind them where it lives.
+                    spotlightAddedPicks([node.type]);
+                    notifyPicksChanged();
                 } else {
                     toast(`Failed to save "${node.title || node.type}". See console.`);
                 }

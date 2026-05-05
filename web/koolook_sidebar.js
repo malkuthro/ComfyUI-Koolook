@@ -20,6 +20,7 @@ import {
 } from "./sidebar/workflows_store.js";
 import { renderPanel } from "./sidebar/tree.js";
 import { patchCanvasMenu } from "./sidebar/canvas_menu.js";
+import { patchConnectionMenu } from "./sidebar/connection_menu.js";
 
 app.registerExtension({
     name: "koolook.curated_sidebar",
@@ -48,5 +49,6 @@ app.registerExtension({
             render: (el) => renderPanel(el),
         });
         patchCanvasMenu();
+        patchConnectionMenu();
     },
 });

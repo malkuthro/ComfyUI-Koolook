@@ -57,8 +57,20 @@ function makeModalShell({ title, body, actions }) {
     };
 
     overlay.appendChild(modal);
+    // Click-to-dismiss with drag-out-of-input protection. A single click
+    // fires `mousedown` then `mouseup` then `click` — and `click.target`
+    // is the deepest common ancestor of mousedown's and mouseup's targets.
+    // So if you drag-select text inside an input and release in the
+    // overlay's dark area, click fires with target=overlay and the modal
+    // would otherwise close mid-edit. Track whether the gesture STARTED
+    // on the overlay too; only dismiss if both ends did.
+    let mouseDownOnOverlay = false;
+    overlay.addEventListener("mousedown", (e) => {
+        mouseDownOnOverlay = (e.target === overlay);
+    });
     overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) close();
+        if (e.target === overlay && mouseDownOnOverlay) close();
+        mouseDownOnOverlay = false;
     });
     escHandler = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", escHandler);
@@ -1233,6 +1245,11 @@ export function showSnapshotSettingsDialog({
             return;
         }
         input.value = settings.savedLibraryPath || "";
+        // Native tooltip surfaces the full path on hover — the input is only
+        // ~440px wide so long paths get truncated by horizontal scroll.
+        // The user can still drag-select to view, but the tooltip avoids
+        // making them do so.
+        input.title = settings.savedLibraryPath || "";
         input.disabled = false;
         let sourceLabel;
         if (settings.source === "settings") sourceLabel = "from this Settings panel";
@@ -1252,6 +1269,7 @@ export function showSnapshotSettingsDialog({
             hint.textContent =
                 `Currently in effect: ${result.resolvedPath}\n(source: ${sourceLabel})`;
             input.value = result.savedLibraryPath || "";
+            input.title = result.savedLibraryPath || "";
             toast(rawValue
                 ? "Library path saved."
                 : "Override cleared — using env var / default."
