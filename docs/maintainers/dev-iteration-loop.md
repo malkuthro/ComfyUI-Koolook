@@ -4,6 +4,31 @@ How the Curated Nodes / Workflows sidebar was built, in case you come back
 to it after a break. Optimized for fast iteration without the publish
 round-trip.
 
+## First-time setup on a new machine
+
+`KOLOOK_COMFYUI_DEV_PATH` should point at the eventual Koolook subdirectory
+inside your live ComfyUI `custom_nodes/` folder — **not** the `custom_nodes/`
+parent itself.
+
+| Platform | Typical path |
+|---|---|
+| macOS | `/Volumes/Data/ComfyUI/custom_nodes/ComfyUI-Koolook` |
+| Linux | `/home/<user>/ComfyUI/custom_nodes/ComfyUI-Koolook` |
+| Windows | `C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook` (forward slashes work fine) |
+
+```bash
+cp .env.example .env                            # if you don't have one yet
+$EDITOR .env                                    # set KOLOOK_COMFYUI_DEV_PATH
+python scripts/sync_to_dev.py --init            # creates the leaf folder + first sync
+# restart ComfyUI to pick up the new install
+```
+
+After that first run, drop the `--init` — plain `python scripts/sync_to_dev.py`
+is enough for every subsequent edit. The `--init` flag is a one-shot guard
+against typos: it refuses to create a Koolook folder unless the parent looks
+like a ComfyUI `custom_nodes/` directory (named `custom_nodes` or sitting
+inside a `ComfyUI` parent).
+
 ## The loop
 
 1. Edit `web/koolook_sidebar.js` or any module under `web/sidebar/` (or related JSON) in the worktree.
