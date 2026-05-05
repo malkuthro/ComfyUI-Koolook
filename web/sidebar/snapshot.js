@@ -110,6 +110,35 @@ export async function applySnapshot(snapshot) {
 }
 
 // =============================================================================
+// Current-preset tracking — remembers which preset the user last loaded or
+// saved, so a Save button can default to "save over the current one" instead
+// of forcing the user to retype the name every session. Persists in
+// localStorage so it survives reloads.
+// =============================================================================
+
+const CURRENT_PRESET_KEY = "koolook.snapshot.currentPresetName.v1";
+
+export function getCurrentPresetName() {
+    try {
+        const v = localStorage.getItem(CURRENT_PRESET_KEY);
+        return typeof v === "string" && v ? v : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+export function setCurrentPresetName(name) {
+    try {
+        if (name) localStorage.setItem(CURRENT_PRESET_KEY, name);
+        else localStorage.removeItem(CURRENT_PRESET_KEY);
+    } catch (e) {
+        // localStorage rejected (quota, private mode) — non-fatal,
+        // the next save just won't pre-fill. Log so power users notice.
+        console.warn("[Koolook] could not persist current preset name:", e);
+    }
+}
+
+// =============================================================================
 // Server I/O — calls Koolook's `/koolook/presets/*` routes, defined in
 // `koolook_routes.py`. The server reads the `KFORGELABS_PRESETS` env var
 // to decide where on disk the library lives (with a default fallback to
@@ -130,6 +159,7 @@ export async function applySnapshot(snapshot) {
 const ROUTE_INFO = "/koolook/presets/info";
 const ROUTE_LIST = "/koolook/presets/list";
 const ROUTE_FILE = "/koolook/presets/file";
+const ROUTE_SETTINGS = "/koolook/presets/settings";
 
 function fileQuery(fileName) {
     return `?name=${encodeURIComponent(`${fileName}.json`)}`;
@@ -165,10 +195,9 @@ async function loadPreview(fullName) {
     }
 }
 
-// Returns the library's storage path + writability for the Manage tab's
-// info icon tooltip. Returns null if the endpoint isn't reachable (e.g.
-// the server-side routes weren't registered) — caller falls back to a
-// generic message.
+// Returns the library's resolved storage path + writability + source
+// (settings / env / default). Returns null if the endpoint isn't
+// reachable — caller falls back to a generic message.
 export async function getLibraryInfo() {
     try {
         const resp = await fetch(ROUTE_INFO);
@@ -178,6 +207,38 @@ export async function getLibraryInfo() {
         console.warn("[Koolook] preset library info unavailable:", e);
         return null;
     }
+}
+
+// Read the saved-in-UI library path (settings file's `libraryPath` field)
+// alongside the currently-resolved path and source. The Settings dialog
+// uses `savedLibraryPath` as the editable field, `resolvedPath` as the
+// "currently in effect" readout, and `source` to label the chain.
+export async function getSettings() {
+    try {
+        const resp = await fetch(ROUTE_SETTINGS);
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch (e) {
+        console.warn("[Koolook] preset settings unavailable:", e);
+        return null;
+    }
+}
+
+// Save (or clear, if `libraryPath` is empty) the in-UI library-path
+// override. Returns the server's echoed state ({savedLibraryPath,
+// resolvedPath, source}) on success. Throws on server failure with the
+// server-provided reason.
+export async function saveSettings(libraryPath) {
+    const resp = await fetch(ROUTE_SETTINGS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ libraryPath: libraryPath || "" }),
+    });
+    if (!resp.ok) {
+        const reason = resp.statusText || `HTTP ${resp.status}`;
+        throw new Error(`Could not save settings: ${reason}.`);
+    }
+    return await resp.json();
 }
 
 // Returns an array of preview objects, sorted by display name

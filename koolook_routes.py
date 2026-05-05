@@ -23,6 +23,7 @@ must be present before saves succeed).
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -31,6 +32,8 @@ from aiohttp import web
 
 ENV_VAR = "KFORGELABS_PRESETS"
 DEFAULT_SUBDIR = "koolook-presets"
+SETTINGS_FILENAME = "koolook-settings.json"
+SETTINGS_KEY_LIBRARY_PATH = "libraryPath"
 
 # Single-segment filename, ending in `.json`. No path separators, no `..`,
 # no leading dot. Allows letters, digits, spaces, and a small set of safe
@@ -54,17 +57,70 @@ def _resolve_default_dir() -> Path:
         return Path.cwd() / "user" / "default" / DEFAULT_SUBDIR
 
 
-def _configured_dir() -> tuple[Path, bool]:
-    """Return ``(dir_path, is_default_fallback)``.
+def _settings_file_path() -> Path:
+    """Returns the path to ``koolook-settings.json`` under ComfyUI's user dir.
 
-    Reads the env var on every call rather than caching it at module-load
-    time, so a relauncher that exports a new value picks it up without
-    needing a ComfyUI restart that bypasses Python's import cache.
+    The settings file is per-install (so each ComfyUI on a workstation has
+    its own preferred library path). Stored as JSON with shape:
+        { "libraryPath": "<absolute-path-or-empty>" }
     """
+    try:
+        import folder_paths
+
+        return Path(folder_paths.get_user_directory()) / SETTINGS_FILENAME
+    except Exception:  # pragma: no cover
+        return Path.cwd() / "user" / "default" / SETTINGS_FILENAME
+
+
+def _read_settings() -> dict:
+    """Read the settings JSON. Returns ``{}`` if missing or unreadable.
+
+    Soft-failure on read: the in-UI Settings panel can still rewrite a
+    fresh file even if the existing one is corrupt, and the rest of the
+    plugin continues to function (just falls through to env var / default).
+    """
+    path = _settings_file_path()
+    try:
+        if not path.is_file():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_settings(data: dict) -> None:
+    """Persist the settings JSON. Raises web.HTTPInternalServerError on failure."""
+    path = _settings_file_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise web.HTTPInternalServerError(
+            reason=f"Could not write settings file: {exc}"
+        ) from exc
+
+
+def _configured_dir() -> tuple[Path, str]:
+    """Return ``(dir_path, source)`` where source is one of
+    ``"settings"``, ``"env"``, ``"default"``.
+
+    Resolution order (highest priority first):
+      1. ``libraryPath`` field in the settings file (set via Settings panel)
+      2. ``KFORGELABS_PRESETS`` env var (deployment / facility config)
+      3. Built-in default ``<comfyui-userdata>/koolook-presets/``
+
+    Reads each source on every call rather than caching at module-load,
+    so a Settings panel save or a relauncher with a new env value picks
+    up immediately.
+    """
+    settings = _read_settings()
+    settings_path = settings.get(SETTINGS_KEY_LIBRARY_PATH, "")
+    if isinstance(settings_path, str) and settings_path.strip():
+        return Path(settings_path.strip()).expanduser(), "settings"
     env = os.environ.get(ENV_VAR, "").strip()
     if env:
-        return Path(env).expanduser(), False
-    return _resolve_default_dir(), True
+        return Path(env).expanduser(), "env"
+    return _resolve_default_dir(), "default"
 
 
 def _validate_filename(name: object) -> str:
@@ -94,16 +150,77 @@ def register_routes(routes) -> None:
 
     @routes.get("/koolook/presets/info")
     async def info(_request):
-        base, is_default = _configured_dir()
+        base, source = _configured_dir()
         exists = base.exists() and base.is_dir()
         writable = exists and os.access(str(base), os.W_OK)
         return web.json_response(
             {
                 "path": str(base),
-                "isDefault": is_default,
+                "source": source,           # "settings" | "env" | "default"
+                "isDefault": source == "default",
                 "envVar": ENV_VAR,
                 "exists": exists,
                 "writable": writable,
+            }
+        )
+
+    @routes.get("/koolook/presets/settings")
+    async def get_settings(_request):
+        """Return the saved-in-UI library path (if any) plus the resolved
+        path the server actually uses right now. The UI's Settings dialog
+        renders the saved value as the editable field and the resolved
+        value as the read-only "currently in effect" line."""
+        settings = _read_settings()
+        saved = settings.get(SETTINGS_KEY_LIBRARY_PATH, "")
+        if not isinstance(saved, str):
+            saved = ""
+        resolved, source = _configured_dir()
+        return web.json_response(
+            {
+                "savedLibraryPath": saved,
+                "resolvedPath": str(resolved),
+                "source": source,
+                "envVar": ENV_VAR,
+            }
+        )
+
+    @routes.post("/koolook/presets/settings")
+    async def post_settings(request):
+        """Persist a saved library path. Body is JSON ``{libraryPath: <str>}``.
+
+        Empty string or missing field clears the override (the server then
+        falls back to env-var or the built-in default).
+        """
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise web.HTTPBadRequest(
+                reason=f"Settings body must be JSON: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(reason="Settings body must be a JSON object.")
+        new_path = payload.get(SETTINGS_KEY_LIBRARY_PATH, "")
+        if not isinstance(new_path, str):
+            raise web.HTTPBadRequest(
+                reason=f"`{SETTINGS_KEY_LIBRARY_PATH}` must be a string."
+            )
+        new_path = new_path.strip()
+        # Read-modify-write so unrelated keys (future settings) survive.
+        existing = _read_settings()
+        if new_path:
+            existing[SETTINGS_KEY_LIBRARY_PATH] = new_path
+        else:
+            # Empty string = clear the override; remove the key entirely
+            # so the resolution chain falls through cleanly to env / default.
+            existing.pop(SETTINGS_KEY_LIBRARY_PATH, None)
+        _write_settings(existing)
+        # Echo the new resolved state so the UI can update without a refetch.
+        resolved, source = _configured_dir()
+        return web.json_response(
+            {
+                "savedLibraryPath": new_path,
+                "resolvedPath": str(resolved),
+                "source": source,
             }
         )
 
