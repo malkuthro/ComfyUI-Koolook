@@ -213,8 +213,10 @@ function _autosaveSubdir() {
 // =============================================================================
 
 const SAVED_FINGERPRINT_KEY = "koolook.snapshot.savedFingerprint.v1";
+const SAVED_AT_KEY = "koolook.snapshot.savedAt.v1";
 
 let _lastNamedSaveFingerprint = null;
+let _lastNamedSaveAt = null;
 let _lastPeriodicFingerprint = null;
 let _lastPeriodicAt = null;
 
@@ -222,6 +224,8 @@ let _lastPeriodicAt = null;
     try {
         const v = localStorage.getItem(SAVED_FINGERPRINT_KEY);
         if (typeof v === "string" && v) _lastNamedSaveFingerprint = v;
+        const at = localStorage.getItem(SAVED_AT_KEY);
+        if (typeof at === "string" && at) _lastNamedSaveAt = at;
     } catch (e) {
         // localStorage unreadable (private mode + permission edge cases).
         // Status will be slightly less accurate this session — fine.
@@ -234,6 +238,11 @@ function _persistSavedFingerprint() {
             localStorage.setItem(SAVED_FINGERPRINT_KEY, _lastNamedSaveFingerprint);
         } else {
             localStorage.removeItem(SAVED_FINGERPRINT_KEY);
+        }
+        if (_lastNamedSaveAt) {
+            localStorage.setItem(SAVED_AT_KEY, _lastNamedSaveAt);
+        } else {
+            localStorage.removeItem(SAVED_AT_KEY);
         }
     } catch (e) {
         // Quota / private mode — the in-memory fingerprint still works for
@@ -262,13 +271,14 @@ function _emitStatusChanged() {
 // user-initiated saves and shouldn't reset the dirty indicator.
 export function markStateSaved() {
     _lastNamedSaveFingerprint = _computeFingerprint();
+    _lastNamedSaveAt = new Date().toISOString();
     _persistSavedFingerprint();
     _emitStatusChanged();
 }
 
 // Returns one of:
 //   { name: <string|null>, state: "saved" | "autosaved" | "unsaved" | "none",
-//     lastAutosaveAt: <ISO|null> }
+//     lastNamedSaveAt: <ISO|null>, lastAutosaveAt: <ISO|null> }
 //
 // Status precedence (highest first):
 //   • "saved"     — current fingerprint matches the last named save
@@ -279,15 +289,15 @@ export function getSnapshotStatus() {
     const name = getCurrentPresetName();
     const fp = _computeFingerprint();
     if (_lastNamedSaveFingerprint && fp === _lastNamedSaveFingerprint) {
-        return { name, state: "saved", lastAutosaveAt: _lastPeriodicAt };
+        return { name, state: "saved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
     }
     if (_lastPeriodicFingerprint && fp === _lastPeriodicFingerprint) {
-        return { name, state: "autosaved", lastAutosaveAt: _lastPeriodicAt };
+        return { name, state: "autosaved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
     }
     if (name) {
-        return { name, state: "unsaved", lastAutosaveAt: _lastPeriodicAt };
+        return { name, state: "unsaved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
     }
-    return { name: null, state: "none", lastAutosaveAt: _lastPeriodicAt };
+    return { name: null, state: "none", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
 }
 
 // Write a pre-load auto-save into the current session's autosave subfolder
@@ -596,6 +606,8 @@ const ROUTE_INFO = "/koolook/presets/info";
 const ROUTE_LIST = "/koolook/presets/list";
 const ROUTE_FILE = "/koolook/presets/file";
 const ROUTE_SETTINGS = "/koolook/presets/settings";
+const ROUTE_BROWSE = "/koolook/presets/browse";
+const ROUTE_BROWSE_NEW_FOLDER = "/koolook/presets/browse/new-folder";
 const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
@@ -699,6 +711,29 @@ export async function saveSettings(libraryPath) {
     });
     if (!resp.ok) {
         throw new Error(`Could not save settings: ${await readErrorReason(resp)}.`);
+    }
+    return await resp.json();
+}
+
+// Directory browser for the Settings dialog. The server returns directory
+// entries only; the selected path is still persisted via saveSettings().
+export async function browseDirectories(path) {
+    const q = path ? `?path=${encodeURIComponent(path)}` : "";
+    const resp = await fetch(`${ROUTE_BROWSE}${q}`);
+    if (!resp.ok) {
+        throw new Error(`Could not browse directories: ${await readErrorReason(resp)}.`);
+    }
+    return await resp.json();
+}
+
+export async function createBrowseDirectory(parentPath, name) {
+    const resp = await fetch(ROUTE_BROWSE_NEW_FOLDER, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentPath, name }),
+    });
+    if (!resp.ok) {
+        throw new Error(`Could not create folder: ${await readErrorReason(resp)}.`);
     }
     return await resp.json();
 }

@@ -33,6 +33,12 @@ The format is inspired by Keep a Changelog and SemVer.
   have to think about which list a type lives in. Same uniform
   "remove this from my favorites / bring it back" UX whether the node
   is a Koolook auto-pull or a KJNodes user-pick.
+- **Snapshot library path browser.** Snapshot Settings now has a Browse button
+  backed by a new `/koolook/presets/browse` route, so users can navigate to
+  the preset folder from inside Kforge Labs instead of copy-pasting a path from
+  an external file manager. The browser hides internal auto-save folders,
+  supports creating one child folder under the current location, and makes the
+  selected folder name visually prominent before the user chooses it.
 
 ### Changed
 - **Theme mode now mirrors repo-mode population** — auto-pulled
@@ -53,6 +59,15 @@ The format is inspired by Keep a Changelog and SemVer.
   pack-by-pack. Reverts (for theme mode only) the earlier
   `[Unreleased]` removal further down; search-flatten still skips the
   badge since its breadcrumb prefix already conveys origin.
+- **Snapshot status hover and path display tightened.** The status tooltip now
+  shows only a central-time timestamp and the snapshot library location, and
+  snapshot library path lines wrap to show the full path instead of truncating.
+- **Snapshot Settings save state clarified.** After browsing to a new folder,
+  the Save button now becomes an explicit dirty "Save update" action; once the
+  path is persisted it turns back into a disabled gray "Saved" state. Load and
+  Settings dialogs now show the active library folder name first, with the full
+  path underneath; after changing folders, Settings warns that the current
+  snapshot still needs Save / Quick Save to be written into the new location.
 - **Sidebar second mode — "Theme" instead of "Category".** The sitemap-icon
   toggle in the Nodes action row now groups picks by **semantic theme**
   rather than by raw CATEGORY first-segment. The new algorithm strips the

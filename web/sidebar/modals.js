@@ -6,7 +6,7 @@
 // click / Cancel / OK dismissal paths and ties the document-level keydown
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
-import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from "./constants.js";
+import { compareNames, criticalToast, toast } from "./constants.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
 import {
     detectManager,
@@ -951,6 +951,25 @@ function formatPreviewMeta(p) {
     return parts.join(" · ");
 }
 
+function pathLeaf(path) {
+    const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : String(path || "");
+}
+
+function renderLibraryLocation(el, path, { label = "Library folder" } = {}) {
+    el.innerHTML = "";
+    const folder = document.createElement("div");
+    folder.className = "koolook-settings-folder-name";
+    folder.textContent = `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
+    el.appendChild(folder);
+
+    const full = document.createElement("div");
+    full.className = "koolook-settings-folder-path";
+    full.textContent = path || "Path unavailable";
+    el.appendChild(full);
+    el.title = path || "";
+}
+
 // Local helper: a 3-button confirm modal (Save / Save as new / Cancel) for
 // the Save flow when there's a current preset to overwrite. `showConfirmModal`
 // is 2-button only; we'd need to bend it. Cleaner to assemble directly with
@@ -1037,11 +1056,8 @@ export function showSaveSnapshotDialog({
         if (typeof getLibraryInfo === "function") {
             getLibraryInfo().then((info) => {
                 if (info && typeof info.path === "string" && info.path) {
-                    el.textContent = `Library: ${formatLibraryPathBreadcrumb(info.path)}`;
-                    // Full path on hover — the breadcrumb truncates aggressively
-                    // to keep the dialog one line wide, so the tooltip is the
-                    // recovery path for "wait, where exactly?"
-                    el.title = info.path;
+                    el.className = "koolook-load-library-location";
+                    renderLibraryLocation(el, info.path, { label: "Library folder" });
                 } else {
                     el.textContent = "Library path unavailable.";
                 }
@@ -1169,7 +1185,7 @@ export function showLoadSnapshotDialog({
     const body = document.createElement("div");
 
     const pathLine = document.createElement("div");
-    pathLine.style.cssText = "font-size: 11px; opacity: 0.55; margin-bottom: 10px; word-break: break-all;";
+    pathLine.className = "koolook-load-library-location";
     pathLine.textContent = "Library: (loading…)";
     body.appendChild(pathLine);
 
@@ -1526,7 +1542,7 @@ export function showLoadSnapshotDialog({
     refresh();
     if (typeof getLibraryInfo === "function") {
         getLibraryInfo().then((info) => {
-            if (info) pathLine.textContent = `Library: ${info.path}`;
+            if (info) renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
             else pathLine.textContent = "Library path unavailable.";
         }).catch(() => { pathLine.textContent = "Library path unavailable."; });
     } else {
@@ -1546,6 +1562,13 @@ export function showLoadSnapshotDialog({
 export function showSnapshotSettingsDialog({
     getSettings,
     saveSettings,
+    getCurrentPresetName,
+    setCurrentPresetName,
+    gatherSnapshot,
+    writePreset,
+    markStateSaved,
+    browseDirectories,
+    createBrowseDirectory,
     onToast,
 }) {
     const toast = onToast || (() => {});
@@ -1553,11 +1576,22 @@ export function showSnapshotSettingsDialog({
 
     body.appendChild(modalLabel("Library path"));
 
+    const inputRow = document.createElement("div");
+    inputRow.className = "koolook-path-input-row";
+
     const input = document.createElement("input");
     input.className = "koolook-modal-input";
     input.placeholder = "/absolute/path/to/library  (leave empty to use env-var or default)";
     input.disabled = true;
-    body.appendChild(input);
+    inputRow.appendChild(input);
+
+    const browseBtn = makeModalButton({
+        label: "Browse...",
+        onClick: () => openBrowseDialog(input.value.trim() || ""),
+    });
+    browseBtn.disabled = true;
+    inputRow.appendChild(browseBtn);
+    body.appendChild(inputRow);
 
     const hint = document.createElement("div");
     hint.style.cssText = "font-size: 11px; opacity: 0.55; margin: 8px 0 12px; line-height: 1.5; word-break: break-all;";
@@ -1565,7 +1599,69 @@ export function showSnapshotSettingsDialog({
     body.appendChild(hint);
 
     let overlay;
+    let savedLibraryPath = "";
     const close = () => overlay.remove();
+
+    function renderSelectedFolder(el, path) {
+        el.innerHTML = "";
+        if (!path) {
+            el.textContent = "No folder selected";
+            return;
+        }
+        const label = document.createElement("span");
+        label.textContent = "Selected folder: ";
+        const name = document.createElement("strong");
+        name.className = "koolook-browse-selected-name";
+        name.textContent = pathLeaf(path);
+        const full = document.createElement("div");
+        full.className = "koolook-browse-selected-path";
+        full.textContent = path;
+        el.appendChild(label);
+        el.appendChild(name);
+        el.appendChild(full);
+    }
+
+    function renderPathSummary({ saved }) {
+        const rawPath = input.value.trim();
+        const folder = rawPath ? pathLeaf(rawPath) : "(default)";
+        const label = saved ? "Saved folder" : "Selected folder";
+        hint.innerHTML = "";
+
+        const name = document.createElement("div");
+        name.className = "koolook-settings-folder-name";
+        name.textContent = `${label}: ${folder}`;
+        hint.appendChild(name);
+
+        const path = document.createElement("div");
+        path.className = "koolook-settings-folder-path";
+        path.textContent = rawPath || "Using env var / default preset folder";
+        hint.appendChild(path);
+
+        if (!saved) {
+            const note = document.createElement("div");
+            note.className = "koolook-settings-save-note";
+            note.textContent = "Will save the current snapshot here.";
+            hint.appendChild(note);
+        }
+    }
+
+    function revealPathEnd() {
+        setTimeout(() => {
+            input.scrollLeft = input.scrollWidth;
+        }, 0);
+    }
+
+    function updateSaveState() {
+        if (!save) return;
+        const dirty = input.value.trim() !== savedLibraryPath;
+        save.disabled = !dirty;
+        save.textContent = dirty ? "Save folder + snapshot" : "Saved";
+        save.classList.toggle("koolook-modal-btn-primary", dirty);
+        save.title = dirty
+            ? "Save the folder and current snapshot"
+            : "Snapshot folder is saved";
+        renderPathSummary({ saved: !dirty });
+    }
 
     async function refresh() {
         let settings;
@@ -1577,7 +1673,9 @@ export function showSnapshotSettingsDialog({
                 "Restart ComfyUI to fix.";
             return;
         }
-        input.value = settings.savedLibraryPath || "";
+        savedLibraryPath = settings.savedLibraryPath || "";
+        input.value = savedLibraryPath;
+        revealPathEnd();
         // Native tooltip surfaces the full path on hover — the input is only
         // ~440px wide so long paths get truncated by horizontal scroll.
         // The user can still drag-select to view, but the tooltip avoids
@@ -1588,52 +1686,218 @@ export function showSnapshotSettingsDialog({
         if (settings.source === "settings") sourceLabel = "from this Settings panel";
         else if (settings.source === "env") sourceLabel = `from ${settings.envVar} env var`;
         else sourceLabel = "built-in default";
-        hint.textContent =
-            `Currently in effect: ${settings.resolvedPath}\n(source: ${sourceLabel})`;
-        hint.style.whiteSpace = "pre-line";
+        browseBtn.disabled = typeof browseDirectories !== "function";
+        updateSaveState();
+        hint.title = `Currently in effect: ${settings.resolvedPath} (${sourceLabel})`;
     }
 
     async function doSave(rawValue) {
+        if (rawValue === savedLibraryPath) {
+            updateSaveState();
+            return;
+        }
         try {
             const result = await saveSettings(rawValue);
             const sourceLabel = result.source === "settings"
                 ? "from this Settings panel"
                 : (result.source === "env" ? "from env var" : "built-in default");
-            hint.textContent =
-                `Currently in effect: ${result.resolvedPath}\n(source: ${sourceLabel})`;
-            input.value = result.savedLibraryPath || "";
-            input.title = result.savedLibraryPath || "";
+            savedLibraryPath = result.savedLibraryPath || "";
+            input.value = savedLibraryPath;
+            input.title = savedLibraryPath;
+            revealPathEnd();
+            hint.title = `Currently in effect: ${result.resolvedPath} (${sourceLabel})`;
+            const currentName = typeof getCurrentPresetName === "function"
+                ? getCurrentPresetName()
+                : null;
+            if (rawValue && currentName && typeof writePreset === "function" &&
+                typeof gatherSnapshot === "function") {
+                await writePreset(currentName, gatherSnapshot(currentName));
+                if (typeof setCurrentPresetName === "function") {
+                    setCurrentPresetName(currentName);
+                }
+                if (typeof markStateSaved === "function") markStateSaved();
+                toast(`Saved "${currentName}" to ${pathLeaf(savedLibraryPath)}.`);
+                updateSaveState();
+                return;
+            }
             toast(rawValue
-                ? "Library path saved."
+                ? "Library folder saved."
                 : "Override cleared — using env var / default."
             );
+            updateSaveState();
         } catch (e) {
             console.error("[Koolook] settings save failed:", e);
             toast(`Could not save settings: ${e.message}`);
         }
     }
 
-    refresh();
+    function openBrowseDialog(startPath) {
+        if (typeof browseDirectories !== "function") return;
+        const pickerBody = document.createElement("div");
+
+        const current = document.createElement("div");
+        current.className = "koolook-browse-current";
+        current.textContent = "Loading...";
+        pickerBody.appendChild(current);
+
+        const navRow = document.createElement("div");
+        navRow.className = "koolook-browse-nav";
+        const upBtn = makeModalButton({ label: "Up", onClick: () => {} });
+        const driveLabel = document.createElement("span");
+        driveLabel.className = "koolook-browse-drive-label";
+        driveLabel.textContent = "Location";
+        const rootsSelect = document.createElement("select");
+        rootsSelect.className = "koolook-modal-select";
+        navRow.appendChild(upBtn);
+        navRow.appendChild(driveLabel);
+        navRow.appendChild(rootsSelect);
+        pickerBody.appendChild(navRow);
+
+        const list = document.createElement("div");
+        list.className = "koolook-browse-list";
+        pickerBody.appendChild(list);
+
+        let selectedPath = startPath;
+        let overlay;
+        const closePicker = () => overlay.remove();
+
+        async function render(path) {
+            choose.disabled = true;
+            list.innerHTML = "";
+            const loading = document.createElement("div");
+            loading.className = "koolook-snapshot-empty";
+            loading.textContent = "Loading...";
+            list.appendChild(loading);
+            let data;
+            try {
+                data = await browseDirectories(path);
+            } catch (e) {
+                list.innerHTML = "";
+                const err = document.createElement("div");
+                err.className = "koolook-snapshot-empty";
+                err.textContent = e.message;
+                list.appendChild(err);
+                return;
+            }
+
+            selectedPath = data.path || "";
+            choose.disabled = !selectedPath;
+            renderSelectedFolder(current, selectedPath);
+            current.title = selectedPath;
+            upBtn.disabled = !data.parentPath;
+            upBtn.onclick = () => { if (data.parentPath) render(data.parentPath); };
+
+            rootsSelect.innerHTML = "";
+            for (const root of data.roots || []) {
+                const opt = document.createElement("option");
+                opt.value = root.path;
+                const isCurrentRoot = selectedPath &&
+                    selectedPath.toLowerCase().startsWith(root.path.toLowerCase());
+                opt.textContent = isCurrentRoot ? selectedPath : root.name;
+                if (isCurrentRoot) {
+                    opt.selected = true;
+                }
+                rootsSelect.appendChild(opt);
+            }
+            rootsSelect.onchange = () => render(rootsSelect.value);
+
+            list.innerHTML = "";
+            const dirs = Array.isArray(data.dirs) ? data.dirs : [];
+            if (dirs.length === 0) {
+                const empty = document.createElement("div");
+                empty.className = "koolook-snapshot-empty";
+                empty.textContent = "No folders inside selected folder.";
+                list.appendChild(empty);
+                return;
+            }
+            const childLabel = document.createElement("div");
+            childLabel.className = "koolook-browse-list-label";
+            childLabel.textContent = "Folders inside selected folder";
+            list.appendChild(childLabel);
+            for (const dir of dirs) {
+                const row = document.createElement("button");
+                row.type = "button";
+                row.className = "koolook-browse-row";
+                row.textContent = dir.name;
+                row.title = dir.path;
+                row.addEventListener("click", () => render(dir.path));
+                list.appendChild(row);
+            }
+        }
+
+        const cancel = makeModalButton({ label: "Cancel", onClick: closePicker });
+        const newFolder = makeModalButton({
+            label: "New folder...",
+            onClick: () => {
+                if (typeof createBrowseDirectory !== "function") return;
+                showInputModal({
+                    title: "New snapshot folder",
+                    label: "Folder name",
+                    defaultValue: "",
+                    placeholder: "e.g. koolook-presets3",
+                    confirmLabel: "Create",
+                    subtitle: `Inside: ${selectedPath}`,
+                    onSubmit: async (name) => {
+                        const trimmed = name.trim();
+                        if (!trimmed) {
+                            toast("Folder name is empty.");
+                            return;
+                        }
+                        try {
+                            const result = await createBrowseDirectory(selectedPath, trimmed);
+                            await render(result.path);
+                            toast(`Created folder "${pathLeaf(result.path)}".`);
+                        } catch (e) {
+                            console.error("[Koolook] create folder failed:", e);
+                            toast(e.message);
+                        }
+                    },
+                });
+            },
+        });
+        const choose = makeModalButton({
+            label: "Use this folder",
+            primary: true,
+            onClick: () => {
+                input.value = selectedPath || "";
+                input.title = selectedPath || "";
+                revealPathEnd();
+                updateSaveState();
+                closePicker();
+            },
+        });
+
+        ({ overlay } = makeModalShell({
+            title: "Browse snapshot folder",
+            body: pickerBody,
+            actions: [cancel, newFolder, choose],
+        }));
+        render(startPath);
+    }
 
     const cancel = makeModalButton({ label: "Close", onClick: close });
     const reset = makeModalButton({
         label: "Reset to default",
         onClick: () => doSave(""),
     });
-    const save = makeModalButton({
+    let save = makeModalButton({
         label: "Save",
-        primary: true,
         onClick: () => doSave(input.value.trim()),
     });
     input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") doSave(input.value.trim());
+        if (e.key === "Enter" && input.value.trim() !== savedLibraryPath) {
+            doSave(input.value.trim());
+        }
     });
+    input.addEventListener("input", updateSaveState);
 
     ({ overlay } = makeModalShell({
         title: "Snapshot library settings",
         body,
         actions: [cancel, reset, save],
     }));
+    updateSaveState();
+    refresh();
 }
 
 

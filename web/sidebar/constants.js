@@ -165,13 +165,31 @@ export function ensureStyle() {
 .koolook-toast-btn { padding: 4px 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; color: #fff; cursor: pointer; font-size: 11px; font-family: inherit; }
 .koolook-toast-btn:hover { background: rgba(0,0,0,0.4); }
 .koolook-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9998; display: flex; align-items: center; justify-content: center; }
-.koolook-modal { background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 16px 18px; min-width: 320px; max-width: 440px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, inherit); }
+.koolook-modal { background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 16px 18px; min-width: 320px; max-width: 520px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, inherit); }
 .koolook-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
-.koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
+.koolook-path-input-row { display: flex; gap: 8px; align-items: center; }
+.koolook-path-input-row .koolook-modal-input { flex: 1; min-width: 0; }
+.koolook-path-input-row .koolook-modal-btn { flex-shrink: 0; }
+.koolook-settings-folder-name { opacity: 0.95; font-size: 12px; font-weight: 600; color: var(--input-text, inherit); }
+.koolook-settings-folder-path { opacity: 0.68; font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; line-height: 1.35; }
+.koolook-settings-save-note { margin-top: 7px; padding: 6px 8px; border: 1px solid rgba(255, 184, 77, 0.35); border-radius: 4px; color: #ffce7a; background: rgba(255, 184, 77, 0.08); line-height: 1.35; opacity: 1; }
+.koolook-load-library-location { margin-bottom: 10px; }
+.koolook-browse-current { font-size: 11px; opacity: 0.7; margin-bottom: 8px; overflow-wrap: anywhere; line-height: 1.35; white-space: pre-line; }
+.koolook-browse-selected-name { font-size: 13px; font-weight: 700; opacity: 1; color: var(--input-text, inherit); }
+.koolook-browse-selected-path { margin-top: 2px; opacity: 0.68; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.koolook-browse-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.koolook-browse-drive-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.04em; }
+.koolook-browse-nav .koolook-modal-select { flex: 1; min-width: 0; }
+.koolook-browse-list { max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
+.koolook-browse-list-label { padding: 6px 10px 4px; font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.025); border-bottom: 1px solid rgba(255,255,255,0.05); }
+.koolook-browse-row { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.05); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
+.koolook-browse-row:last-child { border-bottom: none; }
+.koolook-browse-row:hover { background: rgba(255,255,255,0.08); }
 .koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .koolook-modal-checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; opacity: 0.85; cursor: pointer; user-select: none; }
 .koolook-modal-checkbox-row input[type="checkbox"] { cursor: pointer; }
@@ -181,6 +199,8 @@ export function ensureStyle() {
 .koolook-modal-btn-primary:hover { background: rgba(80,140,235,0.5); }
 .koolook-modal-btn-danger { background: rgba(220,80,80,0.25); border-color: rgba(220,80,80,0.5); }
 .koolook-modal-btn-danger:hover { background: rgba(220,80,80,0.4); }
+.koolook-modal-btn:disabled { opacity: 0.45; cursor: default; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border-color: rgba(255,255,255,0.1); }
+.koolook-modal-btn:disabled:hover { background: var(--comfy-input-bg, rgba(0,0,0,0.3)); }
 .koolook-context-menu { position: fixed; background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 4px; padding: 4px 0; min-width: 160px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.4); font-size: 12px; }
 .koolook-context-item { padding: 5px 12px; cursor: pointer; }
 .koolook-context-item:hover { background: rgba(255,255,255,0.08); }

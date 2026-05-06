@@ -92,6 +92,8 @@ import {
     getLibraryInfo,
     getSettings,
     saveSettings,
+    browseDirectories,
+    createBrowseDirectory,
     getCurrentPresetName,
     setCurrentPresetName,
     exportStarterPreset,
@@ -2096,6 +2098,13 @@ export function renderPanel(container) {
     const openSettingsDialog = () => showSnapshotSettingsDialog({
         getSettings,
         saveSettings,
+        getCurrentPresetName,
+        setCurrentPresetName,
+        gatherSnapshot,
+        writePreset,
+        markStateSaved,
+        browseDirectories,
+        createBrowseDirectory,
         onToast: toast,
     });
 
@@ -2130,7 +2139,33 @@ export function renderPanel(container) {
     snapshotStatus.appendChild(snapshotState);
     snapshotRow.appendChild(snapshotStatus);
 
+    let snapshotLibraryPath = "";
+    let snapshotStatusRefreshSeq = 0;
+
+    function formatCentralTime(iso) {
+        if (!iso) return "not saved yet";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString("en-US", {
+            timeZone: "America/Chicago",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        }) + " CST";
+    }
+
+    function snapshotTooltip(status) {
+        const stamp = status.state === "autosaved"
+            ? status.lastAutosaveAt
+            : status.lastNamedSaveAt;
+        const location = snapshotLibraryPath || "loading...";
+        return `Date: ${formatCentralTime(stamp)}\nLocation: ${location}`;
+    }
+
     function refreshSnapshotStatus() {
+        const seq = ++snapshotStatusRefreshSeq;
         const status = getSnapshotStatus();
         snapshotDot.className = "koolook-snap-status-dot koolook-snap-status-" + status.state;
         if (status.name) {
@@ -2141,33 +2176,32 @@ export function renderPanel(container) {
             snapshotName.textContent = "(no snapshot)";
         }
         let stateText = "";
-        let title = "";
-        const since = status.lastAutosaveAt
-            ? ` (latest auto-save: ${status.lastAutosaveAt})`
-            : "";
         switch (status.state) {
             case "saved":
                 stateText = "· saved";
-                title = `Live state matches the last named save "${status.name}"${since}.`;
                 break;
             case "autosaved":
                 stateText = "· auto-saved";
-                title = status.name
-                    ? `Live state matches the latest periodic auto-save (named save "${status.name}" has diverged)${since}.`
-                    : `Live state matches the latest periodic auto-save${since}.`;
                 break;
             case "unsaved":
                 stateText = "· unsaved";
-                title = `Live state has changes since the last save / auto-save of "${status.name}"${since}. Use Save to persist.`;
                 break;
             case "none":
             default:
                 stateText = "";
-                title = `No named snapshot tracked${since}. Use Save to create one.`;
                 break;
         }
         snapshotState.textContent = stateText;
-        snapshotStatus.title = title;
+        snapshotStatus.title = snapshotTooltip(status);
+        getLibraryInfo().then((info) => {
+            if (seq !== snapshotStatusRefreshSeq) return;
+            snapshotLibraryPath = info && typeof info.path === "string" ? info.path : "";
+            snapshotStatus.title = snapshotTooltip(status);
+        }).catch(() => {
+            if (seq !== snapshotStatusRefreshSeq) return;
+            snapshotLibraryPath = "";
+            snapshotStatus.title = snapshotTooltip(status);
+        });
     }
     refreshSnapshotStatus();
     window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus);
