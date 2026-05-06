@@ -1711,12 +1711,20 @@ export function showSnapshotSettingsDialog({
                 : null;
             if (rawValue && currentName && typeof writePreset === "function" &&
                 typeof gatherSnapshot === "function") {
-                await writePreset(currentName, gatherSnapshot(currentName));
-                if (typeof setCurrentPresetName === "function") {
-                    setCurrentPresetName(currentName);
+                try {
+                    await writePreset(currentName, gatherSnapshot(currentName));
+                    if (typeof setCurrentPresetName === "function") {
+                        setCurrentPresetName(currentName);
+                    }
+                    if (typeof markStateSaved === "function") markStateSaved();
+                    toast(`Saved "${currentName}" to ${pathLeaf(savedLibraryPath)}.`);
+                } catch (copyErr) {
+                    console.error("[Koolook] settings path saved but snapshot copy failed:", copyErr);
+                    toast(
+                        `Library folder saved, but "${currentName}" was not copied there: ` +
+                        `${copyErr.message}. Use Save or Quick Save to retry.`
+                    );
                 }
-                if (typeof markStateSaved === "function") markStateSaved();
-                toast(`Saved "${currentName}" to ${pathLeaf(savedLibraryPath)}.`);
                 updateSaveState();
                 return;
             }

@@ -2153,7 +2153,8 @@ export function renderPanel(container) {
             day: "numeric",
             hour: "numeric",
             minute: "2-digit",
-        }) + " CST";
+            timeZoneName: "short",
+        });
     }
 
     function snapshotTooltip(status) {
