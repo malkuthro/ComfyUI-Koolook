@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
 // =============================================================================
 // Canvas IO — anything that touches `app.graph` or `app.canvas` directly.
 // Selection serialization prunes cross-boundary links so a saved selection

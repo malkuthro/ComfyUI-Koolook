@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
 // =============================================================================
 // Node preview — hover card for sidebar leaf rows.
 //

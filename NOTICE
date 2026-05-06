@@ -1,0 +1,34 @@
+ComfyUI-Koolook — NOTICE
+========================
+
+Copyright (C) 2025-2026 Kforge Labs (https://github.com/malkuthro)
+Project: https://github.com/malkuthro/ComfyUI-Koolook
+
+This package is licensed under GPL-3.0 — see LICENSE for the full text.
+
+
+Attribution
+-----------
+
+If you fork, redistribute, or build on top of this code — including the
+"Kforge Labs" ComfyUI sidebar (web/koolook_sidebar.js + web/sidebar/) —
+please:
+
+  1. Keep the SPDX header at the top of each source file intact.
+
+  2. Credit the origin in your README or about page, for example:
+
+       Includes work from Kforge Labs / ComfyUI-Koolook
+       (https://github.com/malkuthro/ComfyUI-Koolook), licensed GPL-3.0.
+
+  3. Release your derivative under GPL-3.0 (per LICENSE §5).
+
+
+Third-party code
+----------------
+
+Third-party code incorporated into this package is tracked in
+forks/THIRD_PARTY.md and forks/forks_manifest.yaml. Each entry lists
+its upstream license and verification date. We ask the same courtesy
+of attribution for our own work that we extend to the upstreams we
+build on.

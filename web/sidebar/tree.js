@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
 // =============================================================================
 // Sidebar tree — section-registry engine, data gathering, DOM row factories,
 // folder builder, context menus for workflow/directory rows, and the panel
