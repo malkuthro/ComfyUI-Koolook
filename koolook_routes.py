@@ -397,7 +397,15 @@ def register_routes(routes) -> None:
 
     @routes.post("/koolook/presets/browse/new-folder")
     async def create_browse_dir(request):
-        """Create one child folder under the current browse location."""
+        """Create one child folder under the current browse location.
+
+        Threat model: this picker is intentionally filesystem-wide so users
+        can choose a snapshot library outside the current Koolook library.
+        The route's boundary is the ComfyUI process OS user, not the preset
+        library root. We still reject multi-segment names and symlink escapes
+        relative to the selected parent so a request cannot turn "create this
+        child folder here" into "create something elsewhere."
+        """
         try:
             payload = await request.json()
         except Exception as exc:

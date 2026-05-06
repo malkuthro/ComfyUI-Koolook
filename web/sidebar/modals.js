@@ -1888,7 +1888,7 @@ export function showSnapshotSettingsDialog({
         label: "Reset to default",
         onClick: () => doSave(""),
     });
-    let save = makeModalButton({
+    const save = makeModalButton({
         label: "Save",
         onClick: () => doSave(input.value.trim()),
     });
