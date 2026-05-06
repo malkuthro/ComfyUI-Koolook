@@ -69,53 +69,6 @@ function collectReferencedSubgraphIds(rootIds, allDefs) {
     return visited;
 }
 
-// Best-effort registration of incoming subgraph definitions before insert
-// pre-flight. Without this, a saved selection containing a subgraph wrapper
-// can be inserted only into a Comfy session that already has the matching
-// definition cached — across sessions the pre-flight rejects the wrapper
-// on `missing node type: <UUID>`.
-//
-// Strategy: try the public service path, then fall back to direct mutation
-// of `app.graph.definitions.subgraphs`. The fallback ensures the definition
-// is at least present in the graph data (so a save/reload round-trip
-// consolidates it); LiteGraph's per-UUID type registration may still be
-// missing in that case, which the improved pre-flight error makes
-// actionable for the user.
-function mergeIncomingSubgraphDefinitions(clone) {
-    const incoming = clone && clone.definitions && Array.isArray(clone.definitions.subgraphs)
-        ? clone.definitions.subgraphs.filter(sg => sg && sg.id)
-        : [];
-    if (incoming.length === 0) return;
-
-    // Preferred: Comfy's subgraph service handles registration end-to-end
-    // (definition push + LiteGraph node-type registration). Exposed on the
-    // app singleton in current frontends; older versions may not expose it.
-    try {
-        const svc = app.subgraphService;
-        if (svc && typeof svc.loadSubgraphs === "function") {
-            svc.loadSubgraphs({ definitions: { subgraphs: incoming } });
-            return;
-        }
-    } catch (e) {
-        console.warn("[Koolook] subgraphService.loadSubgraphs failed; falling back to direct merge:", e);
-    }
-
-    // Fallback: append to app.graph.definitions.subgraphs idempotently.
-    try {
-        if (!app.graph.definitions) app.graph.definitions = {};
-        if (!Array.isArray(app.graph.definitions.subgraphs)) app.graph.definitions.subgraphs = [];
-        const existing = new Set(app.graph.definitions.subgraphs.map(d => d && d.id).filter(Boolean));
-        for (const sg of incoming) {
-            if (!existing.has(sg.id)) {
-                app.graph.definitions.subgraphs.push(JSON.parse(JSON.stringify(sg)));
-                existing.add(sg.id);
-            }
-        }
-    } catch (e) {
-        console.warn("[Koolook] direct subgraph definition merge failed:", e);
-    }
-}
-
 function getSelectedNodeIds() {
     try {
         const sel = (app.canvas && app.canvas.selected_nodes) || {};
@@ -566,15 +519,20 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         return { ok: false, reason: "empty" };
     }
 
-    // Register any subgraph definitions the saved file carries before
-    // pre-flight runs — otherwise wrappers around subgraphs that aren't
-    // already cached in this Comfy session would fail with `missing node
-    // type: <UUID>`.
-    mergeIncomingSubgraphDefinitions(clone);
-
     // Pre-flight: every node type must be registered. Aborting here is the
     // entire reason this is a separate primitive from `loadWorkflowOntoCanvas`
     // — a partial insert with stub nodes silently corrupts the user's graph.
+    //
+    // Note on subgraph types: the registration path
+    // (`useSubgraphService().loadSubgraphs(graphData)` in the official
+    // frontend) is invoked from inside `app.loadGraphData` and is not
+    // exposed on the `app` global, so we cannot register fresh subgraph
+    // definitions here without replacing the canvas. When the incoming
+    // file references a UUID that isn't yet in `LiteGraph.registered_node_types`,
+    // the error branch below routes the user to native Load (which DOES
+    // register, then they can re-Insert). serializeSelection still copies
+    // `definitions.subgraphs` into the saved file so that one-time native
+    // Load works correctly.
     const registered = LiteGraph.registered_node_types || {};
     const missingTypes = [];
     const seenMissing = new Set();
