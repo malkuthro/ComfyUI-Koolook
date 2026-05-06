@@ -36,6 +36,15 @@ export const WORKFLOWS_GROUP_LABEL = "Workflows";
 export const STORAGE_KEY = "koolook.curated.userPicks.v1";
 export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
 
+// Fired when the snapshot status changes for reasons other than picks /
+// workflows mutations (which already fire their own events). Specifically:
+//   • markStateSaved() — after a successful named save or applySnapshot
+//   • periodic auto-save success — status flips "unsaved" → "auto-saved"
+//   • setCurrentPresetName clears — status name flips back to "(no snapshot)"
+// The status indicator in the sidebar listens to PICKS_CHANGED_EVENT,
+// WORKFLOWS_CHANGED_EVENT, AND this one to cover all status-change paths.
+export const SNAPSHOT_STATUS_CHANGED_EVENT = "koolook-snapshot-status-changed";
+
 // Group mode for the Nodes section — "repo" (default; group by pack/repo,
 // matching pre-#73 behavior) or "category" (group by node-class CATEGORY
 // path, with case-insensitive merging). Persisted in localStorage so the
@@ -91,6 +100,20 @@ export function ensureStyle() {
 .koolook-search-row { margin: 6px; flex-shrink: 0; }
 .koolook-actions-row { display: flex; align-items: center; gap: 4px; padding: 2px 6px; flex-shrink: 0; }
 .koolook-actions-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; font-weight: 600; }
+/* Snapshot status indicator — replaces the static "Snapshot" label. Shows
+   the currently-tracked preset name + a colored dot indicating whether the
+   live state matches the last named save (green), the latest periodic
+   auto-save (blue), neither (orange = unsaved), or there's no tracked
+   preset at all (grey). Tooltip carries the full breakdown. */
+.koolook-snap-status { flex: 1; display: flex; align-items: center; font-size: 11px; min-width: 0; cursor: default; gap: 0; }
+.koolook-snap-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.koolook-snap-status-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.9; }
+.koolook-snap-status-name-empty { font-style: italic; opacity: 0.55; }
+.koolook-snap-status-state { opacity: 0.55; flex-shrink: 0; margin-left: 4px; font-size: 10px; }
+.koolook-snap-status-saved { background: #6db86d; }
+.koolook-snap-status-autosaved { background: #6db4ff; }
+.koolook-snap-status-unsaved { background: #e0a64a; }
+.koolook-snap-status-none { background: rgba(255,255,255,0.28); }
 .koolook-tree-divider { margin: 8px 8px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
 .koolook-search-wrap { position: relative; width: 100%; }
 .koolook-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.55; font-size: 11px; pointer-events: none; }
@@ -128,9 +151,16 @@ export function ensureStyle() {
 .koolook-remove:hover { opacity: 1 !important; color: #ff7777; }
 .koolook-section-divider { border-top: 1px solid var(--border-color, rgba(255,255,255,0.08)); margin: 8px 4px 0; }
 .koolook-toast { position: fixed; bottom: 30px; right: 30px; background: rgba(40,40,40,0.95); color: #fff; padding: 8px 14px; border-radius: 4px; font-size: 12px; z-index: 9999; transition: opacity 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.4); pointer-events: none; max-width: 360px; }
+.koolook-toast-critical { pointer-events: auto; background: rgba(180, 60, 60, 0.95); max-width: 440px; padding: 10px 14px; }
+.koolook-toast-critical-stack { bottom: auto; top: 30px; }
+.koolook-toast-msg { margin-bottom: 8px; line-height: 1.4; font-size: 12px; word-break: break-word; }
+.koolook-toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.koolook-toast-btn { padding: 4px 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; color: #fff; cursor: pointer; font-size: 11px; font-family: inherit; }
+.koolook-toast-btn:hover { background: rgba(0,0,0,0.4); }
 .koolook-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9998; display: flex; align-items: center; justify-content: center; }
 .koolook-modal { background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 16px 18px; min-width: 320px; max-width: 440px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, inherit); }
 .koolook-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; font-size: 13px; box-sizing: border-box; outline: none; }
@@ -167,6 +197,20 @@ export function ensureStyle() {
 .koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
 .koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
 .koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
+/* Recovery auto-saves section in the Load dialog. Collapsible details
+   element; lazy-loads the list on first expand. Each subdir gets its own
+   group header so users can scan visually for the preset they want to
+   recover from. */
+.koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
+.koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
+.koolook-recovery-summary:hover { opacity: 1; }
+.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 4px; }
+.koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.koolook-recovery-group:last-child { border-bottom: none; }
+.koolook-recovery-group-header { font-size: 11px; opacity: 0.6; padding: 6px 10px 3px; font-weight: 600; background: rgba(255,255,255,0.025); }
+.koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
+.koolook-recovery-kind-pre_load { color: #ffb74d; }
+.koolook-recovery-kind-periodic { color: #6db4ff; }
 .koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .koolook-snapshot-row:last-child { border-bottom: none; }
 .koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }
@@ -223,10 +267,118 @@ export function toast(msg, duration = 2200) {
 }
 
 // =============================================================================
+// Critical toast — sticky variant for persist failures (server outage,
+// localStorage rejected, both backends down). Distinct from `toast()` because:
+//   • Auto-dismiss is wrong here — these are user-action-required signals,
+//     not informational. The user MUST acknowledge.
+//   • A "Copy details" button lets the user grab the unsaved JSON so a real
+//     loss is recoverable manually (paste into a snapshot, or into devtools).
+//   • `pointer-events: auto` on this variant — the regular toast is non-
+//     interactive on purpose so it doesn't block clicks behind it; critical
+//     toasts need to BE interactive (the buttons).
+//
+// Returns `{dismiss}` so callers can programmatically remove the toast when
+// the underlying condition resolves (e.g. server reachable again).
+// =============================================================================
+export function criticalToast(msg, { copyText, onDismiss } = {}) {
+    const t = document.createElement("div");
+    t.className = "koolook-toast koolook-toast-critical";
+    // Stack subsequent critical toasts at the top so they don't overlap the
+    // bottom-anchored regular toasts. Each gets a vertical offset based on
+    // its sibling count at append time.
+    const existing = document.querySelectorAll(".koolook-toast-critical").length;
+    if (existing > 0) {
+        t.classList.add("koolook-toast-critical-stack");
+        t.style.top = `${30 + existing * 90}px`;
+    }
+
+    const msgEl = document.createElement("div");
+    msgEl.className = "koolook-toast-msg";
+    msgEl.textContent = msg;
+    t.appendChild(msgEl);
+
+    const actions = document.createElement("div");
+    actions.className = "koolook-toast-actions";
+
+    if (copyText) {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "koolook-toast-btn";
+        copyBtn.textContent = "Copy details";
+        copyBtn.addEventListener("click", () => {
+            const finishCopy = () => {
+                copyBtn.textContent = "Copied ✓";
+                setTimeout(() => { copyBtn.textContent = "Copy details"; }, 1500);
+            };
+            // Async clipboard API first — works in secure contexts (https +
+            // localhost). Fall back to an offscreen textarea + execCommand
+            // for environments where clipboard.writeText rejects (some
+            // browser sandboxes, http://192.168.x.y origins).
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(copyText).then(finishCopy).catch(() => {
+                    legacyCopy(copyText);
+                    finishCopy();
+                });
+            } else {
+                legacyCopy(copyText);
+                finishCopy();
+            }
+        });
+        actions.appendChild(copyBtn);
+    }
+
+    const dismissBtn = document.createElement("button");
+    dismissBtn.className = "koolook-toast-btn";
+    dismissBtn.textContent = "Dismiss";
+    const close = () => {
+        if (t.parentNode) t.remove();
+        if (typeof onDismiss === "function") onDismiss();
+    };
+    dismissBtn.addEventListener("click", close);
+    actions.appendChild(dismissBtn);
+
+    t.appendChild(actions);
+    document.body.appendChild(t);
+    return { dismiss: close };
+}
+
+function legacyCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* best effort */ }
+    ta.remove();
+}
+
+// =============================================================================
 // Sort helper — human-alphabetical (case-insensitive). Use everywhere we sort
 // names, labels, or directory entries so the order in the sidebar matches what
 // a user would expect from an A→Z list.
 // =============================================================================
 export function compareNames(a, b) {
     return String(a).localeCompare(String(b), undefined, { sensitivity: "base" });
+}
+
+// =============================================================================
+// Library-path breadcrumb formatter — used by the Save / Load snapshot dialogs
+// to surface "where am I saving to" without overflowing a single line. Strategy:
+// keep the rightmost segments (the leaf is the most informative — "presets2"
+// tells the user more than "e:\_AI\portable" does), snap to a path separator
+// so we never truncate mid-segment, prefix with "…" when truncation happened.
+// Pair the result with the full path in a `title=` attribute so hover reveals
+// the unabbreviated form.
+// =============================================================================
+export function formatLibraryPathBreadcrumb(fullPath, maxChars = 50) {
+    if (typeof fullPath !== "string" || !fullPath) return "";
+    if (fullPath.length <= maxChars) return fullPath;
+    // Reserve 1 char for the "…" prefix.
+    const tail = fullPath.slice(-(maxChars - 1));
+    // Snap forward to the first separator so we don't slice through a segment.
+    // If no separator survives, fall back to the raw tail (very long single
+    // segment is degenerate but shouldn't crash).
+    const snapAt = tail.search(/[\\/]/);
+    const cleanTail = snapAt >= 0 ? tail.slice(snapAt) : tail;
+    return "…" + cleanTail;
 }

@@ -41,6 +41,7 @@ import {
     STARTER_SEEDED_KEY,
     STARTER_URL,
     STARTER_PRESET_FILENAME,
+    SNAPSHOT_STATUS_CHANGED_EVENT,
     toast,
 } from "./constants.js";
 
@@ -124,6 +125,296 @@ export async function applySnapshot(snapshot) {
     if (picksOk) notifyPicksChanged();
     const workflowsOk = await replaceAllWorkflows(snapshot.workflows);
     return { picksOk, workflowsOk };
+}
+
+// =============================================================================
+// Auto-save (defensive snapshots).
+//
+// All autosaves live in a per-preset SUBFOLDER under the library directory,
+// invisible to the user-facing Load list:
+//
+//   <library>/
+//     Wan video kit.json                  ← user-named save (in Load list)
+//     Wan video kit_autosave/             ← shadow folder (HIDDEN from Load)
+//       periodic.json                     ← single rolling file, overwritten
+//       pre_load_<iso>.json × ≤5          ← rotated; permanent per Load
+//     another preset.json
+//     _unsaved_autosave/                  ← used when no preset is tracked
+//       periodic.json
+//       pre_load_<iso>.json × ≤5
+//
+// The server (`koolook_routes.py`) hides subfolders + legacy `_autosave_*`
+// flat files from the root-level list endpoint, so the regular Load dialog
+// never enumerates these files. Recovery is via direct filesystem access.
+//
+// Why a subfolder per preset, not flat? The user's library was getting
+// cluttered with `_autosave_*` files at root (visible in Total Commander,
+// Finder, etc.). Tying autosaves to a per-preset folder makes the on-disk
+// structure self-documenting: "the shadow recovery for X lives at X_autosave/".
+//
+// Why one rolling `periodic.json` (not timestamped)? The latest periodic
+// auto-save IS the most useful periodic state. Earlier periodic snapshots
+// are worse copies of approximately the same work. Keeping just one trades
+// disk diversity for cleanliness — and pre-load files cover the "I want a
+// recovery point from before a deliberate destructive action" case.
+//
+// Why timestamped pre-load files (not rolling)? Each Load is a deliberate
+// destructive action and deserves a permanent recovery point. Rotation
+// keeps last 5 to bound disk; rare "5 Loads back" recovery loss is the
+// trade-off for not letting the folder grow unbounded.
+//
+// `setCurrentPresetName` is intentionally NOT called by any auto-save —
+// these aren't user-initiated saves and shouldn't hijack the "Save over X"
+// default the way a manual Save does.
+// =============================================================================
+
+const AUTOSAVE_PRE_LOAD_PREFIX = "pre_load_";
+const AUTOSAVE_PERIODIC_FILENAME = "periodic";
+const AUTOSAVE_UNSAVED_SUBDIR = "_unsaved_autosave";
+const AUTOSAVE_SUBDIR_SUFFIX = "_autosave";
+const AUTOSAVE_PRE_LOAD_KEEP = 5;
+
+function isoToFsToken(iso) {
+    // 2026-05-06T11:45:33.123Z → 2026-05-06T11-45-33-123Z
+    return iso.replace(/[:.]/g, "-");
+}
+
+// Resolves the subfolder name for the current session's autosaves.
+// Tied to `getCurrentPresetName()` — when the user loads or saves "Foo"
+// the autosaves redirect to `Foo_autosave/`. When no preset is tracked
+// (fresh session, or user explicitly cleared the tracker) autosaves go
+// to `_unsaved_autosave/`. Sanitizes the preset name through the same
+// filename whitelist so the dirname is server-validation-safe.
+function _autosaveSubdir() {
+    const name = getCurrentPresetName();
+    if (!name) return AUTOSAVE_UNSAVED_SUBDIR;
+    const sanitized = sanitizeName(name);
+    if (!sanitized) return AUTOSAVE_UNSAVED_SUBDIR;
+    return sanitized + AUTOSAVE_SUBDIR_SUFFIX;
+}
+
+// =============================================================================
+// Snapshot status — tracks whether the live in-memory state matches the last
+// named save, the latest periodic auto-save, both, or neither. Surfaces in
+// the sidebar via `getSnapshotStatus()`.
+//
+// Two reference fingerprints:
+//   • `_lastNamedSaveFingerprint` — set by markStateSaved() on Save / Load
+//     success. Persisted to localStorage so the baseline survives reloads
+//     (otherwise every fresh page-load would show "saved" briefly even
+//     after the user mutated the state in a previous session).
+//   • `_lastPeriodicFingerprint` — set when a periodic auto-save lands.
+//     Lives in memory only; periodic auto-saves are session-scoped recovery
+//     points, not user-visible save history.
+//
+// `_computeFingerprint()` strips fields that change every call (`exportedAt`,
+// the wrapping `name`/`kind`/`version` envelope) so the comparison is
+// "did the actual data change" rather than "is this a different export."
+// =============================================================================
+
+const SAVED_FINGERPRINT_KEY = "koolook.snapshot.savedFingerprint.v1";
+
+let _lastNamedSaveFingerprint = null;
+let _lastPeriodicFingerprint = null;
+let _lastPeriodicAt = null;
+
+(function _initSavedFingerprintFromStorage() {
+    try {
+        const v = localStorage.getItem(SAVED_FINGERPRINT_KEY);
+        if (typeof v === "string" && v) _lastNamedSaveFingerprint = v;
+    } catch (e) {
+        // localStorage unreadable (private mode + permission edge cases).
+        // Status will be slightly less accurate this session — fine.
+    }
+})();
+
+function _persistSavedFingerprint() {
+    try {
+        if (_lastNamedSaveFingerprint) {
+            localStorage.setItem(SAVED_FINGERPRINT_KEY, _lastNamedSaveFingerprint);
+        } else {
+            localStorage.removeItem(SAVED_FINGERPRINT_KEY);
+        }
+    } catch (e) {
+        // Quota / private mode — the in-memory fingerprint still works for
+        // this session; only cross-session accuracy degrades.
+    }
+}
+
+function _computeFingerprint() {
+    return JSON.stringify({
+        picks: loadUserPicks(),
+        workflows: getAllWorkflowsForExport(),
+    });
+}
+
+function _emitStatusChanged() {
+    try {
+        window.dispatchEvent(new CustomEvent(SNAPSHOT_STATUS_CHANGED_EVENT));
+    } catch (e) {
+        // Some test environments don't have window — defensive only.
+    }
+}
+
+// Mark the current in-memory state as "saved" — call after any successful
+// named save (writePreset for a user-named preset) or successful Load
+// (applySnapshot baseline). Auto-saves do NOT call this; they're not
+// user-initiated saves and shouldn't reset the dirty indicator.
+export function markStateSaved() {
+    _lastNamedSaveFingerprint = _computeFingerprint();
+    _persistSavedFingerprint();
+    _emitStatusChanged();
+}
+
+// Returns one of:
+//   { name: <string|null>, state: "saved" | "autosaved" | "unsaved" | "none",
+//     lastAutosaveAt: <ISO|null> }
+//
+// Status precedence (highest first):
+//   • "saved"     — current fingerprint matches the last named save
+//   • "autosaved" — current matches the latest periodic auto-save (only)
+//   • "unsaved"   — there IS a tracked preset but state diverged
+//   • "none"      — no preset tracked, no autosave match
+export function getSnapshotStatus() {
+    const name = getCurrentPresetName();
+    const fp = _computeFingerprint();
+    if (_lastNamedSaveFingerprint && fp === _lastNamedSaveFingerprint) {
+        return { name, state: "saved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    if (_lastPeriodicFingerprint && fp === _lastPeriodicFingerprint) {
+        return { name, state: "autosaved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    if (name) {
+        return { name, state: "unsaved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    return { name: null, state: "none", lastAutosaveAt: _lastPeriodicAt };
+}
+
+// Write a pre-load auto-save into the current session's autosave subfolder
+// and return a `<subdir>/<filename>` token on success. Throws on persist
+// failure — callers should treat that as a hard abort signal: the
+// destructive Load that motivated this auto-save MUST NOT proceed without
+// a recovery point, otherwise the entire premise of the feature collapses.
+//
+// IMPORTANT: the subfolder is captured at write time, NOT load time. Pre-
+// load autosaves preserve the OLD state (which is named after the OLD
+// preset). If the user has "Foo" loaded and Loads "Bar", the pre-load
+// recovery file lands in `Foo_autosave/` — that's where the user looks
+// when they realize they wanted to undo back to the Foo state.
+export async function writePreLoadAutosave(label) {
+    const isoNow = new Date().toISOString();
+    const subdir = _autosaveSubdir();
+    const fileName = AUTOSAVE_PRE_LOAD_PREFIX + isoToFsToken(isoNow);
+    const displayName = label
+        ? `Pre-load auto-save · ${subdir} · ${label} · ${isoNow}`
+        : `Pre-load auto-save · ${subdir} · ${isoNow}`;
+    const snap = gatherSnapshot(displayName);
+    await writePreset(fileName, snap, { dir: subdir });
+    // Prune older pre-load files in the same subdir to bound disk.
+    await _prunePreLoadAutosaves(subdir, AUTOSAVE_PRE_LOAD_KEEP);
+    return `${subdir}/${fileName}`;
+}
+
+async function _prunePreLoadAutosaves(subdir, keep) {
+    try {
+        const all = await listPresets({ dir: subdir });
+        // Lex sort of ISO-ish filenames is chronological order. We strip
+        // to pre-load files only (keeping `periodic.json` untouched),
+        // sort newest-first, delete everything past `keep`.
+        const preLoads = all
+            .filter((p) => typeof p.fileName === "string" &&
+                          p.fileName.startsWith(AUTOSAVE_PRE_LOAD_PREFIX))
+            .sort((a, b) => b.fileName.localeCompare(a.fileName));
+        const toDelete = preLoads.slice(keep);
+        for (const p of toDelete) {
+            try {
+                await deletePreset(p.fileName, { dir: subdir });
+            } catch (e) {
+                console.warn(`[Koolook] failed to prune ${subdir}/${p.fileName}:`, e);
+            }
+        }
+    } catch (e) {
+        console.warn(`[Koolook] pre-load prune failed for ${subdir}:`, e);
+    }
+}
+
+// =============================================================================
+// Periodic auto-save — module-private timer + change-detection state.
+// Started by `startPeriodicAutosave` (called from the entry `setup()`).
+// Shares `_lastPeriodicFingerprint` with the snapshot-status block above —
+// when a tick lands successfully, that's also the new "matches latest
+// auto-save" reference for the status indicator. `null` initial value
+// guarantees the first tick saves unconditionally, capturing a baseline
+// recovery point ~30s after sidebar open.
+// =============================================================================
+let _periodicTimerId = null;
+let _periodicFirstTickId = null;
+
+async function _periodicTick() {
+    // Skip while the tab is in the background — saving while the user can't
+    // see toasts / errors is fine, but saving WORK they're not actively
+    // doing isn't valuable, and quietly hammering /userdata in a backgrounded
+    // tab wastes server cycles.
+    if (typeof document !== "undefined" && document.hidden) return;
+    try {
+        const isoNow = new Date().toISOString();
+        const subdir = _autosaveSubdir();
+        const displayName = `Periodic auto-save · ${subdir} · ${isoNow}`;
+        const snap = gatherSnapshot(displayName);
+        // Change detection — uses the same picks-and-workflows fingerprint
+        // as the status indicator so post-tick the "auto-saved" status is
+        // accurate without recomputing.
+        const fingerprint = _computeFingerprint();
+        if (fingerprint === _lastPeriodicFingerprint) return;
+        // Single rolling file inside the subdir — overwriting the previous
+        // periodic snapshot. No rotation / no list-and-delete dance; the
+        // latest periodic IS the most useful, and pre-load files cover the
+        // "deliberate destructive-action recovery" case independently.
+        await writePreset(AUTOSAVE_PERIODIC_FILENAME, snap, { dir: subdir });
+        _lastPeriodicFingerprint = fingerprint;
+        _lastPeriodicAt = isoNow;
+        // Tell the sidebar status indicator to refresh — state didn't change
+        // (mutation events would have covered that) but the *match* against
+        // the latest auto-save did, so "unsaved" can flip to "auto-saved".
+        _emitStatusChanged();
+        console.log(`[Koolook] periodic auto-save: ${subdir}/${AUTOSAVE_PERIODIC_FILENAME}.json`);
+    } catch (e) {
+        // Library unreachable, read-only mount, etc. — log and try again
+        // next interval. Periodic auto-save failures should NOT surface
+        // as toasts; they're a background defensive layer, not a primary
+        // action the user is waiting on.
+        console.warn("[Koolook] periodic auto-save failed:", e);
+    }
+}
+
+// Start the periodic auto-save loop. Idempotent — calling twice is a no-op
+// (the second call returns without registering another timer). Default
+// interval 5 minutes. The first tick fires after a short grace period
+// (30s) rather than immediately so the load / seed flows have time to
+// settle before we capture the first baseline.
+export function startPeriodicAutosave({ intervalMs = 5 * 60 * 1000, firstTickDelayMs = 30 * 1000 } = {}) {
+    if (_periodicTimerId !== null) return;
+    const tick = () => _periodicTick();
+    _periodicFirstTickId = setTimeout(tick, firstTickDelayMs);
+    _periodicTimerId = setInterval(tick, intervalMs);
+    console.log(
+        `[Koolook] periodic auto-save started: every ${Math.round(intervalMs / 1000)}s, ` +
+        `first tick in ${Math.round(firstTickDelayMs / 1000)}s`
+    );
+}
+
+// Stop the periodic auto-save loop. Idempotent. Useful for tests and for
+// hot-reload paths during development; in normal use the timer outlives
+// the page anyway.
+export function stopPeriodicAutosave() {
+    if (_periodicFirstTickId !== null) {
+        clearTimeout(_periodicFirstTickId);
+        _periodicFirstTickId = null;
+    }
+    if (_periodicTimerId !== null) {
+        clearInterval(_periodicTimerId);
+        _periodicTimerId = null;
+    }
 }
 
 // =============================================================================
@@ -279,6 +570,8 @@ export function setCurrentPresetName(name) {
         // the next save just won't pre-fill. Log so power users notice.
         console.warn("[Koolook] could not persist current preset name:", e);
     }
+    // Status display shows the tracked name — refresh on every change.
+    _emitStatusChanged();
 }
 
 // =============================================================================
@@ -303,6 +596,7 @@ const ROUTE_INFO = "/koolook/presets/info";
 const ROUTE_LIST = "/koolook/presets/list";
 const ROUTE_FILE = "/koolook/presets/file";
 const ROUTE_SETTINGS = "/koolook/presets/settings";
+const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
 // response body (always available, carries aiohttp's `reason=` text),
@@ -318,8 +612,10 @@ async function readErrorReason(resp) {
     return resp.statusText || `HTTP ${resp.status}`;
 }
 
-function fileQuery(fileName) {
-    return `?name=${encodeURIComponent(`${fileName}.json`)}`;
+function fileQuery(fileName, dir) {
+    let q = `?name=${encodeURIComponent(`${fileName}.json`)}`;
+    if (dir) q += `&dir=${encodeURIComponent(dir)}`;
+    return q;
 }
 
 // Filename → preview metadata. Returns
@@ -327,10 +623,11 @@ function fileQuery(fileName) {
 // success, `null` if the file isn't a valid snapshot. Failed reads are
 // filtered out by `listPresets` so the list shows only valid entries;
 // corrupt files surface in the console for debugging.
-async function loadPreview(fullName) {
+async function loadPreview(fullName, dir) {
     try {
         const bareName = fullName.replace(/\.json$/i, "");
-        const resp = await fetch(`${ROUTE_FILE}?name=${encodeURIComponent(fullName)}`);
+        const dirParam = dir ? `&dir=${encodeURIComponent(dir)}` : "";
+        const resp = await fetch(`${ROUTE_FILE}?name=${encodeURIComponent(fullName)}${dirParam}`);
         if (!resp.ok) return null;
         const text = await resp.text();
         const obj = JSON.parse(text);
@@ -409,10 +706,16 @@ export async function saveSettings(libraryPath) {
 // Returns an array of preview objects, sorted by display name
 // (case-insensitive). Empty array on a missing directory or unreachable
 // server — modal shows an empty state rather than throwing.
-export async function listPresets() {
+//
+// Optional `dir` scopes the listing to a subfolder (used for autosave
+// pruning). The user-facing Load list calls this without `dir` and gets
+// only root-level user-named presets — autosave subfolders are NEVER
+// enumerated as part of the regular Load flow.
+export async function listPresets({ dir } = {}) {
     let resp;
+    const url = dir ? `${ROUTE_LIST}?dir=${encodeURIComponent(dir)}` : ROUTE_LIST;
     try {
-        resp = await fetch(ROUTE_LIST);
+        resp = await fetch(url);
     } catch (e) {
         console.warn("[Koolook] preset listing failed (network):", e);
         return [];
@@ -430,7 +733,7 @@ export async function listPresets() {
     }
     if (!Array.isArray(entries)) return [];
 
-    const previews = await Promise.all(entries.map((row) => loadPreview(row.name)));
+    const previews = await Promise.all(entries.map((row) => loadPreview(row.name, dir)));
     return previews
         .filter(p => p !== null)
         .sort((a, b) =>
@@ -438,10 +741,11 @@ export async function listPresets() {
         );
 }
 
-// Read one preset by its filename (no `.json` suffix). Returns the parsed
-// + validated snapshot, throws on read or parse failure.
-export async function readPreset(fileName) {
-    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`);
+// Read one preset by its filename (no `.json` suffix). Optional `dir`
+// scopes the read to an autosave subfolder. Returns the parsed +
+// validated snapshot, throws on read or parse failure.
+export async function readPreset(fileName, { dir } = {}) {
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`);
     if (!resp.ok) {
         throw new Error(`Could not read preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
@@ -455,11 +759,13 @@ export async function readPreset(fileName) {
     return validateSnapshot(parsed);
 }
 
-// Write a snapshot under `fileName` (no `.json` suffix). Throws on server
-// failure with the server-provided reason — surfaces "read-only mount",
-// "parent missing", "invalid filename" in the user-facing toast.
-export async function writePreset(fileName, snapshot) {
-    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, {
+// Write a snapshot under `fileName` (no `.json` suffix). Optional `dir`
+// scopes the write to an autosave subfolder; the server auto-creates the
+// subfolder on POST. Throws on server failure with the server-provided
+// reason — surfaces "read-only mount", "parent missing", "invalid
+// filename" in the user-facing toast.
+export async function writePreset(fileName, snapshot, { dir } = {}) {
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snapshot, null, 2),
@@ -480,9 +786,9 @@ export async function writePreset(fileName, snapshot) {
 //
 // Server has a dedicated HEAD handler that does just `is_file()` + status,
 // so this is a cheap probe even on multi-MB snapshots over Dropbox/NFS.
-export async function presetExists(fileName) {
+export async function presetExists(fileName, { dir } = {}) {
     try {
-        const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "HEAD" });
+        const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`, { method: "HEAD" });
         if (resp.ok) return true;
         if (resp.status === 404) return false;
         // 5xx, 4xx other than 404, opaque proxy errors → unreachable.
@@ -496,12 +802,81 @@ export async function presetExists(fileName) {
 
 // Delete a preset. Throws on server failure (read-only mount, missing
 // file, etc.) — no silent fallback.
-export async function deletePreset(fileName) {
-    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName)}`, { method: "DELETE" });
+export async function deletePreset(fileName, { dir } = {}) {
+    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`, { method: "DELETE" });
     if (!resp.ok) {
         throw new Error(`Could not delete preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
     return true;
+}
+
+// List every recovery autosave across all `*_autosave/` subfolders. Returns
+// preview objects enriched with `dir`, `mtime`, and a `kind` discriminator
+// ("pre_load" | "periodic" | "other"). Empty array on a missing library or
+// unreachable server. Used by the Load dialog's collapsible "Recovery
+// auto-saves" section — without this endpoint the user's pre-load /
+// periodic auto-saves are written but unreachable from the UI.
+//
+// N+1 cost is real here: one HEAD-or-similar metadata call to list, then
+// one GET per file to validate + extract displayName. We accept it because
+// the recovery section is collapsed by default — the cost is paid only
+// when the user expands it. For very large libraries (many presets ×
+// many autosaves) this can be slow; we'd add server-side preview-flatten
+// before that becomes a real complaint.
+export async function listAutosaves() {
+    let resp;
+    try {
+        resp = await fetch(ROUTE_AUTOSAVES_LIST);
+    } catch (e) {
+        console.warn("[Koolook] autosave listing failed (network):", e);
+        return [];
+    }
+    if (!resp.ok) {
+        console.warn(`[Koolook] autosave listing returned HTTP ${resp.status}`);
+        return [];
+    }
+    let entries;
+    try {
+        entries = await resp.json();
+    } catch (e) {
+        console.warn("[Koolook] autosave listing JSON parse failed:", e);
+        return [];
+    }
+    if (!Array.isArray(entries)) return [];
+
+    const previews = await Promise.all(entries.map(async (row) => {
+        try {
+            const bareName = row.name.replace(/\.json$/i, "");
+            const dirParam = `&dir=${encodeURIComponent(row.dir)}`;
+            const r = await fetch(
+                `${ROUTE_FILE}?name=${encodeURIComponent(row.name)}${dirParam}`
+            );
+            if (!r.ok) return null;
+            const obj = JSON.parse(await r.text());
+            if (obj.kind !== SNAPSHOT_KIND) return null;
+            // Classify by filename: `pre_load_*.json` are timestamped
+            // recovery points (one per Load), `periodic.json` is the
+            // single rolling auto-save. Anything else (legacy / hand-
+            // dropped) is "other".
+            let kind = "other";
+            if (bareName === "periodic") kind = "periodic";
+            else if (bareName.startsWith("pre_load_")) kind = "pre_load";
+            return {
+                dir: row.dir,
+                fileName: bareName,
+                kind,
+                displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
+                exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
+                mtime: row.mtime,
+                workflowCount: countWorkflowsInStore(obj.workflows),
+                pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
+            };
+        } catch (e) {
+            console.warn(`[Koolook] failed to read autosave ${row.dir}/${row.name}:`, e);
+            return null;
+        }
+    }));
+    return previews.filter((p) => p !== null);
 }
 
 // =============================================================================

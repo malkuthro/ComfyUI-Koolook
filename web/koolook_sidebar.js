@@ -16,7 +16,12 @@ import {
     TAB_TOOLTIP,
     TAB_ICON,
 } from "./sidebar/constants.js";
-import { seedStarterPresetIfNeeded } from "./sidebar/snapshot.js";
+import {
+    seedStarterPresetIfNeeded,
+    startPeriodicAutosave,
+    markStateSaved,
+    getCurrentPresetName,
+} from "./sidebar/snapshot.js";
 import {
     loadWorkflowsStore,
     seedWorkflowDefaultsIfNeeded,
@@ -42,6 +47,21 @@ app.registerExtension({
         if (!loadResult.corrupt) {
             await seedWorkflowDefaultsIfNeeded();
         }
+        // Baseline the saved-state fingerprint at session start IFF the
+        // tracker says a preset is currently loaded AND we don't already
+        // have a baseline persisted from a previous session. The "saved
+        // fingerprint persists across reloads" path is more accurate, but
+        // first-ever-session needs this seeding to avoid showing "unsaved"
+        // immediately for users who closed the tab on a clean state.
+        // Without this, the indicator would flicker "unsaved → saved" the
+        // first time the user clicks Save (since markStateSaved baselines
+        // there). With it, "saved" is shown from the start. Trade-off: if
+        // the user closed mid-edit (state on /userdata diverges from the
+        // tracked preset's content), we'll show "saved" briefly until they
+        // mutate again — acceptable for an indicator.
+        if (getCurrentPresetName() && !localStorage.getItem("koolook.snapshot.savedFingerprint.v1")) {
+            markStateSaved();
+        }
         app.extensionManager.registerSidebarTab({
             id: TAB_ID,
             title: TAB_TITLE,
@@ -51,5 +71,12 @@ app.registerExtension({
             render: (el) => renderPanel(el),
         });
         patchCanvasMenu();
+        // Periodic defensive auto-save — fires every 5 minutes if state has
+        // changed since the last successful auto-save. Keeps last 5 in the
+        // snapshot library as `_autosave_periodic_<iso>.json`. Started AFTER
+        // sidebar registration so it doesn't compete with first-render work,
+        // and uses an internal grace period before the first tick so the
+        // load/seed flows above settle first.
+        startPeriodicAutosave();
     },
 });

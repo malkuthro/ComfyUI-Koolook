@@ -40,6 +40,20 @@ SETTINGS_KEY_LIBRARY_PATH = "libraryPath"
 # punctuation (underscore, period, parentheses, hyphen).
 _FILENAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+\.json$")
 
+# Same charset as filenames but without the `.json` extension — for the
+# optional `dir` query param that scopes preset operations into a per-preset
+# auto-save subfolder (`<preset>_autosave/`). Single segment only; no path
+# separators (otherwise the symlink-escape check would have to scan multiple
+# levels). The library structure is deliberately one level deep.
+_DIRNAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+$")
+
+# Filenames the list endpoint should hide from the user-facing Load list.
+# Currently used to suppress legacy flat-file autosaves left over from the
+# previous autosave layout, in case a user has already accumulated some
+# before upgrading to the per-preset-subfolder layout. Cheap defensive
+# filter; can be removed in a future major if we choose to migrate.
+_HIDDEN_LIST_PREFIXES = ("_autosave_",)
+
 
 def _resolve_default_dir() -> Path:
     """Resolve the default preset directory under ComfyUI's user folder.
@@ -156,6 +170,24 @@ def _validate_filename(name: object) -> str:
     return name
 
 
+def _validate_dirname(name: str) -> str:
+    """Whitelist a single-segment subfolder name or raise 400.
+
+    Same charset as filenames but without the `.json` extension. Used by
+    the autosave subfolder routing — a request with ``?dir=<x>`` lands its
+    file inside ``<library>/<x>/`` instead of the library root.
+    """
+    if not isinstance(name, str) or not _DIRNAME_RE.match(name):
+        raise web.HTTPBadRequest(
+            reason=(
+                "Invalid dir. Allowed characters: letters, digits, space, "
+                "underscore, period, parentheses, hyphen. No path "
+                "separators, no extension."
+            )
+        )
+    return name
+
+
 def _resolve_within_base(base: Path, name: str) -> Path:
     """Compute ``base / name`` and verify the resolved path stays under
     ``base`` after symlinks are followed. Defense-in-depth against a
@@ -187,6 +219,43 @@ def _resolve_within_base(base: Path, name: str) -> Path:
             )
         ) from exc
     return file_path
+
+
+def _resolve_target(lib_base: Path, subdir: str, name: str) -> tuple[Path, Path]:
+    """Resolve ``lib_base[/subdir]/name`` for a preset operation, with the
+    symlink-escape check grounded at ``lib_base`` (NOT at the subdir) so a
+    hostile symlink inside an auto-save subfolder can't redirect writes
+    outside the library.
+
+    Returns ``(target_dir, file_path)`` — the caller may need ``target_dir``
+    to mkdir before writing. ``file_path`` is the un-resolved join, same as
+    ``_resolve_within_base``.
+
+    Raises ``web.HTTPBadRequest`` on escape, ``web.HTTPInternalServerError``
+    on resolution failure.
+    """
+    if subdir:
+        target_dir = lib_base / subdir
+    else:
+        target_dir = lib_base
+    file_path = target_dir / name
+    try:
+        resolved_file = file_path.resolve(strict=False)
+        resolved_lib = lib_base.resolve(strict=False)
+    except OSError as exc:
+        raise web.HTTPInternalServerError(
+            reason=f"Could not resolve preset path: {exc}"
+        ) from exc
+    try:
+        resolved_file.relative_to(resolved_lib)
+    except ValueError as exc:
+        raise web.HTTPBadRequest(
+            reason=(
+                "Preset path escapes the library directory (likely a symlink "
+                "planted in the library or subfolder). Refusing to proceed."
+            )
+        ) from exc
+    return target_dir, file_path
 
 
 def register_routes(routes) -> None:
@@ -274,14 +343,34 @@ def register_routes(routes) -> None:
         )
 
     @routes.get("/koolook/presets/list")
-    async def list_presets(_request):
+    async def list_presets(request):
+        """List preset files. With ``?dir=<x>`` lists files inside that
+        subfolder (used by autosave management); without dir, lists root
+        and HIDES anything matching ``_HIDDEN_LIST_PREFIXES`` (legacy flat
+        autosaves) plus any subdirectories (the per-preset autosave folders
+        — those should never appear in the user-facing Load list).
+        """
         base, _is_default = _configured_dir()
-        if not base.exists() or not base.is_dir():
+        subdir_q = request.query.get("dir", "").strip()
+        if subdir_q:
+            _validate_dirname(subdir_q)
+            target_dir, _ = _resolve_target(base, subdir_q, "_listing.json")
+            target_dir = target_dir  # named for clarity
+        else:
+            target_dir = base
+        if not target_dir.exists() or not target_dir.is_dir():
             return web.json_response([])
         out = []
         try:
-            for entry in base.iterdir():
+            for entry in target_dir.iterdir():
                 if not entry.is_file() or not entry.name.lower().endswith(".json"):
+                    continue
+                # Only filter legacy autosave flat files at the LIBRARY ROOT.
+                # Inside autosave subfolders we want to see everything (so
+                # the rotation pruner can list + delete its own files).
+                if not subdir_q and any(
+                    entry.name.startswith(p) for p in _HIDDEN_LIST_PREFIXES
+                ):
                     continue
                 try:
                     stat = entry.stat()
@@ -303,10 +392,69 @@ def register_routes(routes) -> None:
         out.sort(key=lambda r: r["name"].lower())
         return web.json_response(out)
 
+    @routes.get("/koolook/presets/autosaves/list")
+    async def list_autosaves(_request):
+        """Walk every ``*_autosave/`` subdir (and ``_unsaved_autosave/``)
+        under the library and return a flat list of recovery snapshot
+        files. Powers the Load dialog's recovery section so a user can
+        restore from a pre-load or periodic auto-save without leaving
+        the UI.
+
+        Why a dedicated endpoint instead of recursing the existing
+        ``list``? The user-facing list MUST hide subdirs (otherwise the
+        Load list gets cluttered with autosave files that aren't
+        directly user-restorable). This endpoint is the explicit "show
+        me everything in autosave folders" API — separated cleanly so
+        the boundary is grep-able and adding more subdir-scoped views
+        later (timeline / cross-preset comparison / etc.) doesn't have
+        to push more flags into the main list endpoint.
+
+        Sort: subdir alphabetical, then mtime descending within each
+        subdir (newest recovery point first — matches what users
+        expect when scanning for "the file just before I broke things").
+        """
+        base, _ = _configured_dir()
+        if not base.exists() or not base.is_dir():
+            return web.json_response([])
+        out = []
+        try:
+            for subdir_entry in base.iterdir():
+                if not subdir_entry.is_dir():
+                    continue
+                subdir_name = subdir_entry.name
+                # Match the autosave naming convention exactly so a user-
+                # created subdirectory called "my random folder" isn't
+                # treated as a recovery source.
+                is_unsaved = subdir_name == "_unsaved_autosave"
+                is_named = subdir_name.endswith("_autosave") and len(subdir_name) > len("_autosave")
+                if not (is_unsaved or is_named):
+                    continue
+                for f in subdir_entry.iterdir():
+                    if not f.is_file() or not f.name.lower().endswith(".json"):
+                        continue
+                    try:
+                        stat = f.stat()
+                    except OSError:
+                        continue
+                    out.append(
+                        {
+                            "dir": subdir_name,
+                            "name": f.name,
+                            "mtime": stat.st_mtime,
+                            "size": stat.st_size,
+                        }
+                    )
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not list autosave folders: {exc}"
+            ) from exc
+        out.sort(key=lambda r: (r["dir"].lower(), -r["mtime"]))
+        return web.json_response(out)
+
     @routes.get("/koolook/presets/file")
     async def get_preset(request):
-        """Serve preset JSON for ``?name=<name>``; HEAD short-circuits before
-        the file read.
+        """Serve preset JSON for ``?name=<name>[&dir=<subdir>]``; HEAD
+        short-circuits before the file read.
 
         aiohttp's ``add_get`` auto-registers a HEAD route by default. We
         can't opt out via ``allow_head=False`` because ComfyUI's
@@ -319,8 +467,11 @@ def register_routes(routes) -> None:
         Dropbox/iCloud/NFS-mounted libraries just to answer 200/404.
         """
         name = _validate_filename(request.query.get("name"))
+        subdir = request.query.get("dir", "").strip()
+        if subdir:
+            _validate_dirname(subdir)
         base, _ = _configured_dir()
-        file_path = _resolve_within_base(base, name)
+        _, file_path = _resolve_target(base, subdir, name)
         if not file_path.is_file():
             raise web.HTTPNotFound(reason=f"Preset '{name}' not found.")
         if request.method == "HEAD":
@@ -336,6 +487,9 @@ def register_routes(routes) -> None:
     @routes.post("/koolook/presets/file")
     async def post_preset(request):
         name = _validate_filename(request.query.get("name"))
+        subdir = request.query.get("dir", "").strip()
+        if subdir:
+            _validate_dirname(subdir)
         base, _ = _configured_dir()
         if not base.parent.exists():
             raise web.HTTPInternalServerError(
@@ -345,27 +499,30 @@ def register_routes(routes) -> None:
                     f"var) and retry."
                 )
             )
+        target_dir, file_path = _resolve_target(base, subdir, name)
         try:
-            base.mkdir(parents=True, exist_ok=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise web.HTTPInternalServerError(
                 reason=f"Could not create preset directory: {exc}"
             ) from exc
         body = await request.read()
-        file_path = _resolve_within_base(base, name)
         try:
             file_path.write_bytes(body)
         except OSError as exc:
             raise web.HTTPInternalServerError(
                 reason=f"Could not write preset: {exc}"
             ) from exc
-        return web.json_response({"ok": True, "name": name})
+        return web.json_response({"ok": True, "name": name, "dir": subdir})
 
     @routes.delete("/koolook/presets/file")
     async def delete_preset(request):
         name = _validate_filename(request.query.get("name"))
+        subdir = request.query.get("dir", "").strip()
+        if subdir:
+            _validate_dirname(subdir)
         base, _ = _configured_dir()
-        file_path = _resolve_within_base(base, name)
+        _, file_path = _resolve_target(base, subdir, name)
         if not file_path.is_file():
             raise web.HTTPNotFound(reason=f"Preset '{name}' not found.")
         try:
@@ -374,7 +531,7 @@ def register_routes(routes) -> None:
             raise web.HTTPInternalServerError(
                 reason=f"Could not delete preset: {exc}"
             ) from exc
-        return web.json_response({"ok": True, "name": name})
+        return web.json_response({"ok": True, "name": name, "dir": subdir})
 
 
 def install() -> bool:
