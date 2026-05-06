@@ -3,6 +3,14 @@
 Copy runtime-relevant Koolook files into a live ComfyUI custom_nodes
 folder so a fix can be tested without a tag-and-publish round-trip.
 
+USER-INITIATED ONLY. This script overwrites a live ComfyUI install.
+Agents must NEVER run it automatically — not after a commit, not after
+a PR merge or ship-pr, not at session end, not from any "task complete"
+cleanup. The maintainer typically has multiple parallel sessions across
+worktrees, and an unsolicited sync from one silently destroys what
+another is reviewing. See project CLAUDE.md `dev-sync` section for the
+full policy. Run only on the explicit user trigger phrase.
+
 The target path is read from the KOLOOK_COMFYUI_DEV_PATH environment
 variable (loaded from `.env` at the repo root if present). The variable
 is intentionally kept out of the committed tree — see `.env.example`.
@@ -263,8 +271,6 @@ def main() -> int:
     # mechanical sync details.
     print(_build_line())
     print(f"{verb} {n} entries -> {target}")
-    if not args.dry_run:
-        print("restart ComfyUI to pick up changes.")
     return 0
 
 

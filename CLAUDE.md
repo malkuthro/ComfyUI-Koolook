@@ -40,25 +40,40 @@
 Fast iteration without cutting a release. Copies runtime files to
 `KOLOOK_COMFYUI_DEV_PATH` (set in `.env`; see `.env.example`).
 
-- `python scripts/sync_to_dev.py` — brief one-line summary; use `-v` for per-file output
+- `python scripts/sync_to_dev.py` — brief two-line summary; use `-v` for per-file output
 - `--dry-run` — preview without touching the target
-- Restart ComfyUI to load the new code.
 
 **Trigger phrase: `dev-sync`** (or "copy those files", "sync dev", "push to dev").
 The agent runs the script and reports completion. The script errors
 cleanly when the env var is unset; never guess a path.
+
+**User-initiated ONLY — never automatic.** Dev-sync overwrites the
+maintainer's live ComfyUI install. Do NOT trigger it as part of any
+automated flow:
+
+  • after a commit
+  • after a PR merge or `/ship-pr`
+  • at session end / wrap-up
+  • on hook completion or "task complete" cleanup
+  • from any agent skill that doesn't explicitly require it
+
+The maintainer typically runs multiple parallel sessions across worktrees;
+an unsolicited sync from one session silently overwrites what another is
+reviewing in ComfyUI, and the wrong code gets reviewed. Wait for the
+explicit trigger phrase. If unsure whether the user wants a sync, ASK —
+don't sync.
 
 **Chat report format** — two lines, copied verbatim from the script's
 own header line:
 
 ```
 <short-sha> - <worktree-name>
-<≤10 word summary of what to look at after restart>
+<≤10 word summary of the PR / change scope to review>
 ```
 
 Line 1 is the script's first output line — never invent it, just relay.
-Line 2 is the *thing to look at* after restart, not a list of all
-changes. Keep it ≤10 words. Examples:
+Line 2 is the *scope of what to review* — the change in this build, ≤10
+words, no list of all files. Examples:
 
 ```
 8dfb966 - dreamy-jones-40655e
