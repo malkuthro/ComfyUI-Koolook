@@ -23,6 +23,99 @@ export function serializeFullCanvas() {
     }
 }
 
+// True when the graph has at least one node whose `type` references a defined
+// subgraph in the same graph. Used to bias the "Save as module" default —
+// a canvas containing a subgraph wrapper is almost certainly a reusable kit.
+// We require both the definition AND a referencing node so a stale definition
+// (subgraph deleted, definition not yet GC'd) doesn't false-positive.
+export function graphHasSubgraphInstance(graph) {
+    if (!graph) return false;
+    const defs = graph.definitions && graph.definitions.subgraphs;
+    if (!Array.isArray(defs) || defs.length === 0) return false;
+    const ids = new Set(defs.map(sg => sg && sg.id).filter(Boolean));
+    if (ids.size === 0) return false;
+    const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    return nodes.some(n => n && ids.has(n.type));
+}
+
+// Subgraph UUIDs follow LiteGraph's serialized format. Used by the insert
+// pre-flight to surface a more actionable error when a UUID-typed wrapper
+// can't be created (the cause is almost always a missing subgraph
+// definition, not a missing custom-node pack).
+const SUBGRAPH_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Walk a saved-graph's `definitions.subgraphs` to collect every UUID that
+// `rootIds` transitively reference (a saved subgraph's interior nodes can
+// themselves be wrappers around other subgraphs). The visited set is
+// returned so callers can copy exactly the needed definitions and nothing
+// more — saving every definition the live canvas knows about would bloat
+// every selection-save with unrelated subgraphs.
+function collectReferencedSubgraphIds(rootIds, allDefs) {
+    const visited = new Set();
+    const work = [...rootIds];
+    while (work.length > 0) {
+        const id = work.pop();
+        if (!id || visited.has(id)) continue;
+        visited.add(id);
+        const def = allDefs.find(d => d && d.id === id);
+        if (!def) continue;
+        const interiorNodes = Array.isArray(def.nodes) ? def.nodes : [];
+        for (const n of interiorNodes) {
+            if (n && typeof n.type === "string" && allDefs.some(d => d && d.id === n.type)) {
+                work.push(n.type);
+            }
+        }
+    }
+    return visited;
+}
+
+// Best-effort registration of incoming subgraph definitions before insert
+// pre-flight. Without this, a saved selection containing a subgraph wrapper
+// can be inserted only into a Comfy session that already has the matching
+// definition cached — across sessions the pre-flight rejects the wrapper
+// on `missing node type: <UUID>`.
+//
+// Strategy: try the public service path, then fall back to direct mutation
+// of `app.graph.definitions.subgraphs`. The fallback ensures the definition
+// is at least present in the graph data (so a save/reload round-trip
+// consolidates it); LiteGraph's per-UUID type registration may still be
+// missing in that case, which the improved pre-flight error makes
+// actionable for the user.
+function mergeIncomingSubgraphDefinitions(clone) {
+    const incoming = clone && clone.definitions && Array.isArray(clone.definitions.subgraphs)
+        ? clone.definitions.subgraphs.filter(sg => sg && sg.id)
+        : [];
+    if (incoming.length === 0) return;
+
+    // Preferred: Comfy's subgraph service handles registration end-to-end
+    // (definition push + LiteGraph node-type registration). Exposed on the
+    // app singleton in current frontends; older versions may not expose it.
+    try {
+        const svc = app.subgraphService;
+        if (svc && typeof svc.loadSubgraphs === "function") {
+            svc.loadSubgraphs({ definitions: { subgraphs: incoming } });
+            return;
+        }
+    } catch (e) {
+        console.warn("[Koolook] subgraphService.loadSubgraphs failed; falling back to direct merge:", e);
+    }
+
+    // Fallback: append to app.graph.definitions.subgraphs idempotently.
+    try {
+        if (!app.graph.definitions) app.graph.definitions = {};
+        if (!Array.isArray(app.graph.definitions.subgraphs)) app.graph.definitions.subgraphs = [];
+        const existing = new Set(app.graph.definitions.subgraphs.map(d => d && d.id).filter(Boolean));
+        for (const sg of incoming) {
+            if (!existing.has(sg.id)) {
+                app.graph.definitions.subgraphs.push(JSON.parse(JSON.stringify(sg)));
+                existing.add(sg.id);
+            }
+        }
+    } catch (e) {
+        console.warn("[Koolook] direct subgraph definition merge failed:", e);
+    }
+}
+
 function getSelectedNodeIds() {
     try {
         const sel = (app.canvas && app.canvas.selected_nodes) || {};
@@ -84,6 +177,14 @@ export function serializeSelection() {
 
     if (nodes.length === 0) return { kind: "stale" };
 
+    // Carry along any subgraph definitions this selection transitively
+    // references. Without this, a saved selection containing a subgraph
+    // wrapper would point at a UUID type whose definition only lives in
+    // the source canvas's session — re-inserting it later (or in a fresh
+    // Comfy session) would render against a stale cached definition or
+    // fail pre-flight outright.
+    const definitions = collectDefinitionsForNodes(nodes, full);
+
     return {
         kind: "ok",
         graph: {
@@ -92,11 +193,34 @@ export function serializeSelection() {
             nodes,
             links: internalLinks,
             groups: [],
+            ...(definitions ? { definitions } : {}),
             config: full.config || {},
             extra: full.extra || {},
             version: full.version || 0.4,
         },
     };
+}
+
+// Returns `{ subgraphs: [...] }` containing every subgraph definition the
+// given nodes transitively reference, or `null` if none. Definitions are
+// deep-cloned so callers can mutate the saved graph without disturbing
+// `app.graph`.
+function collectDefinitionsForNodes(nodes, fullGraph) {
+    const liveDefs = (fullGraph && fullGraph.definitions && Array.isArray(fullGraph.definitions.subgraphs))
+        ? fullGraph.definitions.subgraphs
+        : [];
+    if (liveDefs.length === 0) return null;
+    const liveIds = new Set(liveDefs.map(d => d && d.id).filter(Boolean));
+    const rootIds = nodes
+        .map(n => n && n.type)
+        .filter(t => typeof t === "string" && liveIds.has(t));
+    if (rootIds.length === 0) return null;
+    const required = collectReferencedSubgraphIds(rootIds, liveDefs);
+    const subgraphs = liveDefs
+        .filter(d => d && required.has(d.id))
+        .map(d => JSON.parse(JSON.stringify(d)));
+    if (subgraphs.length === 0) return null;
+    return { subgraphs };
 }
 
 export function canvasIsNonEmpty() {
@@ -442,6 +566,12 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         return { ok: false, reason: "empty" };
     }
 
+    // Register any subgraph definitions the saved file carries before
+    // pre-flight runs — otherwise wrappers around subgraphs that aren't
+    // already cached in this Comfy session would fail with `missing node
+    // type: <UUID>`.
+    mergeIncomingSubgraphDefinitions(clone);
+
     // Pre-flight: every node type must be registered. Aborting here is the
     // entire reason this is a separate primitive from `loadWorkflowOntoCanvas`
     // — a partial insert with stub nodes silently corrupts the user's graph.
@@ -457,13 +587,22 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         }
     }
     if (missingTypes.length > 0) {
-        const sample = missingTypes.slice(0, 3).join(", ");
-        const more = missingTypes.length > 3 ? ` (+${missingTypes.length - 3} more)` : "";
-        toast(
-            `Cannot insert "${wfName}" — missing node type${missingTypes.length === 1 ? "" : "s"}: ` +
-            `${sample}${more}. Install the required pack(s) first.`,
-            4500
-        );
+        const subgraphMisses = missingTypes.filter(t => SUBGRAPH_UUID_RE.test(t));
+        const packMisses = missingTypes.filter(t => !SUBGRAPH_UUID_RE.test(t));
+        let msg;
+        if (subgraphMisses.length > 0 && packMisses.length === 0) {
+            // All misses are UUIDs — almost certainly an unregistered subgraph
+            // definition rather than a missing custom-node pack. Tell the user
+            // what to actually do about it.
+            msg = `Cannot insert "${wfName}" — subgraph definition not registered. ` +
+                  `Native-Load the workflow once in this session to register it, then retry Insert.`;
+        } else {
+            const sample = packMisses.slice(0, 3).join(", ");
+            const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
+            msg = `Cannot insert "${wfName}" — missing node type${packMisses.length === 1 ? "" : "s"}: ` +
+                  `${sample}${more}. Install the required pack(s) first.`;
+        }
+        toast(msg, 4500);
         console.warn(`[Koolook] insert "${wfName}" aborted; missing types:`, missingTypes);
         return { ok: false, reason: "missing-types", missingTypes };
     }
