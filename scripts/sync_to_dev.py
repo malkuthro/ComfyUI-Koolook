@@ -66,41 +66,29 @@ def _get_short_sha() -> str | None:
     return None
 
 
-def _get_version() -> str | None:
-    """Read the project version from ``pyproject.toml`` without taking
-    a dependency on ``tomllib`` / ``tomli`` — a flat string match for
-    ``version = "x.y.z"`` is good enough for our flat header section
-    and keeps the script importable on older Pythons."""
-    pyproject = REPO_ROOT / "pyproject.toml"
-    if not pyproject.is_file():
-        return None
-    try:
-        for raw in pyproject.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if line.startswith("version"):
-                _, _, val = line.partition("=")
-                v = val.strip().strip('"').strip("'")
-                if v:
-                    return v
-    except OSError:
-        pass
-    return None
+def _get_worktree_name() -> str:
+    """Returns the basename of the source tree being synced — useful when
+    the maintainer is running multiple parallel ComfyUI installs and
+    needs to know which checkout fed the most recent sync.
+
+    For a worktree at ``.../ComfyUI-Koolook/.claude/worktrees/foo`` this
+    returns ``foo``; for the main repo at ``.../ComfyUI-Koolook`` it
+    returns ``ComfyUI-Koolook``. Either is informative enough to
+    disambiguate."""
+    return REPO_ROOT.name
 
 
-def _build_id() -> str:
-    """Composes ``<short-sha> v<version>`` for the post-sync summary line.
-    Either component may be missing; the joined result skips None
-    cleanly. Used by the chat-report convention defined in
-    project CLAUDE.md so every dev-sync message carries a stable
-    identifier the maintainer can match against running installs."""
-    parts: list[str] = []
-    sha = _get_short_sha()
-    if sha:
-        parts.append(sha)
-    version = _get_version()
-    if version:
-        parts.append(f"v{version}")
-    return " ".join(parts)
+def _build_line() -> str:
+    """Composes the two-piece header line consumed by the chat-report
+    convention defined in project CLAUDE.md:
+
+        <short-sha> - <worktree-name>
+
+    SHA falls back to ``unknown`` if git is unreachable (we always need
+    SOMETHING in slot 1 — the line shape is part of the convention).
+    Worktree name comes from ``REPO_ROOT.name`` and is always present."""
+    sha = _get_short_sha() or "unknown"
+    return f"{sha} - {_get_worktree_name()}"
 
 # Files / dirs ComfyUI actually loads at runtime. Anything outside this
 # list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
@@ -269,11 +257,12 @@ def main() -> int:
 
     n = sync(target, dry_run=args.dry_run, verbose=args.verbose)
     verb = "would sync" if args.dry_run else "synced"
-    build = _build_id()
-    build_part = f" @ {build}" if build else ""
-    # Single-line build summary — see project CLAUDE.md `dev-sync` section
-    # for the chat-report convention that consumes this output.
-    print(f"{verb} {n} entries{build_part} -> {target}")
+    # Two-line summary — see project CLAUDE.md `dev-sync` section for the
+    # chat-report convention that consumes this output. Header first so
+    # the maintainer's eye lands on the build identifier before the
+    # mechanical sync details.
+    print(_build_line())
+    print(f"{verb} {n} entries -> {target}")
     if not args.dry_run:
         print("restart ComfyUI to pick up changes.")
     return 0

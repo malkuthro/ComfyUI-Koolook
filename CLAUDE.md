@@ -48,18 +48,24 @@ Fast iteration without cutting a release. Copies runtime files to
 The agent runs the script and reports completion. The script errors
 cleanly when the env var is unset; never guess a path.
 
-**Chat report format** — always include the build id from the script's output:
+**Chat report format** — two lines, copied verbatim from the script's
+own header line:
 
 ```
-dev-sync @ <short-sha> v<version> — <≤10 word summary>. Restart.
+<short-sha> - <worktree-name>
+<≤10 word summary of what to look at after restart>
 ```
 
-The summary names the *thing to look at* after restart, not a list of
-all changes. Keep it ≤10 words. Examples:
+Line 1 is the script's first output line — never invent it, just relay.
+Line 2 is the *thing to look at* after restart, not a list of all
+changes. Keep it ≤10 words. Examples:
 
 ```
-dev-sync @ 8dfb966 v0.2.0 — Quick Save + status dot + recovery section. Restart.
-dev-sync @ a1b2c3d v0.2.1 — install-missing button on Nodes row. Restart.
+8dfb966 - dreamy-jones-40655e
+Quick Save + status dot + recovery section
+
+a1b2c3d - feat-install-missing
+install-missing button on Nodes row
 ```
 
 Broader iteration pattern (push/publish gates, what survives re-syncs)
