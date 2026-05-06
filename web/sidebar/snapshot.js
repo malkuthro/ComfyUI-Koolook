@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
 // =============================================================================
 // Snapshot / preset library (#46 item 1).
 //

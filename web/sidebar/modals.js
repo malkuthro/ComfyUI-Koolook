@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
 // =============================================================================
 // Modal + context-menu DOM. The shell takes care of the Escape-key / overlay-
 // click / Cancel / OK dismissal paths and ties the document-level keydown
