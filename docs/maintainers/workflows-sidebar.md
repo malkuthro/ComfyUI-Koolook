@@ -161,4 +161,4 @@ location.reload();
 - **Archive sub-folder is rendered *above* active workflows** in each directory (and *below* nested subdirectories), so the latest active workflow sits closest to the bottom of its directory — easy to spot.
 - **Directory header counts include all descendants.** A parent dir with no direct workflows but multiple subdirectories shows the recursive total.
 - **No auto-pruning of archives.** Re-saving the same name many times leaves many timestamped archive entries. Right-click → Delete to remove individual ones when no longer useful.
-- **Same-pattern distribution as `curated_defaults.json`** — see [`curated-sidebar.md`](curated-sidebar.md) for the seeding semantics that also apply here.
+- **Same-pattern distribution as `starter_preset.json`** — see [`curated-sidebar.md`](curated-sidebar.md) for the seeding semantics that also apply here.
