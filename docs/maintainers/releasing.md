@@ -77,10 +77,9 @@ If publish fails:
 | `409` / duplicate version | The version already exists in the registry | Bump `pyproject.toml` to a new version, update `CHANGELOG.md`, force-push the PR branch, re-validate. |
 | Auth 401/403 | Secret missing | Set `REGISTRY_ACCESS_TOKEN` in repo Settings → Secrets, or via `gh secret set REGISTRY_ACCESS_TOKEN --repo malkuthro/ComfyUI-Koolook`. |
 
-> **Trade-off:** validating before merge means the auto-triggered publish
-> on the merge commit will 409 (duplicate version), leaving a cosmetic
-> red badge on the merge. This is intentional — better to catch a broken
-> publish in PR review than after release.
+A successful dispatch *is* the publish — `publish-node-action@v1` has no
+dry-run mode. Once the run is green, the version is sealed on the Registry
+and the merge afterward is just sealing the branch state.
 
 ### 4. Squash-merge
 
@@ -130,9 +129,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" \
   `publish.yml` was masked by the misleading `Failed to validate token`
   error. The registry check (`curl /publishers/<id>`) is the only way to
   catch a `PublisherId` mismatch before users do.
-- **Do not commit a release directly to `main`.** Release PRs trigger the
-  publish workflow on push to `main`; doing it via PR keeps that auto-run
-  associated with a reviewable change.
-- **Do not edit `pyproject.toml` for non-release reasons in a release PR.**
-  The publish workflow triggers on any `pyproject.toml` change. Keeping
-  release PRs scoped to version + changelog avoids surprise publishes.
+- **Do not forget the dispatch step.** `publish.yml` is `workflow_dispatch`
+  only — merging a release PR no longer auto-publishes. If you skip step 3
+  the version never reaches the Registry; ComfyUI-Manager will keep
+  reporting the previous release.
