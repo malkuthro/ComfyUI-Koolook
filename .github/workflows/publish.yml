@@ -1,19 +1,6 @@
 name: Publish to Comfy registry
 on:
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "publish or deprecate"
-        required: false
-        default: "publish"
-        type: choice
-        options:
-          - publish
-          - deprecate
-      version:
-        description: "Version to deprecate when mode=deprecate"
-        required: false
-        type: string
   push:
     branches:
       - main
@@ -28,7 +15,7 @@ jobs:
   publish-node:
     name: Publish Custom Node to registry
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'malkuthro' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'publish') }}
+    if: ${{ github.repository_owner == 'malkuthro' }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -39,20 +26,3 @@ jobs:
         with:
           ## Add your own personal access token to your Github Repository secrets and reference it here.
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
-
-  deprecate-version:
-    name: Deprecate Registry version
-    runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'malkuthro' && github.event_name == 'workflow_dispatch' && inputs.mode == 'deprecate' }}
-    steps:
-      - name: Deprecate version
-        env:
-          TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          test -n "$VERSION"
-          curl -fsS -X PUT \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"deprecated": true}' \
-            "https://api.comfy.org/publishers/kforgelabs/nodes/koolook/versions/$VERSION"
