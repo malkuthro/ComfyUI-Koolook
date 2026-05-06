@@ -1040,34 +1040,7 @@ function gatherWorkflows(query) {
     const q = (query || "").trim().toLowerCase();
     const stats = { total: 0 };
     const directories = gatherDirsAt([], q, stats);
-    const modules = gatherModuleEntries(q);
-    return { directories, total: stats.total, modules };
-}
-
-// Flat list of every active `module`-tagged workflow, for the pinned
-// "Modules" folder rendered at the top of the Workflows section. Search
-// filters by workflow name only (the pinned view is a quick-access surface;
-// the canonical directory tree below still respects directory-name match).
-function gatherModuleEntries(q) {
-    const out = [];
-    const walk = (parentPath) => {
-        for (const dirName of listDirectoryNames(parentPath)) {
-            const dirPath = [...parentPath, dirName];
-            const dir = dirOf(dirPath);
-            if (!dir) continue;
-            for (const [wfName, wf] of Object.entries(dir.workflows || {})) {
-                if (wf.archived === true) continue;
-                const tags = Array.isArray(wf.tags) ? wf.tags : [];
-                if (!tags.includes(MODULE_TAG)) continue;
-                if (q && !wfName.toLowerCase().includes(q)) continue;
-                out.push({ wfName, path: dirPath });
-            }
-            walk(dirPath);
-        }
-    };
-    walk([]);
-    out.sort((a, b) => compareNames(a.wfName, b.wfName));
-    return out;
+    return { directories, total: stats.total };
 }
 
 function gatherDirsAt(parentPath, q, stats) {
@@ -1956,35 +1929,6 @@ addSection({
         return gatherWorkflows(q);
     },
     build(ctx) {
-        // Pinned "Modules" folder — flat list of every module-tagged
-        // workflow regardless of folder, rendered above the directory
-        // tree. Click inserts (the row's makeWorkflowLeafRow inherits
-        // the module convention via isModule: true). Hidden entirely
-        // when no modules exist so the section doesn't grow noise for
-        // users who haven't tagged anything yet.
-        const modules = Array.isArray(ctx.data.modules) ? ctx.data.modules : [];
-        if (modules.length > 0) {
-            ctx.folder({
-                name: "Modules",
-                count: modules.length,
-                iconKind: "folder",
-                path: "__modules__",
-                startExpanded: true,
-                build: (modCtx) => {
-                    for (const m of modules) {
-                        modCtx.leaf({
-                            row: makeWorkflowLeafRow({
-                                name: m.wfName,
-                                dirName: m.path.join(" / "),
-                                onClick: () => insertWorkflowOntoCanvas(m.path, m.wfName),
-                                onContextMenu: (e) => workflowRowContextMenu(e, m.path, m.wfName, false),
-                                isModule: true,
-                            }),
-                        });
-                    }
-                },
-            });
-        }
         for (const dir of ctx.data.directories) renderGatheredDir(ctx, dir);
     },
 });
