@@ -40,8 +40,17 @@
 Fast iteration without cutting a release. Copies runtime files to
 `KOLOOK_COMFYUI_DEV_PATH` (set in `.env`; see `.env.example`).
 
-- `python scripts/sync_to_dev.py` — brief two-line summary; use `-v` for per-file output
+- `python scripts/sync_to_dev.py --scope "<short scope>"` — brief two-line summary; use `-v` for per-file output
 - `--dry-run` — preview without touching the target
+
+**Always pass `--scope`** with the same ≤10-word scope summary you'll
+put on chat-report line 2. The flag persists the scope to
+`<target>/web/_dev_build.json`, which the Kforge Labs sidebar reads on
+load and renders as a discreet two-line footer (`dev <sha> · <time>` +
+italic `<scope>` underneath). Same identifier the chat report quotes,
+but visible in the running ComfyUI itself — closes the gap when the
+maintainer can't tell at a glance whether the browser tab is showing
+the latest sync.
 
 **Trigger phrase: `dev-sync`** (or "copy those files", "sync dev", "push to dev").
 The agent runs the script and reports completion. The script errors

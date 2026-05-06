@@ -6,7 +6,53 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Dev-sync build-tag footer at the bottom of the Kforge Labs sidebar.**
+  `scripts/sync_to_dev.py --scope "<short scope>"` now writes a tiny
+  `web/_dev_build.json` next to the sidebar JS. The sidebar fetches it
+  on render and emits a discreet two-line footer: `dev <sha> · <time>`
+  (line 1, SHA at 13px monospace) + the scope (line 2, italic
+  proportional). Visible-in-app counterpart to the chat-report
+  convention from #95 — when the maintainer is juggling multiple
+  parallel worktree sessions, a glance at the footer confirms which
+  one's code is actually live in the browser tab. Cache-busted fetch
+  so a re-sync's new mtime reaches the browser without a hard refresh.
+  Absent on registry installs (the JSON is dev-only and gitignored);
+  the footer renders empty there. The `--scope` value is the same
+  ≤10-word change-summary the agent quotes on chat-report line 2 —
+  passing it once now feeds both surfaces.
+- **`×` removability across both group modes for any visible favorite,
+  including auto-pulled REPOS{select: "all"} nodes.** Adds a
+  `koolook.autoPullHidden.v1` localStorage set: clicking `×` on a row
+  that came from auto-pull adds the type to the hidden set so the
+  next render skips it (without the set, the next gather pass would
+  re-pull the type from the registry and the click would feel like a
+  no-op). User picks still go through `removeFromMyPicks`. Re-adding
+  via the toolbar `+` button or right-click → "Add to Kforge Labs"
+  clears the hide as a side effect of `addToMyPicks`, so users don't
+  have to think about which list a type lives in. Same uniform
+  "remove this from my favorites / bring it back" UX whether the node
+  is a Koolook auto-pull or a KJNodes user-pick.
+
 ### Changed
+- **Theme mode now mirrors repo-mode population** — auto-pulled
+  REPOS{select: "all"} nodes appear alongside user picks (deduped),
+  filtered by the new auto-pull hidden set. Supersedes the earlier
+  `[Unreleased]` "Picks-only (no REPOS-driven auto-pulled candidates)"
+  intent below: the picks-only model dropped the entire Koolook pack
+  from theme mode on a stock install, which silently violated the
+  "my favorites" mental model (the user expected their visible
+  favorites in repo mode to also show in theme mode, just regrouped).
+  With the new × removability, the user can still curate exactly what
+  they see — without the discoverability cost of dropping auto-pull
+  entirely.
+- **Pack-name badges restored on theme-mode leaves.** Small dim
+  `Koolook` / `KJNodes` etc. on the right of each row, same opacity
+  as the search-flatten breadcrumb. Memory aid for "where did this
+  node come from?" — useful when the user is learning their favorites
+  pack-by-pack. Reverts (for theme mode only) the earlier
+  `[Unreleased]` removal further down; search-flatten still skips the
+  badge since its breadcrumb prefix already conveys origin.
 - **Sidebar second mode — "Theme" instead of "Category".** The sitemap-icon
   toggle in the Nodes action row now groups picks by **semantic theme**
   rather than by raw CATEGORY first-segment. The new algorithm strips the

@@ -32,6 +32,8 @@ import {
     removeFromMyPicks,
     notifyPicksChanged,
     addToMyPicks,
+    loadAutoPullHidden,
+    hideAutoPullType,
 } from "./picks_store.js";
 import {
     persistMutation,
@@ -519,6 +521,28 @@ function subcategoryFor(category, categoryRoot) {
 // LiteGraph registry (caller should skip silently — the node won't render
 // in the sidebar either way). Used by `spotlightAddedPicks` to know which
 // folder to expand after a save.
+// True if this type would be auto-pulled by a REPOS{select: "all"} entry
+// — i.e. its category prefix matches a repo's `categoryRoot`, OR it's
+// listed in a `select: [...]` array. Used by the `×` handler to decide
+// whether removing-from-picks is sufficient (no — registry-driven re-pull
+// would resurface it on the next render) or whether the type also needs to
+// be added to the auto-pull hidden list.
+function isAutoPulled(typeName) {
+    const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
+    const nc = registry[typeName];
+    if (!nc) return false;
+    const cat = nc.category || "";
+    for (const repo of REPOS) {
+        if (repo.select === "all") {
+            const root = repo.categoryRoot || "";
+            if (root && (cat === root || cat.startsWith(root + "/"))) return true;
+        } else if (Array.isArray(repo.select) && repo.select.includes(typeName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function findPackPathForType(typeName) {
     const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
     const nc = registry[typeName];
@@ -550,6 +574,7 @@ function matchesQuery(display, type, q) {
 function gatherNodesByRepo(query) {
     const q = (query || "").trim().toLowerCase();
     const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
+    const hidden = loadAutoPullHidden();
     const out = [];
 
     for (const repo of REPOS) {
@@ -557,13 +582,14 @@ function gatherNodesByRepo(query) {
         if (repo.select === "all") {
             const root = repo.categoryRoot || "";
             candidateIds = Object.entries(registry)
-                .filter(([, nc]) => {
+                .filter(([type, nc]) => {
+                    if (hidden.has(type)) return false;
                     const cat = (nc && nc.category) || "";
                     return root && (cat === root || cat.startsWith(root + "/"));
                 })
                 .map(([type]) => type);
         } else if (Array.isArray(repo.select)) {
-            candidateIds = repo.select.filter(t => registry[t] !== undefined);
+            candidateIds = repo.select.filter(t => registry[t] !== undefined && !hidden.has(t));
         } else {
             candidateIds = [];
         }
@@ -869,6 +895,57 @@ function gatherNodesByTheme(query) {
     const registry = (typeof LiteGraph !== "undefined" && LiteGraph.registered_node_types) || {};
     const userPicks = loadUserPicks();
 
+    // Population mirror of repo mode: auto-pulled REPOS nodes plus user
+    // picks for packs that aren't auto-pulled. Without this seeding, theme
+    // mode silently drops every node the maintainer has registered as
+    // always-on via REPOS{select: "all"} (on a stock install: the entire
+    // Koolook pack), even though those same nodes do appear in repo mode.
+    // Hidden auto-pulls (×'d by the user) are filtered out so the user's
+    // visible-favorites set is consistent across both modes.
+    const autoCategoryRoots = new Set(
+        REPOS.filter(r => r.select === "all" && r.categoryRoot).map(r => r.categoryRoot)
+    );
+    const hidden = loadAutoPullHidden();
+    const seen = new Set();
+    const seeds = [];
+
+    for (const repo of REPOS) {
+        if (repo.select === "all") {
+            const root = repo.categoryRoot || "";
+            if (!root) continue;
+            for (const [type, nc] of Object.entries(registry)) {
+                if (seen.has(type) || hidden.has(type)) continue;
+                const cat = (nc && nc.category) || "";
+                if (cat !== root && !cat.startsWith(root + "/")) continue;
+                const display = (nc && nc.title) || type;
+                if (repo.excludePatterns && repo.excludePatterns.some(re => re.test(display))) continue;
+                seen.add(type);
+                seeds.push({ type });
+            }
+        } else if (Array.isArray(repo.select)) {
+            for (const type of repo.select) {
+                if (seen.has(type) || hidden.has(type) || registry[type] === undefined) continue;
+                seen.add(type);
+                seeds.push({ type });
+            }
+        }
+    }
+
+    for (const type of userPicks) {
+        if (seen.has(type)) continue;
+        // Skip picks already covered by an auto-pulled REPO (would double-
+        // count with the auto-pull pass above). A type that's been hidden
+        // from auto-pull AND explicitly user-picked still gets surfaced
+        // here, since the auto-pull pass skipped it.
+        const nc = registry[type];
+        if (nc && !hidden.has(type)) {
+            const packLabel = (nc.category || "").split("/")[0] || "";
+            if (autoCategoryRoots.has(packLabel)) continue;
+        }
+        seen.add(type);
+        seeds.push({ type });
+    }
+
     // Map<canonicalThemeKey, { displayLabels: Map<rawLabel, count>, nodes: [...] }>
     const themes = new Map();
     const ensureBucket = (key, seedLabel) => {
@@ -881,7 +958,7 @@ function gatherNodesByTheme(query) {
         return themes.get(key);
     };
 
-    for (const type of userPicks) {
+    for (const { type } of seeds) {
         const result = extractTheme(type, registry);
 
         if (result.kind === "unresolved") {
@@ -890,7 +967,7 @@ function gatherNodesByTheme(query) {
             // Display falls back to the bare type since `nc.title` is unreachable.
             if (!matchesQuery(type, type, q)) continue;
             const bucket = ensureBucket("(unresolved)", "(unresolved)");
-            bucket.nodes.push({ type, display: type, isUserPick: true, unresolved: true });
+            bucket.nodes.push({ type, display: type, unresolved: true });
             continue;
         }
 
@@ -903,7 +980,7 @@ function gatherNodesByTheme(query) {
 
         if (result.kind === "uncategorized") {
             const bucket = ensureBucket("(uncategorized)", "(uncategorized)");
-            bucket.nodes.push({ type, display, isUserPick: true });
+            bucket.nodes.push({ type, display });
             continue;
         }
 
@@ -912,7 +989,7 @@ function gatherNodesByTheme(query) {
             result.themeRaw,
             (bucket.displayLabels.get(result.themeRaw) || 0) + 1,
         );
-        bucket.nodes.push({ type, display, isUserPick: true });
+        bucket.nodes.push({ type, display });
     }
 
     return themes;
@@ -1139,7 +1216,7 @@ function makeFolderRow({ name, count, iconKind, onToggle, onContextMenu, draggab
     return { row, chevron };
 }
 
-function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadcrumb }) {
+function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadcrumb, packBadge }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
     if (unresolved) row.classList.add("koolook-leaf-unresolved");
@@ -1175,6 +1252,16 @@ function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadc
     }
     row.appendChild(nameEl);
 
+    // Right-side pack badge — used in theme mode as a quiet "where did
+    // this come from" memory aid. Repo mode and search-flatten skip it
+    // (origin is already conveyed by tree nesting / breadcrumb prefix).
+    if (packBadge) {
+        const badge = document.createElement("span");
+        badge.className = "koolook-pack-badge";
+        badge.textContent = packBadge;
+        row.appendChild(badge);
+    }
+
     if (removable) {
         const rm = document.createElement("span");
         rm.className = "koolook-remove";
@@ -1182,7 +1269,13 @@ function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadc
         rm.title = "Remove from favorites";
         rm.addEventListener("click", (e) => {
             e.stopPropagation();
+            // Two paths a row can land in favorites: explicit user pick
+            // (drop it from the picks list) or REPOS{select: "all"} auto-
+            // pull (add it to the auto-pull hidden set so the next render
+            // doesn't re-pull it). A type can in principle be both at
+            // once — running both ops is idempotent and covers the union.
             removeFromMyPicks(type);
+            if (isAutoPulled(type)) hideAutoPullType(type);
             notifyPicksChanged();
         });
         row.appendChild(rm);
@@ -1686,7 +1779,7 @@ addSection({
                                         row: makeNodeLeafRow({
                                             display: n.display,
                                             type: n.type,
-                                            removable: !!pack.isUserPicks,
+                                            removable: true,
                                             onClick: () => insertNode(n.type),
                                         }),
                                     });
@@ -1722,7 +1815,7 @@ function emitNodesFlatSearchResults(ctx) {
                 type: item.type,
                 breadcrumb: item.breadcrumb,
                 unresolved: !!item.unresolved,
-                removable: !!item.removable,
+                removable: true,
                 onClick: () => insertNode(item.type),
             }),
         });
@@ -1796,12 +1889,23 @@ function emitThemeChildren(parentCtx, themes) {
                     (a, b) => compareNames(a.display, b.display),
                 );
                 for (const n of sortedNodes) {
+                    // Pack badge — only for real pack labels. Skip
+                    // unresolved (origin IS the unknown) and synthetic
+                    // (uncategorized)/(unresolved) parens-prefixed names.
+                    let badge = null;
+                    if (!n.unresolved) {
+                        const loc = findPackPathForType(n.type);
+                        if (loc && loc.packLabel && !loc.packLabel.startsWith("(")) {
+                            badge = loc.packLabel;
+                        }
+                    }
                     sub.leaf({
                         row: makeNodeLeafRow({
                             display: n.display,
                             type: n.type,
-                            removable: !!n.isUserPick,
+                            removable: true,
                             unresolved: !!n.unresolved,
+                            packBadge: badge,
                             onClick: () => insertNode(n.type),
                         }),
                     });
@@ -2484,6 +2588,46 @@ export function renderPanel(container) {
     container.appendChild(tree);
 
     renderTree({ treeEl: tree, query: "" });
+
+    // ---- Build tag (dev-sync verification) ----
+    // `scripts/sync_to_dev.py` writes `web/_dev_build.json` post-sync so the
+    // maintainer can eyeball whether the live ComfyUI is running the latest
+    // synced code. Absent on registry installs and plain git checkouts —
+    // silently renders nothing. Cache-bust query param so a re-sync's new
+    // mtime reaches the browser without a hard refresh.
+    const buildTag = document.createElement("div");
+    buildTag.className = "koolook-build-tag";
+    container.appendChild(buildTag);
+    fetch(new URL("../_dev_build.json", import.meta.url).href + `?t=${Date.now()}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(info => {
+            if (!info) return;
+            // Layout, top-to-bottom:
+            //   dev <SHA>  · <time>     ← line 1: identifier + timestamp
+            //   <scope>                 ← line 2: human-readable purpose
+            // SHA gets its own span (13px monospace) — the at-a-glance
+            // identifier when comparing chat history with the live footer.
+            // Scope renders as a block in proportional italic so it reads
+            // as prose, not as part of the build identifier.
+            buildTag.textContent = "";
+            buildTag.appendChild(document.createTextNode("dev "));
+            if (info.commit) {
+                const shaEl = document.createElement("span");
+                shaEl.className = "koolook-build-sha";
+                shaEl.textContent = info.commit;
+                buildTag.appendChild(shaEl);
+            }
+            if (info.synced_at) {
+                buildTag.appendChild(document.createTextNode(` · ${info.synced_at}`));
+            }
+            if (info.scope) {
+                const scopeEl = document.createElement("span");
+                scopeEl.className = "koolook-build-scope";
+                scopeEl.textContent = info.scope;
+                buildTag.appendChild(scopeEl);
+            }
+        })
+        .catch(() => { /* not in a dev install — leave empty */ });
 
     // ---- Search wiring ----
     let debounce = null;
