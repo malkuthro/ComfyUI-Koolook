@@ -7,6 +7,10 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Changed
+- **Sidebar node preview descriptions are now bounded.** Long node
+  descriptions in the hover preview clamp to a compact bottom block instead
+  of stretching the card and crowding out the slot grid/widget rows from
+  #82's node-mock layout.
 - **Sidebar second mode — "Theme" instead of "Category".** The sitemap-icon
   toggle in the Nodes action row now groups picks by **semantic theme**
   rather than by raw CATEGORY first-segment. The new algorithm strips the

@@ -181,7 +181,7 @@ export function ensureStyle() {
 .koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); opacity: 1; }
 .koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
 .koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
-.koolook-preview-card { position: fixed; z-index: 10000; background: var(--comfy-menu-bg, #232323); border: 1px solid var(--border-color, rgba(255,255,255,0.22)); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; min-width: 300px; max-width: 90vw; max-height: calc(100vh - 16px); pointer-events: none; overflow: hidden auto; padding-bottom: 10px; }
+.koolook-preview-card { position: fixed; z-index: 10000; background: var(--comfy-menu-bg, #232323); border: 1px solid var(--border-color, rgba(255,255,255,0.22)); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; width: min(340px, calc(100vw - 16px)); max-height: calc(100vh - 16px); box-sizing: border-box; pointer-events: none; overflow: hidden auto; padding-bottom: 10px; }
 .koolook-preview-header { display: flex; align-items: center; gap: 9px; padding: 8px 13px 7px; font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; }
 .koolook-preview-headtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .koolook-preview-header-unresolved .koolook-preview-headtitle { font-style: italic; opacity: 0.75; }
@@ -200,7 +200,7 @@ export function ensureStyle() {
 .koolook-preview-arrow { color: rgba(255,255,255,0.6); font-size: 9px; text-align: center; user-select: none; }
 .koolook-preview-widget-name { text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-preview-widget-value { text-align: right; font-size: 11px; opacity: 0.85; font-family: monospace; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-preview-desc { margin: 10px 9px 0; padding: 7px 9px; background: rgba(255,255,255,0.06); border-radius: 6px; font-style: italic; font-weight: 500; font-size: 11px; line-height: 1.45; word-break: break-word; opacity: 0.85; max-height: 120px; overflow: hidden; }
+.koolook-preview-desc { margin: 10px 9px 0; padding: 7px 9px; background: rgba(255,255,255,0.06); border-radius: 6px; font-style: italic; font-weight: 500; font-size: 11px; line-height: 1.45; overflow: hidden; overflow-wrap: anywhere; opacity: 0.85; max-height: calc(1.45em * 5 + 14px); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
 `;
     document.head.appendChild(s);
 }
