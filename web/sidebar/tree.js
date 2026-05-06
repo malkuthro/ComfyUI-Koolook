@@ -96,6 +96,7 @@ import {
     writePreLoadAutosave,
     markStateSaved,
     getSnapshotStatus,
+    listAutosaves,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -1985,6 +1986,7 @@ export function renderPanel(container) {
         getLibraryInfo,
         writePreLoadAutosave,
         markStateSaved,
+        listAutosaves,
         onToast: toast,
     });
     const openSettingsDialog = () => showSnapshotSettingsDialog({

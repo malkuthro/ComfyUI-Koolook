@@ -197,6 +197,20 @@ export function ensureStyle() {
 .koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
 .koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
 .koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
+/* Recovery auto-saves section in the Load dialog. Collapsible details
+   element; lazy-loads the list on first expand. Each subdir gets its own
+   group header so users can scan visually for the preset they want to
+   recover from. */
+.koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
+.koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
+.koolook-recovery-summary:hover { opacity: 1; }
+.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 4px; }
+.koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.koolook-recovery-group:last-child { border-bottom: none; }
+.koolook-recovery-group-header { font-size: 11px; opacity: 0.6; padding: 6px 10px 3px; font-weight: 600; background: rgba(255,255,255,0.025); }
+.koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
+.koolook-recovery-kind-pre_load { color: #ffb74d; }
+.koolook-recovery-kind-periodic { color: #6db4ff; }
 .koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .koolook-snapshot-row:last-child { border-bottom: none; }
 .koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }

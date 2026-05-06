@@ -392,6 +392,65 @@ def register_routes(routes) -> None:
         out.sort(key=lambda r: r["name"].lower())
         return web.json_response(out)
 
+    @routes.get("/koolook/presets/autosaves/list")
+    async def list_autosaves(_request):
+        """Walk every ``*_autosave/`` subdir (and ``_unsaved_autosave/``)
+        under the library and return a flat list of recovery snapshot
+        files. Powers the Load dialog's recovery section so a user can
+        restore from a pre-load or periodic auto-save without leaving
+        the UI.
+
+        Why a dedicated endpoint instead of recursing the existing
+        ``list``? The user-facing list MUST hide subdirs (otherwise the
+        Load list gets cluttered with autosave files that aren't
+        directly user-restorable). This endpoint is the explicit "show
+        me everything in autosave folders" API — separated cleanly so
+        the boundary is grep-able and adding more subdir-scoped views
+        later (timeline / cross-preset comparison / etc.) doesn't have
+        to push more flags into the main list endpoint.
+
+        Sort: subdir alphabetical, then mtime descending within each
+        subdir (newest recovery point first — matches what users
+        expect when scanning for "the file just before I broke things").
+        """
+        base, _ = _configured_dir()
+        if not base.exists() or not base.is_dir():
+            return web.json_response([])
+        out = []
+        try:
+            for subdir_entry in base.iterdir():
+                if not subdir_entry.is_dir():
+                    continue
+                subdir_name = subdir_entry.name
+                # Match the autosave naming convention exactly so a user-
+                # created subdirectory called "my random folder" isn't
+                # treated as a recovery source.
+                is_unsaved = subdir_name == "_unsaved_autosave"
+                is_named = subdir_name.endswith("_autosave") and len(subdir_name) > len("_autosave")
+                if not (is_unsaved or is_named):
+                    continue
+                for f in subdir_entry.iterdir():
+                    if not f.is_file() or not f.name.lower().endswith(".json"):
+                        continue
+                    try:
+                        stat = f.stat()
+                    except OSError:
+                        continue
+                    out.append(
+                        {
+                            "dir": subdir_name,
+                            "name": f.name,
+                            "mtime": stat.st_mtime,
+                            "size": stat.st_size,
+                        }
+                    )
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not list autosave folders: {exc}"
+            ) from exc
+        out.sort(key=lambda r: (r["dir"].lower(), -r["mtime"]))
+        return web.json_response(out)
+
     @routes.get("/koolook/presets/file")
     async def get_preset(request):
         """Serve preset JSON for ``?name=<name>[&dir=<subdir>]``; HEAD

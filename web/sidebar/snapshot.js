@@ -596,6 +596,7 @@ const ROUTE_INFO = "/koolook/presets/info";
 const ROUTE_LIST = "/koolook/presets/list";
 const ROUTE_FILE = "/koolook/presets/file";
 const ROUTE_SETTINGS = "/koolook/presets/settings";
+const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
 // response body (always available, carries aiohttp's `reason=` text),
@@ -807,6 +808,75 @@ export async function deletePreset(fileName, { dir } = {}) {
         throw new Error(`Could not delete preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
     return true;
+}
+
+// List every recovery autosave across all `*_autosave/` subfolders. Returns
+// preview objects enriched with `dir`, `mtime`, and a `kind` discriminator
+// ("pre_load" | "periodic" | "other"). Empty array on a missing library or
+// unreachable server. Used by the Load dialog's collapsible "Recovery
+// auto-saves" section — without this endpoint the user's pre-load /
+// periodic auto-saves are written but unreachable from the UI.
+//
+// N+1 cost is real here: one HEAD-or-similar metadata call to list, then
+// one GET per file to validate + extract displayName. We accept it because
+// the recovery section is collapsed by default — the cost is paid only
+// when the user expands it. For very large libraries (many presets ×
+// many autosaves) this can be slow; we'd add server-side preview-flatten
+// before that becomes a real complaint.
+export async function listAutosaves() {
+    let resp;
+    try {
+        resp = await fetch(ROUTE_AUTOSAVES_LIST);
+    } catch (e) {
+        console.warn("[Koolook] autosave listing failed (network):", e);
+        return [];
+    }
+    if (!resp.ok) {
+        console.warn(`[Koolook] autosave listing returned HTTP ${resp.status}`);
+        return [];
+    }
+    let entries;
+    try {
+        entries = await resp.json();
+    } catch (e) {
+        console.warn("[Koolook] autosave listing JSON parse failed:", e);
+        return [];
+    }
+    if (!Array.isArray(entries)) return [];
+
+    const previews = await Promise.all(entries.map(async (row) => {
+        try {
+            const bareName = row.name.replace(/\.json$/i, "");
+            const dirParam = `&dir=${encodeURIComponent(row.dir)}`;
+            const r = await fetch(
+                `${ROUTE_FILE}?name=${encodeURIComponent(row.name)}${dirParam}`
+            );
+            if (!r.ok) return null;
+            const obj = JSON.parse(await r.text());
+            if (obj.kind !== SNAPSHOT_KIND) return null;
+            // Classify by filename: `pre_load_*.json` are timestamped
+            // recovery points (one per Load), `periodic.json` is the
+            // single rolling auto-save. Anything else (legacy / hand-
+            // dropped) is "other".
+            let kind = "other";
+            if (bareName === "periodic") kind = "periodic";
+            else if (bareName.startsWith("pre_load_")) kind = "pre_load";
+            return {
+                dir: row.dir,
+                fileName: bareName,
+                kind,
+                displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
+                exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
+                mtime: row.mtime,
+                workflowCount: countWorkflowsInStore(obj.workflows),
+                pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
+            };
+        } catch (e) {
+            console.warn(`[Koolook] failed to read autosave ${row.dir}/${row.name}:`, e);
+            return null;
+        }
+    }));
+    return previews.filter((p) => p !== null);
 }
 
 // =============================================================================
