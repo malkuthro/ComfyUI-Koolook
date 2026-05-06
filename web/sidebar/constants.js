@@ -84,10 +84,10 @@ export const WORKFLOWS_DEFAULTS_URL = new URL("../workflow_defaults.json", impor
 // this literal string is treated as a reusable building block (insert into
 // the existing canvas) instead of a full session (replace the canvas).
 //
-// Why a tag instead of a dedicated `isModule` field on the entry? Three
-// reasons: (1) zero schema migration; (2) the Tags section already groups
-// `module`-tagged entries for free; (3) re-tagging an existing saved entry
-// turns it into a module without any data shape change.
+// Module-ness is stored in both places: `wf.module === true` for fast row
+// rendering and this literal tag for Tags-section grouping / manual
+// right-click toggling. `addTag` / `removeTag` keep them in sync; callers
+// should read via `isWorkflowModule()` instead of inspecting either field.
 //
 // Comparison is case-sensitive to match `addTag` / `removeTag` semantics in
 // `workflows_store.js`. The literal lives here so future renames (or a

@@ -54,6 +54,7 @@ import {
     pathsEqual,
     getWorkflowGraph,
     getWorkflowTags,
+    isWorkflowModule,
     addTag,
     removeTag,
 } from "./workflows_store.js";
@@ -1332,9 +1333,7 @@ function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggableP
 // rows still exposes both Insert and Load if the user really wants to
 // insert an archived version.
 function isModuleWorkflow(dirPath, wfName) {
-    const tags = getWorkflowTags(dirPath, wfName);
-    if (!Array.isArray(tags)) return false;
-    return tags.includes(MODULE_TAG);
+    return isWorkflowModule(dirPath, wfName);
 }
 
 function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path, forceExpanded = false, draggablePayload, dropTarget }) {
@@ -1491,6 +1490,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
             // archives the original via `saveWorkflowEntry`) still inherits
             // the source's categorization onto the new active entry.
             const sourceTags = getWorkflowTags(dirPath, wfName) || [];
+            const sourceIsModule = isWorkflowModule(dirPath, wfName);
             showInputModal({
                 title: "Duplicate workflow",
                 label: "New name",
@@ -1508,7 +1508,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                         // else's delete with no feedback.
                         if (getWorkflowGraph(dirPath, wfName) === null) return false;
                         const cloned = JSON.parse(JSON.stringify(sourceGraph));
-                        const result = saveWorkflowEntry(dirPath, newName, cloned);
+                        const result = saveWorkflowEntry(dirPath, newName, cloned, { module: sourceIsModule });
                         if (!result) return false;
                         // Route tag inheritance through the public `addTag`
                         // mutator instead of writing `wf.tags` directly, so
@@ -1517,6 +1517,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                         // persistMutation snapshot — commit failure rolls
                         // back the save AND the tag adds together.
                         for (const t of sourceTags) addTag(dirPath, newName, t);
+                        if (sourceIsModule) addTag(dirPath, newName, MODULE_TAG);
                         return result;
                     },
                     onSuccess: (result) => {
@@ -2534,7 +2535,7 @@ export function renderPanel(container) {
         const dirDisplay = dirPath.join(" / ");
         await persistMutation({
             mutate: () => {
-                const result = saveWorkflowEntry(dirPath, name, graph);
+                const result = saveWorkflowEntry(dirPath, name, graph, { module: asModule });
                 if (!result) return false;
                 if (asModule) addTag(dirPath, name, MODULE_TAG);
                 return result;

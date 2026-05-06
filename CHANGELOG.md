@@ -235,6 +235,13 @@ The format is inspired by Keep a Changelog and SemVer.
   nodes) fixes the empty-card class. (#78)
 
 ### Fixed
+- **Module save/insert now preserves internal links more defensively.**
+  Selection save and module insert both accept serialized link arrays and
+  object-shaped LiteGraph `LLink` records, compare node/link ids by stable
+  string keys, and strip stale saved link ids before recreating links via
+  `node.connect(...)`. Saved module state is now first-class (`module: true`)
+  while still honoring the legacy `module` tag, so left-click module insert
+  and right-click Tags-based toggling stay in sync.
 - **`pinExpanded` paths now expand on the immediate render** instead of
   being delayed by one. `buildFolder`'s expansion-resolution chain gained
   a `pinnedPaths` check between `forceExpanded` and `pathStates`. Phase 3

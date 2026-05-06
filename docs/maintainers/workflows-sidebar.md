@@ -51,20 +51,21 @@ How it works:
 
 | Surface | Behavior |
 |---|---|
-| **Save modal** (selection save) | Includes a **`Save as module`** checkbox, **pre-checked** for selection saves. Whole-canvas saves get the same checkbox but **unchecked** by default. The tag is added in the same atomic `persistMutation` as the save — a commit failure rolls both back. |
+| **Save modal** (selection save) | Includes a **`Save as module`** checkbox, **pre-checked** for selection saves. Whole-canvas saves get the same checkbox but **unchecked** by default. The saved entry gets `module: true` and the compatibility `module` tag in the same atomic `persistMutation` as the save — a commit failure rolls both back. |
 | **Workflows section** | Module-tagged entries get a green **`pi pi-plus-circle`** icon and a distinct hover tooltip. **Left-click inserts** instead of loading. Right-click still offers **both** `Load` and `Insert into canvas` — `Load` stays available for every row regardless of tag. |
 | **Tags section** | Same flip — a workflow tagged `module` is treated as a module no matter which tag folder it shows up under. |
 | **Archive folder** | Archived module entries still left-click to **Load** (they're old versions, treated as "review" rather than "splice"). Right-click still has both Load and Insert. |
 
 Implementation pieces:
 
-- The literal tag string lives in [`web/sidebar/constants.js`](../../web/sidebar/constants.js) as `MODULE_TAG`.
-- The non-destructive insert primitive is `insertWorkflowOntoCanvas(dirPath, wfName)` in [`web/sidebar/canvas_io.js`](../../web/sidebar/canvas_io.js). It pre-flights every referenced node type against `LiteGraph.registered_node_types`, aborts cleanly with a toast when any are missing (a partial insert with stub nodes is worse than no insert), then deep-clones the saved graph, calls `node.configure(...)` per node with `node.id = -1` so `app.graph.add()` allocates fresh ids that can't collide with the live canvas, and finally walks the saved `links[]` to recreate internal connections via `originNode.connect(...)` (which auto-allocates fresh link ids — no manual link remap needed).
+- The literal tag string lives in [`web/sidebar/constants.js`](../../web/sidebar/constants.js) as `MODULE_TAG`. New saves store module state as first-class `module: true`; the tag is still honored for old entries and for the manual right-click Tags workflow.
+- The non-destructive insert primitive is `insertWorkflowOntoCanvas(dirPath, wfName)` in [`web/sidebar/canvas_io.js`](../../web/sidebar/canvas_io.js). It pre-flights every referenced node type against `LiteGraph.registered_node_types`, aborts cleanly with a toast when any are missing (a partial insert with stub nodes is worse than no insert), then deep-clones the saved graph, normalizes Comfy/LiteGraph link records, configures each node with stale saved link IDs stripped, sets `node.id = -1` so `app.graph.add()` allocates fresh ids that can't collide with the live canvas, and finally recreates internal connections via `originNode.connect(...)` (which auto-allocates fresh link ids).
 - Bbox-of-cluster placement uses CSS pixels (`clientWidth`/`clientHeight`), not the HiDPI backing buffer — same correction as the existing `placeAtCanvasCenter` helper.
 
 To turn an **existing** saved workflow into a module: right-click → **Tags…**
 → add `module`. (No re-save needed; the row re-renders on the next
-`workflows-changed` event.) To un-module: remove the `module` tag the same way.
+`workflows-changed` event.) To un-module: remove the `module` tag the same way;
+the tag editor keeps the first-class `module` flag in sync.
 
 ## Right-click menus
 
@@ -118,6 +119,8 @@ every directory node):
         "<name>": {
           "savedAt": "<ISO timestamp>",
           "graph": { /* serialized ComfyUI workflow JSON */ },
+          "module": true,
+          "tags": ["module"],
           "archived": true
         }
       },
@@ -155,7 +158,7 @@ location.reload();
 
 ## Things that surprised us — keep in mind
 
-- **Selection saves are partial graphs.** Only the selected nodes + links between them survive; links into/out of non-selected nodes are nulled out, so the loaded workflow never has dangling references.
+- **Selection saves are partial graphs.** Only the selected nodes + links between them survive; links into/out of non-selected nodes are nulled out, so the loaded workflow never has dangling references. Link handling accepts both serialized array links (`[id, origin, slot, target, slot, type]`) and object-shaped `LLink` records from `graph.links`.
 - **Workflow tab name comes from `app.loadGraphData(graph, true, true, name, {})`'s 4th arg.** The tab flips from "Unsaved Workflow (N)" to the saved name, and Ctrl+S pre-fills with that name. (Verified against `Comfy-Org/ComfyUI_frontend` `src/scripts/app.ts`.)
 - **Folder expansion state persists across re-renders** (the `pathStates` Map in `web/sidebar/tree.js`). Saving never collapses the directory you were viewing — and a save into a nested path opens every ancestor folder.
 - **Archive sub-folder is rendered *above* active workflows** in each directory (and *below* nested subdirectories), so the latest active workflow sits closest to the bottom of its directory — easy to spot.

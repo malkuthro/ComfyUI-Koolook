@@ -36,6 +36,61 @@ function getSelectedNodeIds() {
     }
 }
 
+function idKey(id) {
+    return id == null ? null : String(id);
+}
+
+function graphLinksAsList(links) {
+    if (Array.isArray(links)) return links;
+    if (links && typeof links === "object") return Object.values(links);
+    return [];
+}
+
+function getLinkId(link) {
+    if (Array.isArray(link)) return link[0];
+    if (link && typeof link === "object") return link.id;
+    return null;
+}
+
+function getLinkOriginId(link) {
+    if (Array.isArray(link)) return link[1];
+    if (link && typeof link === "object") return link.origin_id ?? link.originId;
+    return null;
+}
+
+function getLinkOriginSlot(link) {
+    if (Array.isArray(link)) return link[2];
+    if (link && typeof link === "object") return link.origin_slot ?? link.originSlot;
+    return null;
+}
+
+function getLinkTargetId(link) {
+    if (Array.isArray(link)) return link[3];
+    if (link && typeof link === "object") return link.target_id ?? link.targetId;
+    return null;
+}
+
+function getLinkTargetSlot(link) {
+    if (Array.isArray(link)) return link[4];
+    if (link && typeof link === "object") return link.target_slot ?? link.targetSlot;
+    return null;
+}
+
+function cloneNodeWithoutLinkState(node) {
+    const clone = JSON.parse(JSON.stringify(node));
+    if (Array.isArray(clone.inputs)) {
+        for (const inp of clone.inputs) {
+            if (inp) inp.link = null;
+        }
+    }
+    if (Array.isArray(clone.outputs)) {
+        for (const out of clone.outputs) {
+            if (out) out.links = null;
+        }
+    }
+    return clone;
+}
+
 // Returns a discriminated result so callers can distinguish "user has not
 // selected anything yet" from "user has a selection but every node in it is
 // gone" — those produce different toasts in the UI.
@@ -52,21 +107,23 @@ function getSelectedNodeIds() {
 export function serializeSelection() {
     const selectedIds = getSelectedNodeIds();
     if (selectedIds.size === 0) return { kind: "empty" };
+    const selectedKeys = new Set([...selectedIds].map(idKey));
     const full = serializeFullCanvas();
     if (!full) return { kind: "empty" };
 
-    const internalLinks = (full.links || []).filter(link =>
-        Array.isArray(link) && selectedIds.has(link[1]) && selectedIds.has(link[3])
+    const internalLinks = graphLinksAsList(full.links).filter(link =>
+        selectedKeys.has(idKey(getLinkOriginId(link))) &&
+        selectedKeys.has(idKey(getLinkTargetId(link)))
     );
-    const internalLinkIds = new Set(internalLinks.map(l => l[0]));
+    const internalLinkIds = new Set(internalLinks.map(l => idKey(getLinkId(l))));
 
     const nodes = (full.nodes || [])
-        .filter(n => selectedIds.has(n.id))
+        .filter(n => selectedKeys.has(idKey(n.id)))
         .map(n => {
             const clone = JSON.parse(JSON.stringify(n));
             if (Array.isArray(clone.inputs)) {
                 for (const inp of clone.inputs) {
-                    if (inp && inp.link != null && !internalLinkIds.has(inp.link)) {
+                    if (inp && inp.link != null && !internalLinkIds.has(idKey(inp.link))) {
                         inp.link = null;
                     }
                 }
@@ -74,7 +131,7 @@ export function serializeSelection() {
             if (Array.isArray(clone.outputs)) {
                 for (const out of clone.outputs) {
                     if (out && Array.isArray(out.links)) {
-                        out.links = out.links.filter(l => internalLinkIds.has(l));
+                        out.links = out.links.filter(l => internalLinkIds.has(idKey(l)));
                         if (out.links.length === 0) out.links = null;
                     }
                 }
@@ -487,8 +544,9 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
             console.warn(`[Koolook] LiteGraph.createNode("${oldNode.type}") returned null after pre-flight passed`);
             continue;
         }
+        const nodeConfig = cloneNodeWithoutLinkState(oldNode);
         try {
-            node.configure(oldNode);
+            node.configure(nodeConfig);
         } catch (e) {
             console.warn(`[Koolook] node.configure failed for "${oldNode.type}":`, e);
         }
@@ -498,7 +556,7 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         const oldId = oldNode.id;
         node.id = -1;
         app.graph.add(node);
-        if (oldId != null) oldToNew.set(oldId, node.id);
+        if (oldId != null) oldToNew.set(idKey(oldId), node.id);
         inserted.push(node);
     }
 
@@ -506,16 +564,16 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
     // cross-boundary references, but defensively skip any link whose
     // endpoint we don't have in the remap (covers hand-edited /userdata
     // files and old saves from before that pruning landed).
-    const linksRaw = Array.isArray(clone.links) ? clone.links : [];
+    const linksRaw = graphLinksAsList(clone.links);
     let connectedLinks = 0;
     for (const link of linksRaw) {
-        if (!Array.isArray(link) || link.length < 5) continue;
-        const oldOrigin = link[1];
-        const originSlot = link[2];
-        const oldTarget = link[3];
-        const targetSlot = link[4];
-        const newOrigin = oldToNew.get(oldOrigin);
-        const newTarget = oldToNew.get(oldTarget);
+        const oldOrigin = getLinkOriginId(link);
+        const originSlot = getLinkOriginSlot(link);
+        const oldTarget = getLinkTargetId(link);
+        const targetSlot = getLinkTargetSlot(link);
+        if (oldOrigin == null || oldTarget == null || originSlot == null || targetSlot == null) continue;
+        const newOrigin = oldToNew.get(idKey(oldOrigin));
+        const newTarget = oldToNew.get(idKey(oldTarget));
         if (newOrigin == null || newTarget == null) continue;
         const originNode = app.graph.getNodeById(newOrigin);
         const targetNode = app.graph.getNodeById(newTarget);
