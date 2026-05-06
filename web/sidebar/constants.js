@@ -36,6 +36,13 @@ export const WORKFLOWS_GROUP_LABEL = "Workflows";
 export const STORAGE_KEY = "koolook.curated.userPicks.v1";
 export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
 
+// Set of node types the user has explicitly removed via the `×` button on
+// rows that would otherwise be auto-pulled by `REPOS{select: "all"}`. Lets
+// `×` work uniformly for any visible favorite — without this, auto-pulled
+// nodes (the whole Koolook pack on a stock install) would silently re-
+// appear on every render. Cleared per-type when the user re-adds via `+`.
+export const AUTOPULL_HIDDEN_KEY = "koolook.autoPullHidden.v1";
+
 // Fired when the snapshot status changes for reasons other than picks /
 // workflows mutations (which already fire their own events). Specifically:
 //   • markStateSaved() — after a successful named save or applySnapshot
@@ -228,6 +235,7 @@ export function ensureStyle() {
 .koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); opacity: 1; }
 .koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
 .koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
+.koolook-pack-badge { opacity: 0.5; font-size: 11px; margin-left: 6px; flex-shrink: 0; white-space: nowrap; }
 .koolook-preview-card { position: fixed; z-index: 10000; background: var(--comfy-menu-bg, #232323); border: 1px solid var(--border-color, rgba(255,255,255,0.22)); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; min-width: 300px; max-width: 90vw; max-height: calc(100vh - 16px); pointer-events: none; overflow: hidden auto; padding-bottom: 10px; }
 .koolook-preview-header { display: flex; align-items: center; gap: 9px; padding: 8px 13px 7px; font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; }
 .koolook-preview-headtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
@@ -248,6 +256,9 @@ export function ensureStyle() {
 .koolook-preview-widget-name { text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-preview-widget-value { text-align: right; font-size: 11px; opacity: 0.85; font-family: monospace; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-preview-desc { margin: 10px 9px 0; padding: 7px 9px; background: rgba(255,255,255,0.06); border-radius: 6px; font-style: italic; font-weight: 500; font-size: 11px; line-height: 1.45; word-break: break-word; opacity: 0.85; max-height: 120px; overflow: hidden; }
+.koolook-build-tag { flex-shrink: 0; padding: 6px 10px 14px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
+.koolook-build-sha { font-size: 13px; letter-spacing: 0.06em; }
+.koolook-build-scope { display: block; font-size: 12px; margin-top: 3px; letter-spacing: 0.02em; font-family: var(--font-family, sans-serif); font-style: italic; }
 `;
     document.head.appendChild(s);
 }

@@ -43,10 +43,12 @@ overwrite files in the target — that's the point.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -97,6 +99,30 @@ def _build_line() -> str:
     Worktree name comes from ``REPO_ROOT.name`` and is always present."""
     sha = _get_short_sha() or "unknown"
     return f"{sha} - {_get_worktree_name()}"
+
+
+def write_build_info(target: Path, scope: str | None) -> None:
+    """Drop a tiny JSON next to the sidebar JS so the in-browser footer
+    can render `dev <sha> · <time>` (and an italic <scope> on a second
+    line) — same identifier the chat report quotes, but visible in the
+    running ComfyUI itself. Absent on registry installs (the file is
+    only written by this dev script), so the footer stays empty there.
+
+    Best-effort: missing git → omit `commit` field; no `--scope` → omit
+    `scope`; the timestamp alone is still useful for the maintainer to
+    eyeball "did my last sync land in this browser tab?\""""
+    info: dict[str, str] = {
+        "synced_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "worktree": _get_worktree_name(),
+    }
+    sha = _get_short_sha()
+    if sha:
+        info["commit"] = sha
+    if scope:
+        info["scope"] = scope
+    out = target / "web" / "_dev_build.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
 
 # Files / dirs ComfyUI actually loads at runtime. Anything outside this
 # list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
@@ -245,6 +271,21 @@ def main() -> int:
             "the one-line build summary."
         ),
     )
+    parser.add_argument(
+        "--scope",
+        type=str,
+        default=None,
+        help=(
+            "Short (≤10 word) description of what this build is about — "
+            "the same scope summary that goes in the chat report's second "
+            "line. Persisted in `web/_dev_build.json` and rendered in the "
+            "Kforge Labs sidebar footer (italic, second line, below the "
+            "`dev <sha> · <time>` identifier) so the maintainer can "
+            "correlate live ComfyUI state with chat history when juggling "
+            "multiple parallel worktree sessions. Optional — when absent, "
+            "the footer renders just identifier + timestamp."
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -271,6 +312,8 @@ def main() -> int:
     # mechanical sync details.
     print(_build_line())
     print(f"{verb} {n} entries -> {target}")
+    if not args.dry_run:
+        write_build_info(target, args.scope)
     return 0
 
 
