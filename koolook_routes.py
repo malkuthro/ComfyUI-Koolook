@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import string
 from pathlib import Path
 
 from aiohttp import web
@@ -151,6 +152,65 @@ def _configured_dir() -> tuple[Path, str]:
     if env:
         return Path(env).expanduser(), "env"
     return _resolve_default_dir(), "default"
+
+
+def _browse_roots() -> list[Path]:
+    """Return filesystem roots the in-app browser can start from."""
+    if os.name == "nt":
+        roots = []
+        for letter in string.ascii_uppercase:
+            root = Path(f"{letter}:\\")
+            if root.exists():
+                roots.append(root)
+        return roots
+    return [Path("/")]
+
+
+def _browse_start_path(raw_path: str) -> Path:
+    """Resolve the requested browse path or fall back to the library dir."""
+    if raw_path:
+        return Path(raw_path).expanduser()
+
+    base, _ = _configured_dir()
+    if base.exists():
+        return base
+    if base.parent.exists():
+        return base.parent
+    try:
+        return Path.home()
+    except RuntimeError:  # pragma: no cover - unusual host config
+        return Path.cwd()
+
+
+def _list_child_dirs(path: Path) -> list[dict]:
+    out = []
+    for entry in path.iterdir():
+        try:
+            if not entry.is_dir():
+                continue
+            if entry.name == "_unsaved_autosave" or entry.name.endswith("_autosave"):
+                continue
+            out.append({"name": entry.name, "path": str(entry)})
+        except OSError:
+            continue
+    out.sort(key=lambda r: r["name"].lower())
+    return out
+
+
+def _validate_new_dir_name(name: object) -> str:
+    """Validate a user-created folder name for the browse picker."""
+    if not isinstance(name, str):
+        raise web.HTTPBadRequest(reason="Folder name must be a string.")
+    cleaned = name.strip()
+    if (
+        not cleaned
+        or cleaned in {".", ".."}
+        or "/" in cleaned
+        or "\\" in cleaned
+        or "\x00" in cleaned
+    ):
+        raise web.HTTPBadRequest(reason="Folder name must be a single folder segment.")
+    return cleaned
 
 
 def _validate_filename(name: object) -> str:
@@ -301,6 +361,86 @@ def register_routes(routes) -> None:
                 "envVar": ENV_VAR,
             }
         )
+
+    @routes.get("/koolook/presets/browse")
+    async def browse_dirs(request):
+        """List child directories for the Settings dialog's path picker.
+
+        This intentionally returns directory names only, not files. The
+        selected path is still saved through the existing settings endpoint,
+        so the library-path resolution and write checks stay centralized.
+        """
+        path = _browse_start_path(request.query.get("path", "").strip())
+        try:
+            resolved = path.resolve(strict=False)
+        except OSError as exc:
+            raise web.HTTPBadRequest(reason=f"Could not resolve path: {exc}") from exc
+        if not resolved.exists() or not resolved.is_dir():
+            raise web.HTTPBadRequest(reason=f"Directory does not exist: {resolved}")
+
+        parent = resolved.parent if resolved.parent != resolved else None
+        roots = [{"name": str(root), "path": str(root)} for root in _browse_roots()]
+        try:
+            dirs = _list_child_dirs(resolved)
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not list directories: {exc}"
+            ) from exc
+        return web.json_response(
+            {
+                "path": str(resolved),
+                "parentPath": str(parent) if parent else "",
+                "roots": roots,
+                "dirs": dirs,
+            }
+        )
+
+    @routes.post("/koolook/presets/browse/new-folder")
+    async def create_browse_dir(request):
+        """Create one child folder under the current browse location.
+
+        Threat model: this picker is intentionally filesystem-wide so users
+        can choose a snapshot library outside the current Koolook library.
+        The route's boundary is the ComfyUI process OS user, not the preset
+        library root. We still reject multi-segment names and symlink escapes
+        relative to the selected parent so a request cannot turn "create this
+        child folder here" into "create something elsewhere."
+        """
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise web.HTTPBadRequest(reason=f"Body must be JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(reason="Body must be a JSON object.")
+
+        parent = _browse_start_path(str(payload.get("parentPath", "")).strip())
+        name = _validate_new_dir_name(payload.get("name", ""))
+        try:
+            resolved_parent = parent.resolve(strict=False)
+        except OSError as exc:
+            raise web.HTTPBadRequest(reason=f"Could not resolve parent: {exc}") from exc
+        if not resolved_parent.exists() or not resolved_parent.is_dir():
+            raise web.HTTPBadRequest(reason=f"Parent folder does not exist: {resolved_parent}")
+
+        child = resolved_parent / name
+        try:
+            resolved_child = child.resolve(strict=False)
+        except OSError as exc:
+            raise web.HTTPBadRequest(reason=f"Could not resolve new folder: {exc}") from exc
+        try:
+            resolved_child.relative_to(resolved_parent)
+        except ValueError as exc:
+            raise web.HTTPBadRequest(reason="New folder escapes the selected parent.") from exc
+        if resolved_child.exists():
+            raise web.HTTPBadRequest(reason=f"Folder already exists: {resolved_child}")
+
+        try:
+            child.mkdir()
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not create folder: {exc}"
+            ) from exc
+        return web.json_response({"path": str(child)})
 
     @routes.post("/koolook/presets/settings")
     async def post_settings(request):
