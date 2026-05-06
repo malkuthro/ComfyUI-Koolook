@@ -41,6 +41,14 @@ The format is inspired by Keep a Changelog and SemVer.
   selected folder name visually prominent before the user chooses it.
 
 ### Changed
+- **Node-list hover previews now stay at the intended 300px mock-node width.**
+  The preview card previously had only a `min-width` plus viewport `max-width`,
+  so long node descriptions could set the card's intrinsic width and stretch the
+  hover overlay across the canvas. The card now uses a fixed 300px preferred
+  width clamped to the viewport, keeping labels and descriptions contained.
+  Its surface colors also now track ComfyUI's native node charcoal grades more
+  closely, so mock previews feel like lightweight nodes instead of black
+  sidebar tooltips.
 - **Theme mode now mirrors repo-mode population** — auto-pulled
   REPOS{select: "all"} nodes appear alongside user picks (deduped),
   filtered by the new auto-pull hidden set. Supersedes the earlier
