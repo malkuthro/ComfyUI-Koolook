@@ -6,6 +6,13 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-06
+
+### Changed
+- Cleaned the Registry release package by removing dev-only agent/editor
+  files and the local `scripts/sync_to_dev.py` helper. Runtime node code
+  is unchanged from v0.2.0.
+
 ## [0.2.0] - 2026-05-04
 
 ### Removed (BREAKING for any saved workflow using `Easy_Version`)

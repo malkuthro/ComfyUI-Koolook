@@ -4,7 +4,8 @@ Each `versions/vX_Y_Z/` subpackage owns a namespaced slice of nodes.
 This entrypoint just merges all version mappings into a single dict
 for the root loader.
 
-Adding a new version: see `.claude/skills/add-external-fork/SKILL.md`.
+Adding a new version: register it in `forks_manifest.yaml`, namespace the
+node IDs, and update the attribution docs.
 
 History:
 - v1_0_1 (24 wrapped Radiance v1.0 classes + 2 modified) was removed in

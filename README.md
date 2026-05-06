@@ -2,7 +2,7 @@
 
 This repository provides custom nodes for ComfyUI tailored for VFX and AI image/video generation workflows.
 
-For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions and naming see [`CLAUDE.md`](CLAUDE.md) and the [glossary](docs/reference/glossary.md). Full project documentation lives under [`docs/`](docs/).
+For change history see [`CHANGELOG.md`](CHANGELOG.md). For workflow conventions and naming see the [glossary](docs/reference/glossary.md). Full project documentation lives under [`docs/`](docs/).
 
 ### Koolook nodes (root package)
 

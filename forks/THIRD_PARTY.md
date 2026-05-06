@@ -103,6 +103,4 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 - Keep only wrappers/manifests in MAIN; do not vendor large third-party trees here.
 - Keep modified node source files in MAIN when you want full GitHub tracking
   and one-repo commits.
-- **Run [`license-pre-check`](../.claude/skills/license-pre-check/) before
-  adding any new third-party fork** — it catches license incompatibilities
-  *before* you start copying code.
+- Run a license compatibility check before adding any new third-party fork.
