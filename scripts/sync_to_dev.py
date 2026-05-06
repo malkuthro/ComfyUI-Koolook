@@ -37,10 +37,70 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _get_short_sha() -> str | None:
+    """Best-effort short commit SHA of the source tree being synced.
+    Returns ``None`` if git isn't reachable or the call fails — the
+    summary line just omits the SHA in that case.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if r.returncode == 0:
+            sha = r.stdout.strip()
+            if sha:
+                return sha
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _get_version() -> str | None:
+    """Read the project version from ``pyproject.toml`` without taking
+    a dependency on ``tomllib`` / ``tomli`` — a flat string match for
+    ``version = "x.y.z"`` is good enough for our flat header section
+    and keeps the script importable on older Pythons."""
+    pyproject = REPO_ROOT / "pyproject.toml"
+    if not pyproject.is_file():
+        return None
+    try:
+        for raw in pyproject.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("version"):
+                _, _, val = line.partition("=")
+                v = val.strip().strip('"').strip("'")
+                if v:
+                    return v
+    except OSError:
+        pass
+    return None
+
+
+def _build_id() -> str:
+    """Composes ``<short-sha> v<version>`` for the post-sync summary line.
+    Either component may be missing; the joined result skips None
+    cleanly. Used by the chat-report convention defined in
+    project CLAUDE.md so every dev-sync message carries a stable
+    identifier the maintainer can match against running installs."""
+    parts: list[str] = []
+    sha = _get_short_sha()
+    if sha:
+        parts.append(sha)
+    version = _get_version()
+    if version:
+        parts.append(f"v{version}")
+    return " ".join(parts)
 
 # Files / dirs ComfyUI actually loads at runtime. Anything outside this
 # list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
@@ -87,7 +147,7 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
-def sync(target: Path, dry_run: bool) -> int:
+def sync(target: Path, dry_run: bool, verbose: bool) -> int:
     copied = 0
     for rel in RUNTIME_PATHS:
         src = REPO_ROOT / rel
@@ -95,7 +155,8 @@ def sync(target: Path, dry_run: bool) -> int:
             continue
         dst = target / rel
         if dry_run:
-            print(f"would copy: {rel}")
+            if verbose:
+                print(f"would copy: {rel}")
             copied += 1
             continue
         if src.is_dir():
@@ -105,7 +166,8 @@ def sync(target: Path, dry_run: bool) -> int:
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-        print(f"copied: {rel}")
+        if verbose:
+            print(f"copied: {rel}")
         copied += 1
     return copied
 
@@ -178,6 +240,15 @@ def main() -> int:
             "in place. Use on first-run only."
         ),
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help=(
+            "Print each file/dir as it's copied. Default output is just "
+            "the one-line build summary."
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -196,9 +267,13 @@ def main() -> int:
     if err is not None:
         return err
 
-    n = sync(target, dry_run=args.dry_run)
+    n = sync(target, dry_run=args.dry_run, verbose=args.verbose)
     verb = "would sync" if args.dry_run else "synced"
-    print(f"\n{verb} {n} entries -> {target}")
+    build = _build_id()
+    build_part = f" @ {build}" if build else ""
+    # Single-line build summary — see project CLAUDE.md `dev-sync` section
+    # for the chat-report convention that consumes this output.
+    print(f"{verb} {n} entries{build_part} -> {target}")
     if not args.dry_run:
         print("restart ComfyUI to pick up changes.")
     return 0

@@ -37,28 +37,33 @@
 
 ## `dev-sync` — copy runtime files into a live ComfyUI install
 
-For fast iteration on a fix that doesn't deserve its own version bump,
-copy runtime files straight into a live ComfyUI custom_nodes folder
-instead of cutting a release.
+Fast iteration without cutting a release. Copies runtime files to
+`KOLOOK_COMFYUI_DEV_PATH` (set in `.env`; see `.env.example`).
 
-- Set `KOLOOK_COMFYUI_DEV_PATH` in `.env` (see `.env.example`). The path
-  must point at the maintainer's `custom_nodes/<koolook-folder>/`. It is
-  intentionally kept out of the committed tree.
-- Run `python scripts/sync_to_dev.py` (or `--dry-run` to preview).
+- `python scripts/sync_to_dev.py` — brief one-line summary; use `-v` for per-file output
+- `--dry-run` — preview without touching the target
 - Restart ComfyUI to load the new code.
 
-**Trigger phrase: `dev-sync`** (or any clear synonym like "copy those
-files", "sync dev", "push to dev"). When the maintainer says it during
-a session, the agent runs `scripts/sync_to_dev.py` and reports what was
-copied. The script errors out cleanly when the env var is unset; never
-guess a path.
+**Trigger phrase: `dev-sync`** (or "copy those files", "sync dev", "push to dev").
+The agent runs the script and reports completion. The script errors
+cleanly when the env var is unset; never guess a path.
 
-This is a development convenience only — anything worth shipping still
-goes through the normal PR + release flow described below.
+**Chat report format** — always include the build id from the script's output:
 
-The broader iteration pattern (trigger phrases, what survives across
-re-syncs vs what doesn't, push/publish gates) is captured in
-[`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
+```
+dev-sync @ <short-sha> v<version> — <≤10 word summary>. Restart.
+```
+
+The summary names the *thing to look at* after restart, not a list of
+all changes. Keep it ≤10 words. Examples:
+
+```
+dev-sync @ 8dfb966 v0.2.0 — Quick Save + status dot + recovery section. Restart.
+dev-sync @ a1b2c3d v0.2.1 — install-missing button on Nodes row. Restart.
+```
+
+Broader iteration pattern (push/publish gates, what survives re-syncs)
+is in [`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
 
 ## Kforge Labs sidebar — starter preset distribution
 
