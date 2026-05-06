@@ -2073,6 +2073,37 @@ export function renderPanel(container) {
         title: "Load a saved snapshot (replaces current state)",
         onClick: openLoadDialog,
     }));
+    // Quick Save — single-click overwrite of the currently-tracked preset
+    // with no dialog. Disabled when no preset is tracked (then the regular
+    // Save button is the entry point because it prompts for a new name).
+    // Distinct icon from Save so the two are scannable: Save = cloud-upload,
+    // Quick Save = floppy-disk save icon.
+    const quickSaveBtn = makeToolbarButton({
+        iconClass: "pi pi-save",
+        title: "Quick Save — overwrite the currently loaded preset (no dialog)",
+        onClick: async () => {
+            const current = getCurrentPresetName();
+            if (!current) {
+                toast("No preset loaded — use Save to name a new one.");
+                return;
+            }
+            try {
+                const snap = gatherSnapshot(current);
+                await writePreset(current, snap);
+                markStateSaved();
+                toast(`Quick-saved "${current}".`);
+            } catch (e) {
+                console.error("[Koolook] quick save failed:", e);
+                toast(`Could not Quick Save: ${e.message}`);
+            }
+        },
+    });
+    function refreshQuickSaveDisabled() {
+        quickSaveBtn.disabled = !getCurrentPresetName();
+    }
+    refreshQuickSaveDisabled();
+    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled);
+    snapshotRow.appendChild(quickSaveBtn);
     snapshotRow.appendChild(makeToolbarButton({
         iconClass: "pi pi-cloud-upload",
         title: "Save current state — overwrites the last-loaded preset, or prompts for a name",
