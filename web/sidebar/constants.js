@@ -36,6 +36,15 @@ export const WORKFLOWS_GROUP_LABEL = "Workflows";
 export const STORAGE_KEY = "koolook.curated.userPicks.v1";
 export const PICKS_CHANGED_EVENT = "koolook-picks-changed";
 
+// Fired when the snapshot status changes for reasons other than picks /
+// workflows mutations (which already fire their own events). Specifically:
+//   • markStateSaved() — after a successful named save or applySnapshot
+//   • periodic auto-save success — status flips "unsaved" → "auto-saved"
+//   • setCurrentPresetName clears — status name flips back to "(no snapshot)"
+// The status indicator in the sidebar listens to PICKS_CHANGED_EVENT,
+// WORKFLOWS_CHANGED_EVENT, AND this one to cover all status-change paths.
+export const SNAPSHOT_STATUS_CHANGED_EVENT = "koolook-snapshot-status-changed";
+
 // Group mode for the Nodes section — "repo" (default; group by pack/repo,
 // matching pre-#73 behavior) or "category" (group by node-class CATEGORY
 // path, with case-insensitive merging). Persisted in localStorage so the
@@ -91,6 +100,20 @@ export function ensureStyle() {
 .koolook-search-row { margin: 6px; flex-shrink: 0; }
 .koolook-actions-row { display: flex; align-items: center; gap: 4px; padding: 2px 6px; flex-shrink: 0; }
 .koolook-actions-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; font-weight: 600; }
+/* Snapshot status indicator — replaces the static "Snapshot" label. Shows
+   the currently-tracked preset name + a colored dot indicating whether the
+   live state matches the last named save (green), the latest periodic
+   auto-save (blue), neither (orange = unsaved), or there's no tracked
+   preset at all (grey). Tooltip carries the full breakdown. */
+.koolook-snap-status { flex: 1; display: flex; align-items: center; font-size: 11px; min-width: 0; cursor: default; gap: 0; }
+.koolook-snap-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.koolook-snap-status-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.9; }
+.koolook-snap-status-name-empty { font-style: italic; opacity: 0.55; }
+.koolook-snap-status-state { opacity: 0.55; flex-shrink: 0; margin-left: 4px; font-size: 10px; }
+.koolook-snap-status-saved { background: #6db86d; }
+.koolook-snap-status-autosaved { background: #6db4ff; }
+.koolook-snap-status-unsaved { background: #e0a64a; }
+.koolook-snap-status-none { background: rgba(255,255,255,0.28); }
 .koolook-tree-divider { margin: 8px 8px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
 .koolook-search-wrap { position: relative; width: 100%; }
 .koolook-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.55; font-size: 11px; pointer-events: none; }

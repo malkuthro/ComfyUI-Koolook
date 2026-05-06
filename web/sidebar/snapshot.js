@@ -41,6 +41,7 @@ import {
     STARTER_SEEDED_KEY,
     STARTER_URL,
     STARTER_PRESET_FILENAME,
+    SNAPSHOT_STATUS_CHANGED_EVENT,
     toast,
 } from "./constants.js";
 
@@ -163,6 +164,103 @@ function isoToFsToken(iso) {
     return iso.replace(/[:.]/g, "-");
 }
 
+// =============================================================================
+// Snapshot status — tracks whether the live in-memory state matches the last
+// named save, the latest periodic auto-save, both, or neither. Surfaces in
+// the sidebar via `getSnapshotStatus()`.
+//
+// Two reference fingerprints:
+//   • `_lastNamedSaveFingerprint` — set by markStateSaved() on Save / Load
+//     success. Persisted to localStorage so the baseline survives reloads
+//     (otherwise every fresh page-load would show "saved" briefly even
+//     after the user mutated the state in a previous session).
+//   • `_lastPeriodicFingerprint` — set when a periodic auto-save lands.
+//     Lives in memory only; periodic auto-saves are session-scoped recovery
+//     points, not user-visible save history.
+//
+// `_computeFingerprint()` strips fields that change every call (`exportedAt`,
+// the wrapping `name`/`kind`/`version` envelope) so the comparison is
+// "did the actual data change" rather than "is this a different export."
+// =============================================================================
+
+const SAVED_FINGERPRINT_KEY = "koolook.snapshot.savedFingerprint.v1";
+
+let _lastNamedSaveFingerprint = null;
+let _lastPeriodicFingerprint = null;
+let _lastPeriodicAt = null;
+
+(function _initSavedFingerprintFromStorage() {
+    try {
+        const v = localStorage.getItem(SAVED_FINGERPRINT_KEY);
+        if (typeof v === "string" && v) _lastNamedSaveFingerprint = v;
+    } catch (e) {
+        // localStorage unreadable (private mode + permission edge cases).
+        // Status will be slightly less accurate this session — fine.
+    }
+})();
+
+function _persistSavedFingerprint() {
+    try {
+        if (_lastNamedSaveFingerprint) {
+            localStorage.setItem(SAVED_FINGERPRINT_KEY, _lastNamedSaveFingerprint);
+        } else {
+            localStorage.removeItem(SAVED_FINGERPRINT_KEY);
+        }
+    } catch (e) {
+        // Quota / private mode — the in-memory fingerprint still works for
+        // this session; only cross-session accuracy degrades.
+    }
+}
+
+function _computeFingerprint() {
+    return JSON.stringify({
+        picks: loadUserPicks(),
+        workflows: getAllWorkflowsForExport(),
+    });
+}
+
+function _emitStatusChanged() {
+    try {
+        window.dispatchEvent(new CustomEvent(SNAPSHOT_STATUS_CHANGED_EVENT));
+    } catch (e) {
+        // Some test environments don't have window — defensive only.
+    }
+}
+
+// Mark the current in-memory state as "saved" — call after any successful
+// named save (writePreset for a user-named preset) or successful Load
+// (applySnapshot baseline). Auto-saves do NOT call this; they're not
+// user-initiated saves and shouldn't reset the dirty indicator.
+export function markStateSaved() {
+    _lastNamedSaveFingerprint = _computeFingerprint();
+    _persistSavedFingerprint();
+    _emitStatusChanged();
+}
+
+// Returns one of:
+//   { name: <string|null>, state: "saved" | "autosaved" | "unsaved" | "none",
+//     lastAutosaveAt: <ISO|null> }
+//
+// Status precedence (highest first):
+//   • "saved"     — current fingerprint matches the last named save
+//   • "autosaved" — current matches the latest periodic auto-save (only)
+//   • "unsaved"   — there IS a tracked preset but state diverged
+//   • "none"      — no preset tracked, no autosave match
+export function getSnapshotStatus() {
+    const name = getCurrentPresetName();
+    const fp = _computeFingerprint();
+    if (_lastNamedSaveFingerprint && fp === _lastNamedSaveFingerprint) {
+        return { name, state: "saved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    if (_lastPeriodicFingerprint && fp === _lastPeriodicFingerprint) {
+        return { name, state: "autosaved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    if (name) {
+        return { name, state: "unsaved", lastAutosaveAt: _lastPeriodicAt };
+    }
+    return { name: null, state: "none", lastAutosaveAt: _lastPeriodicAt };
+}
+
 // Write a pre-load auto-save and return its bare filename (no `.json`) on
 // success. Throws on persist failure — callers should treat that as a hard
 // abort signal: the destructive Load that motivated this auto-save MUST NOT
@@ -182,16 +280,14 @@ export async function writePreLoadAutosave(label) {
 // =============================================================================
 // Periodic auto-save — module-private timer + change-detection state.
 // Started by `startPeriodicAutosave` (called from the entry `setup()`).
+// Shares `_lastPeriodicFingerprint` with the snapshot-status block above —
+// when a tick lands successfully, that's also the new "matches latest
+// auto-save" reference for the status indicator. `null` initial value
+// guarantees the first tick saves unconditionally, capturing a baseline
+// recovery point ~30s after sidebar open.
 // =============================================================================
 let _periodicTimerId = null;
 let _periodicFirstTickId = null;
-// Cached serialized snapshot from the last successful periodic write. The
-// next tick string-compares against this to skip no-op writes; using full
-// equality on a ~130KB JSON blob is cheap (microseconds) and catches
-// "user did nothing" perfectly without false-positive hashes. `null` means
-// "first tick will save unconditionally" — a deliberate choice to guarantee
-// every session gets at least one fresh recovery point shortly after open.
-let _lastPeriodicSnapshotJson = null;
 
 async function _prunePeriodicAutosaves(keep) {
     try {
@@ -227,19 +323,20 @@ async function _periodicTick(keep) {
         const isoNow = new Date().toISOString();
         const displayName = `Periodic auto-save · ${isoNow}`;
         const snap = gatherSnapshot(displayName);
-        const json = JSON.stringify(snap);
-        // Change detection — `exportedAt` differs every tick, so we strip it
-        // before comparing. Without this, every tick would always look like
-        // "state changed" and we'd save every interval forever.
-        const fingerprint = JSON.stringify({
-            picks: snap.picks,
-            workflows: snap.workflows,
-        });
-        if (fingerprint === _lastPeriodicSnapshotJson) return;
+        // Change detection — uses the same picks-and-workflows fingerprint
+        // as the status indicator so post-tick the "auto-saved" status is
+        // accurate without recomputing.
+        const fingerprint = _computeFingerprint();
+        if (fingerprint === _lastPeriodicFingerprint) return;
         const fileName = AUTOSAVE_PERIODIC_PREFIX + isoToFsToken(isoNow);
         await writePreset(fileName, snap);
-        _lastPeriodicSnapshotJson = fingerprint;
+        _lastPeriodicFingerprint = fingerprint;
+        _lastPeriodicAt = isoNow;
         await _prunePeriodicAutosaves(keep);
+        // Tell the sidebar status indicator to refresh — state didn't change
+        // (mutation events would have covered that) but the *match* against
+        // the latest auto-save did, so "unsaved" can flip to "auto-saved".
+        _emitStatusChanged();
         console.log(`[Koolook] periodic auto-save written: ${fileName}`);
     } catch (e) {
         // Library unreachable, read-only mount, etc. — log and try again
@@ -433,6 +530,8 @@ export function setCurrentPresetName(name) {
         // the next save just won't pre-fill. Log so power users notice.
         console.warn("[Koolook] could not persist current preset name:", e);
     }
+    // Status display shows the tracked name — refresh on every change.
+    _emitStatusChanged();
 }
 
 // =============================================================================

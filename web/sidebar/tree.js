@@ -19,6 +19,7 @@ import {
     WORKFLOWS_FALLBACK_KEY,
     PICKS_CHANGED_EVENT,
     WORKFLOWS_CHANGED_EVENT,
+    SNAPSHOT_STATUS_CHANGED_EVENT,
     GROUP_MODE_KEY,
     GROUP_MODE_DEFAULT,
     MODULE_TAG,
@@ -93,6 +94,8 @@ import {
     setCurrentPresetName,
     exportStarterPreset,
     writePreLoadAutosave,
+    markStateSaved,
+    getSnapshotStatus,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -1969,6 +1972,7 @@ export function renderPanel(container) {
         gatherSnapshot,
         sanitizeName,
         getLibraryInfo,
+        markStateSaved,
         onToast: toast,
     });
     const openLoadDialog = () => showLoadSnapshotDialog({
@@ -1980,6 +1984,7 @@ export function renderPanel(container) {
         getCurrentPresetName,
         getLibraryInfo,
         writePreLoadAutosave,
+        markStateSaved,
         onToast: toast,
     });
     const openSettingsDialog = () => showSnapshotSettingsDialog({
@@ -1996,10 +2001,72 @@ export function renderPanel(container) {
     const snapshotRow = document.createElement("div");
     snapshotRow.className = "koolook-actions-row";
 
-    const snapshotLabel = document.createElement("span");
-    snapshotLabel.className = "koolook-actions-label";
-    snapshotLabel.textContent = "Snapshot";
-    snapshotRow.appendChild(snapshotLabel);
+    // Snapshot status indicator (replaces the static "Snapshot" label).
+    // Layout:  [● <preset name>  · <state>]   where:
+    //   • the dot's color encodes status (saved=green, autosaved=blue,
+    //     unsaved=orange, none=grey)
+    //   • the name is the user's last-loaded/saved preset, ellipsised if
+    //     long; "(no snapshot)" italic when nothing is tracked
+    //   • the state is a small textual qualifier ("saved" / "auto-saved" /
+    //     "unsaved")
+    // Tooltip on the whole row carries the long-form explanation including
+    // the latest auto-save timestamp when relevant.
+    const snapshotStatus = document.createElement("div");
+    snapshotStatus.className = "koolook-snap-status";
+    const snapshotDot = document.createElement("span");
+    snapshotDot.className = "koolook-snap-status-dot koolook-snap-status-none";
+    snapshotStatus.appendChild(snapshotDot);
+    const snapshotName = document.createElement("span");
+    snapshotName.className = "koolook-snap-status-name";
+    snapshotStatus.appendChild(snapshotName);
+    const snapshotState = document.createElement("span");
+    snapshotState.className = "koolook-snap-status-state";
+    snapshotStatus.appendChild(snapshotState);
+    snapshotRow.appendChild(snapshotStatus);
+
+    function refreshSnapshotStatus() {
+        const status = getSnapshotStatus();
+        snapshotDot.className = "koolook-snap-status-dot koolook-snap-status-" + status.state;
+        if (status.name) {
+            snapshotName.classList.remove("koolook-snap-status-name-empty");
+            snapshotName.textContent = status.name;
+        } else {
+            snapshotName.classList.add("koolook-snap-status-name-empty");
+            snapshotName.textContent = "(no snapshot)";
+        }
+        let stateText = "";
+        let title = "";
+        const since = status.lastAutosaveAt
+            ? ` (latest auto-save: ${status.lastAutosaveAt})`
+            : "";
+        switch (status.state) {
+            case "saved":
+                stateText = "· saved";
+                title = `Live state matches the last named save "${status.name}"${since}.`;
+                break;
+            case "autosaved":
+                stateText = "· auto-saved";
+                title = status.name
+                    ? `Live state matches the latest periodic auto-save (named save "${status.name}" has diverged)${since}.`
+                    : `Live state matches the latest periodic auto-save${since}.`;
+                break;
+            case "unsaved":
+                stateText = "· unsaved";
+                title = `Live state has changes since the last save / auto-save of "${status.name}"${since}. Use Save to persist.`;
+                break;
+            case "none":
+            default:
+                stateText = "";
+                title = `No named snapshot tracked${since}. Use Save to create one.`;
+                break;
+        }
+        snapshotState.textContent = stateText;
+        snapshotStatus.title = title;
+    }
+    refreshSnapshotStatus();
+    window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus);
+    window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus);
+    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus);
 
     snapshotRow.appendChild(makeToolbarButton({
         iconClass: "pi pi-cloud-download",

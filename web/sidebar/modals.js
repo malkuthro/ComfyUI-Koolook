@@ -1003,6 +1003,7 @@ export function showSaveSnapshotDialog({
     gatherSnapshot,
     sanitizeName,
     getLibraryInfo,
+    markStateSaved,
     onToast,
 }) {
     const toast = onToast || (() => {});
@@ -1079,6 +1080,10 @@ export function showSaveSnapshotDialog({
             const snap = gatherSnapshot(name);
             await writePreset(name, snap);
             setCurrentPresetName(name);
+            // Baseline the saved-state fingerprint — flips the sidebar
+            // status indicator from "unsaved" to "saved" without waiting
+            // for an unrelated mutation event to refresh it.
+            if (typeof markStateSaved === "function") markStateSaved();
             toast(`Saved "${name}".`);
         } catch (e) {
             console.error("[Koolook] preset save failed:", e);
@@ -1134,6 +1139,7 @@ export function showLoadSnapshotDialog({
     getCurrentPresetName,
     getLibraryInfo,
     writePreLoadAutosave,
+    markStateSaved,
     onToast,
 }) {
     const toast = onToast || (() => {});
@@ -1249,6 +1255,10 @@ export function showLoadSnapshotDialog({
                     // fresh name prompt.
                     if (picksOk && workflowsOk) {
                         setCurrentPresetName(preview.fileName);
+                        // Baseline the saved-state fingerprint — current
+                        // state IS the loaded preset, so the indicator
+                        // should read "saved" until the next mutation.
+                        if (typeof markStateSaved === "function") markStateSaved();
                         const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
                         toast(`Loaded preset "${preview.displayName}"${backupSuffix}.`);
                     } else if (picksOk || workflowsOk) {
