@@ -15,4 +15,3 @@ Three audience buckets — pick where to look based on what you're trying to do.
 | [`../README.md`](../README.md) | GitHub repo home + Comfy Registry pulls description from here |
 | [`../LICENSE`](../LICENSE) | `pyproject.toml` references it; GitHub recognizes the license badge from this path only |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | Changelog parsers and release tooling expect it at root |
-| [`../CLAUDE.md`](../CLAUDE.md) | Claude Code reads project-level agent instructions from `<repo>/CLAUDE.md` |
