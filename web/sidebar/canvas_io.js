@@ -23,6 +23,51 @@ export function serializeFullCanvas() {
     }
 }
 
+const SUBGRAPH_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function collectReferencedSubgraphIds(rootIds, allDefs) {
+    const visited = new Set();
+    const defsById = new Map(
+        allDefs
+            .filter(d => d && d.id)
+            .map(d => [d.id, d])
+    );
+    const work = [...rootIds];
+    while (work.length > 0) {
+        const id = work.pop();
+        if (!id || visited.has(id)) continue;
+        visited.add(id);
+        const def = defsById.get(id);
+        if (!def) continue;
+        const interiorNodes = Array.isArray(def.nodes) ? def.nodes : [];
+        for (const n of interiorNodes) {
+            if (n && typeof n.type === "string" && defsById.has(n.type)) {
+                work.push(n.type);
+            } else if (n && typeof n.type === "string" && SUBGRAPH_UUID_RE.test(n.type)) {
+                console.warn("[Koolook] subgraph save: unresolved transitive ref", n.type);
+            }
+        }
+    }
+    return visited;
+}
+
+function collectDefinitionsForNodes(nodes, fullGraph) {
+    const liveDefs = (fullGraph && fullGraph.definitions && Array.isArray(fullGraph.definitions.subgraphs))
+        ? fullGraph.definitions.subgraphs
+        : [];
+    if (liveDefs.length === 0) return null;
+    const liveIds = new Set(liveDefs.map(d => d && d.id).filter(Boolean));
+    const rootIds = nodes
+        .map(n => n && n.type)
+        .filter(t => typeof t === "string" && liveIds.has(t));
+    if (rootIds.length === 0) return null;
+    const required = collectReferencedSubgraphIds(rootIds, liveDefs);
+    const subgraphs = liveDefs
+        .filter(d => d && required.has(d.id))
+        .map(d => JSON.parse(JSON.stringify(d)));
+    return { subgraphs };
+}
+
 function getSelectedNodeIds() {
     try {
         const sel = (app.canvas && app.canvas.selected_nodes) || {};
@@ -140,6 +185,7 @@ export function serializeSelection() {
         });
 
     if (nodes.length === 0) return { kind: "stale" };
+    const definitions = collectDefinitionsForNodes(nodes, full);
 
     return {
         kind: "ok",
@@ -149,6 +195,7 @@ export function serializeSelection() {
             nodes,
             links: internalLinks,
             groups: [],
+            ...(definitions ? { definitions } : {}),
             config: full.config || {},
             extra: full.extra || {},
             version: full.version || 0.4,
@@ -514,6 +561,16 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         }
     }
     if (missingTypes.length > 0) {
+        const subgraphMisses = missingTypes.filter(t => SUBGRAPH_UUID_RE.test(t));
+        if (subgraphMisses.length === missingTypes.length) {
+            toast(
+                `Cannot insert "${wfName}" — subgraph definition is not registered. ` +
+                `Load the workflow once in this session to register it, then retry Insert.`,
+                4500
+            );
+            console.warn(`[Koolook] insert "${wfName}" aborted; missing subgraph definitions:`, missingTypes);
+            return { ok: false, reason: "missing-types", missingTypes };
+        }
         const sample = missingTypes.slice(0, 3).join(", ");
         const more = missingTypes.length > 3 ? ` (+${missingTypes.length - 3} more)` : "";
         toast(

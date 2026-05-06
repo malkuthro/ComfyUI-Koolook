@@ -7,6 +7,10 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Subgraph-aware module saves.** Selection saves now carry the
+  transitively referenced `definitions.subgraphs` entries for selected
+  ComfyUI subgraph wrapper nodes, so the saved workflow has the definitions
+  available for native Load / later insert attempts.
 - **Dev-sync build-tag footer at the bottom of the Kforge Labs sidebar.**
   `scripts/sync_to_dev.py --scope "<short scope>"` now writes a tiny
   `web/_dev_build.json` next to the sidebar JS. The sidebar fetches it
