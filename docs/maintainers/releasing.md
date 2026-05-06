@@ -9,8 +9,8 @@ template mirrors these steps in tickbox form for each release.
 ## Conventions
 
 - Repo tag format: `vMAJOR.MINOR.PATCH` (semver). Example: `v0.1.1`.
-- Fork code paths use the underscore variant: `v1_0_1`.
-- Comfy node ID namespace suffixes match fork paths: `__koolook_v1_0_1`.
+- Fork code paths use the underscore variant: `v2_3_3` (current Radiance fork; the historical `v1_0_1` fork was removed in v0.1.5 — see `forks/THIRD_PARTY.md`).
+- Comfy node ID namespace suffixes match fork paths: `__koolook_v2_3_3`.
 - Always **squash-merge** release PRs. A clean single commit per release
   keeps `git describe --tags` honest and prevents the orphan-tag class of
   bugs (a re-merged PR can leave a tag pointing at a commit no longer in

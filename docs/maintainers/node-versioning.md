@@ -163,16 +163,15 @@ NODE_CLASS_MAPPINGS = {
 - ❌ "Nobody's using the old node yet." You don't actually know. Default
   to alias-then-deprecate; cost is one extra dict entry.
 
-## Tooling we don't have yet (worth adding when you next touch a node)
+## Tooling — what we have, what's still missing
 
-- A CI smoke test that loads a fixture workflow JSON against the current
-  pack and asserts every node still resolves. This would catch most of
-  the failure modes above before they ship. See loose-end #C in the
-  v0.1.5 PR description.
-- A `.claude/skills/node-api-change/` skill that runs before any edit to
-  `INPUT_TYPES` / `RETURN_TYPES` / class names — checks the diff against
-  the rules above and refuses unsafe changes. Same shape as
-  `license-pre-check`.
-
-Both are scoped for "whenever Cristian next plans to touch a node's
-input or output surface."
+- ✅ **Workflow-fixture smoke test** — `tools/preflight_release.py`
+  check `workflows` walks `tests/workflows/*.json`, extracts node IDs
+  by both heuristic and AST-extracted set, and reports any reference
+  that no longer resolves. The `preflight-release` skill in
+  `.claude/skills/` runs all four checks before a release.
+- ⏳ **`node-api-change` agent skill** — a check that would run before
+  any edit to `INPUT_TYPES` / `RETURN_TYPES` / class names, diff
+  against the rules above, and refuse unsafe changes. Same shape as
+  `license-pre-check`. Not built yet; scoped for the next time someone
+  changes a node's input/output surface.

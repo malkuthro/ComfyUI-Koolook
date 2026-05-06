@@ -53,7 +53,7 @@ End-to-end: ~10–30 seconds. No tag/publish round-trip.
 |---|---|---|
 | Node favorites (per user) | `localStorage["koolook.curated.userPicks.v1"]` | survives JS updates, ComfyUI restarts, browser refreshes |
 | Saved workflows incl. archive (per install) | ComfyUI `/userdata/koolook_workflows.json` | survives JS updates and ComfyUI restarts |
-| Distributed defaults — nodes | `web/curated_defaults.json` (in repo) | seeded once into user `localStorage` on first ComfyUI load |
+| Distributed defaults — starter preset | `web/starter_preset.json` (in repo) | copied once into the user's snapshot library as `starter.json` on first ComfyUI load (replaces the legacy `curated_defaults.json` localStorage seed) |
 | Distributed defaults — workflows | `web/workflow_defaults.json` (in repo) | seeded once into `/userdata` on first ComfyUI load |
 
 dev-sync + restart never wipes user state. Only `localStorage.clear()`,
@@ -82,7 +82,7 @@ deleting `/userdata/koolook_workflows.json`, or wiping browser data does.
 ## Files this loop touches most
 
 - [`web/koolook_sidebar.js`](../../web/koolook_sidebar.js) — sidebar entry (boots the extension; module bodies live in [`web/sidebar/`](../../web/sidebar/))
-- [`web/curated_defaults.json`](../../web/curated_defaults.json) — node defaults
+- [`web/starter_preset.json`](../../web/starter_preset.json) — bundled starter preset (replaces the legacy `curated_defaults.json` pick-only seed)
 - [`web/workflow_defaults.json`](../../web/workflow_defaults.json) — workflow defaults
 - [`scripts/sync_to_dev.py`](../../scripts/sync_to_dev.py) — dev sync helper
-- [`docs/maintainers/curated-sidebar.md`](curated-sidebar.md) — node-defaults round-trip detail
+- [`docs/maintainers/curated-sidebar.md`](curated-sidebar.md) — starter-preset round-trip detail
