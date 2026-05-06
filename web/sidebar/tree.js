@@ -92,6 +92,7 @@ import {
     getCurrentPresetName,
     setCurrentPresetName,
     exportStarterPreset,
+    writePreLoadAutosave,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -1967,6 +1968,7 @@ export function renderPanel(container) {
         writePreset,
         gatherSnapshot,
         sanitizeName,
+        getLibraryInfo,
         onToast: toast,
     });
     const openLoadDialog = () => showLoadSnapshotDialog({
@@ -1977,6 +1979,7 @@ export function renderPanel(container) {
         setCurrentPresetName,
         getCurrentPresetName,
         getLibraryInfo,
+        writePreLoadAutosave,
         onToast: toast,
     });
     const openSettingsDialog = () => showSnapshotSettingsDialog({

@@ -127,6 +127,160 @@ export async function applySnapshot(snapshot) {
 }
 
 // =============================================================================
+// Auto-save (defensive snapshots).
+//
+// Two flavors of auto-save, both written to the same library directory as
+// regular user-named presets:
+//
+//   • Pre-load auto-save: written every time the user triggers a destructive
+//     Load (`applySnapshot` overwrites picks + workflows). Filename
+//     `_autosave_pre_load_<fs-safe-iso>.json` so they sort together and the
+//     leading underscore puts them at the top of the Load list. Never
+//     rotated — every Load is a permanent recovery point. Power users can
+//     delete via the regular row × button if they accumulate.
+//
+//   • Periodic auto-save: written every N minutes if state has changed
+//     since the last successful auto-save (string-equality on the
+//     serialized snapshot — quicker than a full hash for ~130KB blobs and
+//     equally precise for "did anything change"). Rotates: keeps the most
+//     recent N. See `startPeriodicAutosave` below.
+//
+// Filename hygiene: ISO timestamps contain `:` which the server-side
+// whitelist (`^[A-Za-z0-9 _.()\-]+\.json$`) rejects. We swap `:` → `-`
+// and `.` → `-` for the filename token; the snapshot's internal `name`
+// field keeps the readable ISO so the Load list displays it nicely.
+//
+// `setCurrentPresetName` is intentionally NOT called by either auto-save —
+// these aren't user-initiated saves and shouldn't hijack the "Save over X"
+// default the way a manual Save does.
+// =============================================================================
+
+const AUTOSAVE_PRE_LOAD_PREFIX = "_autosave_pre_load_";
+const AUTOSAVE_PERIODIC_PREFIX = "_autosave_periodic_";
+
+function isoToFsToken(iso) {
+    // 2026-05-06T11:45:33.123Z → 2026-05-06T11-45-33-123Z
+    return iso.replace(/[:.]/g, "-");
+}
+
+// Write a pre-load auto-save and return its bare filename (no `.json`) on
+// success. Throws on persist failure — callers should treat that as a hard
+// abort signal: the destructive Load that motivated this auto-save MUST NOT
+// proceed without a recovery point, otherwise the entire premise of the
+// feature collapses (silent state loss, exactly what we're guarding against).
+export async function writePreLoadAutosave(label) {
+    const isoNow = new Date().toISOString();
+    const fileName = AUTOSAVE_PRE_LOAD_PREFIX + isoToFsToken(isoNow);
+    const displayName = label
+        ? `Pre-load auto-save · ${label} · ${isoNow}`
+        : `Pre-load auto-save · ${isoNow}`;
+    const snap = gatherSnapshot(displayName);
+    await writePreset(fileName, snap);
+    return fileName;
+}
+
+// =============================================================================
+// Periodic auto-save — module-private timer + change-detection state.
+// Started by `startPeriodicAutosave` (called from the entry `setup()`).
+// =============================================================================
+let _periodicTimerId = null;
+let _periodicFirstTickId = null;
+// Cached serialized snapshot from the last successful periodic write. The
+// next tick string-compares against this to skip no-op writes; using full
+// equality on a ~130KB JSON blob is cheap (microseconds) and catches
+// "user did nothing" perfectly without false-positive hashes. `null` means
+// "first tick will save unconditionally" — a deliberate choice to guarantee
+// every session gets at least one fresh recovery point shortly after open.
+let _lastPeriodicSnapshotJson = null;
+
+async function _prunePeriodicAutosaves(keep) {
+    try {
+        const all = await listPresets();
+        // Lexicographic sort of ISO-ish filenames is chronological order.
+        // We strip down to periodic autosaves only, sort newest-first, and
+        // delete everything past `keep`.
+        const periodic = all
+            .filter((p) => typeof p.fileName === "string" &&
+                           p.fileName.startsWith(AUTOSAVE_PERIODIC_PREFIX))
+            .sort((a, b) => b.fileName.localeCompare(a.fileName));
+        const toDelete = periodic.slice(keep);
+        for (const p of toDelete) {
+            try {
+                await deletePreset(p.fileName);
+            } catch (e) {
+                // One bad delete shouldn't abort the rest — keep going.
+                console.warn(`[Koolook] failed to prune autosave ${p.fileName}:`, e);
+            }
+        }
+    } catch (e) {
+        console.warn("[Koolook] periodic autosave prune failed:", e);
+    }
+}
+
+async function _periodicTick(keep) {
+    // Skip while the tab is in the background — saving while the user can't
+    // see toasts / errors is fine, but saving WORK they're not actively
+    // doing isn't valuable, and quietly hammering /userdata in a backgrounded
+    // tab wastes server cycles.
+    if (typeof document !== "undefined" && document.hidden) return;
+    try {
+        const isoNow = new Date().toISOString();
+        const displayName = `Periodic auto-save · ${isoNow}`;
+        const snap = gatherSnapshot(displayName);
+        const json = JSON.stringify(snap);
+        // Change detection — `exportedAt` differs every tick, so we strip it
+        // before comparing. Without this, every tick would always look like
+        // "state changed" and we'd save every interval forever.
+        const fingerprint = JSON.stringify({
+            picks: snap.picks,
+            workflows: snap.workflows,
+        });
+        if (fingerprint === _lastPeriodicSnapshotJson) return;
+        const fileName = AUTOSAVE_PERIODIC_PREFIX + isoToFsToken(isoNow);
+        await writePreset(fileName, snap);
+        _lastPeriodicSnapshotJson = fingerprint;
+        await _prunePeriodicAutosaves(keep);
+        console.log(`[Koolook] periodic auto-save written: ${fileName}`);
+    } catch (e) {
+        // Library unreachable, read-only mount, etc. — log and try again
+        // next interval. Periodic auto-save failures should NOT surface
+        // as toasts; they're a background defensive layer, not a primary
+        // action the user is waiting on.
+        console.warn("[Koolook] periodic auto-save failed:", e);
+    }
+}
+
+// Start the periodic auto-save loop. Idempotent — calling twice is a no-op
+// (the second call returns without registering another timer). Default
+// interval 5 minutes, default rotation keeps last 5. The first tick fires
+// after a short grace period (30s) rather than immediately so the load /
+// seed flows have time to settle before we capture the first baseline.
+export function startPeriodicAutosave({ intervalMs = 5 * 60 * 1000, keep = 5, firstTickDelayMs = 30 * 1000 } = {}) {
+    if (_periodicTimerId !== null) return;
+    const tick = () => _periodicTick(keep);
+    _periodicFirstTickId = setTimeout(tick, firstTickDelayMs);
+    _periodicTimerId = setInterval(tick, intervalMs);
+    console.log(
+        `[Koolook] periodic auto-save started: every ${Math.round(intervalMs / 1000)}s, ` +
+        `keep ${keep}, first tick in ${Math.round(firstTickDelayMs / 1000)}s`
+    );
+}
+
+// Stop the periodic auto-save loop. Idempotent. Useful for tests and for
+// hot-reload paths during development; in normal use the timer outlives
+// the page anyway.
+export function stopPeriodicAutosave() {
+    if (_periodicFirstTickId !== null) {
+        clearTimeout(_periodicFirstTickId);
+        _periodicFirstTickId = null;
+    }
+    if (_periodicTimerId !== null) {
+        clearInterval(_periodicTimerId);
+        _periodicTimerId = null;
+    }
+}
+
+// =============================================================================
 // Starter preset distribution — replaces the legacy curated_defaults.json
 // pick-only seed with a full snapshot file shipped at web/starter_preset.json.
 // On a fresh install the seeder copies it into the user's snapshot library

@@ -30,6 +30,7 @@ import {
     WORKFLOWS_DEFAULTS_URL,
     compareNames,
     toast,
+    criticalToast,
 } from "./constants.js";
 
 let workflowsCache = { directories: {} };
@@ -176,7 +177,16 @@ async function persistWorkflowsToServer(store) {
 export async function loadWorkflowsStore() {
     const fromServer = await fetchWorkflowsFromServer();
     if (fromServer === SERVER_FILE_CORRUPT) {
-        toast("Workflow file on /userdata is unreadable. Refusing to auto-recover; check console.");
+        // Corrupt /userdata file is a recovery situation — the user almost
+        // certainly thinks their data is gone. Sticky toast forces explicit
+        // acknowledgment and tells them where to look.
+        criticalToast(
+            "Workflow file on /userdata is unreadable (parse error). The " +
+            "file is preserved on disk — refusing to auto-recover so you " +
+            "can manually inspect / repair it before any save overwrites " +
+            "the bad blob. Check the browser console for the parse error " +
+            "and the file at /userdata/" + WORKFLOWS_USERDATA_PATH + "."
+        );
         workflowsCache = { directories: {} };
         return { corrupt: true };
     }
@@ -203,13 +213,25 @@ export async function loadWorkflowsStore() {
     // Reconciliation: /userdata loaded successfully but a stale fallback blob
     // from an earlier outage still exists. We don't auto-merge (risk of
     // clobbering) but we surface it visibly so the user knows where to recover.
-    if (localStorage.getItem(WORKFLOWS_FALLBACK_KEY)) {
+    // Sticky critical toast — the previous 4.5s informational toast was easy
+    // to miss; if the user's evening work landed in this fallback, the auto-
+    // dismissing toast is the difference between recovery and silent loss.
+    // Includes a Copy button that hands them the fallback JSON directly so
+    // they can paste it into a snapshot file or compare against /userdata.
+    const fallbackBlob = localStorage.getItem(WORKFLOWS_FALLBACK_KEY);
+    if (fallbackBlob) {
         console.warn(
             `[Koolook] /userdata loaded, but a stale localStorage fallback exists ` +
             `at "${WORKFLOWS_FALLBACK_KEY}". If workflows you saved during a previous ` +
             `outage are missing, recover from there before clearing.`
         );
-        toast(`Old offline workflow data found in localStorage["${WORKFLOWS_FALLBACK_KEY}"]. See console to recover.`, 4500);
+        criticalToast(
+            "Offline workflow data found in browser localStorage from a " +
+            "previous /userdata outage. If workflows you saved earlier are " +
+            "missing now, click Copy details to recover the offline JSON " +
+            "(paste into a snapshot or compare against /userdata).",
+            { copyText: fallbackBlob }
+        );
     }
     return { corrupt: false };
 }
@@ -217,11 +239,29 @@ export async function loadWorkflowsStore() {
 // =============================================================================
 // Transaction layer (commit + rollback + persistMutation)
 // =============================================================================
+// Track whether we've already raised the "fallback-only" sticky toast for
+// the current outage. Without this, every mutation during a /userdata outage
+// would stack another red banner on screen — quickly unusable. We re-arm
+// the warning only after a successful "server" write proves /userdata is
+// back, so a SECOND outage in the same session still alerts the user.
+let _fallbackWarnedThisOutage = false;
+
 async function commit() {
     // Both "server" and "fallback" are user-visible successes — the panel
     // shows the change either way. Only `false` (both backends rejected)
     // indicates a real loss requiring rollback at the call site.
     const result = await persistWorkflowsToServer(workflowsCache);
+    if (result === "fallback" && !_fallbackWarnedThisOutage) {
+        _fallbackWarnedThisOutage = true;
+        criticalToast(
+            "Workflow saved to browser-local fallback only — /userdata server " +
+            "unreachable. Data persists per-browser until the server is back. " +
+            "DO NOT clear browser data until you've confirmed a server save."
+        );
+    } else if (result === "server" && _fallbackWarnedThisOutage) {
+        // Server is back — re-arm the warning so a future outage will surface.
+        _fallbackWarnedThisOutage = false;
+    }
     if (result) notifyWorkflowsChanged();
     return result !== false;
 }
@@ -254,8 +294,22 @@ export async function persistMutation({ mutate, onSuccess, onNoOp, persistFailed
         if (onSuccess) onSuccess(result);
         return true;
     }
+    // Capture the unsaved state BEFORE rollback so a recovery copy ends up
+    // in the user's clipboard via the critical toast — full backend failure
+    // is rare but devastating, and the brief moment between "user clicked
+    // save" and "rollback applied" is the only chance to surface what was
+    // lost. Pretty-printed for human readability since the user might paste
+    // it into a snapshot file or text editor.
+    const unsavedJson = JSON.stringify(workflowsCache, null, 2);
     restore();
-    toast(persistFailedMessage || "Save failed — change reverted. See console.");
+    criticalToast(
+        persistFailedMessage ||
+            "Workflow save failed — both /userdata server AND browser " +
+            "localStorage rejected the write. Your last change has been " +
+            "reverted. Click Copy details to save a recovery JSON to your " +
+            "clipboard before retrying.",
+        { copyText: unsavedJson }
+    );
     return false;
 }
 

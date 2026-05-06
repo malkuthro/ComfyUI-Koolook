@@ -16,7 +16,10 @@ import {
     TAB_TOOLTIP,
     TAB_ICON,
 } from "./sidebar/constants.js";
-import { seedStarterPresetIfNeeded } from "./sidebar/snapshot.js";
+import {
+    seedStarterPresetIfNeeded,
+    startPeriodicAutosave,
+} from "./sidebar/snapshot.js";
 import {
     loadWorkflowsStore,
     seedWorkflowDefaultsIfNeeded,
@@ -51,5 +54,12 @@ app.registerExtension({
             render: (el) => renderPanel(el),
         });
         patchCanvasMenu();
+        // Periodic defensive auto-save — fires every 5 minutes if state has
+        // changed since the last successful auto-save. Keeps last 5 in the
+        // snapshot library as `_autosave_periodic_<iso>.json`. Started AFTER
+        // sidebar registration so it doesn't compete with first-render work,
+        // and uses an internal grace period before the first tick so the
+        // load/seed flows above settle first.
+        startPeriodicAutosave();
     },
 });

@@ -6,7 +6,7 @@
 // click / Cancel / OK dismissal paths and ties the document-level keydown
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
-import { compareNames, toast } from "./constants.js";
+import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from "./constants.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
 import {
     detectManager,
@@ -101,8 +101,23 @@ function modalLabel(text) {
     return lbl;
 }
 
-export function showInputModal({ title, label, defaultValue, placeholder, confirmLabel, onSubmit }) {
+export function showInputModal({ title, label, defaultValue, placeholder, confirmLabel, onSubmit, subtitle }) {
     const body = document.createElement("div");
+
+    // Optional subtitle — string (rendered in the standard pathline style) or
+    // a pre-built HTMLElement (caller controls styling AND can mutate after
+    // the modal is open, e.g. to fill in an asynchronously-fetched library
+    // path). Sits between title and label so the user sees context first.
+    if (subtitle) {
+        if (typeof subtitle === "string") {
+            const sub = document.createElement("div");
+            sub.className = "koolook-modal-pathline";
+            sub.textContent = subtitle;
+            body.appendChild(sub);
+        } else {
+            body.appendChild(subtitle);
+        }
+    }
 
     body.appendChild(modalLabel(label || "Name"));
 
@@ -924,8 +939,23 @@ function formatPreviewMeta(p) {
 // the Save flow when there's a current preset to overwrite. `showConfirmModal`
 // is 2-button only; we'd need to bend it. Cleaner to assemble directly with
 // `makeModalShell`.
-function showThreeWayDialog({ title, message, primaryLabel, secondaryLabel, cancelLabel, onPrimary, onSecondary }) {
+function showThreeWayDialog({ title, message, primaryLabel, secondaryLabel, cancelLabel, onPrimary, onSecondary, subtitle }) {
     const body = document.createElement("div");
+
+    // Optional subtitle — same contract as showInputModal. Sits above the
+    // message so library path / context is visible before the user scans
+    // the action question.
+    if (subtitle) {
+        if (typeof subtitle === "string") {
+            const sub = document.createElement("div");
+            sub.className = "koolook-modal-pathline";
+            sub.textContent = subtitle;
+            body.appendChild(sub);
+        } else {
+            body.appendChild(subtitle);
+        }
+    }
+
     const msg = document.createElement("div");
     msg.className = "koolook-modal-message";
     msg.textContent = message;
@@ -972,9 +1002,40 @@ export function showSaveSnapshotDialog({
     writePreset,
     gatherSnapshot,
     sanitizeName,
+    getLibraryInfo,
     onToast,
 }) {
     const toast = onToast || (() => {});
+
+    // Build a reactive library-path subtitle element. Both the input modal
+    // (Save as new…) and the three-way overwrite dialog reuse the same node
+    // so the user sees consistent context regardless of which path they
+    // entered the Save flow through. Async-populated to avoid blocking the
+    // modal open on a server round-trip — the user sees "(loading…)" briefly,
+    // then the resolved path.
+    function buildPathSubtitle() {
+        const el = document.createElement("div");
+        el.className = "koolook-modal-pathline";
+        el.textContent = "Library: (loading…)";
+        if (typeof getLibraryInfo === "function") {
+            getLibraryInfo().then((info) => {
+                if (info && typeof info.path === "string" && info.path) {
+                    el.textContent = `Library: ${formatLibraryPathBreadcrumb(info.path)}`;
+                    // Full path on hover — the breadcrumb truncates aggressively
+                    // to keep the dialog one line wide, so the tooltip is the
+                    // recovery path for "wait, where exactly?"
+                    el.title = info.path;
+                } else {
+                    el.textContent = "Library path unavailable.";
+                }
+            }).catch(() => {
+                el.textContent = "Library path unavailable.";
+            });
+        } else {
+            el.textContent = "";
+        }
+        return el;
+    }
 
     async function doSave(name, { confirmOverwrite }) {
         const sanitized = sanitizeName(name);
@@ -1032,6 +1093,7 @@ export function showSaveSnapshotDialog({
             defaultValue: defaultName,
             placeholder: "e.g. Wan video kit",
             confirmLabel: "Save",
+            subtitle: buildPathSubtitle(),
             onSubmit: (typed) => doSave(typed, { confirmOverwrite: true }),
         });
     }
@@ -1044,6 +1106,7 @@ export function showSaveSnapshotDialog({
             primaryLabel: "Save",
             secondaryLabel: "Save as new…",
             cancelLabel: "Cancel",
+            subtitle: buildPathSubtitle(),
             onPrimary: () => doSave(current, { confirmOverwrite: false }),
             onSecondary: () => promptForName(`${current} (copy)`),
         });
@@ -1070,6 +1133,7 @@ export function showLoadSnapshotDialog({
     setCurrentPresetName,
     getCurrentPresetName,
     getLibraryInfo,
+    writePreLoadAutosave,
     onToast,
 }) {
     const toast = onToast || (() => {});
@@ -1145,11 +1209,33 @@ export function showLoadSnapshotDialog({
             message:
                 `Loading "${preview.displayName}" will replace your current ` +
                 `picks and workflows with the snapshot's contents (` +
-                `${formatPreviewMeta(preview)}). This cannot be undone.`,
+                `${formatPreviewMeta(preview)}). A pre-load auto-save of your ` +
+                `current state will be written first as a recovery point.`,
             confirmLabel: "Load preset",
             danger: true,
             onConfirm: async () => {
                 try {
+                    // Defensive auto-save BEFORE any destructive write — see
+                    // `writePreLoadAutosave` rationale in snapshot.js. If the
+                    // backup fails, abort the Load entirely; landing in a
+                    // "Load destroyed my state with no backup" world is
+                    // exactly what this whole code path exists to prevent.
+                    let backupName = null;
+                    if (typeof writePreLoadAutosave === "function") {
+                        try {
+                            backupName = await writePreLoadAutosave(preview.displayName);
+                        } catch (e) {
+                            console.error("[Koolook] pre-load auto-save failed:", e);
+                            close();
+                            criticalToast(
+                                `Could not write pre-load auto-save: ${e.message}. ` +
+                                `Load aborted to protect your current state. Fix ` +
+                                `the library access issue (Settings → Library path) ` +
+                                `and retry.`
+                            );
+                            return;
+                        }
+                    }
                     const snap = await readPreset(preview.fileName);
                     const { picksOk, workflowsOk } = await applySnapshot(snap);
                     close();
@@ -1163,7 +1249,8 @@ export function showLoadSnapshotDialog({
                     // fresh name prompt.
                     if (picksOk && workflowsOk) {
                         setCurrentPresetName(preview.fileName);
-                        toast(`Loaded preset "${preview.displayName}".`);
+                        const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
+                        toast(`Loaded preset "${preview.displayName}"${backupSuffix}.`);
                     } else if (picksOk || workflowsOk) {
                         setCurrentPresetName(null);
                         toast(
