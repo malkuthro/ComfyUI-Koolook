@@ -28,6 +28,7 @@ import {
     WORKFLOWS_SEEDED_KEY,
     WORKFLOWS_CHANGED_EVENT,
     WORKFLOWS_DEFAULTS_URL,
+    MODULE_TAG,
     compareNames,
     toast,
     criticalToast,
@@ -92,7 +93,8 @@ function normalizeDirNode(node, stats) {
                 tags.push(t);
             }
         }
-        cleanedWfs[wfName] = { ...wf, archived: wf.archived === true, tags };
+        const module = wf.module === true || tags.includes(MODULE_TAG);
+        cleanedWfs[wfName] = { ...wf, archived: wf.archived === true, module, tags };
     }
     // Recurse into subdirectories. Pre-v0.3 nodes don't have a `directories`
     // field — give them an empty one so the rest of the code can assume it
@@ -518,7 +520,7 @@ export function deleteDirectory(parentPath, name) {
 // =============================================================================
 // Workflow operations (path-addressed)
 // =============================================================================
-export function saveWorkflowEntry(path, wfName, graphData) {
+export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
     const dir = ensureDirectoryAtPath(path);
     if (!dir) return false;
     let archivedAs = null;
@@ -539,6 +541,7 @@ export function saveWorkflowEntry(path, wfName, graphData) {
     dir.workflows[wfName] = {
         savedAt: new Date().toISOString(),
         graph: graphData,
+        module: options.module === true,
     };
     return { archivedAs };
 }
@@ -596,6 +599,14 @@ export function getWorkflowGraph(path, wfName) {
     return dir.workflows[wfName].graph || null;
 }
 
+export function isWorkflowModule(path, wfName) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows[wfName]) return false;
+    const wf = dir.workflows[wfName];
+    const tags = Array.isArray(wf.tags) ? wf.tags : [];
+    return wf.module === true || tags.includes(MODULE_TAG);
+}
+
 // =============================================================================
 // Per-workflow tag operations. Tags are insertion-ordered string[] on each
 // workflow entry. Comparison is case-sensitive: "AI" and "ai" are distinct.
@@ -619,6 +630,7 @@ export function addTag(path, wfName, tag) {
     if (!Array.isArray(wf.tags)) wf.tags = [];
     if (wf.tags.includes(tag)) return false;
     wf.tags.push(tag);
+    if (tag === MODULE_TAG) wf.module = true;
     return true;
 }
 
@@ -630,6 +642,7 @@ export function removeTag(path, wfName, tag) {
     const idx = wf.tags.indexOf(tag);
     if (idx < 0) return false;
     wf.tags.splice(idx, 1);
+    if (tag === MODULE_TAG) wf.module = false;
     return true;
 }
 
