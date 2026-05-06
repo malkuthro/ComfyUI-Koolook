@@ -37,28 +37,54 @@
 
 ## `dev-sync` — copy runtime files into a live ComfyUI install
 
-For fast iteration on a fix that doesn't deserve its own version bump,
-copy runtime files straight into a live ComfyUI custom_nodes folder
-instead of cutting a release.
+Fast iteration without cutting a release. Copies runtime files to
+`KOLOOK_COMFYUI_DEV_PATH` (set in `.env`; see `.env.example`).
 
-- Set `KOLOOK_COMFYUI_DEV_PATH` in `.env` (see `.env.example`). The path
-  must point at the maintainer's `custom_nodes/<koolook-folder>/`. It is
-  intentionally kept out of the committed tree.
-- Run `python scripts/sync_to_dev.py` (or `--dry-run` to preview).
-- Restart ComfyUI to load the new code.
+- `python scripts/sync_to_dev.py` — brief two-line summary; use `-v` for per-file output
+- `--dry-run` — preview without touching the target
 
-**Trigger phrase: `dev-sync`** (or any clear synonym like "copy those
-files", "sync dev", "push to dev"). When the maintainer says it during
-a session, the agent runs `scripts/sync_to_dev.py` and reports what was
-copied. The script errors out cleanly when the env var is unset; never
-guess a path.
+**Trigger phrase: `dev-sync`** (or "copy those files", "sync dev", "push to dev").
+The agent runs the script and reports completion. The script errors
+cleanly when the env var is unset; never guess a path.
 
-This is a development convenience only — anything worth shipping still
-goes through the normal PR + release flow described below.
+**User-initiated ONLY — never automatic.** Dev-sync overwrites the
+maintainer's live ComfyUI install. Do NOT trigger it as part of any
+automated flow:
 
-The broader iteration pattern (trigger phrases, what survives across
-re-syncs vs what doesn't, push/publish gates) is captured in
-[`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
+  • after a commit
+  • after a PR merge or `/ship-pr`
+  • at session end / wrap-up
+  • on hook completion or "task complete" cleanup
+  • from any agent skill that doesn't explicitly require it
+
+The maintainer typically runs multiple parallel sessions across worktrees;
+an unsolicited sync from one session silently overwrites what another is
+reviewing in ComfyUI, and the wrong code gets reviewed. Wait for the
+explicit trigger phrase. If unsure whether the user wants a sync, ASK —
+don't sync.
+
+**Chat report format** — two lines, copied verbatim from the script's
+own header line:
+
+```
+<short-sha> - <worktree-name>
+<≤10 word summary of the PR / change scope to review>
+```
+
+Line 1 is the script's first output line — never invent it, just relay.
+Line 2 is the *scope of what to review* — the change in this build, ≤10
+words, no list of all files. Examples:
+
+```
+8dfb966 - dreamy-jones-40655e
+Quick Save + status dot + recovery section
+
+a1b2c3d - feat-install-missing
+install-missing button on Nodes row
+```
+
+Broader iteration pattern (push/publish gates, what survives re-syncs)
+is in [`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
 
 ## Kforge Labs sidebar — starter preset distribution
 

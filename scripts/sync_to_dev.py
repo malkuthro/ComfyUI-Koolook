@@ -3,6 +3,14 @@
 Copy runtime-relevant Koolook files into a live ComfyUI custom_nodes
 folder so a fix can be tested without a tag-and-publish round-trip.
 
+USER-INITIATED ONLY. This script overwrites a live ComfyUI install.
+Agents must NEVER run it automatically — not after a commit, not after
+a PR merge or ship-pr, not at session end, not from any "task complete"
+cleanup. The maintainer typically has multiple parallel sessions across
+worktrees, and an unsolicited sync from one silently destroys what
+another is reviewing. See project CLAUDE.md `dev-sync` section for the
+full policy. Run only on the explicit user trigger phrase.
+
 The target path is read from the KOLOOK_COMFYUI_DEV_PATH environment
 variable (loaded from `.env` at the repo root if present). The variable
 is intentionally kept out of the committed tree — see `.env.example`.
@@ -37,10 +45,58 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _get_short_sha() -> str | None:
+    """Best-effort short commit SHA of the source tree being synced.
+    Returns ``None`` if git isn't reachable or the call fails — the
+    summary line just omits the SHA in that case.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if r.returncode == 0:
+            sha = r.stdout.strip()
+            if sha:
+                return sha
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _get_worktree_name() -> str:
+    """Returns the basename of the source tree being synced — useful when
+    the maintainer is running multiple parallel ComfyUI installs and
+    needs to know which checkout fed the most recent sync.
+
+    For a worktree at ``.../ComfyUI-Koolook/.claude/worktrees/foo`` this
+    returns ``foo``; for the main repo at ``.../ComfyUI-Koolook`` it
+    returns ``ComfyUI-Koolook``. Either is informative enough to
+    disambiguate."""
+    return REPO_ROOT.name
+
+
+def _build_line() -> str:
+    """Composes the two-piece header line consumed by the chat-report
+    convention defined in project CLAUDE.md:
+
+        <short-sha> - <worktree-name>
+
+    SHA falls back to ``unknown`` if git is unreachable (we always need
+    SOMETHING in slot 1 — the line shape is part of the convention).
+    Worktree name comes from ``REPO_ROOT.name`` and is always present."""
+    sha = _get_short_sha() or "unknown"
+    return f"{sha} - {_get_worktree_name()}"
 
 # Files / dirs ComfyUI actually loads at runtime. Anything outside this
 # list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
@@ -87,7 +143,7 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
-def sync(target: Path, dry_run: bool) -> int:
+def sync(target: Path, dry_run: bool, verbose: bool) -> int:
     copied = 0
     for rel in RUNTIME_PATHS:
         src = REPO_ROOT / rel
@@ -95,7 +151,8 @@ def sync(target: Path, dry_run: bool) -> int:
             continue
         dst = target / rel
         if dry_run:
-            print(f"would copy: {rel}")
+            if verbose:
+                print(f"would copy: {rel}")
             copied += 1
             continue
         if src.is_dir():
@@ -105,7 +162,8 @@ def sync(target: Path, dry_run: bool) -> int:
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-        print(f"copied: {rel}")
+        if verbose:
+            print(f"copied: {rel}")
         copied += 1
     return copied
 
@@ -178,6 +236,15 @@ def main() -> int:
             "in place. Use on first-run only."
         ),
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help=(
+            "Print each file/dir as it's copied. Default output is just "
+            "the one-line build summary."
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -196,11 +263,14 @@ def main() -> int:
     if err is not None:
         return err
 
-    n = sync(target, dry_run=args.dry_run)
+    n = sync(target, dry_run=args.dry_run, verbose=args.verbose)
     verb = "would sync" if args.dry_run else "synced"
-    print(f"\n{verb} {n} entries -> {target}")
-    if not args.dry_run:
-        print("restart ComfyUI to pick up changes.")
+    # Two-line summary — see project CLAUDE.md `dev-sync` section for the
+    # chat-report convention that consumes this output. Header first so
+    # the maintainer's eye lands on the build identifier before the
+    # mechanical sync details.
+    print(_build_line())
+    print(f"{verb} {n} entries -> {target}")
     return 0
 
 
