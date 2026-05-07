@@ -590,28 +590,32 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         const packMisses = missingTypes.filter(t => !SUBGRAPH_UUID_RE.test(t));
         let message;
         if (packMisses.length === 0) {
-            // Pure subgraph case — only definitions are missing.
+            // Pure subgraph case — only definitions are missing. Skip the
+            // "why" (subgraphs need registration after a fresh session); jump
+            // straight to the gesture. If it wears off after a restart the
+            // toast just re-fires and the user does the same gesture again —
+            // no pre-emptive edge-case warning needed in the toast itself.
             message =
-                `Can't Insert "${wfName}" yet — it needs to be Loaded once first this session. ` +
-                `Right-click → Load it, then left-click Insert will work.`;
+                `Can't Insert "${wfName}" yet — Right-click → Load it once, ` +
+                `then left-click Insert will work.`;
         } else if (subgraphMisses.length === 0) {
             // Pure pack case — only registered-pack types are missing.
             const sample = packMisses.slice(0, 3).join(", ");
             const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
             message =
                 `Can't Insert "${wfName}" — missing node${packMisses.length === 1 ? "" : "s"}: ` +
-                `${sample}${more}. Install the required pack(s) first, then retry.`;
+                `${sample}${more}. Install the pack(s) first, then retry.`;
         } else {
             // Mixed case — both classes missing. Numbered two-step instruction
-            // so the user knows the order; the second step won't work without
-            // the first (the pack node has to exist before Load can register
-            // the embedded subgraph that depends on it… or vice versa).
+            // so the user knows the order; mentioning both upfront preempts a
+            // second "still missing" toast after the user installs the pack
+            // and retries Insert without the Load step.
             const sample = packMisses.slice(0, 3).join(", ");
             const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
             message =
-                `Can't Insert "${wfName}" yet — two steps: ` +
-                `(1) install missing pack(s) for ${sample}${more}, then ` +
-                `(2) right-click → Load it once. After that, left-click Insert will work.`;
+                `Can't Insert "${wfName}" yet — ` +
+                `(1) install pack(s) for ${sample}${more}, ` +
+                `(2) Right-click → Load it once. Then left-click Insert will work.`;
         }
         toast(message, 6500);
         console.warn(
