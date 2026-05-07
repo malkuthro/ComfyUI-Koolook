@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-labelledby="title desc">
+  <title id="title">Search and tags recipe</title>
+  <desc id="desc">Annotated mock screenshot showing how search filters nodes, workflows, and tags.</desc>
+  <rect width="900" height="600" fill="#131315"/>
+  <g font-family="Arial, sans-serif">
+    <rect x="62" y="58" width="312" height="486" rx="18" fill="#151515" stroke="#302f2f"/>
+    <text x="92" y="100" fill="#f9fafb" font-size="22" font-weight="700">Kforge Labs</text>
+    <rect x="92" y="134" width="252" height="44" rx="9" fill="#0e0e0e" stroke="#4268ba" stroke-width="3"/>
+    <text x="116" y="162" fill="#f9fafb" font-size="16">depth</text>
+    <circle cx="316" cy="156" r="12" fill="#4268ba"/>
+    <text x="310" y="162" fill="#0e0e0e" font-size="14" font-weight="700">?</text>
+    <text x="92" y="224" fill="#f9fafb" font-size="18" font-weight="700">Nodes</text>
+    <rect x="92" y="246" width="252" height="42" rx="8" fill="#162556" stroke="#4268ba"/>
+    <text x="116" y="273" fill="#f9fafb" font-size="15">Depth Anything Preprocessor</text>
+    <text x="92" y="334" fill="#f9fafb" font-size="18" font-weight="700">Workflows</text>
+    <rect x="92" y="356" width="252" height="42" rx="8" fill="#162556" stroke="#4a8058"/>
+    <text x="116" y="383" fill="#f9fafb" font-size="15">Depth module</text>
+    <text x="92" y="444" fill="#f9fafb" font-size="18" font-weight="700">Tags</text>
+    <rect x="92" y="466" width="252" height="42" rx="8" fill="#162556" stroke="#c9944b"/>
+    <text x="116" y="493" fill="#f9fafb" font-size="15">Depth</text>
+    <path d="M344 156 H536" stroke="#4268ba" stroke-width="4"/>
+    <path d="M536 156 l-18 -12 v24 z" fill="#4268ba"/>
+    <rect x="562" y="82" width="276" height="150" rx="16" fill="#1a1a1f" stroke="#4268ba"/>
+    <text x="590" y="126" fill="#f9fafb" font-size="24" font-weight="700">One search field</text>
+    <text x="590" y="166" fill="#707982" font-size="17">Filters nodes, workflows,</text>
+    <text x="590" y="192" fill="#707982" font-size="17">directories, tags, and results</text>
+    <text x="590" y="218" fill="#707982" font-size="17">inside matching tag folders.</text>
+    <path d="M344 268 H536" stroke="#4268ba" stroke-width="4"/>
+    <path d="M536 268 l-18 -12 v24 z" fill="#4268ba"/>
+    <rect x="562" y="258" width="276" height="116" rx="16" fill="#1a1a1f" stroke="#4268ba"/>
+    <text x="590" y="302" fill="#f9fafb" font-size="24" font-weight="700">Names</text>
+    <text x="590" y="342" fill="#707982" font-size="17">Type part of a node or workflow</text>
+    <text x="590" y="368" fill="#707982" font-size="17">name to collapse the list.</text>
+    <path d="M344 488 H536" stroke="#c9944b" stroke-width="4"/>
+    <path d="M536 488 l-18 -12 v24 z" fill="#c9944b"/>
+    <rect x="562" y="412" width="276" height="126" rx="16" fill="#1a1a1f" stroke="#c9944b"/>
+    <text x="590" y="456" fill="#f9fafb" font-size="24" font-weight="700">Tags</text>
+    <text x="590" y="496" fill="#707982" font-size="17">Tag folders keep their case:</text>
+    <text x="590" y="522" fill="#707982" font-size="17">Depth and depth are separate.</text>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="680" viewBox="0 0 900 680" role="img" aria-labelledby="title desc">
+  <title id="title">Project workflow</title>
+  <desc id="desc">Six step workflow for using snapshots and modules.</desc>
+  <rect width="900" height="680" fill="#151515"/>
+  <g font-family="Arial, sans-serif">
+    <text x="56" y="62" fill="#4268ba" font-size="15" font-weight="700" letter-spacing="2">PROJECT RHYTHM</text>
+    <text x="56" y="106" fill="#f9fafb" font-size="32" font-weight="700">Use one snapshot per project context.</text>
+    <g transform="translate(56 150)" fill="#707982" font-size="18">
+      <circle cx="26" cy="30" r="24" fill="#4268ba"/><text x="20" y="37" fill="#0e0e0e" font-weight="700">1</text><text x="74" y="37" fill="#f9fafb">Load or create Client_Shot010.</text>
+      <circle cx="26" cy="110" r="24" fill="#4a8058"/><text x="20" y="117" fill="#0e0e0e" font-weight="700">2</text><text x="74" y="117" fill="#f9fafb">Add favorite nodes while building.</text>
+      <circle cx="26" cy="190" r="24" fill="#c9944b"/><text x="20" y="197" fill="#0e0e0e" font-weight="700">3</text><text x="74" y="197" fill="#f9fafb">Save reusable clusters as modules.</text>
+      <circle cx="26" cy="270" r="24" fill="#452e83"/><text x="20" y="277" fill="#0e0e0e" font-weight="700">4</text><text x="74" y="277" fill="#f9fafb">Quick Save during the session.</text>
+      <circle cx="26" cy="350" r="24" fill="#a04040"/><text x="20" y="357" fill="#0e0e0e" font-weight="700">5</text><text x="74" y="357" fill="#f9fafb">Save named snapshots by shot or task.</text>
+      <circle cx="26" cy="430" r="24" fill="#4a8058"/><text x="20" y="437" fill="#0e0e0e" font-weight="700">6</text><text x="74" y="437" fill="#f9fafb">Load the right kit when you return.</text>
+      <path d="M26 55 V85 M26 135 V165 M26 215 V245 M26 295 V325 M26 375 V405" stroke="#302f2f" stroke-width="4"/>
+    </g>
+    <rect x="602" y="184" width="226" height="326" rx="16" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="628" y="228" fill="#f9fafb" font-size="22" font-weight="700">Example names</text>
+    <text x="628" y="276" fill="#707982" font-size="17">Client_Shot010</text>
+    <text x="628" y="314" fill="#707982" font-size="17">ShowA_Depth</text>
+    <text x="628" y="352" fill="#707982" font-size="17">Lookdev_HDR</text>
+    <text x="628" y="390" fill="#707982" font-size="17">Personal_Wan22</text>
+    <rect x="628" y="430" width="150" height="38" rx="8" fill="#162556" stroke="#4268ba"/>
+    <text x="650" y="455" fill="#f9fafb" font-size="16" font-weight="700">Quick Save</text>
+  </g>
+</svg>

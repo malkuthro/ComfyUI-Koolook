@@ -22,6 +22,8 @@ attribution is visible without needing a fork-shaped directory tree.
 
 Pages here cover ideas that span more than one node:
 
+- [Kforge Labs sidebar guide](../../web/guide/index.html) — visual onboarding for
+  Snapshots, favorite nodes, saved workflows, reusable modules, tags, and recovery.
 - [VAE encode/decode pairing](nodes/radiance_koolook_v2_3_3/encode_decode_pairing.md) — which
   encoder fields must match the decoder for a clean roundtrip, with
   worked examples for SDR / HDR / cinema-log / video workflows.

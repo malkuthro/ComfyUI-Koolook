@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-labelledby="title desc">
+  <title id="title">Load snapshot recipe</title>
+  <desc id="desc">Annotated mock screenshot for loading a snapshot.</desc>
+  <rect width="900" height="600" fill="#131315"/>
+  <g font-family="Arial, sans-serif">
+    <rect x="66" y="72" width="280" height="456" rx="18" fill="#151515" stroke="#302f2f"/>
+    <text x="92" y="114" fill="#f9fafb" font-size="22" font-weight="700">Kforge Labs</text>
+    <circle cx="112" cy="162" r="18" fill="#162556" stroke="#4a8058" stroke-width="3"/>
+    <text x="105" y="169" fill="#f9fafb" font-size="18" font-weight="700">L</text>
+    <rect x="144" y="142" width="176" height="40" rx="8" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="164" y="167" fill="#707982" font-size="14">Snapshot row</text>
+    <rect x="92" y="236" width="228" height="44" rx="8" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="118" y="263" fill="#707982" font-size="14">Search...</text>
+    <rect x="92" y="318" width="228" height="54" rx="8" fill="#1a1a1f"/>
+    <text x="114" y="352" fill="#f9fafb" font-size="16" font-weight="700">Nodes</text>
+    <path d="M132 162 H476" stroke="#4a8058" stroke-width="4"/>
+    <path d="M476 162 l-18 -12 v24 z" fill="#4a8058"/>
+    <rect x="500" y="104" width="310" height="348" rx="16" fill="#1a1a1f" stroke="#4a8058"/>
+    <text x="530" y="150" fill="#f9fafb" font-size="26" font-weight="700">Load Snapshot</text>
+    <rect x="530" y="184" width="250" height="54" rx="9" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="552" y="218" fill="#f9fafb" font-size="17">Client_Shot010</text>
+    <rect x="530" y="252" width="250" height="54" rx="9" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="552" y="286" fill="#f9fafb" font-size="17">Lookdev_HDR</text>
+    <rect x="530" y="320" width="250" height="54" rx="9" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="552" y="354" fill="#f9fafb" font-size="17">_autosave_periodic...</text>
+    <text x="530" y="414" fill="#707982" font-size="17">Click a row to replace the current</text>
+    <text x="530" y="440" fill="#707982" font-size="17">sidebar state with that kit.</text>
+  </g>
+</svg>

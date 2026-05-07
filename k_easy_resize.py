@@ -52,15 +52,9 @@ class EasyResize:
     FUNCTION = "adjust_to_aspect"
     CATEGORY = "Koolook/Image"
     DESCRIPTION = """
-Adjusts the input image to a target resolution based on a base dimension (width or height),
-an aspect ratio (e.g., '16:9' for landscape, '9:16' for portrait), ensuring both dimensions
-are divisible by the specified value. Supports stretch or pad/crop modes for proportion control.
-Outputs the resized image, optional mask, and final width/height for VFX pipeline integration.
-Also outputs a solid color panel (canvas) of the target size using the specified panel_color_mode and optional custom panel_color.
-When selecting 'Custom' for pad_color_mode or panel_color_mode, enter the color in the corresponding field as comma-separated floats, e.g., '0.5, 0.5, 0.5' for gray.
-The 'composed_IMAGE' is the resized image composited onto the color panel using the mask (if provided; falls back to resized image if no mask).
-If 'invert_composed_MASK' is enabled, the composed_IMAGE will use an inverted mask for compositing (swapping the roles of image and panel).
-The 'inverted_MASK' is the inverted version of the mask (if provided).
+Resize an image to a target aspect ratio and model-friendly divisible size.
+Use stretch, letterbox, or pillarbox; optional masks can produce a composed
+image, inverted mask, color panel, and final/original size outputs.
 """
 
     def adjust_to_aspect(self, image, base_on, base_size, aspect_ratio, upscale_method, keep_proportion, pad_color_mode, crop_position, divisible_by, device, panel_color_mode, mask=None, pad_color="0, 0, 0", panel_color="0, 0, 0", invert_composed_MASK=False):

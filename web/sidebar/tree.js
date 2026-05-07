@@ -23,6 +23,7 @@ import {
     GROUP_MODE_KEY,
     GROUP_MODE_DEFAULT,
     MODULE_TAG,
+    GUIDE_URL,
     ensureStyle,
     toast,
     compareNames,
@@ -118,8 +119,6 @@ const SECTION_ID_WORKFLOWS = "workflows";
 const SECTION_ID_TAGS = "tags";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const HELP_URL = "https://github.com/malkuthro/ComfyUI-Koolook/tree/main/docs/user_guide";
-
 const TOOLBAR_ICONS = {
     loadSnapshot: { kind: "letter", text: "L" },
     saveSnapshot: { kind: "letter", text: "S" },
@@ -2452,8 +2451,19 @@ export function renderPanel(container) {
 
     toolsRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.help,
-        title: "Open Kforge Labs user guide",
-        onClick: () => window.open(HELP_URL, "_blank", "noopener,noreferrer"),
+        title: "Open the Kforge Labs visual guide",
+        onClick: () => {
+            const opened = window.open(GUIDE_URL, "_blank");
+            if (!opened) {
+                toast("Could not open the guide. Allow pop-ups for this page, then try again.");
+            } else {
+                try {
+                    opened.opener = null;
+                } catch (_e) {
+                    // Some browsers disallow touching the new tab handle.
+                }
+            }
+        },
     }));
 
     container.appendChild(toolsRow);

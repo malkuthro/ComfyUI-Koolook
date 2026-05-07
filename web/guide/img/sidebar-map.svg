@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Sidebar map</title>
+  <desc id="desc">Annotated mock screenshot of the Kforge Labs sidebar.</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" fill="#0e0e0e"/>
+  <rect x="68" y="52" width="376" height="656" rx="18" fill="#151515" stroke="#302f2f" filter="url(#shadow)"/>
+  <text x="96" y="94" fill="#f9fafb" font-family="Arial, sans-serif" font-size="24" font-weight="700">Kforge Labs</text>
+  <rect x="96" y="120" width="320" height="42" rx="8" fill="#0e0e0e" stroke="#302f2f"/>
+  <circle cx="116" cy="141" r="7" fill="#4a8058"/>
+  <text x="135" y="147" fill="#f9fafb" font-family="Arial, sans-serif" font-size="15">Client_Shot010</text>
+  <text x="270" y="147" fill="#707982" font-family="Arial, sans-serif" font-size="13">saved</text>
+  <rect x="96" y="178" width="320" height="38" rx="8" fill="#1a1a1f" stroke="#302f2f"/>
+  <text x="110" y="202" fill="#707982" font-family="Arial, sans-serif" font-size="12" font-weight="700">TOOLS</text>
+  <circle cx="258" cy="197" r="13" fill="#24242c"/>
+  <text x="254" y="202" fill="#f9fafb" font-family="Arial, sans-serif" font-size="14">i</text>
+  <rect x="96" y="232" width="320" height="38" rx="8" fill="#0e0e0e" stroke="#302f2f"/>
+  <text x="126" y="256" fill="#707982" font-family="Arial, sans-serif" font-size="14">Search nodes &amp; workflows...</text>
+  <g font-family="Arial, sans-serif" font-size="15">
+    <rect x="96" y="292" width="320" height="54" rx="8" fill="#1a1a1f"/>
+    <text x="118" y="326" fill="#f9fafb" font-weight="700">Nodes</text>
+    <text x="330" y="326" fill="#707982">Theme</text>
+    <rect x="116" y="364" width="280" height="42" rx="7" fill="#151515"/>
+    <text x="138" y="391" fill="#f9fafb">Image</text>
+    <rect x="116" y="414" width="280" height="42" rx="7" fill="#151515"/>
+    <text x="138" y="441" fill="#f9fafb">VAE</text>
+    <rect x="96" y="488" width="320" height="54" rx="8" fill="#1a1a1f"/>
+    <text x="118" y="522" fill="#f9fafb" font-weight="700">Workflows</text>
+    <rect x="116" y="560" width="280" height="42" rx="7" fill="#151515"/>
+    <text x="138" y="587" fill="#f9fafb">Depth module</text>
+    <rect x="96" y="626" width="320" height="54" rx="8" fill="#1a1a1f"/>
+    <text x="118" y="660" fill="#f9fafb" font-weight="700">Tags</text>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="18" fill="#f9fafb">
+    <path d="M454 142 H645" stroke="#4a8058" stroke-width="3"/>
+    <circle cx="454" cy="142" r="7" fill="#4a8058"/>
+    <text x="666" y="136" font-weight="700">Snapshot row</text>
+    <text x="666" y="164" fill="#707982" font-size="15">Load, Quick Save, Save, Settings.</text>
+    <path d="M454 197 H645" stroke="#4268ba" stroke-width="3"/>
+    <circle cx="454" cy="197" r="7" fill="#4268ba"/>
+    <text x="666" y="191" font-weight="700">Tools row</text>
+    <text x="666" y="219" fill="#707982" font-size="15">Maintenance plus the Help guide.</text>
+    <path d="M454 251 H645" stroke="#c9944b" stroke-width="3"/>
+    <circle cx="454" cy="251" r="7" fill="#c9944b"/>
+    <text x="666" y="245" font-weight="700">Search</text>
+    <text x="666" y="273" fill="#707982" font-size="15">Find nodes, workflows, and tags fast.</text>
+    <path d="M454 398 H645" stroke="#a04040" stroke-width="3"/>
+    <circle cx="454" cy="398" r="7" fill="#a04040"/>
+    <text x="666" y="392" font-weight="700">Nodes</text>
+    <text x="666" y="420" fill="#707982" font-size="15">Your favorite tools, grouped by theme or repo.</text>
+    <path d="M454 582 H645" stroke="#452e83" stroke-width="3"/>
+    <circle cx="454" cy="582" r="7" fill="#452e83"/>
+    <text x="666" y="576" font-weight="700">Workflows and modules</text>
+    <text x="666" y="604" fill="#707982" font-size="15">Load a canvas or insert a reusable cluster.</text>
+    <path d="M454 654 H645" stroke="#4a8058" stroke-width="3"/>
+    <circle cx="454" cy="654" r="7" fill="#4a8058"/>
+    <text x="666" y="648" font-weight="700">Tags</text>
+    <text x="666" y="676" fill="#707982" font-size="15">Find saved work by task or project role.</text>
+  </g>
+</svg>
