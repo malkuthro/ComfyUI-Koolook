@@ -1424,11 +1424,7 @@ export function showLoadSnapshotDialog({
     recoverySection.className = "koolook-recovery-section";
     const recoverySummary = document.createElement("summary");
     recoverySummary.className = "koolook-recovery-summary";
-    // Native `<details>` already renders a disclosure triangle on
-    // `<summary>`. Don't add a second arrow character here — the previous
-    // `▸ / ▾` text duplicated the native marker and the user saw two
-    // arrows side-by-side.
-    recoverySummary.textContent = "Recovery auto-saves";
+    recoverySummary.textContent = "▸ Recovery auto-saves (click to expand)";
     recoverySection.appendChild(recoverySummary);
     const recoveryList = document.createElement("div");
     recoveryList.className = "koolook-recovery-list";
@@ -1581,14 +1577,6 @@ export function showLoadSnapshotDialog({
                 groupHeader.appendChild(openBtn);
             }
             groupEl.appendChild(groupHeader);
-            // Wrap rows in the same `koolook-snapshot-list` container the
-            // library section uses so each group gets the same bordered-
-            // box treatment around its rows. Without this, the recovery
-            // rows render flat (no border, no rounded corners) and
-            // visually diverge from the Koolook_v03 row even though the
-            // row contents are identical.
-            const rowsList = document.createElement("div");
-            rowsList.className = "koolook-snapshot-list";
             for (const item of items) {
                 const row = document.createElement("div");
                 row.className = "koolook-snapshot-row";
@@ -1635,9 +1623,8 @@ export function showLoadSnapshotDialog({
                 actions.appendChild(delBtn);
                 row.appendChild(actions);
 
-                rowsList.appendChild(row);
+                groupEl.appendChild(row);
             }
-            groupEl.appendChild(rowsList);
             recoveryList.appendChild(groupEl);
         }
     }
@@ -1648,6 +1635,7 @@ export function showLoadSnapshotDialog({
     // for a regular preset.
     recoverySection.addEventListener("toggle", () => {
         if (!recoverySection.open) return;
+        recoverySummary.textContent = "▾ Recovery auto-saves";
         if (recoveryLoaded) return;
         recoveryLoaded = true;
         refreshRecovery();
