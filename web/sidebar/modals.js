@@ -951,6 +951,32 @@ function formatPreviewMeta(p) {
     return parts.join(" · ");
 }
 
+// Recovery-row variant that uses the file's mtime (Unix epoch seconds
+// from the server-side stat) instead of the snapshot's self-reported
+// `exportedAt`. Two reasons: (1) mtime survives out-of-band file copies
+// in Finder, while exportedAt is frozen at gather-time; (2) the user
+// asked specifically for "the time when the auto save was made" so they
+// can tell which row is newest. Renders a wall-clock local-time stamp
+// using the same locale as `formatPreviewMeta` for visual consistency.
+function formatAutosaveMeta(p) {
+    const parts = [];
+    parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
+    parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
+    if (typeof p.mtime === "number" && isFinite(p.mtime)) {
+        const d = new Date(p.mtime * 1000);
+        if (!isNaN(d.getTime())) {
+            const stamp = d.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+            });
+            parts.push(`saved ${stamp}`);
+        }
+    }
+    return parts.join(" · ");
+}
+
 function pathLeaf(path) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
     return parts.length ? parts[parts.length - 1] : String(path || "");
@@ -1179,15 +1205,46 @@ export function showLoadSnapshotDialog({
     writePreLoadAutosave,
     markStateSaved,
     listAutosaves,
+    revealPresetFolder,
     onToast,
 }) {
     const toast = onToast || (() => {});
     const body = document.createElement("div");
 
+    // Header row: library path on the left, "Open in file manager" button
+    // on the right. The button is the user's escape hatch for everything
+    // the in-UI Recovery list doesn't surface — file timestamps in the OS
+    // file manager, copy / move / inspect / open-with-text-editor, etc.
+    const pathRow = document.createElement("div");
+    pathRow.className = "koolook-load-library-row";
+    pathRow.style.display = "flex";
+    pathRow.style.alignItems = "flex-start";
+    pathRow.style.justifyContent = "space-between";
+    pathRow.style.gap = "8px";
     const pathLine = document.createElement("div");
     pathLine.className = "koolook-load-library-location";
+    pathLine.style.flex = "1";
+    pathLine.style.minWidth = "0";
     pathLine.textContent = "Library: (loading…)";
-    body.appendChild(pathLine);
+    pathRow.appendChild(pathLine);
+    if (typeof revealPresetFolder === "function") {
+        const openLibraryBtn = document.createElement("button");
+        openLibraryBtn.className = "koolook-modal-button";
+        openLibraryBtn.textContent = "📂 Open";
+        openLibraryBtn.title = "Open the snapshot library folder in your file manager";
+        openLibraryBtn.style.flex = "0 0 auto";
+        openLibraryBtn.addEventListener("click", async () => {
+            try {
+                const r = await revealPresetFolder();
+                toast(`Opened: ${r.path}`);
+            } catch (e) {
+                console.error("[Koolook] reveal failed:", e);
+                toast(`Could not open library folder: ${e.message}`);
+            }
+        });
+        pathRow.appendChild(openLibraryBtn);
+    }
+    body.appendChild(pathRow);
 
     const listWrap = document.createElement("div");
     body.appendChild(listWrap);
@@ -1474,9 +1531,37 @@ export function showLoadSnapshotDialog({
         for (const [subdir, items] of groups) {
             const groupEl = document.createElement("div");
             groupEl.className = "koolook-recovery-group";
+            // Subfolder header: name on the left, "📂 Open" button on the
+            // right. Lets the user open <library>/<subdir>/ directly in
+            // their OS file manager — they can then sort by mtime,
+            // diff snapshots in a text editor, or copy a specific
+            // pre_load_*.json out of band.
             const groupHeader = document.createElement("div");
             groupHeader.className = "koolook-recovery-group-header";
-            groupHeader.textContent = subdir;
+            groupHeader.style.display = "flex";
+            groupHeader.style.alignItems = "center";
+            groupHeader.style.justifyContent = "space-between";
+            groupHeader.style.gap = "6px";
+            const groupHeaderName = document.createElement("span");
+            groupHeaderName.textContent = subdir;
+            groupHeader.appendChild(groupHeaderName);
+            if (typeof revealPresetFolder === "function") {
+                const openBtn = document.createElement("button");
+                openBtn.className = "koolook-snapshot-row-btn";
+                openBtn.textContent = "📂 Open";
+                openBtn.title = `Open "${subdir}/" in your file manager`;
+                openBtn.addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    try {
+                        const r = await revealPresetFolder({ dir: subdir });
+                        toast(`Opened: ${r.path}`);
+                    } catch (err) {
+                        console.error("[Koolook] reveal failed:", err);
+                        toast(`Could not open "${subdir}/": ${err.message}`);
+                    }
+                });
+                groupHeader.appendChild(openBtn);
+            }
             groupEl.appendChild(groupHeader);
             for (const item of items) {
                 const row = document.createElement("div");
@@ -1493,12 +1578,22 @@ export function showLoadSnapshotDialog({
                 kindBadge.textContent = item.kind === "pre_load" ? "Pre-load" :
                                         item.kind === "periodic" ? "Periodic" : "Other";
                 name.appendChild(kindBadge);
-                name.appendChild(document.createTextNode(item.displayName));
+                // Show the bare filename (`pre_load_2026-05-07T14-32-…`,
+                // `periodic`) instead of the snapshot's self-reported
+                // displayName, which for autosaves is a redundant
+                // `Periodic auto-save · <subdir> · <iso>` string that
+                // pushes the timestamp off-screen on narrow modals.
+                name.appendChild(document.createTextNode(item.fileName));
                 info.appendChild(name);
 
                 const meta = document.createElement("div");
                 meta.className = "koolook-snapshot-row-meta";
-                meta.textContent = formatPreviewMeta(item);
+                // mtime is when the file was actually written — strictly
+                // more relevant for "which autosave is freshest" than the
+                // snapshot's self-reported `exportedAt` (the two match for
+                // autosaves anyway, but mtime is what survives an out-of-
+                // band file copy in Finder).
+                meta.textContent = formatAutosaveMeta(item);
                 info.appendChild(meta);
 
                 info.addEventListener("click", () => promptApplyAutosave(item));

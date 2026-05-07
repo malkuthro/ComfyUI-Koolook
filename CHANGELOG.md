@@ -101,6 +101,32 @@ The format is inspired by Keep a Changelog and SemVer.
   `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
   `constants.js`.
 
+### Added
+- **Recovery section deep-links to the file system + per-row save time.**
+  The Load dialog's Recovery auto-saves section now exposes everything
+  a power user needs to navigate the autosave subfolders directly:
+  - **`📂 Open` button at the top** of the Load dialog opens the
+    snapshot library folder in the OS file manager.
+  - **`📂 Open` button on each `<preset>_autosave` group header** opens
+    that specific subfolder, so the user lands on the exact recovery
+    files for that preset (with mtimes visible to Finder / Explorer
+    sort).
+  - **Per-row save time replaces "exported &lt;date&gt;".** Recovery
+    rows now show `saved May 7, 2:34 PM` derived from the file's mtime
+    — strictly more useful than the snapshot's self-reported
+    `exportedAt` for telling "which pre-load is freshest." Mtime also
+    survives out-of-band file copies in Finder.
+  - **Bare filename instead of redundant displayName.** Each row now
+    renders the actual filename (`pre_load_2026-05-07T14-32-…`,
+    `periodic`) instead of the noisy
+    `Periodic auto-save · <subdir> · <iso>` string that pushed the
+    timestamp off-screen.
+  - New server route `POST /koolook/presets/reveal[?dir=<subdir>]`
+    powers both buttons via the platform-appropriate file-manager
+    command (`open` on macOS, `explorer.exe` on Windows, `xdg-open`
+    on Linux). Path-traversal grounded at the library base via the
+    same `_resolve_target` check the file-write routes use.
+
 ### Fixed
 - **Atomic preset writes — server crash mid-save can no longer corrupt
   your snapshot library.** `POST /koolook/presets/file` now stages writes

@@ -609,6 +609,7 @@ const ROUTE_SETTINGS = "/koolook/presets/settings";
 const ROUTE_BROWSE = "/koolook/presets/browse";
 const ROUTE_BROWSE_NEW_FOLDER = "/koolook/presets/browse/new-folder";
 const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
+const ROUTE_REVEAL = "/koolook/presets/reveal";
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
 // response body (always available, carries aiohttp's `reason=` text),
@@ -912,6 +913,18 @@ export async function listAutosaves() {
         }
     }));
     return previews.filter((p) => p !== null);
+}
+
+// Open the preset library (or an autosave subfolder) in the OS file
+// manager. Returns the resolved server-side path on success — the caller
+// can surface it in a toast so the user has the literal path even when
+// the OS open call silently fails (rare, but the path text is enough to
+// paste into Finder / Explorer manually).
+export async function revealPresetFolder({ dir = "" } = {}) {
+    const dirParam = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+    const r = await fetch(`${ROUTE_REVEAL}${dirParam}`, { method: "POST" });
+    if (!r.ok) throw new Error(await readErrorReason(r));
+    return r.json();
 }
 
 // =============================================================================

@@ -27,6 +27,8 @@ import json
 import os
 import re
 import string
+import subprocess
+import sys
 from pathlib import Path
 
 from aiohttp import web
@@ -687,6 +689,43 @@ def register_routes(routes) -> None:
                 reason=f"Could not delete preset: {exc}"
             ) from exc
         return web.json_response({"ok": True, "name": name, "dir": subdir})
+
+    @routes.post("/koolook/presets/reveal")
+    async def reveal_preset_folder(request):
+        """Open the preset library (or an autosave subfolder) in the OS
+        file manager. Optional ``?dir=<subdir>`` deep-links to a
+        per-preset autosave folder so the Recovery section can drop the
+        user inside the right `<preset>_autosave/` directory.
+
+        Path-traversal is grounded at the configured library base via
+        ``_resolve_target``; subdir names go through ``_validate_dirname``.
+        Subprocess args are passed list-form (no shell), so a controlled
+        path can't trigger shell-metacharacter interpretation even if a
+        future check loosens the dirname charset.
+        """
+        base, _ = _configured_dir()
+        subdir_q = request.query.get("dir", "").strip()
+        if subdir_q:
+            _validate_dirname(subdir_q)
+            target_dir, _ = _resolve_target(base, subdir_q, "_listing.json")
+        else:
+            target_dir = base
+        if not target_dir.exists() or not target_dir.is_dir():
+            raise web.HTTPNotFound(
+                reason=f"Path does not exist on disk: {target_dir}"
+            )
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(target_dir)])
+            elif sys.platform == "win32":
+                subprocess.Popen(["explorer.exe", str(target_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(target_dir)])
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not open path in file manager: {exc}"
+            ) from exc
+        return web.json_response({"ok": True, "path": str(target_dir)})
 
 
 def install() -> bool:

@@ -102,6 +102,7 @@ import {
     markStateSaved,
     getSnapshotStatus,
     listAutosaves,
+    revealPresetFolder,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -2094,6 +2095,7 @@ export function renderPanel(container) {
         writePreLoadAutosave,
         markStateSaved,
         listAutosaves,
+        revealPresetFolder,
         onToast: toast,
     });
     const openSettingsDialog = () => showSnapshotSettingsDialog({
