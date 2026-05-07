@@ -636,7 +636,7 @@ function fileQuery(fileName, dir) {
 // success, `null` if the file isn't a valid snapshot. Failed reads are
 // filtered out by `listPresets` so the list shows only valid entries;
 // corrupt files surface in the console for debugging.
-async function loadPreview(fullName, dir) {
+async function loadPreview(fullName, dir, rowMeta) {
     try {
         const bareName = fullName.replace(/\.json$/i, "");
         const dirParam = dir ? `&dir=${encodeURIComponent(dir)}` : "";
@@ -662,6 +662,12 @@ async function loadPreview(fullName, dir) {
             displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
             fileName: bareName,
             exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
+            // mtime + size threaded through from the listing endpoint so
+            // every preview carries the same fields autosave previews do
+            // — lets the Load dialog render saved-time consistently
+            // across regular snapshot rows and recovery rows.
+            mtime: rowMeta && typeof rowMeta.mtime === "number" ? rowMeta.mtime : null,
+            size: rowMeta && typeof rowMeta.size === "number" ? rowMeta.size : null,
             workflowCount: countWorkflowsInStore(obj.workflows),
             pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
         };
@@ -769,7 +775,7 @@ export async function listPresets({ dir } = {}) {
     }
     if (!Array.isArray(entries)) return [];
 
-    const previews = await Promise.all(entries.map((row) => loadPreview(row.name, dir)));
+    const previews = await Promise.all(entries.map((row) => loadPreview(row.name, dir, row)));
     return previews
         .filter(p => p !== null)
         .sort((a, b) =>

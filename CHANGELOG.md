@@ -101,6 +101,29 @@ The format is inspired by Keep a Changelog and SemVer.
   `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
   `constants.js`.
 
+### Changed
+- **Load dialog header + Recovery group headers now share a layout.** The
+  library section and each `<preset>_autosave` group header now use the
+  same two-line format (title + full path) and the same `📂 Open` button
+  styling — visual consistency across both surfaces. Concrete changes:
+  - **Saved-time on every row.** Regular snapshot rows now show `saved
+    May 7, 11:53 PM` (from the file's mtime, threaded through
+    `loadPreview` from the listing endpoint) instead of just `exported
+    07/05/2026`. Recovery rows already had this format; both row types
+    now read consistently. Falls back to `exported <date>` if mtime
+    isn't available (defensive — covers any caller that doesn't carry
+    listing metadata).
+  - **Recovery group headers now show the full subdir path** under the
+    subdir name, mirroring the library header's `Library folder: X` /
+    `<full path>` pair. Reuses `renderLibraryLocation` with a new
+    `title` override so the same CSS styling applies without the
+    "Library folder:" prefix.
+  - **Library `📂 Open` button now uses `koolook-snapshot-row-btn`**
+    (the smaller styling) to match the per-group Open button. Was
+    `koolook-modal-button` (larger) before — visually mismatched.
+  - `formatAutosaveMeta` collapsed back into `formatPreviewMeta` since
+    the format is now identical across row types.
+
 ### Added
 - **Offline-fallback banner now has Restore + Discard actions — no more
   permanent guilt trip.** The red `criticalToast` that fires when

@@ -937,28 +937,15 @@ function todayStamp() {
     return new Date().toISOString().slice(0, 10);
 }
 
-// Local helper: render a preset's metadata line (used by the Load dialog).
+// Local helper: render a preset's metadata line (used by the Load dialog
+// for both regular snapshot rows AND recovery auto-save rows). Prefers
+// `mtime` (Unix epoch seconds from the server-side stat) over the
+// snapshot's self-reported `exportedAt` because (1) mtime survives
+// out-of-band file copies in Finder while exportedAt is frozen at
+// gather-time, and (2) "saved <local time>" is what the user actually
+// wants to see for "which row is newest". Falls back to `exportedAt` as
+// date-only for legacy rows whose listing endpoint didn't carry mtime.
 function formatPreviewMeta(p) {
-    const parts = [];
-    parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
-    parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
-    if (p.exportedAt) {
-        try {
-            const d = new Date(p.exportedAt);
-            if (!isNaN(d.getTime())) parts.push(`exported ${d.toLocaleDateString()}`);
-        } catch (e) { /* noop */ }
-    }
-    return parts.join(" · ");
-}
-
-// Recovery-row variant that uses the file's mtime (Unix epoch seconds
-// from the server-side stat) instead of the snapshot's self-reported
-// `exportedAt`. Two reasons: (1) mtime survives out-of-band file copies
-// in Finder, while exportedAt is frozen at gather-time; (2) the user
-// asked specifically for "the time when the auto save was made" so they
-// can tell which row is newest. Renders a wall-clock local-time stamp
-// using the same locale as `formatPreviewMeta` for visual consistency.
-function formatAutosaveMeta(p) {
     const parts = [];
     parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
     parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
@@ -973,6 +960,11 @@ function formatAutosaveMeta(p) {
             });
             parts.push(`saved ${stamp}`);
         }
+    } else if (p.exportedAt) {
+        try {
+            const d = new Date(p.exportedAt);
+            if (!isNaN(d.getTime())) parts.push(`exported ${d.toLocaleDateString()}`);
+        } catch (e) { /* noop */ }
     }
     return parts.join(" · ");
 }
@@ -982,11 +974,15 @@ function pathLeaf(path) {
     return parts.length ? parts[parts.length - 1] : String(path || "");
 }
 
-function renderLibraryLocation(el, path, { label = "Library folder" } = {}) {
+function renderLibraryLocation(el, path, { label = "Library folder", title } = {}) {
     el.innerHTML = "";
     const folder = document.createElement("div");
     folder.className = "koolook-settings-folder-name";
-    folder.textContent = `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
+    // `title` override skips the `<label>: <leaf>` formatting so callers
+    // (autosave group headers) can render just the subdir name without
+    // the "Library folder:" prefix while still reusing the same CSS
+    // pair (`folder-name` + `folder-path`) for visual consistency.
+    folder.textContent = title ?? `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
     el.appendChild(folder);
 
     const full = document.createElement("div");
@@ -1211,10 +1207,18 @@ export function showLoadSnapshotDialog({
     const toast = onToast || (() => {});
     const body = document.createElement("div");
 
-    // Header row: library path on the left, "Open in file manager" button
-    // on the right. The button is the user's escape hatch for everything
-    // the in-UI Recovery list doesn't surface — file timestamps in the OS
-    // file manager, copy / move / inspect / open-with-text-editor, etc.
+    // Captured from `getLibraryInfo()` resolution below — the recovery
+    // section uses it to render full subdir paths (`<library>/<subdir>`)
+    // under each group header, matching the library section's title-plus-
+    // path layout. Empty string is the not-yet-resolved sentinel; group
+    // headers fall back to no subtitle in that case.
+    let libraryPath = "";
+
+    // Header row: library title + path (rendered by `renderLibraryLocation`
+    // for visual parity with the recovery group headers below) on the
+    // left, `📂 Open` button on the right. Same flex layout (`flex-start`
+    // alignment + `space-between` justification) as group headers so both
+    // sections feel like one consistent UI.
     const pathRow = document.createElement("div");
     pathRow.className = "koolook-load-library-row";
     pathRow.style.display = "flex";
@@ -1229,7 +1233,11 @@ export function showLoadSnapshotDialog({
     pathRow.appendChild(pathLine);
     if (typeof revealPresetFolder === "function") {
         const openLibraryBtn = document.createElement("button");
-        openLibraryBtn.className = "koolook-modal-button";
+        // `koolook-snapshot-row-btn` matches the size + styling of the
+        // group-header Open button in the recovery section, so both
+        // surfaces look like the same control instead of one large
+        // (`koolook-modal-button`) and one small (row-btn) variant.
+        openLibraryBtn.className = "koolook-snapshot-row-btn";
         openLibraryBtn.textContent = "📂 Open";
         openLibraryBtn.title = "Open the snapshot library folder in your file manager";
         openLibraryBtn.style.flex = "0 0 auto";
@@ -1531,25 +1539,31 @@ export function showLoadSnapshotDialog({
         for (const [subdir, items] of groups) {
             const groupEl = document.createElement("div");
             groupEl.className = "koolook-recovery-group";
-            // Subfolder header: name on the left, "📂 Open" button on the
-            // right. Lets the user open <library>/<subdir>/ directly in
-            // their OS file manager — they can then sort by mtime,
-            // diff snapshots in a text editor, or copy a specific
-            // pre_load_*.json out of band.
+            // Subfolder header: title (subdir name) + path subtitle on the
+            // left, `📂 Open` button on the right. Mirrors the library
+            // section's layout exactly — same flex options, same
+            // `renderLibraryLocation` rendering pair (`folder-name` +
+            // `folder-path` CSS), same Open button class. Visually the
+            // two surfaces should be indistinguishable apart from the
+            // contents.
             const groupHeader = document.createElement("div");
             groupHeader.className = "koolook-recovery-group-header";
             groupHeader.style.display = "flex";
-            groupHeader.style.alignItems = "center";
+            groupHeader.style.alignItems = "flex-start";
             groupHeader.style.justifyContent = "space-between";
-            groupHeader.style.gap = "6px";
-            const groupHeaderName = document.createElement("span");
-            groupHeaderName.textContent = subdir;
-            groupHeader.appendChild(groupHeaderName);
+            groupHeader.style.gap = "8px";
+            const headerInfo = document.createElement("div");
+            headerInfo.style.flex = "1";
+            headerInfo.style.minWidth = "0";
+            const fullSubdirPath = libraryPath ? `${libraryPath}/${subdir}` : "";
+            renderLibraryLocation(headerInfo, fullSubdirPath, { title: subdir });
+            groupHeader.appendChild(headerInfo);
             if (typeof revealPresetFolder === "function") {
                 const openBtn = document.createElement("button");
                 openBtn.className = "koolook-snapshot-row-btn";
                 openBtn.textContent = "📂 Open";
                 openBtn.title = `Open "${subdir}/" in your file manager`;
+                openBtn.style.flex = "0 0 auto";
                 openBtn.addEventListener("click", async (e) => {
                     e.stopPropagation();
                     try {
@@ -1593,7 +1607,7 @@ export function showLoadSnapshotDialog({
                 // snapshot's self-reported `exportedAt` (the two match for
                 // autosaves anyway, but mtime is what survives an out-of-
                 // band file copy in Finder).
-                meta.textContent = formatAutosaveMeta(item);
+                meta.textContent = formatPreviewMeta(item);
                 info.appendChild(meta);
 
                 info.addEventListener("click", () => promptApplyAutosave(item));
@@ -1637,8 +1651,16 @@ export function showLoadSnapshotDialog({
     refresh();
     if (typeof getLibraryInfo === "function") {
         getLibraryInfo().then((info) => {
-            if (info) renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
-            else pathLine.textContent = "Library path unavailable.";
+            if (info) {
+                renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
+                // Stash for the recovery section's group-header path
+                // subtitle. If recovery is already loaded (user expanded
+                // before this resolved), refresh so the path appears.
+                libraryPath = info.path || "";
+                if (recoveryLoaded) refreshRecovery();
+            } else {
+                pathLine.textContent = "Library path unavailable.";
+            }
         }).catch(() => { pathLine.textContent = "Library path unavailable."; });
     } else {
         pathLine.textContent = "";
