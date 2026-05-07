@@ -647,9 +647,24 @@ def register_routes(routes) -> None:
                 reason=f"Could not create preset directory: {exc}"
             ) from exc
         body = await request.read()
+        # Atomic write — stage to `<file>.tmp`, then `os.replace` to the
+        # final name. A crash or dropped connection mid-write can no longer
+        # truncate the existing good file: readers see either the old or
+        # the new content, never a half-written byte stream. Same pattern
+        # as `_write_settings` above. The `.tmp` suffix is invisible to
+        # `/koolook/presets/list` and `/koolook/presets/autosaves/list`,
+        # which both filter to `.json` extensions only — so a transient
+        # tmp file never surfaces in the Load or Recovery UI.
+        tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
         try:
-            file_path.write_bytes(body)
+            tmp_path.write_bytes(body)
+            os.replace(str(tmp_path), str(file_path))
         except OSError as exc:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
             raise web.HTTPInternalServerError(
                 reason=f"Could not write preset: {exc}"
             ) from exc

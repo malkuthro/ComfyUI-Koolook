@@ -101,6 +101,30 @@ The format is inspired by Keep a Changelog and SemVer.
   `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
   `constants.js`.
 
+### Fixed
+- **Atomic preset writes — server crash mid-save can no longer corrupt
+  your snapshot library.** `POST /koolook/presets/file` now stages writes
+  to `<file>.json.tmp` and uses `os.replace` to swap the final name into
+  place, mirroring the `_write_settings` pattern that already protects
+  the settings file. The previous `file_path.write_bytes(body)` overwrote
+  in place — a dropped connection or process kill mid-write could
+  truncate the existing good file before the new bytes landed,
+  permanently losing whichever snapshot was being saved (named, periodic
+  autosave, or pre-load autosave). With atomic rename, readers see
+  either the old or the new content and never a half-written stream.
+  The transient `.json.tmp` file is invisible in the Load and Recovery
+  dialogs because both list endpoints already filter to `.json`
+  extensions. Covers every preset write path through the same route.
+- **Snapshot status timestamps now follow the browser's local
+  timezone.** `formatCentralTime` was hardcoded to
+  `timeZone: "America/Chicago"` and surfaced the resulting `CDT` /
+  `CST` stamp in the auto-saved hover tooltip and the snapshot status
+  indicator. Renamed to `formatLocalTime` and the option dropped — the
+  browser now formats with the user's system timezone, and
+  `timeZoneName: "short"` renders the matching abbreviation (PDT, EDT,
+  CET, …). No more "what's CDT to me" friction when the user isn't on
+  Central time.
+
 ### Added
 - **Modules — splice a saved cluster into your live canvas instead of
   replacing it.** Tag any saved workflow with the literal tag `module`

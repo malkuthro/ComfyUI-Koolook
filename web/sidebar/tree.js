@@ -2143,12 +2143,15 @@ export function renderPanel(container) {
     let snapshotLibraryPath = "";
     let snapshotStatusRefreshSeq = 0;
 
-    function formatCentralTime(iso) {
+    function formatLocalTime(iso) {
         if (!iso) return "not saved yet";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
+        // No `timeZone` option — browser uses the user's system timezone.
+        // `timeZoneName: "short"` then renders that zone's abbreviation
+        // (e.g. PDT / EDT / CET) so the stamp is unambiguous when the
+        // user is travelling or screen-sharing across timezones.
         return d.toLocaleString("en-US", {
-            timeZone: "America/Chicago",
             year: "numeric",
             month: "short",
             day: "numeric",
@@ -2163,7 +2166,7 @@ export function renderPanel(container) {
             ? status.lastAutosaveAt
             : status.lastNamedSaveAt;
         const location = snapshotLibraryPath || "loading...";
-        return `Date: ${formatCentralTime(stamp)}\nLocation: ${location}`;
+        return `Date: ${formatLocalTime(stamp)}\nLocation: ${location}`;
     }
 
     function refreshSnapshotStatus() {
