@@ -123,15 +123,12 @@ function wireOfflineFallbackRecovery(initialBlob) {
                                 toast("Offline copy discarded.");
                                 resolve({ dismiss: true });
                             },
+                            // Cancel resolves with `{ dismiss: false }` so the
+                            // toast button re-enables and the user can Dismiss
+                            // or Restore from the still-open recovery banner
+                            // instead of being stuck in a "Discarding…" state.
+                            onCancel: () => resolve({ dismiss: false }),
                         });
-                        // The current `showConfirmModal` doesn't surface a
-                        // cancel callback (see issue #84) — so a
-                        // user-cancelled discard leaves this Promise
-                        // pending until the modal is re-confirmed. Acceptable
-                        // for now: the toast button is already disabled with
-                        // a "Discarding…" label, which makes the cancelled-
-                        // state visually unambiguous (button stays disabled,
-                        // user can hit Dismiss instead).
                     }),
                 },
             ],

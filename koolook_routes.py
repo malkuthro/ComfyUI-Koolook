@@ -29,6 +29,7 @@ import re
 import string
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from aiohttp import web
@@ -649,22 +650,44 @@ def register_routes(routes) -> None:
                 reason=f"Could not create preset directory: {exc}"
             ) from exc
         body = await request.read()
-        # Atomic write — stage to `<file>.tmp`, then `os.replace` to the
-        # final name. A crash or dropped connection mid-write can no longer
-        # truncate the existing good file: readers see either the old or
-        # the new content, never a half-written byte stream. Same pattern
-        # as `_write_settings` above. The `.tmp` suffix is invisible to
-        # `/koolook/presets/list` and `/koolook/presets/autosaves/list`,
-        # which both filter to `.json` extensions only — so a transient
-        # tmp file never surfaces in the Load or Recovery UI.
-        tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+        # Atomic write — `tempfile.mkstemp` opens a uniquely-named temp
+        # file inside the already-validated `target_dir` using
+        # `O_CREAT | O_EXCL` semantics, then `os.replace` swaps it onto
+        # the final name. A crash or dropped connection mid-write can
+        # no longer truncate the existing good file: readers see either
+        # the old or the new content, never a half-written byte stream.
+        #
+        # Why mkstemp instead of a fixed `<file>.json.tmp` name? An
+        # attacker (or accidental user) with write access to the library
+        # could plant `<file>.json.tmp` as a symlink pointing outside
+        # the library. A naive `Path.write_bytes` would FOLLOW that
+        # symlink — past the path-traversal guard — and write the
+        # request body to wherever the symlink pointed, before
+        # `os.replace` swapped the symlink off. `mkstemp` defeats that
+        # in two ways: (1) `O_EXCL` aborts if anything (including a
+        # symlink) already exists at the chosen name, and (2) the name
+        # itself is random so the attacker can't pre-plant anything
+        # there. The `.tmp` suffix keeps the transient file invisible
+        # to `/koolook/presets/list` and `/koolook/presets/autosaves/list`
+        # (both filter to `.json`).
         try:
-            tmp_path.write_bytes(body)
-            os.replace(str(tmp_path), str(file_path))
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                prefix=f"{file_path.stem}.",
+                suffix=".tmp",
+                dir=str(target_dir),
+            )
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not create preset temp file: {exc}"
+            ) from exc
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(body)
+            os.replace(tmp_name, str(file_path))
         except OSError as exc:
             try:
-                if tmp_path.exists():
-                    tmp_path.unlink()
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
             except OSError:
                 pass
             raise web.HTTPInternalServerError(

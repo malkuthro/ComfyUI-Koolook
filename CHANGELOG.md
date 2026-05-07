@@ -176,18 +176,29 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ### Fixed
 - **Atomic preset writes — server crash mid-save can no longer corrupt
-  your snapshot library.** `POST /koolook/presets/file` now stages writes
-  to `<file>.json.tmp` and uses `os.replace` to swap the final name into
-  place, mirroring the `_write_settings` pattern that already protects
-  the settings file. The previous `file_path.write_bytes(body)` overwrote
-  in place — a dropped connection or process kill mid-write could
-  truncate the existing good file before the new bytes landed,
-  permanently losing whichever snapshot was being saved (named, periodic
-  autosave, or pre-load autosave). With atomic rename, readers see
-  either the old or the new content and never a half-written stream.
-  The transient `.json.tmp` file is invisible in the Load and Recovery
-  dialogs because both list endpoints already filter to `.json`
-  extensions. Covers every preset write path through the same route.
+  your snapshot library, and a hostile `.tmp` symlink can no longer
+  redirect writes outside the library.** `POST /koolook/presets/file`
+  now uses `tempfile.mkstemp` (with `O_CREAT | O_EXCL` semantics) to
+  create a uniquely-named temp file inside the already-validated
+  target directory, then `os.replace`s onto the final name. A dropped
+  connection or process kill mid-write can no longer truncate the
+  existing good file. An attacker who plants `<file>.json.tmp` as a
+  symlink pointing outside the library can no longer trick the server
+  into following it: `mkstemp` aborts with `O_EXCL` on any existing
+  dirent at the chosen name, AND the name is randomized so the
+  attacker can't pre-plant anything there. Covers every preset write
+  path (named, periodic autosave, pre-load autosave, recovery
+  snapshot) through the one route. The transient temp file is still
+  invisible in the Load and Recovery dialogs (both list endpoints
+  filter to `.json`).
+- **`showConfirmModal` now exposes an `onCancel` callback.** Callers
+  that wrap the modal in a Promise can now settle when the user
+  cancels instead of leaking a pending Promise. Closes the second
+  half of #84 (`dropPlaceholdersForPacks` was the original report);
+  also removes the "Discarding…" stuck-button footgun on the
+  offline-fallback recovery toast — Cancel now re-enables the toast
+  button so the user can choose Restore / Copy / Dismiss instead of
+  being trapped in a half-disabled state.
 - **Snapshot status timestamps now follow the user's wall clock.**
   `formatCentralTime` was hardcoded to `timeZone: "America/Chicago"`
   and surfaced a `CDT` / `CST` stamp in the auto-saved hover tooltip

@@ -149,7 +149,7 @@ export function showInputModal({ title, label, defaultValue, placeholder, confir
     setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-export function showConfirmModal({ title, message, confirmLabel, cancelLabel, danger, onConfirm, subtitle }) {
+export function showConfirmModal({ title, message, confirmLabel, cancelLabel, danger, onConfirm, onCancel, subtitle }) {
     const body = document.createElement("div");
 
     // Optional subtitle — same contract as showInputModal / showThreeWayDialog.
@@ -173,7 +173,19 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
     body.appendChild(msg);
 
     let overlay;
-    const cancel = makeModalButton({ label: cancelLabel || "Cancel", onClick: () => overlay.remove() });
+    // `onCancel` lets callers that wrap this in a Promise actually settle
+    // when the user cancels — without it, the recovery toast's "Discard
+    // offline copy" Promise stayed pending forever (button stuck in
+    // "Discarding…"), and similarly `dropPlaceholdersForPacks` (issue
+    // #84 part 2) leaked a pending Promise on every cancel. Optional;
+    // existing callers that ignore cancel keep working unchanged.
+    const cancel = makeModalButton({
+        label: cancelLabel || "Cancel",
+        onClick: () => {
+            overlay.remove();
+            if (typeof onCancel === "function") onCancel();
+        },
+    });
     const ok = makeModalButton({
         label: confirmLabel || "OK",
         primary: !danger,
