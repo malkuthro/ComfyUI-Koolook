@@ -231,16 +231,21 @@ export function ensureStyle() {
 .koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
 .koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
 .koolook-recovery-summary:hover { opacity: 1; }
-/* No outer border — each group's `koolook-snapshot-list` already
-   carries the box border (mirroring the library section's structure).
-   Keep the scroll container so a library with many `*_autosave/`
-   subdirs doesn't blow out the modal. */
+/* No outer border on the recovery list — each group carries its own
+   bordered rows-list, mirroring the library section's structure. We
+   keep the scroll container so a library with many autosave subdirs
+   does not blow out the modal.
+   IMPORTANT: this whole CSS string lives inside a JS template literal
+   (backtick-delimited), so do NOT use literal backticks in comments
+   here — they would prematurely close the template literal in ES
+   module mode and break the entire constants.js module load (and with
+   it the whole sidebar). Use plain quotes or no quotes at all. */
 .koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; }
 .koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
 .koolook-recovery-group:last-child { border-bottom: none; }
-/* Group header is now a flex wrapper hosting the same renderLibraryLocation
-   pair (folder-name + folder-path) the library section uses, so it
-   carries no typography of its own — the inner CSS drives appearance. */
+/* Group header is a flex wrapper hosting the same folder-name plus
+   folder-path pair the library section uses, so it carries no
+   typography of its own — the inner CSS drives appearance. */
 .koolook-recovery-group-header { padding: 4px 0 6px; }
 .koolook-recovery-group + .koolook-recovery-group { margin-top: 10px; }
 .koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
