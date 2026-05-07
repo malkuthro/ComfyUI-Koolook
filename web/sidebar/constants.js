@@ -231,10 +231,23 @@ export function ensureStyle() {
 .koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
 .koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
 .koolook-recovery-summary:hover { opacity: 1; }
-.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 4px; }
+/* No outer border on the recovery list — each group carries its own
+   bordered rows-list, mirroring the library section's structure. We
+   keep the scroll container so a library with many autosave subdirs
+   does not blow out the modal.
+   IMPORTANT: this whole CSS string lives inside a JS template literal
+   (backtick-delimited), so do NOT use literal backticks in comments
+   here — they would prematurely close the template literal in ES
+   module mode and break the entire constants.js module load (and with
+   it the whole sidebar). Use plain quotes or no quotes at all. */
+.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; }
 .koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
 .koolook-recovery-group:last-child { border-bottom: none; }
-.koolook-recovery-group-header { font-size: 11px; opacity: 0.6; padding: 6px 10px 3px; font-weight: 600; background: rgba(255,255,255,0.025); }
+/* Group header is a flex wrapper hosting the same folder-name plus
+   folder-path pair the library section uses, so it carries no
+   typography of its own — the inner CSS drives appearance. */
+.koolook-recovery-group-header { padding: 4px 0 6px; }
+.koolook-recovery-group + .koolook-recovery-group { margin-top: 10px; }
 .koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-recovery-kind-pre_load { color: #ffb74d; }
 .koolook-recovery-kind-periodic { color: #6db4ff; }
@@ -311,7 +324,7 @@ export function toast(msg, duration = 2200) {
 // Returns `{dismiss}` so callers can programmatically remove the toast when
 // the underlying condition resolves (e.g. server reachable again).
 // =============================================================================
-export function criticalToast(msg, { copyText, onDismiss } = {}) {
+export function criticalToast(msg, { copyText, onDismiss, actions: extraActions } = {}) {
     const t = document.createElement("div");
     t.className = "koolook-toast koolook-toast-critical";
     // Stack subsequent critical toasts at the top so they don't overlap the
@@ -328,8 +341,49 @@ export function criticalToast(msg, { copyText, onDismiss } = {}) {
     msgEl.textContent = msg;
     t.appendChild(msgEl);
 
-    const actions = document.createElement("div");
-    actions.className = "koolook-toast-actions";
+    const actionRow = document.createElement("div");
+    actionRow.className = "koolook-toast-actions";
+
+    const close = () => {
+        if (t.parentNode) t.remove();
+        if (typeof onDismiss === "function") onDismiss();
+    };
+
+    // Caller-supplied recovery actions render BEFORE Copy / Dismiss so the
+    // primary path is leftmost. Each action's `onClick` may return a Promise
+    // and may return `{ dismiss: false }` to keep the toast open after a
+    // user-cancelled sub-flow (e.g. cancelled confirm modal). Default behavior
+    // on resolve is to close the toast — these are recovery actions, so a
+    // successful click means the underlying condition is resolved and the
+    // toast should self-extinguish.
+    if (Array.isArray(extraActions)) {
+        for (const action of extraActions) {
+            const btn = document.createElement("button");
+            btn.className = "koolook-toast-btn";
+            if (action.primary) btn.classList.add("koolook-toast-btn-primary");
+            const originalLabel = action.label;
+            btn.textContent = originalLabel;
+            btn.addEventListener("click", async () => {
+                if (btn.disabled) return;
+                btn.disabled = true;
+                if (action.busyLabel) btn.textContent = action.busyLabel;
+                try {
+                    const result = await Promise.resolve(action.onClick());
+                    if (result && result.dismiss === false) {
+                        btn.disabled = false;
+                        btn.textContent = originalLabel;
+                    } else {
+                        close();
+                    }
+                } catch (e) {
+                    console.error("[Koolook] critical-toast action failed:", e);
+                    btn.disabled = false;
+                    btn.textContent = originalLabel;
+                }
+            });
+            actionRow.appendChild(btn);
+        }
+    }
 
     if (copyText) {
         const copyBtn = document.createElement("button");
@@ -354,20 +408,16 @@ export function criticalToast(msg, { copyText, onDismiss } = {}) {
                 finishCopy();
             }
         });
-        actions.appendChild(copyBtn);
+        actionRow.appendChild(copyBtn);
     }
 
     const dismissBtn = document.createElement("button");
     dismissBtn.className = "koolook-toast-btn";
     dismissBtn.textContent = "Dismiss";
-    const close = () => {
-        if (t.parentNode) t.remove();
-        if (typeof onDismiss === "function") onDismiss();
-    };
     dismissBtn.addEventListener("click", close);
-    actions.appendChild(dismissBtn);
+    actionRow.appendChild(dismissBtn);
 
-    t.appendChild(actions);
+    t.appendChild(actionRow);
     document.body.appendChild(t);
     return { dismiss: close };
 }

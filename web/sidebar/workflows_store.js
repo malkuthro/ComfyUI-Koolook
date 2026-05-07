@@ -212,14 +212,14 @@ export async function loadWorkflowsStore() {
         return { corrupt: false };
     }
     workflowsCache = normalizeWorkflowsStore(fromServer);
-    // Reconciliation: /userdata loaded successfully but a stale fallback blob
-    // from an earlier outage still exists. We don't auto-merge (risk of
-    // clobbering) but we surface it visibly so the user knows where to recover.
-    // Sticky critical toast — the previous 4.5s informational toast was easy
-    // to miss; if the user's evening work landed in this fallback, the auto-
-    // dismissing toast is the difference between recovery and silent loss.
-    // Includes a Copy button that hands them the fallback JSON directly so
-    // they can paste it into a snapshot file or compare against /userdata.
+    // Reconciliation surface: /userdata loaded fine but a stale localStorage
+    // fallback from an earlier outage may still exist. We don't auto-merge
+    // (clobbering risk — no per-field versioning to settle the conflict),
+    // and we don't fire the recovery toast from here either. The toast is
+    // wired by the entry point (`koolook_sidebar.js`) where the
+    // recovery handlers — Restore-as-snapshot and Discard — have access to
+    // `writePreset` / `loadUserPicks` / `showConfirmModal` without creating
+    // a circular import. We just return the blob so the caller can decide.
     const fallbackBlob = localStorage.getItem(WORKFLOWS_FALLBACK_KEY);
     if (fallbackBlob) {
         console.warn(
@@ -227,15 +227,22 @@ export async function loadWorkflowsStore() {
             `at "${WORKFLOWS_FALLBACK_KEY}". If workflows you saved during a previous ` +
             `outage are missing, recover from there before clearing.`
         );
-        criticalToast(
-            "Offline workflow data found in browser localStorage from a " +
-            "previous /userdata outage. If workflows you saved earlier are " +
-            "missing now, click Copy details to recover the offline JSON " +
-            "(paste into a snapshot or compare against /userdata).",
-            { copyText: fallbackBlob }
-        );
     }
-    return { corrupt: false };
+    return { corrupt: false, fallbackBlob: fallbackBlob || null };
+}
+
+// Removes the localStorage fallback blob written during an earlier
+// `/userdata` outage. Called by the recovery toast's Restore / Discard
+// actions once the blob has been either persisted as a snapshot or
+// explicitly discarded — clears the underlying condition so the toast
+// stops re-firing on subsequent page loads. Best-effort: a quota-disabled
+// browser would have failed the write anyway.
+export function clearOfflineFallback() {
+    try {
+        localStorage.removeItem(WORKFLOWS_FALLBACK_KEY);
+    } catch (e) {
+        console.warn("[Koolook] failed to clear offline fallback:", e);
+    }
 }
 
 // =============================================================================

@@ -609,6 +609,7 @@ const ROUTE_SETTINGS = "/koolook/presets/settings";
 const ROUTE_BROWSE = "/koolook/presets/browse";
 const ROUTE_BROWSE_NEW_FOLDER = "/koolook/presets/browse/new-folder";
 const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
+const ROUTE_REVEAL = "/koolook/presets/reveal";
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
 // response body (always available, carries aiohttp's `reason=` text),
@@ -635,7 +636,7 @@ function fileQuery(fileName, dir) {
 // success, `null` if the file isn't a valid snapshot. Failed reads are
 // filtered out by `listPresets` so the list shows only valid entries;
 // corrupt files surface in the console for debugging.
-async function loadPreview(fullName, dir) {
+async function loadPreview(fullName, dir, rowMeta) {
     try {
         const bareName = fullName.replace(/\.json$/i, "");
         const dirParam = dir ? `&dir=${encodeURIComponent(dir)}` : "";
@@ -661,6 +662,12 @@ async function loadPreview(fullName, dir) {
             displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
             fileName: bareName,
             exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
+            // mtime + size threaded through from the listing endpoint so
+            // every preview carries the same fields autosave previews do
+            // — lets the Load dialog render saved-time consistently
+            // across regular snapshot rows and recovery rows.
+            mtime: rowMeta && typeof rowMeta.mtime === "number" ? rowMeta.mtime : null,
+            size: rowMeta && typeof rowMeta.size === "number" ? rowMeta.size : null,
             workflowCount: countWorkflowsInStore(obj.workflows),
             pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
         };
@@ -768,7 +775,7 @@ export async function listPresets({ dir } = {}) {
     }
     if (!Array.isArray(entries)) return [];
 
-    const previews = await Promise.all(entries.map((row) => loadPreview(row.name, dir)));
+    const previews = await Promise.all(entries.map((row) => loadPreview(row.name, dir, row)));
     return previews
         .filter(p => p !== null)
         .sort((a, b) =>
@@ -912,6 +919,18 @@ export async function listAutosaves() {
         }
     }));
     return previews.filter((p) => p !== null);
+}
+
+// Open the preset library (or an autosave subfolder) in the OS file
+// manager. Returns the resolved server-side path on success — the caller
+// can surface it in a toast so the user has the literal path even when
+// the OS open call silently fails (rare, but the path text is enough to
+// paste into Finder / Explorer manually).
+export async function revealPresetFolder({ dir = "" } = {}) {
+    const dirParam = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+    const r = await fetch(`${ROUTE_REVEAL}${dirParam}`, { method: "POST" });
+    if (!r.ok) throw new Error(await readErrorReason(r));
+    return r.json();
 }
 
 // =============================================================================

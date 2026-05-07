@@ -101,6 +101,114 @@ The format is inspired by Keep a Changelog and SemVer.
   `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
   `constants.js`.
 
+### Changed
+- **Load dialog header + Recovery group headers now share a layout.** The
+  library section and each `<preset>_autosave` group header now use the
+  same two-line format (title + full path) and the same `📂 Open` button
+  styling — visual consistency across both surfaces. Concrete changes:
+  - **Saved-time on every row.** Regular snapshot rows now show `saved
+    May 7, 11:53 PM` (from the file's mtime, threaded through
+    `loadPreview` from the listing endpoint) instead of just `exported
+    07/05/2026`. Recovery rows already had this format; both row types
+    now read consistently. Falls back to `exported <date>` if mtime
+    isn't available (defensive — covers any caller that doesn't carry
+    listing metadata).
+  - **Recovery group headers now show the full subdir path** under the
+    subdir name, mirroring the library header's `Library folder: X` /
+    `<full path>` pair. Reuses `renderLibraryLocation` with a new
+    `title` override so the same CSS styling applies without the
+    "Library folder:" prefix.
+  - **Library `📂 Open` button now uses `koolook-snapshot-row-btn`**
+    (the smaller styling) to match the per-group Open button. Was
+    `koolook-modal-button` (larger) before — visually mismatched.
+  - `formatAutosaveMeta` collapsed back into `formatPreviewMeta` since
+    the format is now identical across row types.
+
+### Added
+- **Offline-fallback banner now has Restore + Discard actions — no more
+  permanent guilt trip.** The red `criticalToast` that fires when
+  localStorage holds a stale outage-fallback blob used to be a one-way
+  street: Copy details, Dismiss, repeat next page load forever. Two
+  buttons close the loop:
+  - **Restore as snapshot** wraps the offline workflows into a full
+    snapshot envelope (live picks bundled in so a later Load wouldn't
+    wipe them) and writes it as `recovered-<iso>.json` into the snapshot
+    library, then clears the localStorage key. The user lands on a
+    durable, in-UI-visible artifact they can inspect, Load, or
+    selectively cherry-pick from. Banner self-extinguishes on success.
+  - **Discard offline copy** asks for confirmation, then clears the
+    localStorage key and dismisses the banner. For the case where the
+    user has already verified nothing is missing.
+  - The toast is now wired from `koolook_sidebar.js` (the entry point)
+    rather than from `loadWorkflowsStore()` itself — the action handlers
+    need `writePreset` / `loadUserPicks` / `showConfirmModal`, and
+    pulling those into the workflows store would create a circular
+    import.
+  - `criticalToast` now accepts an `actions: [{label, onClick, primary?,
+    busyLabel?}]` array; existing callers (`{ copyText }` and string-
+    only) keep working unchanged.
+
+### Added
+- **Recovery section deep-links to the file system + per-row save time.**
+  The Load dialog's Recovery auto-saves section now exposes everything
+  a power user needs to navigate the autosave subfolders directly:
+  - **`📂 Open` button at the top** of the Load dialog opens the
+    snapshot library folder in the OS file manager.
+  - **`📂 Open` button on each `<preset>_autosave` group header** opens
+    that specific subfolder, so the user lands on the exact recovery
+    files for that preset (with mtimes visible to Finder / Explorer
+    sort).
+  - **Per-row save time replaces "exported &lt;date&gt;".** Recovery
+    rows now show `saved May 7, 2:34 PM` derived from the file's mtime
+    — strictly more useful than the snapshot's self-reported
+    `exportedAt` for telling "which pre-load is freshest." Mtime also
+    survives out-of-band file copies in Finder.
+  - **Bare filename instead of redundant displayName.** Each row now
+    renders the actual filename (`pre_load_2026-05-07T14-32-…`,
+    `periodic`) instead of the noisy
+    `Periodic auto-save · <subdir> · <iso>` string that pushed the
+    timestamp off-screen.
+  - New server route `POST /koolook/presets/reveal[?dir=<subdir>]`
+    powers both buttons via the platform-appropriate file-manager
+    command (`open` on macOS, `explorer.exe` on Windows, `xdg-open`
+    on Linux). Path-traversal grounded at the library base via the
+    same `_resolve_target` check the file-write routes use.
+
+### Fixed
+- **Atomic preset writes — server crash mid-save can no longer corrupt
+  your snapshot library, and a hostile `.tmp` symlink can no longer
+  redirect writes outside the library.** `POST /koolook/presets/file`
+  now uses `tempfile.mkstemp` (with `O_CREAT | O_EXCL` semantics) to
+  create a uniquely-named temp file inside the already-validated
+  target directory, then `os.replace`s onto the final name. A dropped
+  connection or process kill mid-write can no longer truncate the
+  existing good file. An attacker who plants `<file>.json.tmp` as a
+  symlink pointing outside the library can no longer trick the server
+  into following it: `mkstemp` aborts with `O_EXCL` on any existing
+  dirent at the chosen name, AND the name is randomized so the
+  attacker can't pre-plant anything there. Covers every preset write
+  path (named, periodic autosave, pre-load autosave, recovery
+  snapshot) through the one route. The transient temp file is still
+  invisible in the Load and Recovery dialogs (both list endpoints
+  filter to `.json`).
+- **`showConfirmModal` now exposes an `onCancel` callback.** Callers
+  that wrap the modal in a Promise can now settle when the user
+  cancels instead of leaking a pending Promise. Closes the second
+  half of #84 (`dropPlaceholdersForPacks` was the original report);
+  also removes the "Discarding…" stuck-button footgun on the
+  offline-fallback recovery toast — Cancel now re-enables the toast
+  button so the user can choose Restore / Copy / Dismiss instead of
+  being trapped in a half-disabled state.
+- **Snapshot status timestamps now follow the user's wall clock.**
+  `formatCentralTime` was hardcoded to `timeZone: "America/Chicago"`
+  and surfaced a `CDT` / `CST` stamp in the auto-saved hover tooltip
+  regardless of where the user actually was. Renamed to
+  `formatLocalTime` with the timezone option dropped — the browser
+  formats with the user's system timezone. Also dropped
+  `timeZoneName: "short"`: it just rendered noisy abbreviations (`GMT+2`,
+  `CDT`, …) that didn't help anyone identify "their own time." Tooltip
+  now reads as a clean wall-clock stamp like `May 7, 2026, 11:43 PM`.
+
 ### Added
 - **Modules — splice a saved cluster into your live canvas instead of
   replacing it.** Tag any saved workflow with the literal tag `module`

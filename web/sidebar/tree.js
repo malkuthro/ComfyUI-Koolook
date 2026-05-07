@@ -102,6 +102,7 @@ import {
     markStateSaved,
     getSnapshotStatus,
     listAutosaves,
+    revealPresetFolder,
 } from "./snapshot.js";
 
 // =============================================================================
@@ -2094,6 +2095,7 @@ export function renderPanel(container) {
         writePreLoadAutosave,
         markStateSaved,
         listAutosaves,
+        revealPresetFolder,
         onToast: toast,
     });
     const openSettingsDialog = () => showSnapshotSettingsDialog({
@@ -2143,18 +2145,21 @@ export function renderPanel(container) {
     let snapshotLibraryPath = "";
     let snapshotStatusRefreshSeq = 0;
 
-    function formatCentralTime(iso) {
+    function formatLocalTime(iso) {
         if (!iso) return "not saved yet";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
+        // Just the wall-clock time on the user's machine. No `timeZone`
+        // option (browser uses the system timezone) and no `timeZoneName`
+        // (the abbreviation read as noisy clutter — `GMT+2` / `CDT` etc.
+        // didn't help anyone identify "their own time"). If a future
+        // surface needs the abbreviation back, add it there.
         return d.toLocaleString("en-US", {
-            timeZone: "America/Chicago",
             year: "numeric",
             month: "short",
             day: "numeric",
             hour: "numeric",
             minute: "2-digit",
-            timeZoneName: "short",
         });
     }
 
@@ -2163,7 +2168,7 @@ export function renderPanel(container) {
             ? status.lastAutosaveAt
             : status.lastNamedSaveAt;
         const location = snapshotLibraryPath || "loading...";
-        return `Date: ${formatCentralTime(stamp)}\nLocation: ${location}`;
+        return `Date: ${formatLocalTime(stamp)}\nLocation: ${location}`;
     }
 
     function refreshSnapshotStatus() {

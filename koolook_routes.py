@@ -27,6 +27,9 @@ import json
 import os
 import re
 import string
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 from aiohttp import web
@@ -647,9 +650,46 @@ def register_routes(routes) -> None:
                 reason=f"Could not create preset directory: {exc}"
             ) from exc
         body = await request.read()
+        # Atomic write — `tempfile.mkstemp` opens a uniquely-named temp
+        # file inside the already-validated `target_dir` using
+        # `O_CREAT | O_EXCL` semantics, then `os.replace` swaps it onto
+        # the final name. A crash or dropped connection mid-write can
+        # no longer truncate the existing good file: readers see either
+        # the old or the new content, never a half-written byte stream.
+        #
+        # Why mkstemp instead of a fixed `<file>.json.tmp` name? An
+        # attacker (or accidental user) with write access to the library
+        # could plant `<file>.json.tmp` as a symlink pointing outside
+        # the library. A naive `Path.write_bytes` would FOLLOW that
+        # symlink — past the path-traversal guard — and write the
+        # request body to wherever the symlink pointed, before
+        # `os.replace` swapped the symlink off. `mkstemp` defeats that
+        # in two ways: (1) `O_EXCL` aborts if anything (including a
+        # symlink) already exists at the chosen name, and (2) the name
+        # itself is random so the attacker can't pre-plant anything
+        # there. The `.tmp` suffix keeps the transient file invisible
+        # to `/koolook/presets/list` and `/koolook/presets/autosaves/list`
+        # (both filter to `.json`).
         try:
-            file_path.write_bytes(body)
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                prefix=f"{file_path.stem}.",
+                suffix=".tmp",
+                dir=str(target_dir),
+            )
         except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not create preset temp file: {exc}"
+            ) from exc
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(body)
+            os.replace(tmp_name, str(file_path))
+        except OSError as exc:
+            try:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
+            except OSError:
+                pass
             raise web.HTTPInternalServerError(
                 reason=f"Could not write preset: {exc}"
             ) from exc
@@ -672,6 +712,43 @@ def register_routes(routes) -> None:
                 reason=f"Could not delete preset: {exc}"
             ) from exc
         return web.json_response({"ok": True, "name": name, "dir": subdir})
+
+    @routes.post("/koolook/presets/reveal")
+    async def reveal_preset_folder(request):
+        """Open the preset library (or an autosave subfolder) in the OS
+        file manager. Optional ``?dir=<subdir>`` deep-links to a
+        per-preset autosave folder so the Recovery section can drop the
+        user inside the right `<preset>_autosave/` directory.
+
+        Path-traversal is grounded at the configured library base via
+        ``_resolve_target``; subdir names go through ``_validate_dirname``.
+        Subprocess args are passed list-form (no shell), so a controlled
+        path can't trigger shell-metacharacter interpretation even if a
+        future check loosens the dirname charset.
+        """
+        base, _ = _configured_dir()
+        subdir_q = request.query.get("dir", "").strip()
+        if subdir_q:
+            _validate_dirname(subdir_q)
+            target_dir, _ = _resolve_target(base, subdir_q, "_listing.json")
+        else:
+            target_dir = base
+        if not target_dir.exists() or not target_dir.is_dir():
+            raise web.HTTPNotFound(
+                reason=f"Path does not exist on disk: {target_dir}"
+            )
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(target_dir)])
+            elif sys.platform == "win32":
+                subprocess.Popen(["explorer.exe", str(target_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(target_dir)])
+        except OSError as exc:
+            raise web.HTTPInternalServerError(
+                reason=f"Could not open path in file manager: {exc}"
+            ) from exc
+        return web.json_response({"ok": True, "path": str(target_dir)})
 
 
 def install() -> bool:

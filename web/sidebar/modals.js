@@ -149,7 +149,7 @@ export function showInputModal({ title, label, defaultValue, placeholder, confir
     setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-export function showConfirmModal({ title, message, confirmLabel, cancelLabel, danger, onConfirm, subtitle }) {
+export function showConfirmModal({ title, message, confirmLabel, cancelLabel, danger, onConfirm, onCancel, subtitle }) {
     const body = document.createElement("div");
 
     // Optional subtitle — same contract as showInputModal / showThreeWayDialog.
@@ -173,7 +173,19 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
     body.appendChild(msg);
 
     let overlay;
-    const cancel = makeModalButton({ label: cancelLabel || "Cancel", onClick: () => overlay.remove() });
+    // `onCancel` lets callers that wrap this in a Promise actually settle
+    // when the user cancels — without it, the recovery toast's "Discard
+    // offline copy" Promise stayed pending forever (button stuck in
+    // "Discarding…"), and similarly `dropPlaceholdersForPacks` (issue
+    // #84 part 2) leaked a pending Promise on every cancel. Optional;
+    // existing callers that ignore cancel keep working unchanged.
+    const cancel = makeModalButton({
+        label: cancelLabel || "Cancel",
+        onClick: () => {
+            overlay.remove();
+            if (typeof onCancel === "function") onCancel();
+        },
+    });
     const ok = makeModalButton({
         label: confirmLabel || "OK",
         primary: !danger,
@@ -937,12 +949,30 @@ function todayStamp() {
     return new Date().toISOString().slice(0, 10);
 }
 
-// Local helper: render a preset's metadata line (used by the Load dialog).
+// Local helper: render a preset's metadata line (used by the Load dialog
+// for both regular snapshot rows AND recovery auto-save rows). Prefers
+// `mtime` (Unix epoch seconds from the server-side stat) over the
+// snapshot's self-reported `exportedAt` because (1) mtime survives
+// out-of-band file copies in Finder while exportedAt is frozen at
+// gather-time, and (2) "saved <local time>" is what the user actually
+// wants to see for "which row is newest". Falls back to `exportedAt` as
+// date-only for legacy rows whose listing endpoint didn't carry mtime.
 function formatPreviewMeta(p) {
     const parts = [];
     parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
     parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
-    if (p.exportedAt) {
+    if (typeof p.mtime === "number" && isFinite(p.mtime)) {
+        const d = new Date(p.mtime * 1000);
+        if (!isNaN(d.getTime())) {
+            const stamp = d.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+            });
+            parts.push(`saved ${stamp}`);
+        }
+    } else if (p.exportedAt) {
         try {
             const d = new Date(p.exportedAt);
             if (!isNaN(d.getTime())) parts.push(`exported ${d.toLocaleDateString()}`);
@@ -956,11 +986,15 @@ function pathLeaf(path) {
     return parts.length ? parts[parts.length - 1] : String(path || "");
 }
 
-function renderLibraryLocation(el, path, { label = "Library folder" } = {}) {
+function renderLibraryLocation(el, path, { label = "Library folder", title } = {}) {
     el.innerHTML = "";
     const folder = document.createElement("div");
     folder.className = "koolook-settings-folder-name";
-    folder.textContent = `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
+    // `title` override skips the `<label>: <leaf>` formatting so callers
+    // (autosave group headers) can render just the subdir name without
+    // the "Library folder:" prefix while still reusing the same CSS
+    // pair (`folder-name` + `folder-path`) for visual consistency.
+    folder.textContent = title ?? `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
     el.appendChild(folder);
 
     const full = document.createElement("div");
@@ -1179,15 +1213,58 @@ export function showLoadSnapshotDialog({
     writePreLoadAutosave,
     markStateSaved,
     listAutosaves,
+    revealPresetFolder,
     onToast,
 }) {
     const toast = onToast || (() => {});
     const body = document.createElement("div");
 
+    // Captured from `getLibraryInfo()` resolution below — the recovery
+    // section uses it to render full subdir paths (`<library>/<subdir>`)
+    // under each group header, matching the library section's title-plus-
+    // path layout. Empty string is the not-yet-resolved sentinel; group
+    // headers fall back to no subtitle in that case.
+    let libraryPath = "";
+
+    // Header row: library title + path (rendered by `renderLibraryLocation`
+    // for visual parity with the recovery group headers below) on the
+    // left, `📂 Open` button on the right. Same flex layout (`flex-start`
+    // alignment + `space-between` justification) as group headers so both
+    // sections feel like one consistent UI.
+    const pathRow = document.createElement("div");
+    pathRow.className = "koolook-load-library-row";
+    pathRow.style.display = "flex";
+    pathRow.style.alignItems = "flex-start";
+    pathRow.style.justifyContent = "space-between";
+    pathRow.style.gap = "8px";
     const pathLine = document.createElement("div");
     pathLine.className = "koolook-load-library-location";
+    pathLine.style.flex = "1";
+    pathLine.style.minWidth = "0";
     pathLine.textContent = "Library: (loading…)";
-    body.appendChild(pathLine);
+    pathRow.appendChild(pathLine);
+    if (typeof revealPresetFolder === "function") {
+        const openLibraryBtn = document.createElement("button");
+        // `koolook-snapshot-row-btn` matches the size + styling of the
+        // group-header Open button in the recovery section, so both
+        // surfaces look like the same control instead of one large
+        // (`koolook-modal-button`) and one small (row-btn) variant.
+        openLibraryBtn.className = "koolook-snapshot-row-btn";
+        openLibraryBtn.textContent = "📂 Open";
+        openLibraryBtn.title = "Open the snapshot library folder in your file manager";
+        openLibraryBtn.style.flex = "0 0 auto";
+        openLibraryBtn.addEventListener("click", async () => {
+            try {
+                const r = await revealPresetFolder();
+                toast(`Opened: ${r.path}`);
+            } catch (e) {
+                console.error("[Koolook] reveal failed:", e);
+                toast(`Could not open library folder: ${e.message}`);
+            }
+        });
+        pathRow.appendChild(openLibraryBtn);
+    }
+    body.appendChild(pathRow);
 
     const listWrap = document.createElement("div");
     body.appendChild(listWrap);
@@ -1359,7 +1436,11 @@ export function showLoadSnapshotDialog({
     recoverySection.className = "koolook-recovery-section";
     const recoverySummary = document.createElement("summary");
     recoverySummary.className = "koolook-recovery-summary";
-    recoverySummary.textContent = "▸ Recovery auto-saves (click to expand)";
+    // Native `<details>` already renders a disclosure triangle on
+    // `<summary>`. Don't add a second arrow character here — the previous
+    // `▸ / ▾` text duplicated the native marker and the user saw two
+    // arrows side-by-side.
+    recoverySummary.textContent = "Recovery auto-saves";
     recoverySection.appendChild(recoverySummary);
     const recoveryList = document.createElement("div");
     recoveryList.className = "koolook-recovery-list";
@@ -1474,10 +1555,52 @@ export function showLoadSnapshotDialog({
         for (const [subdir, items] of groups) {
             const groupEl = document.createElement("div");
             groupEl.className = "koolook-recovery-group";
+            // Subfolder header: title (subdir name) + path subtitle on the
+            // left, `📂 Open` button on the right. Mirrors the library
+            // section's layout exactly — same flex options, same
+            // `renderLibraryLocation` rendering pair (`folder-name` +
+            // `folder-path` CSS), same Open button class. Visually the
+            // two surfaces should be indistinguishable apart from the
+            // contents.
             const groupHeader = document.createElement("div");
             groupHeader.className = "koolook-recovery-group-header";
-            groupHeader.textContent = subdir;
+            groupHeader.style.display = "flex";
+            groupHeader.style.alignItems = "flex-start";
+            groupHeader.style.justifyContent = "space-between";
+            groupHeader.style.gap = "8px";
+            const headerInfo = document.createElement("div");
+            headerInfo.style.flex = "1";
+            headerInfo.style.minWidth = "0";
+            const fullSubdirPath = libraryPath ? `${libraryPath}/${subdir}` : "";
+            renderLibraryLocation(headerInfo, fullSubdirPath, { title: subdir });
+            groupHeader.appendChild(headerInfo);
+            if (typeof revealPresetFolder === "function") {
+                const openBtn = document.createElement("button");
+                openBtn.className = "koolook-snapshot-row-btn";
+                openBtn.textContent = "📂 Open";
+                openBtn.title = `Open "${subdir}/" in your file manager`;
+                openBtn.style.flex = "0 0 auto";
+                openBtn.addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    try {
+                        const r = await revealPresetFolder({ dir: subdir });
+                        toast(`Opened: ${r.path}`);
+                    } catch (err) {
+                        console.error("[Koolook] reveal failed:", err);
+                        toast(`Could not open "${subdir}/": ${err.message}`);
+                    }
+                });
+                groupHeader.appendChild(openBtn);
+            }
             groupEl.appendChild(groupHeader);
+            // Wrap rows in the same `koolook-snapshot-list` container the
+            // library section uses so each group gets the same bordered-
+            // box treatment around its rows. Without this, the recovery
+            // rows render flat (no border, no rounded corners) and
+            // visually diverge from the Koolook_v03 row even though the
+            // row contents are identical.
+            const rowsList = document.createElement("div");
+            rowsList.className = "koolook-snapshot-list";
             for (const item of items) {
                 const row = document.createElement("div");
                 row.className = "koolook-snapshot-row";
@@ -1493,11 +1616,21 @@ export function showLoadSnapshotDialog({
                 kindBadge.textContent = item.kind === "pre_load" ? "Pre-load" :
                                         item.kind === "periodic" ? "Periodic" : "Other";
                 name.appendChild(kindBadge);
-                name.appendChild(document.createTextNode(item.displayName));
+                // Show the bare filename (`pre_load_2026-05-07T14-32-…`,
+                // `periodic`) instead of the snapshot's self-reported
+                // displayName, which for autosaves is a redundant
+                // `Periodic auto-save · <subdir> · <iso>` string that
+                // pushes the timestamp off-screen on narrow modals.
+                name.appendChild(document.createTextNode(item.fileName));
                 info.appendChild(name);
 
                 const meta = document.createElement("div");
                 meta.className = "koolook-snapshot-row-meta";
+                // mtime is when the file was actually written — strictly
+                // more relevant for "which autosave is freshest" than the
+                // snapshot's self-reported `exportedAt` (the two match for
+                // autosaves anyway, but mtime is what survives an out-of-
+                // band file copy in Finder).
                 meta.textContent = formatPreviewMeta(item);
                 info.appendChild(meta);
 
@@ -1514,8 +1647,9 @@ export function showLoadSnapshotDialog({
                 actions.appendChild(delBtn);
                 row.appendChild(actions);
 
-                groupEl.appendChild(row);
+                rowsList.appendChild(row);
             }
+            groupEl.appendChild(rowsList);
             recoveryList.appendChild(groupEl);
         }
     }
@@ -1526,7 +1660,6 @@ export function showLoadSnapshotDialog({
     // for a regular preset.
     recoverySection.addEventListener("toggle", () => {
         if (!recoverySection.open) return;
-        recoverySummary.textContent = "▾ Recovery auto-saves";
         if (recoveryLoaded) return;
         recoveryLoaded = true;
         refreshRecovery();
@@ -1542,8 +1675,16 @@ export function showLoadSnapshotDialog({
     refresh();
     if (typeof getLibraryInfo === "function") {
         getLibraryInfo().then((info) => {
-            if (info) renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
-            else pathLine.textContent = "Library path unavailable.";
+            if (info) {
+                renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
+                // Stash for the recovery section's group-header path
+                // subtitle. If recovery is already loaded (user expanded
+                // before this resolved), refresh so the path appears.
+                libraryPath = info.path || "";
+                if (recoveryLoaded) refreshRecovery();
+            } else {
+                pathLine.textContent = "Library path unavailable.";
+            }
         }).catch(() => { pathLine.textContent = "Library path unavailable."; });
     } else {
         pathLine.textContent = "";
