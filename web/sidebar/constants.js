@@ -231,10 +231,18 @@ export function ensureStyle() {
 .koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
 .koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
 .koolook-recovery-summary:hover { opacity: 1; }
-.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 4px; }
+/* No outer border — each group's `koolook-snapshot-list` already
+   carries the box border (mirroring the library section's structure).
+   Keep the scroll container so a library with many `*_autosave/`
+   subdirs doesn't blow out the modal. */
+.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; }
 .koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
 .koolook-recovery-group:last-child { border-bottom: none; }
-.koolook-recovery-group-header { font-size: 11px; opacity: 0.6; padding: 6px 10px 3px; font-weight: 600; background: rgba(255,255,255,0.025); }
+/* Group header is now a flex wrapper hosting the same renderLibraryLocation
+   pair (folder-name + folder-path) the library section uses, so it
+   carries no typography of its own — the inner CSS drives appearance. */
+.koolook-recovery-group-header { padding: 4px 0 6px; }
+.koolook-recovery-group + .koolook-recovery-group { margin-top: 10px; }
 .koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-recovery-kind-pre_load { color: #ffb74d; }
 .koolook-recovery-kind-periodic { color: #6db4ff; }
