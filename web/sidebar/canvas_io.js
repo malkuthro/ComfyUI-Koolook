@@ -577,33 +577,41 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         // unexplained second "still missing" failure for the unregistered
         // subgraph. Surface BOTH classes when both are present so one toast
         // covers both fixes in order.
+        // Toast wording goes plain English on purpose — "subgraph definition
+        // not registered" was technically accurate but confused the user, who
+        // just wants to know "what do I do to make Insert work?" Engineer-speak
+        // (subgraph / registered / definition) lives in code comments and
+        // console.warn for devs; user-facing copy talks in gestures and
+        // outcomes ("right-click → Load it once, then left-click Insert will
+        // work"). The "Load" verb mirrors the actual menu item label in
+        // workflowRowContextMenu so the user doesn't hunt for a "paste" or
+        // "set up" item that doesn't exist.
         const subgraphMisses = missingTypes.filter(t => SUBGRAPH_UUID_RE.test(t));
         const packMisses = missingTypes.filter(t => !SUBGRAPH_UUID_RE.test(t));
         let message;
         if (packMisses.length === 0) {
             // Pure subgraph case — only definitions are missing.
             message =
-                `Cannot insert "${wfName}" — subgraph definition${subgraphMisses.length === 1 ? "" : "s"} ` +
-                `not registered. Right-click the workflow → Load once in this session to register, ` +
-                `then retry Insert.`;
+                `Can't Insert "${wfName}" yet — it needs to be Loaded once first this session. ` +
+                `Right-click → Load it, then left-click Insert will work.`;
         } else if (subgraphMisses.length === 0) {
             // Pure pack case — only registered-pack types are missing.
             const sample = packMisses.slice(0, 3).join(", ");
             const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
             message =
-                `Cannot insert "${wfName}" — missing node type${packMisses.length === 1 ? "" : "s"}: ` +
-                `${sample}${more}. Install the required pack(s) first.`;
+                `Can't Insert "${wfName}" — missing node${packMisses.length === 1 ? "" : "s"}: ` +
+                `${sample}${more}. Install the required pack(s) first, then retry.`;
         } else {
-            // Mixed case — both classes missing. Tell the user to install
-            // pack(s) AND right-click → Load once after, in one shot.
+            // Mixed case — both classes missing. Numbered two-step instruction
+            // so the user knows the order; the second step won't work without
+            // the first (the pack node has to exist before Load can register
+            // the embedded subgraph that depends on it… or vice versa).
             const sample = packMisses.slice(0, 3).join(", ");
             const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
             message =
-                `Cannot insert "${wfName}" — missing node type${packMisses.length === 1 ? "" : "s"}: ` +
-                `${sample}${more}. Install the required pack(s) first; ` +
-                `${subgraphMisses.length} subgraph definition${subgraphMisses.length === 1 ? "" : "s"} ` +
-                `also unregistered — right-click → Load once after install to register, ` +
-                `then retry Insert.`;
+                `Can't Insert "${wfName}" yet — two steps: ` +
+                `(1) install missing pack(s) for ${sample}${more}, then ` +
+                `(2) right-click → Load it once. After that, left-click Insert will work.`;
         }
         toast(message, 6500);
         console.warn(

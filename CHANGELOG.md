@@ -192,18 +192,21 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ### Fixed
 - **Insert pre-flight toast now surfaces both pack misses AND subgraph
-  misses when a saved workflow has both.** Previously, the
-  "all-misses-are-subgraph-UUIDs" early-return only fired when *every*
-  missing type was a UUID; mixed cases fell through to a single "install
-  the required pack(s)" message that listed UUIDs alongside pack types
-  but mentioned nothing about subgraph registration. Users installed the
-  pack, retried Insert, and hit a second unexplained "still missing"
-  failure for the unregistered subgraph. The toast now branches three
-  ways — pure-pack / pure-subgraph / mixed — and the mixed case names
-  both fixes in one shot ("install pack(s) + right-click → Load once
-  after install to register the subgraph definition"). The pure-subgraph
-  message also tightened to mention the right-click → Load gesture
-  explicitly so the user knows which path resolves it.
+  misses when a saved workflow has both, in plain English.** Previously,
+  the "all-misses-are-subgraph-UUIDs" early-return only fired when
+  *every* missing type was a UUID; mixed cases fell through to a single
+  "install the required pack(s)" message that listed UUIDs alongside
+  pack types but mentioned nothing about the registration step the
+  subgraph also needs. Users installed the pack, retried Insert, and
+  hit a second unexplained "still missing" failure. Now the toast
+  branches three ways — pure-pack / pure-subgraph / mixed — and the
+  mixed case names both fixes upfront as a numbered two-step ("install
+  pack(s) + right-click → Load it once"). Wording also de-jargoned —
+  "subgraph definition not registered" was technically accurate but
+  confused users who just wanted to know what to do. Engineer-speak
+  stays in code comments and console.warn for devs; user-facing copy
+  now talks in gestures and outcomes ("Right-click → Load it, then
+  left-click Insert will work").
 - **Atomic preset writes — server crash mid-save can no longer corrupt
   your snapshot library, and a hostile `.tmp` symlink can no longer
   redirect writes outside the library.** `POST /koolook/presets/file`
