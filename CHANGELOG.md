@@ -115,15 +115,15 @@ The format is inspired by Keep a Changelog and SemVer.
   The transient `.json.tmp` file is invisible in the Load and Recovery
   dialogs because both list endpoints already filter to `.json`
   extensions. Covers every preset write path through the same route.
-- **Snapshot status timestamps now follow the browser's local
-  timezone.** `formatCentralTime` was hardcoded to
-  `timeZone: "America/Chicago"` and surfaced the resulting `CDT` /
-  `CST` stamp in the auto-saved hover tooltip and the snapshot status
-  indicator. Renamed to `formatLocalTime` and the option dropped — the
-  browser now formats with the user's system timezone, and
-  `timeZoneName: "short"` renders the matching abbreviation (PDT, EDT,
-  CET, …). No more "what's CDT to me" friction when the user isn't on
-  Central time.
+- **Snapshot status timestamps now follow the user's wall clock.**
+  `formatCentralTime` was hardcoded to `timeZone: "America/Chicago"`
+  and surfaced a `CDT` / `CST` stamp in the auto-saved hover tooltip
+  regardless of where the user actually was. Renamed to
+  `formatLocalTime` with the timezone option dropped — the browser
+  formats with the user's system timezone. Also dropped
+  `timeZoneName: "short"`: it just rendered noisy abbreviations (`GMT+2`,
+  `CDT`, …) that didn't help anyone identify "their own time." Tooltip
+  now reads as a clean wall-clock stamp like `May 7, 2026, 11:43 PM`.
 
 ### Added
 - **Modules — splice a saved cluster into your live canvas instead of

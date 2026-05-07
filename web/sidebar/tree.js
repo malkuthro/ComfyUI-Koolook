@@ -2147,17 +2147,17 @@ export function renderPanel(container) {
         if (!iso) return "not saved yet";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
-        // No `timeZone` option — browser uses the user's system timezone.
-        // `timeZoneName: "short"` then renders that zone's abbreviation
-        // (e.g. PDT / EDT / CET) so the stamp is unambiguous when the
-        // user is travelling or screen-sharing across timezones.
+        // Just the wall-clock time on the user's machine. No `timeZone`
+        // option (browser uses the system timezone) and no `timeZoneName`
+        // (the abbreviation read as noisy clutter — `GMT+2` / `CDT` etc.
+        // didn't help anyone identify "their own time"). If a future
+        // surface needs the abbreviation back, add it there.
         return d.toLocaleString("en-US", {
             year: "numeric",
             month: "short",
             day: "numeric",
             hour: "numeric",
             minute: "2-digit",
-            timeZoneName: "short",
         });
     }
 
