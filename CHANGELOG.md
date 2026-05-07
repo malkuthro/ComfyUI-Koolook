@@ -102,6 +102,30 @@ The format is inspired by Keep a Changelog and SemVer.
   `constants.js`.
 
 ### Added
+- **Offline-fallback banner now has Restore + Discard actions — no more
+  permanent guilt trip.** The red `criticalToast` that fires when
+  localStorage holds a stale outage-fallback blob used to be a one-way
+  street: Copy details, Dismiss, repeat next page load forever. Two
+  buttons close the loop:
+  - **Restore as snapshot** wraps the offline workflows into a full
+    snapshot envelope (live picks bundled in so a later Load wouldn't
+    wipe them) and writes it as `recovered-<iso>.json` into the snapshot
+    library, then clears the localStorage key. The user lands on a
+    durable, in-UI-visible artifact they can inspect, Load, or
+    selectively cherry-pick from. Banner self-extinguishes on success.
+  - **Discard offline copy** asks for confirmation, then clears the
+    localStorage key and dismisses the banner. For the case where the
+    user has already verified nothing is missing.
+  - The toast is now wired from `koolook_sidebar.js` (the entry point)
+    rather than from `loadWorkflowsStore()` itself — the action handlers
+    need `writePreset` / `loadUserPicks` / `showConfirmModal`, and
+    pulling those into the workflows store would create a circular
+    import.
+  - `criticalToast` now accepts an `actions: [{label, onClick, primary?,
+    busyLabel?}]` array; existing callers (`{ copyText }` and string-
+    only) keep working unchanged.
+
+### Added
 - **Recovery section deep-links to the file system + per-row save time.**
   The Load dialog's Recovery auto-saves section now exposes everything
   a power user needs to navigate the autosave subfolders directly:
