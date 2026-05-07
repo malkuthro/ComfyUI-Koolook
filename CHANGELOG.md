@@ -45,6 +45,22 @@ The format is inspired by Keep a Changelog and SemVer.
   selected folder name visually prominent before the user chooses it.
 
 ### Changed
+- **"Create directory" moved off the Workflows toolbar onto right-click of
+  the section header.** The 📂 (`pi-folder-open`) button used to live in the
+  Workflows action bar between the section label and the Save buttons. Tree-
+  structure operations (create / rename / delete a folder) already live on
+  right-click of the row representing the structure being mutated — the per-
+  folder menu offers "Create subdirectory…" / "Rename directory…" / "Delete
+  directory" — but top-level dir creation was the lone outlier sitting in the
+  toolbar. Moving it to right-click on the **"Workflows"** header row makes
+  the action bar homogeneous (only save actions: Save canvas, Save selection)
+  and unifies the mental model: every tree-structure operation lives on
+  right-click of the structure node it acts on. Implemented via a new
+  optional `rootContextMenu` field on section descriptors plumbed through
+  `buildFolder`; only Workflows opts in for now (Nodes/Tags keep today's
+  no-context-menu section header). Fresh-install path is unchanged — the
+  Save modal's "+ New directory…" entry still creates the first directory
+  when the workflow store is empty. Closes #104.
 - **Node-list hover previews now stay at the intended 300px mock-node width.**
   The preview card previously had only a `min-width` plus viewport `max-width`,
   so long node descriptions could set the card's intrinsic width and stretch the
