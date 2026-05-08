@@ -9,4 +9,6 @@ Versioned local fork of Radiance nodes.
   - `UPSTREAM_PIN.yaml` for parity with pinned external raw checkout
 
 Current active version:
-- `v1_0_1`
+- `v2_3_3` — see [`forks/THIRD_PARTY.md`](../THIRD_PARTY.md) for upstream
+  attribution and what changed locally. The earlier `v1_0_1` fork was removed
+  in v0.1.5 (see [`CHANGELOG.md`](../../CHANGELOG.md) `[0.1.5]`).

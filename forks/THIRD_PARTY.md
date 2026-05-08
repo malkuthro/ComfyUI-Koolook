@@ -81,8 +81,16 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
     the upstream's 4K cosine-blend tile engine. Upstream's tiling is
     redundant when the chained VAE (Wan 2.2, Hunyuan, CogVideoX, LTX, etc.)
     already handles temporal stitching internally.
-  - All exposed node IDs are namespaced with the suffix `__koolook_v2_3_3`
-    to avoid collisions with installed copies of upstream Radiance v2.3.3.
+  - The two currently-exposed node IDs (`Easy_hdr_VAE_encode`,
+    `Easy_hdr_VAE_decode`) are Koolook-original names with no upstream
+    counterpart, so they're exposed verbatim via the `SKIP_VERSION_SUFFIX`
+    set in [`versions/v2_3_3/__init__.py`](radiance_koolook/versions/v2_3_3/__init__.py).
+    The wrapper's `__koolook_v2_3_3` namespace suffix is reserved for
+    future ports of upstream-named classes (e.g. `RadianceVAE4KEncode`),
+    where the suffix would prevent collisions with an installed copy of
+    upstream Radiance v2.3.3. See
+    [`docs/reference/versioning.md`](../docs/reference/versioning.md) for
+    the in-place vs. versioned-coexistence patterns.
 - **Why changed:** Upstream's `RadianceVAE4KEncode` errored with
   *"size of tensor a (192) must match the size of tensor b (132) at
   non-singleton dimension 4"* when used in Wan 2.2 video workflows — the

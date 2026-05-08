@@ -1,61 +1,71 @@
-## Purpose
-Give an AI coding agent the minimal, high-value context to be productive in this repo (ComfyUI-Koolook).
+# GitHub Copilot — repo orientation
 
-## Quick orientation
-- Repo provides custom ComfyUI nodes focused on VFX / video/image prompt generation and resizing.
-- Key Python nodes live at the repo root: `k_easy_version.py`, `k_easy_wan22_prompt.py`, `k_easy_resize.py`, `k_ai_pipeline.py`.
-- `config.json` drives dynamic UI/inputs for the Wan 2.2 prompt node.
-- `web/ai_pipeline.js` contains ComfyUI front-end tweaks (preview buttons, read-only instruction widget).
+Thin pointer. The canonical agent context lives in [`CLAUDE.md`](../CLAUDE.md)
+at the repo root — read that first for source-of-truth conventions, dev-sync
+rules, release rules, fork policy, and trigger phrases. This file only carries
+the high-stability orientation that helps Copilot place a request before it
+follows links.
 
-## High-level architecture and runtime behavior
-- Each node is implemented as a Python class exposing the ComfyUI node contract: `INPUT_TYPES`, `RETURN_TYPES`, `RETURN_NAMES`, `FUNCTION`, and `CATEGORY`.
-- `__init__.py` imports these classes and exposes `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` so ComfyUI can register nodes.
-- Nodes are imported at ComfyUI startup. `k_easy_wan22_prompt.py` reads `config.json` at import time to build inputs dynamically—editing `config.json` requires a ComfyUI restart to take effect.
-- Front-end behaviour is extended via `web/ai_pipeline.js` which hooks `beforeRegisterNodeDef` and `nodeCreated` to add widgets and preview buttons for `EasyAIPipeline` and to dynamically update resize widgets for `EasyResize`.
+## What this repo is
 
-## Important patterns & conventions (concrete)
-- Dynamic inputs: `config.json` defines fields as `{ name, type, options, default }`. The node code iterates this to create combo/string widgets. See `config.json` and `k_easy_wan22_prompt.py`.
-- Node signature pattern:
-  - `INPUT_TYPES()` returns a dict with `required` inputs where each entry is a tuple like `("INT", {"default": 1, ...})`.
-  - `RETURN_TYPES` and `RETURN_NAMES` describe outputs. `FUNCTION` is the callable to run.
-  - Example: `k_ai_pipeline.py` exposes `generate_pipeline` via `FUNCTION = "generate_pipeline"` and returns `(file_path, name, version_str, output_directory, ...)`.
-- File-path handling: nodes use `os.path.join(...)` then normalize separators with `.replace('\\','/')` and remove duplicate slashes. Versioning uses `f"v{version:03d}"` when not disabled.
-- Overwrite protection: `k_ai_pipeline.generate_pipeline` raises a `ValueError` when the output directory exists and `enable_overwrite` is False. Agents should follow this behavior when changing save semantics.
+ComfyUI-Koolook is a custom-node pack for ComfyUI. Two shipped surfaces:
 
-## UI integration specifics
-- `web/ai_pipeline.js` provides two preview buttons for `EasyAIPipeline`:
-  - "Get output directory path" — builds the path from widget/widget-values and upstream simple widget values. If an input is connected to a complex node, it shows "Cannot preview..." because it can't resolve runtime values.
-  - "Get output file path" — same but includes constructed filename using the `extension` widget and padded version string.
-- The JS helper `getEffectiveValue(node, name)` tries to resolve widget value or simple upstream widget values. When adding or editing similar front-end helpers, mirror this approach.
+1. **Kforge Labs sidebar** — the main user-facing experience. A ComfyUI
+   sidebar tab that saves favorite nodes, workflows (with subdirectories +
+   archive + tags + reusable modules), and full-state snapshots to a
+   configurable on-disk library.
+   - Front-end entry: [`web/koolook_sidebar.js`](../web/koolook_sidebar.js);
+     module bodies under [`web/sidebar/`](../web/sidebar/).
+   - Back-end snapshot/preset routes: [`koolook_routes.py`](../koolook_routes.py)
+     (registers `/koolook/presets/*` aiohttp routes on ComfyUI's PromptServer).
+   - Bundled visual onboarding guide: [`web/guide/index.html`](../web/guide/index.html)
+     (also opened in-app via the sidebar's Tools-row Help button).
 
-## Developer workflows (how to run / debug)
-- Install via ComfyUI Manager (recommended) or clone into `ComfyUI/custom_nodes/` and restart ComfyUI (see `README.md`).
-- To see runtime exceptions / startup logs, run ComfyUI from a terminal and watch stdout/stderr (on Windows PowerShell):
-  - `python main.py` (run from the ComfyUI root)
-- To apply `config.json` changes: edit `config.json` and restart ComfyUI.
+2. **Koolook custom nodes** — Python node classes at the repo root, each
+   exposing the standard ComfyUI node contract (`INPUT_TYPES`, `RETURN_TYPES`,
+   `RETURN_NAMES`, `FUNCTION`, `CATEGORY`):
+   - [`k_easy_wan22_prompt.py`](../k_easy_wan22_prompt.py) → `EasyWan22Prompt`
+     (reads [`config.json`](../config.json) at import time — edits to
+     `config.json` need a ComfyUI restart).
+   - [`k_easy_resize.py`](../k_easy_resize.py) → `EasyResize_Koolook`
+     (deprecated alias `EasyResize` still registered for back-compat).
+   - [`k_ai_pipeline.py`](../k_ai_pipeline.py) → `EasyAIPipeline` (paired
+     with front-end widgets in [`web/ai_pipeline.js`](../web/ai_pipeline.js)).
+   - [`k_easy_image_batch.py`](../k_easy_image_batch.py) → `easy_ImageBatch`.
+   - [`k_easy_track.py`](../k_easy_track.py) → `KoolookLoadCameraPosesAbsolute`.
+   - Radiance VAE wrappers under
+     [`forks/radiance_koolook/versions/v2_3_3/`](../forks/radiance_koolook/versions/v2_3_3/)
+     → `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode`.
 
-## Integration points & external references
-- Prompt builders: designed to plug into nodes such as `PromptJSON` (see README). The Wan 2.2 prompt outputs comma-separated strings.
-- Inspired by / interoperable with ComfyUI-KJNodes (Resize Image V2) — see README links.
+[`__init__.py`](../__init__.py) imports each module's `NODE_CLASS_MAPPINGS` /
+`NODE_DISPLAY_NAME_MAPPINGS` and exposes the merged set plus `WEB_DIRECTORY`.
 
-## What to keep in mind when editing code
-- Preserve the node contract fields (`INPUT_TYPES`, `RETURN_TYPES`, `FUNCTION`, `CATEGORY`) to avoid breaking ComfyUI registration.
-- When changing `config.json` fields, ensure defaults are valid and keep `output_type` consistent (current value: `"STRING"`).
-- If adding front-end widgets, make changes in `web/ai_pipeline.js` to keep the UI in sync with node behavior (preview helpers, dynamic widget insertion/removal patterns).
+## Things that bite if you don't know them
 
-## Useful examples to cite in edits
-- Construct version string: `version_str = f"v{version:03d}"` in `k_ai_pipeline.py`.
-- Normalize path: `os.path.join(*parts).replace('\\', '/')` followed by removing duplicate slashes.
-- UI preview button logic: `web/ai_pipeline.js` uses `parts.filter(...).join('/')` and `.replace(/\\/g, "/").replace(/\/+/g, '/')` for browser-side cleaning.
+- **Node IDs in saved workflows are stable.** Never rename a registered node
+  ID without a back-compat alias — see
+  [`docs/maintainers/node-versioning.md`](../docs/maintainers/node-versioning.md).
+- **Third-party code stays out of MAIN.** Modified fork code lives under
+  `forks/<name>/versions/<vX_Y_Z>/`; raw upstream checkouts live in
+  `../ComfyUI-Forks/`. See [`forks/README.md`](../forks/README.md) and
+  [`forks/THIRD_PARTY.md`](../forks/THIRD_PARTY.md).
+- **`dev-sync` is user-triggered only.** Never run it automatically (e.g.
+  after a commit, after a merge, on session end). The maintainer runs
+  parallel worktrees and an unsolicited sync overwrites whatever they're
+  reviewing in their live ComfyUI. Wait for the explicit phrase. Full rules
+  in [`CLAUDE.md`](../CLAUDE.md).
+- **UI work needs visual QA.** See [`AGENTS.md`](../AGENTS.md) — open the
+  changed page in a browser, take a screenshot, verify before claiming done.
+- **Three independent version axes** (pack version / fork wrapper version /
+  upstream pinned commit) — see [`docs/reference/versioning.md`](../docs/reference/versioning.md)
+  before any version bump.
 
-## Where to look next (key files)
-- `README.md` — repo purpose and installation instructions.
-- `config.json` — dynamic prompt definitions.
-- `k_ai_pipeline.py`, `k_easy_wan22_prompt.py`, `k_easy_resize.py`, `k_easy_version.py` — node implementations.
-- `web/ai_pipeline.js` — front-end customizations.
+## Where to look next
 
-## Quick ask for the maintainer
-- Tell me if there are any hidden developer scripts or a preferred local dev command for running ComfyUI in dev mode (otherwise I will use `python main.py`).
-
----
-If you'd like, I can iterate and trim or expand any section, or add short examples of small edits (e.g., add a new field to `config.json` and show the minimal Python changes needed).
+- [`CLAUDE.md`](../CLAUDE.md) — full project conventions and protocols
+- [`docs/maintainers/`](../docs/maintainers/) — release procedure, dev-sync
+  loop, registry API, sidebar starter preset, workflows-sidebar reference
+- [`docs/reference/`](../docs/reference/) — glossary, versioning model
+- [`docs/user_guide/`](../docs/user_guide/) — per-node end-user docs
+- [`README.md`](../README.md) — public landing page + install
+- [`CHANGELOG.md`](../CHANGELOG.md) — what changed, in detail
