@@ -128,6 +128,137 @@ figcaption {
   border-radius: 8px;
 }
 
+.overview-map {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.78fr) minmax(220px, 0.72fr);
+  gap: 22px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101010;
+}
+
+.overview-shot {
+  position: relative;
+  width: min(100%, 450px);
+  margin: 0 auto;
+}
+
+.overview-shot img {
+  border-color: #3c3c3c;
+  background: #151515;
+}
+
+.overview-box {
+  position: absolute;
+  border: 3px solid currentColor;
+  border-radius: 8px;
+  background: rgba(20, 24, 33, 0.32);
+  pointer-events: none;
+}
+
+.overview-snapshot {
+  top: 1.2%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 7.2%;
+  color: #4a8058;
+}
+
+.overview-tools {
+  top: 9.2%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 7%;
+  color: #4268ba;
+}
+
+.overview-search {
+  top: 17.3%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 5.7%;
+  color: #d59b3d;
+}
+
+.overview-nodes {
+  top: 25.9%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 8.5%;
+  color: #b64747;
+}
+
+.overview-workflows {
+  top: 34.7%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 8.1%;
+  color: #452e83;
+}
+
+.overview-saved {
+  top: 42.9%;
+  left: 1.2%;
+  width: 97.6%;
+  height: 52.5%;
+  color: #4a8058;
+}
+
+.overview-callouts {
+  display: grid;
+  gap: 14px;
+}
+
+.overview-callout {
+  position: relative;
+  padding-left: 18px;
+}
+
+.overview-callout::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.overview-callout h3 {
+  margin: 0 0 2px;
+  font-size: 18px;
+}
+
+.overview-callout p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.overview-callout.snapshot::before,
+.overview-callout.saved::before {
+  background: var(--green);
+}
+
+.overview-callout.tools::before {
+  background: var(--blue);
+}
+
+.overview-callout.search::before {
+  background: #d59b3d;
+}
+
+.overview-callout.nodes::before {
+  background: #b64747;
+}
+
+.overview-callout.workflows::before {
+  background: var(--purple);
+}
+
 figcaption {
   margin-top: 10px;
   color: var(--muted);
@@ -240,6 +371,10 @@ figcaption {
 @media (max-width: 860px) {
   .section,
   .recipes {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-map {
     grid-template-columns: 1fr;
   }
 
