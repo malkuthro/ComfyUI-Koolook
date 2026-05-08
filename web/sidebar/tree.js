@@ -2453,15 +2453,9 @@ export function renderPanel(container) {
         icon: TOOLBAR_ICONS.help,
         title: "Open the Kforge Labs visual guide",
         onClick: () => {
-            const opened = window.open(GUIDE_URL, "_blank");
+            const opened = window.open(GUIDE_URL, "_blank", "noopener,noreferrer");
             if (!opened) {
                 toast("Could not open the guide. Allow pop-ups for this page, then try again.");
-            } else {
-                try {
-                    opened.opener = null;
-                } catch (_e) {
-                    // Some browsers disallow touching the new tab handle.
-                }
             }
         },
     }));
