@@ -28,6 +28,7 @@ import {
     toast,
     compareNames,
 } from "./constants.js";
+import { formatLocalStamp } from "./format_time.js";
 import {
     loadUserPicks,
     removeFromMyPicks,
@@ -101,6 +102,7 @@ import {
     exportStarterPreset,
     writePreLoadAutosave,
     markStateSaved,
+    markStateAutosaved,
     getSnapshotStatus,
     listAutosaves,
     revealPresetFolder,
@@ -2204,6 +2206,7 @@ export function renderPanel(container) {
         getLibraryInfo,
         writePreLoadAutosave,
         markStateSaved,
+        markStateAutosaved,
         listAutosaves,
         revealPresetFolder,
         onToast: toast,
@@ -2259,18 +2262,7 @@ export function renderPanel(container) {
         if (!iso) return "not saved yet";
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
-        // Just the wall-clock time on the user's machine. No `timeZone`
-        // option (browser uses the system timezone) and no `timeZoneName`
-        // (the abbreviation read as noisy clutter — `GMT+2` / `CDT` etc.
-        // didn't help anyone identify "their own time"). If a future
-        // surface needs the abbreviation back, add it there.
-        return d.toLocaleString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-        });
+        return formatLocalStamp(d);
     }
 
     function snapshotTooltip(status) {

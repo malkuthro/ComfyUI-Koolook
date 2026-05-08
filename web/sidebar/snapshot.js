@@ -276,6 +276,22 @@ export function markStateSaved() {
     _emitStatusChanged();
 }
 
+// Mark the current in-memory state as matching the latest periodic
+// auto-save. Call after restoring from `<preset>_autosave/periodic.json`
+// — the in-memory state IS that auto-save's content, but the named file
+// on disk is still the OLDER deliberate save. Calling `markStateSaved()`
+// here would mis-baseline the dirty indicator as "saved" against the
+// named file, blurring the deliberate-save model the snapshot UX relies
+// on. Setting `_lastPeriodicFingerprint` instead makes the indicator read
+// "auto-saved" until the user explicitly Save / Quick Save's the
+// restored state into the named file. Session-scoped (not persisted) —
+// matches the rest of the periodic-fingerprint contract.
+export function markStateAutosaved() {
+    _lastPeriodicFingerprint = _computeFingerprint();
+    _lastPeriodicAt = new Date().toISOString();
+    _emitStatusChanged();
+}
+
 // Returns one of:
 //   { name: <string|null>, state: "saved" | "autosaved" | "unsaved" | "none",
 //     lastNamedSaveAt: <ISO|null>, lastAutosaveAt: <ISO|null> }
@@ -668,6 +684,16 @@ async function loadPreview(fullName, dir, rowMeta) {
             // across regular snapshot rows and recovery rows.
             mtime: rowMeta && typeof rowMeta.mtime === "number" ? rowMeta.mtime : null,
             size: rowMeta && typeof rowMeta.size === "number" ? rowMeta.size : null,
+            // Server augments root rows with the mtime of `<base>_autosave/
+            // periodic.json` when it exists AND is strictly newer than the
+            // named file. Powers the Load dialog's inline "Newer auto-save
+            // available — restore?" affordance. `null` for autosave subdir
+            // listings (the server only emits this at root) and for rows
+            // whose autosave is stale or absent.
+            latestAutosaveMtime:
+                rowMeta && typeof rowMeta.latestAutosaveMtime === "number"
+                    ? rowMeta.latestAutosaveMtime
+                    : null,
             workflowCount: countWorkflowsInStore(obj.workflows),
             pickCount: Array.isArray(obj.picks) ? obj.picks.length : 0,
         };

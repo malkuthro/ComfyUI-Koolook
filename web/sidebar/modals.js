@@ -7,6 +7,7 @@
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
 import { compareNames, criticalToast, toast } from "./constants.js";
+import { formatLocalStamp } from "./format_time.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
 import {
     detectManager,
@@ -955,28 +956,18 @@ function todayStamp() {
 // snapshot's self-reported `exportedAt` because (1) mtime survives
 // out-of-band file copies in Finder while exportedAt is frozen at
 // gather-time, and (2) "saved <local time>" is what the user actually
-// wants to see for "which row is newest". Falls back to `exportedAt` as
-// date-only for legacy rows whose listing endpoint didn't carry mtime.
+// wants to see for "which row is newest". Falls back to `exportedAt`
+// for legacy rows whose listing endpoint didn't carry mtime.
 function formatPreviewMeta(p) {
     const parts = [];
     parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
     parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
     if (typeof p.mtime === "number" && isFinite(p.mtime)) {
-        const d = new Date(p.mtime * 1000);
-        if (!isNaN(d.getTime())) {
-            const stamp = d.toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-            });
-            parts.push(`saved ${stamp}`);
-        }
+        const stamp = formatLocalStamp(new Date(p.mtime * 1000));
+        if (stamp) parts.push(`saved ${stamp}`);
     } else if (p.exportedAt) {
-        try {
-            const d = new Date(p.exportedAt);
-            if (!isNaN(d.getTime())) parts.push(`exported ${d.toLocaleDateString()}`);
-        } catch (e) { /* noop */ }
+        const stamp = formatLocalStamp(new Date(p.exportedAt));
+        if (stamp) parts.push(`exported ${stamp}`);
     }
     return parts.join(" · ");
 }
@@ -1212,6 +1203,7 @@ export function showLoadSnapshotDialog({
     getLibraryInfo,
     writePreLoadAutosave,
     markStateSaved,
+    markStateAutosaved,
     listAutosaves,
     revealPresetFolder,
     onToast,
@@ -1325,7 +1317,147 @@ export function showLoadSnapshotDialog({
         listWrap.appendChild(list);
     }
 
+    // Action helpers. Extracted from the in-line `onConfirm` bodies so
+    // both the standard load flow AND the autosave-newer YES/NO choice
+    // modal can dispatch the same pre-load-autosave + applySnapshot +
+    // tracker-rebase + partial-failure logic without duplicating ~30
+    // lines per call site. `close()` here refers to the OUTER Load
+    // Snapshot dialog's overlay — closures over `close` from the
+    // enclosing `showLoadSnapshotDialog` scope.
+    async function doNamedLoad(preview) {
+        try {
+            // Defensive auto-save BEFORE any destructive write — see
+            // `writePreLoadAutosave` rationale in snapshot.js. If the
+            // backup fails, abort the Load entirely; landing in a
+            // "Load destroyed my state with no backup" world is
+            // exactly what this whole code path exists to prevent.
+            let backupName = null;
+            if (typeof writePreLoadAutosave === "function") {
+                try {
+                    backupName = await writePreLoadAutosave(preview.displayName);
+                } catch (e) {
+                    console.error("[Koolook] pre-load auto-save failed:", e);
+                    close();
+                    criticalToast(
+                        `Could not write pre-load auto-save: ${e.message}. ` +
+                        `Load aborted to protect your current state. Fix ` +
+                        `the library access issue (Settings → Library path) ` +
+                        `and retry.`
+                    );
+                    return;
+                }
+            }
+            const snap = await readPreset(preview.fileName);
+            const { picksOk, workflowsOk } = await applySnapshot(snap);
+            close();
+            // Gate the tracker on FULL success only. A partial-apply
+            // (one of picks / workflows persisted, the other didn't)
+            // leaves on-disk and in-memory state inconsistent — if
+            // we tracked the preset name anyway, the next Save would
+            // default to "Save over '<name>'?" and overwrite the
+            // saved preset with the corrupted half-state. Clear the
+            // tracker on partial failure so the next Save forces a
+            // fresh name prompt.
+            if (picksOk && workflowsOk) {
+                setCurrentPresetName(preview.fileName);
+                // Baseline the saved-state fingerprint — current
+                // state IS the loaded preset, so the indicator
+                // should read "saved" until the next mutation.
+                if (typeof markStateSaved === "function") markStateSaved();
+                const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
+                toast(`Loaded preset "${preview.displayName}"${backupSuffix}.`);
+            } else if (picksOk || workflowsOk) {
+                setCurrentPresetName(null);
+                toast(
+                    `Loaded "${preview.displayName}" — PARTIAL: ` +
+                    `picks ${picksOk ? "OK" : "FAIL"}, ` +
+                    `workflows ${workflowsOk ? "OK" : "FAIL"}. ` +
+                    `Reload to recover prior state. Tracker cleared.`
+                );
+            } else {
+                setCurrentPresetName(null);
+                toast(`Loaded "${preview.displayName}" in memory but persist failed. Reload to recover.`);
+            }
+        } catch (e) {
+            console.error("[Koolook] preset load failed:", e);
+            toast(`Could not load "${preview.displayName}": ${e.message}`);
+        }
+    }
+
+    async function doAutosaveRestore(item) {
+        const tooltipName = `${item.dir}/${item.fileName}`;
+        try {
+            let backupName = null;
+            if (typeof writePreLoadAutosave === "function") {
+                try {
+                    backupName = await writePreLoadAutosave(`Pre-recovery (${tooltipName})`);
+                } catch (e) {
+                    console.error("[Koolook] pre-recovery autosave failed:", e);
+                    close();
+                    criticalToast(
+                        `Could not write pre-recovery auto-save: ${e.message}. ` +
+                        `Restore aborted to protect your current state.`
+                    );
+                    return;
+                }
+            }
+            const snap = await readPreset(item.fileName, { dir: item.dir });
+            const { picksOk, workflowsOk } = await applySnapshot(snap);
+            close();
+            // Derive the original named preset from the subfolder so
+            // the post-restore tracker reads naturally — `Foo_autosave`
+            // → "Foo", `_unsaved_autosave` → null (no tracked preset).
+            let restoredName = null;
+            if (item.dir !== "_unsaved_autosave" && item.dir.endsWith("_autosave")) {
+                restoredName = item.dir.slice(0, -"_autosave".length);
+            }
+            if (picksOk && workflowsOk) {
+                setCurrentPresetName(restoredName);
+                // Baseline as "auto-saved", NOT "saved". The named file
+                // on disk is still the OLDER deliberate save — only
+                // periodic.json matches what's now in memory. Calling
+                // `markStateSaved()` here would mis-claim the named save
+                // is up to date and blur the deliberate-save model
+                // (named saves only change on Save / Quick Save). The
+                // dot turns blue, prompting Quick Save when the user
+                // wants to commit the restored state to the named file.
+                if (typeof markStateAutosaved === "function") markStateAutosaved();
+                const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
+                toast(
+                    `Restored auto-save${restoredName ? ` of "${restoredName}"` : ""}` +
+                    ` — Quick Save to commit to the named file${backupSuffix}.`
+                );
+            } else if (picksOk || workflowsOk) {
+                setCurrentPresetName(null);
+                toast(
+                    `Restored "${tooltipName}" — PARTIAL: ` +
+                    `picks ${picksOk ? "OK" : "FAIL"}, ` +
+                    `workflows ${workflowsOk ? "OK" : "FAIL"}.`
+                );
+            } else {
+                setCurrentPresetName(null);
+                toast(`Restored "${tooltipName}" in memory but persist failed.`);
+            }
+        } catch (e) {
+            console.error("[Koolook] autosave restore failed:", e);
+            toast(`Could not restore "${tooltipName}": ${e.message}`);
+        }
+    }
+
     function promptApply(preview) {
+        // When the corresponding `<base>_autosave/periodic.json` is
+        // strictly newer than the named save, route to the YES/NO
+        // choice modal so the user can pick which version to load
+        // without navigating the Recovery disclosure or having to
+        // mentally reason about which timestamp is newer. The standard
+        // single-button confirm is reserved for rows where there's no
+        // newer auto-save (the unambiguous case).
+        if (typeof preview.latestAutosaveMtime === "number" &&
+            typeof preview.mtime === "number" &&
+            preview.latestAutosaveMtime > preview.mtime) {
+            promptApplyChoice(preview);
+            return;
+        }
         showConfirmModal({
             title: "Replace current state?",
             message:
@@ -1335,65 +1467,77 @@ export function showLoadSnapshotDialog({
                 `current state will be written first as a recovery point.`,
             confirmLabel: "Load preset",
             danger: true,
-            onConfirm: async () => {
-                try {
-                    // Defensive auto-save BEFORE any destructive write — see
-                    // `writePreLoadAutosave` rationale in snapshot.js. If the
-                    // backup fails, abort the Load entirely; landing in a
-                    // "Load destroyed my state with no backup" world is
-                    // exactly what this whole code path exists to prevent.
-                    let backupName = null;
-                    if (typeof writePreLoadAutosave === "function") {
-                        try {
-                            backupName = await writePreLoadAutosave(preview.displayName);
-                        } catch (e) {
-                            console.error("[Koolook] pre-load auto-save failed:", e);
-                            close();
-                            criticalToast(
-                                `Could not write pre-load auto-save: ${e.message}. ` +
-                                `Load aborted to protect your current state. Fix ` +
-                                `the library access issue (Settings → Library path) ` +
-                                `and retry.`
-                            );
-                            return;
-                        }
-                    }
-                    const snap = await readPreset(preview.fileName);
-                    const { picksOk, workflowsOk } = await applySnapshot(snap);
-                    close();
-                    // Gate the tracker on FULL success only. A partial-apply
-                    // (one of picks / workflows persisted, the other didn't)
-                    // leaves on-disk and in-memory state inconsistent — if
-                    // we tracked the preset name anyway, the next Save would
-                    // default to "Save over '<name>'?" and overwrite the
-                    // saved preset with the corrupted half-state. Clear the
-                    // tracker on partial failure so the next Save forces a
-                    // fresh name prompt.
-                    if (picksOk && workflowsOk) {
-                        setCurrentPresetName(preview.fileName);
-                        // Baseline the saved-state fingerprint — current
-                        // state IS the loaded preset, so the indicator
-                        // should read "saved" until the next mutation.
-                        if (typeof markStateSaved === "function") markStateSaved();
-                        const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
-                        toast(`Loaded preset "${preview.displayName}"${backupSuffix}.`);
-                    } else if (picksOk || workflowsOk) {
-                        setCurrentPresetName(null);
-                        toast(
-                            `Loaded "${preview.displayName}" — PARTIAL: ` +
-                            `picks ${picksOk ? "OK" : "FAIL"}, ` +
-                            `workflows ${workflowsOk ? "OK" : "FAIL"}. ` +
-                            `Reload to recover prior state. Tracker cleared.`
-                        );
-                    } else {
-                        setCurrentPresetName(null);
-                        toast(`Loaded "${preview.displayName}" in memory but persist failed. Reload to recover.`);
-                    }
-                } catch (e) {
-                    console.error("[Koolook] preset load failed:", e);
-                    toast(`Could not load "${preview.displayName}": ${e.message}`);
-                }
+            onConfirm: () => doNamedLoad(preview),
+        });
+    }
+
+    // YES/NO choice modal — appears when the row's auto-save is newer
+    // than its named save. Built directly via `makeModalShell` (not
+    // `showConfirmModal`) because we need ESC / overlay click to mean
+    // "cancel both" rather than "fire one of the actions": showConfirm
+    // would bind one of the two paths to its cancel handler, which
+    // also runs on Escape. Two affirmative buttons, one neutral
+    // dismissal — this layout requires the direct shell.
+    function promptApplyChoice(preview) {
+        const namedStamp = formatLocalStamp(new Date(preview.mtime * 1000));
+        const autoStamp = formatLocalStamp(new Date(preview.latestAutosaveMtime * 1000));
+
+        const body = document.createElement("div");
+
+        const intro = document.createElement("div");
+        intro.className = "koolook-modal-message";
+        intro.textContent =
+            `Loading "${preview.displayName}" will replace your current ` +
+            `picks and workflows. A pre-load auto-save of your current ` +
+            `state will be written first as a recovery point.`;
+        body.appendChild(intro);
+
+        const compareHead = document.createElement("div");
+        compareHead.className = "koolook-modal-message";
+        compareHead.style.marginTop = "10px";
+        compareHead.textContent = "Auto-save is NEWER than the saved version:";
+        body.appendChild(compareHead);
+
+        const compareList = document.createElement("ul");
+        compareList.style.margin = "4px 0 0 18px";
+        compareList.style.padding = "0";
+        compareList.style.fontSize = "12px";
+        const liNamed = document.createElement("li");
+        liNamed.textContent = `Saved version — ${namedStamp}`;
+        const liAuto = document.createElement("li");
+        liAuto.textContent = `Auto-save — ${autoStamp}`;
+        compareList.appendChild(liNamed);
+        compareList.appendChild(liAuto);
+        body.appendChild(compareList);
+
+        const question = document.createElement("div");
+        question.className = "koolook-modal-message";
+        question.style.marginTop = "10px";
+        question.textContent =
+            "Do you want to load the auto-saved version? " +
+            "(NO loads the saved version. Press Esc to cancel.)";
+        body.appendChild(question);
+
+        let shell;
+        const noBtn = makeModalButton({
+            label: "NO",
+            onClick: () => { shell.close(); doNamedLoad(preview); },
+        });
+        const yesBtn = makeModalButton({
+            label: "YES — load auto-save",
+            primary: true,
+            onClick: () => {
+                shell.close();
+                doAutosaveRestore({
+                    dir: `${preview.fileName}_autosave`,
+                    fileName: "periodic",
+                });
             },
+        });
+        shell = makeModalShell({
+            title: "Replace current state?",
+            body,
+            actions: [noBtn, yesBtn],
         });
     }
 
@@ -1479,55 +1623,7 @@ export function showLoadSnapshotDialog({
                 `point — this restore is itself reversible.`,
             confirmLabel: "Restore",
             danger: true,
-            onConfirm: async () => {
-                try {
-                    let backupName = null;
-                    if (typeof writePreLoadAutosave === "function") {
-                        try {
-                            backupName = await writePreLoadAutosave(
-                                `Pre-recovery (${tooltipName})`
-                            );
-                        } catch (e) {
-                            console.error("[Koolook] pre-recovery autosave failed:", e);
-                            close();
-                            criticalToast(
-                                `Could not write pre-recovery auto-save: ${e.message}. ` +
-                                `Restore aborted to protect your current state.`
-                            );
-                            return;
-                        }
-                    }
-                    const snap = await readPreset(item.fileName, { dir: item.dir });
-                    const { picksOk, workflowsOk } = await applySnapshot(snap);
-                    close();
-                    // Derive the original named preset from the subfolder so
-                    // the post-restore tracker reads naturally — `Foo_autosave`
-                    // → "Foo", `_unsaved_autosave` → null (no tracked preset).
-                    let restoredName = null;
-                    if (item.dir !== "_unsaved_autosave" && item.dir.endsWith("_autosave")) {
-                        restoredName = item.dir.slice(0, -"_autosave".length);
-                    }
-                    if (picksOk && workflowsOk) {
-                        setCurrentPresetName(restoredName);
-                        if (typeof markStateSaved === "function") markStateSaved();
-                        const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
-                        toast(`Restored auto-save${restoredName ? ` "${restoredName}"` : ""}${backupSuffix}.`);
-                    } else if (picksOk || workflowsOk) {
-                        setCurrentPresetName(null);
-                        toast(
-                            `Restored "${tooltipName}" — PARTIAL: ` +
-                            `picks ${picksOk ? "OK" : "FAIL"}, ` +
-                            `workflows ${workflowsOk ? "OK" : "FAIL"}.`
-                        );
-                    } else {
-                        setCurrentPresetName(null);
-                        toast(`Restored "${tooltipName}" in memory but persist failed.`);
-                    }
-                } catch (e) {
-                    console.error("[Koolook] autosave restore failed:", e);
-                    toast(`Could not restore "${tooltipName}": ${e.message}`);
-                }
-            },
+            onConfirm: () => doAutosaveRestore(item),
         });
     }
 
