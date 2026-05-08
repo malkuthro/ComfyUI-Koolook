@@ -389,6 +389,9 @@ export async function dropPlaceholdersForPacks(packsByUrl) {
                 confirmLabel: "Replace canvas",
                 danger: true,
                 onConfirm: async () => resolve(await apply()),
+                // Without this, Cancel / Escape / click-outside left the
+                // Promise pending forever — caller's await never returned.
+                onCancel: () => resolve({ ok: false, reason: "cancelled" }),
             });
         });
     }

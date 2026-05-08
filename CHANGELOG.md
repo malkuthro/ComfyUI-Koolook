@@ -180,6 +180,22 @@ The format is inspired by Keep a Changelog and SemVer.
   `constants.js`.
 
 ### Fixed
+- **Cancel / Escape / click-outside on the "Replace current workflow?"
+  placeholder-drop modal no longer leaks a pending Promise** (closes
+  issue #84 part 2). `dropPlaceholdersForPacks` in
+  `web/sidebar/canvas_io.js` wrapped `showConfirmModal` in
+  `new Promise` but only resolved on the OK path — every cancel left
+  an unresolved Promise behind. The Promise now resolves with
+  `{ ok: false, reason: "cancelled" }` (matching the function's other
+  failure shapes) on every non-OK dismissal. Fix is two-layered:
+  `dropPlaceholdersForPacks` passes an `onCancel` resolver, AND
+  `showConfirmModal` in `web/sidebar/modals.js` now fires `onCancel`
+  for the Cancel button, Escape, AND overlay-click via an idempotent
+  settle flag (previously only the Cancel button fired it). Closes a
+  latent leak on the recovery toast's "Discard offline copy" path at
+  `web/koolook_sidebar.js:130` for free — that caller had wired
+  `onCancel` for the Cancel button only, so pressing Esc / clicking
+  outside used to leave the toast button stuck in "Discarding…".
 - **Snapshot status reads "auto-saved" — not "saved" — after restoring
   from an auto-save.** Previously, restoring `<preset>_autosave/
   periodic.json` (via the new YES path on the Load dialog OR the
