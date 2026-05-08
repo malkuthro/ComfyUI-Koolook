@@ -423,14 +423,14 @@ figcaption {
 
 .module-sketch {
   display: grid;
-  grid-template-columns: minmax(180px, 320px) minmax(210px, 1fr);
+  grid-template-columns: minmax(260px, 420px) minmax(210px, 1fr);
   gap: 18px;
   align-items: center;
 }
 
 .module-command-shot {
   position: relative;
-  width: min(100%, 220px);
+  width: min(100%, 420px);
   border: 1px solid #3d3d3d;
   border-radius: 6px;
   background: #151515;
@@ -444,10 +444,10 @@ figcaption {
 
 .icon-focus {
   position: absolute;
-  right: 5.2%;
-  bottom: 13.5%;
-  width: 42%;
-  height: 55%;
+  right: 1.9%;
+  bottom: 5.8%;
+  width: 11.5%;
+  height: 9.5%;
   border: 2px solid #c9944b;
   border-radius: 8px;
   background: rgba(201, 148, 75, 0.2);
