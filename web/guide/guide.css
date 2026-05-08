@@ -446,23 +446,27 @@ figcaption {
 }
 
 .recipe-callout {
-  margin: 0;
-  margin-top: 12px;
-  padding: 12px 14px 12px 16px;
-  border-left: 4px solid var(--blue);
-  border-radius: 6px;
-  background: #111216;
-  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  width: fit-content;
+  max-width: min(520px, calc(100% - 44px));
+  margin: 18px auto 0;
+  padding: 14px 18px 14px 22px;
+  border-left: 5px solid var(--blue);
+  border-radius: 8px;
+  background: #111111;
+  box-shadow: 0 14px 30px rgb(0 0 0 / 26%);
 }
 
 .recipe-callout p {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 17px;
+  line-height: 1.55;
 }
 
 .recipe-callout strong {
   color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .recipe-callout.amber {
