@@ -2149,12 +2149,34 @@ export function showSnapshotSettingsDialog({
 // =============================================================================
 // Context menu helper
 // =============================================================================
+let activeContextMenuCleanup = null;
+
+function closeActiveContextMenu() {
+    if (activeContextMenuCleanup) {
+        activeContextMenuCleanup();
+        activeContextMenuCleanup = null;
+    }
+}
+
 export function showContextMenu(event, items) {
     event.preventDefault();
     event.stopPropagation();
+    closeActiveContextMenu();
 
     const menu = document.createElement("div");
     menu.className = "koolook-context-menu";
+    let closeOnClick = null;
+
+    const cleanup = () => {
+        menu.remove();
+        if (closeOnClick) {
+            document.removeEventListener("click", closeOnClick);
+            document.removeEventListener("contextmenu", closeOnClick);
+            closeOnClick = null;
+        }
+        if (activeContextMenuCleanup === cleanup) activeContextMenuCleanup = null;
+    };
+    activeContextMenuCleanup = cleanup;
 
     for (const item of items) {
         if (!item) {
@@ -2172,7 +2194,7 @@ export function showContextMenu(event, items) {
             m.style.cursor = "not-allowed";
         } else {
             m.addEventListener("click", () => {
-                menu.remove();
+                cleanup();
                 item.action();
             });
         }
@@ -2188,11 +2210,9 @@ export function showContextMenu(event, items) {
     if (rect.bottom > window.innerHeight) menu.style.top = `${event.clientY - rect.height}px`;
 
     setTimeout(() => {
-        const closeOnClick = (ev) => {
+        closeOnClick = (ev) => {
             if (!menu.contains(ev.target)) {
-                menu.remove();
-                document.removeEventListener("click", closeOnClick);
-                document.removeEventListener("contextmenu", closeOnClick);
+                cleanup();
             }
         };
         document.addEventListener("click", closeOnClick);

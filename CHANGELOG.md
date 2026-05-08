@@ -87,6 +87,10 @@ The format is inspired by Keep a Changelog and SemVer.
   when not current). Centralized in a new `format_time.js` helper used
   by both the Load dialog rows and the status tooltip so future surfaces
   stay aligned.
+- **Sidebar context menus now enforce a single open menu.** Opening a
+  workflow, directory, archive, or Workflows-header right-click menu now closes
+  any previous sidebar context menu first, so repeated right-clicks cannot
+  stack multiple floating menus with stale actions.
 - **"Create directory" moved off the Workflows toolbar onto right-click of
   the section header.** The 📂 (`pi-folder-open`) button used to live in the
   Workflows action bar between the section label and the Save buttons. Tree-
