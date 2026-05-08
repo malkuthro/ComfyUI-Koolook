@@ -7,6 +7,15 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Visual sidebar guide now hosted on GitHub Pages.** The bundled guide at
+  [`web/guide/index.html`](web/guide/index.html) is now also live at
+  https://malkuthro.github.io/ComfyUI-Koolook/web/guide/ so users browsing
+  the repo on github.com — and visitors landing on the package page in the
+  Comfy Registry — can preview the onboarding without cloning. The in-app
+  Tools → Help (`H`) button continues to open the bundled local copy via
+  `import.meta.url`, so the guide stays available offline. README and
+  `pyproject.toml`'s `Documentation` URL now point at the Pages site
+  (replacing the unmaintained wiki link).
 - **Load dialog asks YES/NO when an auto-save is newer than the saved
   version.** Click any preset row in Snapshot → Load and, if the
   matching `<preset>_autosave/periodic.json` is more recent than the
