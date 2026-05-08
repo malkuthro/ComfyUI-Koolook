@@ -1197,16 +1197,19 @@ function makeIconElement(icon) {
         const el = document.createElement("span");
         el.className = "koolook-letter-icon";
         el.textContent = icon.text;
+        el.setAttribute("aria-hidden", "true");
         return el;
     }
     if (icon && icon.kind === "square") {
         const el = document.createElement("span");
         el.className = "koolook-filled-square-icon";
+        el.setAttribute("aria-hidden", "true");
         return el;
     }
     if (icon && icon.kind === "stair") {
         const el = document.createElement("span");
         el.className = "koolook-stair-icon";
+        el.setAttribute("aria-hidden", "true");
         for (let i = 0; i < 3; i += 1) {
             el.appendChild(document.createElement("span"));
         }
@@ -1215,6 +1218,7 @@ function makeIconElement(icon) {
     if (icon && icon.kind === "list") {
         const el = document.createElement("span");
         el.className = "koolook-list-icon";
+        el.setAttribute("aria-hidden", "true");
         for (let i = 0; i < 3; i += 1) {
             el.appendChild(document.createElement("span"));
         }
@@ -1236,6 +1240,7 @@ function makeIconElement(icon) {
     }
     const el = document.createElement("span");
     el.className = typeof icon === "string" ? icon : (icon?.iconClass || "");
+    el.setAttribute("aria-hidden", "true");
     return el;
 }
 
@@ -1246,6 +1251,7 @@ function makeToolbarButton({ iconClass, icon, title, onClick }) {
     btn.className = "koolook-add-btn koolook-icon-btn";
     btn.appendChild(makeIconElement(icon || iconClass));
     btn.title = title;
+    btn.setAttribute("aria-label", title);
     btn.addEventListener("click", onClick);
     return btn;
 }
@@ -2503,6 +2509,7 @@ export function renderPanel(container) {
         const btn = document.createElement("button");
         btn.className = "koolook-mode-toggle-btn";
         btn.title = title;
+        btn.setAttribute("aria-label", title);
         btn.dataset.mode = modeId;
         btn.appendChild(makeIconElement(icon));
         btn.addEventListener("click", () => {
@@ -2544,8 +2551,10 @@ export function renderPanel(container) {
     addBtn.className = "koolook-add-btn koolook-icon-btn koolook-add-btn-green";
     const addBtnIcon = document.createElement("i");
     addBtnIcon.className = "pi pi-plus";
+    addBtnIcon.setAttribute("aria-hidden", "true");
     addBtn.appendChild(addBtnIcon);
     addBtn.title = "Add the selected canvas node(s) to favorites";
+    addBtn.setAttribute("aria-label", "Add the selected canvas node(s) to favorites");
     addBtn.addEventListener("click", () => {
         const types = getSelectedNodeTypes();
         if (types.length === 0) {
