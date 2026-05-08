@@ -173,44 +173,44 @@ figcaption {
   content: none;
 }
 
-/* Marker percentages tuned to the redesigned 728×1206 sidebar-overview.png.
-   Section dividers measured at y = 78 / 154 / 264 / 344 / 420 / 1206
-   (= 6.47% / 12.77% / 21.89% / 28.52% / 34.83% / 100%). Each bar is inset
-   ~0.5% from its dividers so the marker sits cleanly inside the row band
+/* Marker percentages tuned to the redesigned 666×1202 sidebar-overview.png.
+   Section dividers measured at y = 76 / 152 / 262 / 342 / 418 / 1202
+   (= 6.32% / 12.65% / 21.80% / 28.45% / 34.78% / 100%). Each bar is inset
+   ~0.4% from its dividers so the marker sits cleanly inside the row band
    instead of straddling the divider line. */
 .overview-snapshot {
-  top: 0.7%;
-  height: 5.4%;
+  top: 0.5%;
+  height: 5.3%;
   color: #4a8058;
 }
 
 .overview-tools {
-  top: 7.0%;
-  height: 5.4%;
+  top: 6.8%;
+  height: 5.3%;
   color: #4268ba;
 }
 
 .overview-search {
-  top: 13.4%;
-  height: 8.0%;
+  top: 13.2%;
+  height: 8.2%;
   color: #d59b3d;
 }
 
 .overview-nodes {
-  top: 22.4%;
-  height: 5.6%;
+  top: 22.3%;
+  height: 5.7%;
   color: #b64747;
 }
 
 .overview-workflows {
-  top: 29.1%;
+  top: 28.9%;
   height: 5.4%;
   color: #452e83;
 }
 
 .overview-saved {
-  top: 35.4%;
-  height: 63.6%;
+  top: 35.3%;
+  height: 63.7%;
   color: #4a8058;
 }
 
@@ -419,7 +419,11 @@ figcaption {
 .recipe-shot {
   position: relative;
   max-width: 70%;
-  margin: 0 auto;
+  /* `margin-top: auto` + figcaption's existing `margin-top: auto` distribute
+     the leftover vertical space equally — top space above the shot equals
+     space between callout and figcaption, so the shot+callout pair is
+     vertically centered in the panel above the bottom-pinned figcaption. */
+  margin: auto auto 0;
 }
 
 .recipes .recipe-shot img {
@@ -434,10 +438,28 @@ figcaption {
 }
 
 /* Focus-dot overlays were visually noisy and frequently misaligned over the
-   underlying screenshots; hidden until they can be redrawn against the new
-   sidebar imagery. Aria-hidden already, so nothing changes for AT users. */
+   underlying screenshots; hidden by default until they can be redrawn
+   against the new sidebar imagery. Aria-hidden already, so nothing changes
+   for AT users. Specific overlays (e.g. .focus-module) re-enable themselves
+   below with positioning tuned to the new screenshots. */
 .focus-dot {
   display: none;
+}
+
+/* Workflow save-selection recipe — translucent yellow overlay highlighting
+   the two action buttons (floppy + grid-2x2) at the bottom-right of the
+   Workflows row in all-icons-new.png. Anchored to the bottom-right corner
+   of the screenshot since that's where the buttons sit in the PNG. */
+.recipes .focus-module {
+  display: block;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22%;
+  height: 15.6%;
+  background: rgb(255 210 74 / 30%);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .recipe-callout {
