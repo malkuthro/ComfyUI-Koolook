@@ -133,8 +133,12 @@ figcaption {
 
 .overview-map {
   display: grid;
-  grid-template-columns: minmax(240px, 0.78fr) minmax(220px, 0.72fr);
-  gap: 48px;
+  /* Slightly wider screenshot column + tighter gap so the sidebar shot's
+     natural portrait height grows to roughly match the callouts column
+     height (image aspect 728:1206 → ~1.656x width). Markers scale with the
+     image since they use percentage positioning. */
+  grid-template-columns: minmax(240px, 0.84fr) minmax(220px, 0.66fr);
+  gap: 24px;
   align-items: center;
   padding: 22px 28px 22px 22px;
   border: 1px solid var(--line);
@@ -156,7 +160,7 @@ figcaption {
 
 .overview-box {
   position: absolute;
-  right: -18px;
+  right: -4px;
   width: 4px;
   border: 0;
   border-radius: 999px;
@@ -169,39 +173,44 @@ figcaption {
   content: none;
 }
 
+/* Marker percentages tuned to the redesigned 666×1202 sidebar-overview.png.
+   Section dividers measured at y = 76 / 152 / 262 / 342 / 418 / 1202
+   (= 6.32% / 12.65% / 21.80% / 28.45% / 34.78% / 100%). Each bar is inset
+   ~0.4% from its dividers so the marker sits cleanly inside the row band
+   instead of straddling the divider line. */
 .overview-snapshot {
-  top: 1.8%;
-  height: 6.8%;
+  top: 0.5%;
+  height: 5.3%;
   color: #4a8058;
 }
 
 .overview-tools {
-  top: 9.7%;
-  height: 6.4%;
+  top: 6.8%;
+  height: 5.3%;
   color: #4268ba;
 }
 
 .overview-search {
-  top: 17.8%;
-  height: 5.6%;
+  top: 13.2%;
+  height: 8.2%;
   color: #d59b3d;
 }
 
 .overview-nodes {
-  top: 26.2%;
-  height: 8.2%;
+  top: 22.3%;
+  height: 5.7%;
   color: #b64747;
 }
 
 .overview-workflows {
-  top: 34.9%;
-  height: 8%;
+  top: 28.9%;
+  height: 5.4%;
   color: #452e83;
 }
 
 .overview-saved {
-  top: 43.5%;
-  height: 51.8%;
+  top: 35.3%;
+  height: 63.7%;
   color: #4a8058;
 }
 
@@ -298,9 +307,28 @@ figcaption {
 }
 
 .band > p {
-  max-width: 760px;
   padding: 18px 22px 0;
   font-size: 17px;
+}
+
+/* Text-only band (no figure to provide bottom padding) — its trailing
+   paragraph needs explicit bottom space so the body text doesn't sit
+   flush against the panel's bottom edge. */
+.band-text > p:last-child {
+  padding-bottom: 22px;
+}
+
+/* Inline code spans — used for filename / path fragments inside body
+   prose like <snapshot>_autosave/. Slight tinted bg + monospace stack
+   so they read as code without dominating the line. */
+.band p code,
+.band-text p code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
 }
 
 .full {
@@ -364,112 +392,130 @@ figcaption {
 }
 
 .function-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 14px;
+  margin: 14px 0 0;
+  padding-left: 18px;
+  list-style: disc;
 }
 
-.function-list span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid #3d3d3d;
-  border-radius: 4px;
-  background: #1a1a1f;
+.function-list li {
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.6;
 }
 
 .recipes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 40px 32px;
   padding: 34px 0 64px;
 }
 
+/* Each recipe is wrapped in its own panel so the row of recipes reads as a
+   set of self-contained "case studies" — same outer container shape, same
+   inner layout (screenshot above, callout below, caption at bottom).
+   Wrapper is a flex column so the figcaption uses `margin-top: auto` and
+   sits flush at the bottom of every panel, aligned across the row even when
+   the callouts above vary in height. Wrapper bg is intentionally darker
+   than --panel so the screenshots inside read as the lighter focal subject. */
 .recipe-real {
-  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 22px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  /* Darker than the screenshot's own edge color (#171718) so the screenshot
+     reads as the lighter focal subject inside a darker frame. */
+  background: #111111;
 }
 
-.recipe-real img {
-  border-color: #454545;
-  background: #101010;
+.recipe-real figcaption {
+  margin-top: auto;
+  padding-top: 22px;
+  text-align: center;
 }
 
 .recipe-shot {
   position: relative;
+  max-width: 70%;
+  /* `margin-top: auto` + figcaption's existing `margin-top: auto` distribute
+     the leftover vertical space equally — top space above the shot equals
+     space between callout and figcaption, so the shot+callout pair is
+     vertically centered in the panel above the bottom-pinned figcaption. */
+  margin: auto auto 0;
 }
 
+.recipes .recipe-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+/* Focus-dot overlays were visually noisy and frequently misaligned over the
+   underlying screenshots; hidden by default until they can be redrawn
+   against the new sidebar imagery. Aria-hidden already, so nothing changes
+   for AT users. Specific overlays (e.g. .focus-module) re-enable themselves
+   below with positioning tuned to the new screenshots. */
 .focus-dot {
+  display: none;
+}
+
+/* Workflow save-selection recipe — translucent yellow overlay highlighting
+   the two action buttons (floppy + grid-2x2) at the bottom-right of the
+   Workflows row in all-icons-new.png. Anchored to the bottom-right corner
+   of the screenshot since that's where the buttons sit in the PNG. */
+.recipes .focus-module {
+  display: block;
   position: absolute;
-  width: 72px;
-  height: 72px;
-  border-radius: 999px;
-  background: rgb(66 104 186 / 30%);
-  box-shadow: 0 0 0 2px rgb(66 104 186 / 88%);
-  pointer-events: none;
-}
-
-.focus-save {
-  right: 3%;
-  bottom: 7%;
-}
-
-.focus-load {
-  left: 7%;
-  top: 39%;
-}
-
-.focus-module {
-  right: 0.5%;
-  bottom: 0.5%;
-  background: rgb(201 148 75 / 30%);
-  box-shadow: 0 0 0 2px rgb(201 148 75 / 88%);
-}
-
-.focus-node-search {
-  left: 12%;
-  top: 19%;
-  background: rgb(74 128 88 / 30%);
-  box-shadow: 0 0 0 2px rgb(74 128 88 / 88%);
-}
-
-.focus-workflow-search {
-  left: 10%;
-  top: 16%;
-  background: rgb(69 46 131 / 30%);
-  box-shadow: 0 0 0 2px rgb(69 46 131 / 88%);
+  bottom: 0;
+  right: 0;
+  width: 22%;
+  height: 15.6%;
+  background: rgb(255 210 74 / 30%);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .recipe-callout {
   width: fit-content;
-  max-width: min(520px, calc(100% - 44px));
-  margin: 18px auto 0;
-  padding: 14px 18px 14px 22px;
-  border-left: 5px solid var(--blue);
-  border-radius: 8px;
+  /* About two-thirds the width of the recipe screenshot, so the callout
+     reads as a sub-element rather than a full-width banner. Right-aligned
+     to the SCREENSHOT'S right edge: the screenshot is `max-width: 70%`
+     centered, so its right edge sits at the 85% mark of the wrapper, which
+     is 15% from the wrapper's right side. `margin-right: 15%` reproduces
+     that offset, `margin-left: auto` pushes the callout right against it. */
+  max-width: min(240px, calc(100% - 24px));
+  margin: 22px 15% 0 auto;
+  padding: 14px 18px 14px 20px;
+  border-left: 4px solid var(--blue);
+  border-radius: 6px;
   background: #111111;
-  box-shadow: 0 14px 30px rgb(0 0 0 / 26%);
+  box-shadow: 0 10px 22px rgb(0 0 0 / 22%);
 }
 
 .recipe-callout p {
   margin: 0;
   color: var(--muted);
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.55;
+}
+
+/* Paragraph chapters inside a callout — when a recipe explains two distinct
+   actions (e.g. Save vs. Save as new), each gets its own paragraph and they
+   are separated by a small gap so they read as visually distinct topics. */
+.recipe-callout p + p {
+  margin-top: 8px;
 }
 
 .recipe-callout strong {
   color: var(--text);
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .recipe-callout.amber {

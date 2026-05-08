@@ -1,37 +1,59 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
   <title id="title">Snapshot mental model</title>
-  <desc id="desc">Sidebar state becomes a snapshot file in a library, then can be loaded later.</desc>
-  <rect width="1200" height="520" fill="#131315"/>
-  <g font-family="Arial, sans-serif">
-    <text x="60" y="72" fill="#4268ba" font-size="17" font-weight="700" letter-spacing="2">MENTAL MODEL</text>
-    <text x="60" y="116" fill="#f9fafb" font-size="34" font-weight="700">Snapshot saves the whole project kit.</text>
-    <g transform="translate(72 178)">
-      <rect width="210" height="190" rx="16" fill="#1a1a1f" stroke="#302f2f"/>
+  <desc id="desc">Sidebar state becomes a snapshot file in a library, then can be loaded later. The named file updates only on Save; the autosave refreshes continuously in the background.</desc>
+  <rect width="1200" height="320" fill="#131315"/>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <!-- Header text removed — the outer band's h2 now carries the title. -->
+
+    <!-- Sidebar state (source) — green accent strip, panel bg -->
+    <g transform="translate(72 38)">
+      <rect width="210" height="190" rx="8" fill="#151515" stroke="#302f2f"/>
+      <line x1="2" y1="8" x2="2" y2="182" stroke="#4a8058" stroke-width="4" stroke-linecap="round"/>
       <text x="24" y="42" fill="#f9fafb" font-size="22" font-weight="700">Sidebar state</text>
       <text x="24" y="82" fill="#707982" font-size="16">favorite nodes</text>
       <text x="24" y="112" fill="#707982" font-size="16">workflows / modules</text>
-      <text x="24" y="142" fill="#707982" font-size="16">tags</text>
+      <text x="24" y="142" fill="#707982" font-size="16">custom folders</text>
+      <text x="24" y="172" fill="#707982" font-size="16">user-defined tags</text>
     </g>
-    <path d="M306 273 H430" stroke="#4268ba" stroke-width="4"/>
-    <path d="M430 273 l-18 -12 v24 z" fill="#4268ba"/>
-    <g transform="translate(456 178)">
-      <rect width="210" height="190" rx="16" fill="#162556" stroke="#4268ba"/>
-      <text x="24" y="42" fill="#f9fafb" font-size="22" font-weight="700">Snapshot file</text>
-      <text x="24" y="82" fill="#707982" font-size="16">Client_Shot010</text>
-      <text x="24" y="112" fill="#707982" font-size="16">portable JSON</text>
-      <text x="24" y="142" fill="#707982" font-size="16">saved on disk</text>
+
+    <!-- Arrow 1 (sidebar -> snapshot): blue, shortened to make room for the
+         wider middle box. -->
+    <path d="M295 133 H375" stroke="#4268ba" stroke-width="4"/>
+    <path d="M375 133 l-18 -12 v24 z" fill="#4268ba"/>
+
+    <!-- Snapshot files (the highlighted middle box) — blue accent + tinted bg.
+         Widened from 210 to 295 to fit the longer autosave path text. Shows
+         actual on-disk naming for both the manual save and the rolling
+         autosave file. -->
+    <g transform="translate(388 38)">
+      <rect width="295" height="190" rx="8" fill="#162556" stroke="#4268ba"/>
+      <line x1="2" y1="8" x2="2" y2="182" stroke="#4268ba" stroke-width="4" stroke-linecap="round"/>
+      <text x="24" y="42" fill="#f9fafb" font-size="22" font-weight="700">Snapshot files</text>
+      <text x="24" y="82" fill="#b8bdc3" font-size="14" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">• Client_Shot010.json</text>
+      <text x="24" y="118" fill="#b8bdc3" font-size="14" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">• Client_Shot010_autosave/</text>
+      <text x="36" y="142" fill="#b8bdc3" font-size="14" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">└ periodic.json</text>
     </g>
-    <path d="M690 273 H814" stroke="#4a8058" stroke-width="4"/>
-    <path d="M814 273 l-18 -12 v24 z" fill="#4a8058"/>
-    <g transform="translate(840 178)">
-      <rect width="260" height="190" rx="16" fill="#1a1a1f" stroke="#302f2f"/>
-      <text x="24" y="42" fill="#f9fafb" font-size="22" font-weight="700">Project library</text>
-      <text x="24" y="82" fill="#707982" font-size="16">one folder for a show</text>
-      <text x="24" y="112" fill="#707982" font-size="16">or one per client</text>
-      <text x="24" y="142" fill="#707982" font-size="16">load it later</text>
+
+    <!-- Arrow 2 (snapshot -> library): green, shortened to mirror arrow 1. -->
+    <path d="M696 133 H776" stroke="#4a8058" stroke-width="4"/>
+    <path d="M776 133 l-18 -12 v24 z" fill="#4a8058"/>
+
+    <!-- Project library (destination) — green accent strip, panel bg.
+         Shifted left to balance the wider middle box. -->
+    <g transform="translate(789 38)">
+      <rect width="260" height="190" rx="8" fill="#151515" stroke="#302f2f"/>
+      <line x1="2" y1="8" x2="2" y2="182" stroke="#4a8058" stroke-width="4" stroke-linecap="round"/>
+      <text x="24" y="42" fill="#f9fafb" font-size="22" font-weight="700">Custom Folder</text>
+      <text x="24" y="82" fill="#707982" font-size="16">holds multiple snapshots</text>
+      <text x="24" y="112" fill="#707982" font-size="16">quick access with 'Load'</text>
+      <text x="24" y="142" fill="#707982" font-size="16">'Browse' or create 'New folder'</text>
     </g>
-    <path d="M970 388 V432 H177 V392" fill="none" stroke="#c9944b" stroke-width="4"/>
-    <path d="M177 392 l-12 18 h24 z" fill="#c9944b"/>
-    <text x="418" y="462" fill="#c9944b" font-size="19" font-weight="700">Return to the project without rebuilding your setup</text>
+
+    <!-- Single-line caption — equation-style summary of manual-vs-auto save
+         behaviour. Only "Quick Save / Save" and "Autosave" are amber + bold;
+         the explanatory predicates are muted gray + normal weight so the
+         caption reads as labels rather than a heavy banner. Interval mirrors
+         snapshot.js (`startPeriodicAutosave` intervalMs default = 5 min). -->
+    <text x="600" y="280" font-size="15" text-anchor="middle"><tspan fill="#c9944b" font-weight="700">Quick Save / Save</tspan><tspan fill="#a0a4ab" font-weight="400"> = updates the main snapshot file.&#8195;</tspan><tspan fill="#c9944b" font-weight="700">Autosave</tspan><tspan fill="#a0a4ab" font-weight="400"> = saves the current state every 5 minutes.</tspan></text>
   </g>
 </svg>

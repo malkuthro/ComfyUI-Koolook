@@ -50,11 +50,11 @@ SPDX-License-Identifier: GPL-3.0-only
             </article>
             <article class="overview-callout nodes">
               <h3>Nodes action bar</h3>
-              <p>Switch tree or list view, then add a favorite node.</p>
+              <p>Arrange nodes by Git repo name or theme, and add favorite nodes to the side panel.</p>
             </article>
             <article class="overview-callout workflows">
               <h3>Workflows action bar</h3>
-              <p>Save the canvas or selected nodes, then browse saved workflows.</p>
+              <p>Save the entire canvas or selected nodes.</p>
             </article>
             <article class="overview-callout saved">
               <h3>Saved lists</h3>
@@ -69,12 +69,20 @@ SPDX-License-Identifier: GPL-3.0-only
     <section class="band">
       <div>
         <p class="eyebrow">Most important idea</p>
-        <h2>Snapshot = your project kit</h2>
+        <h2>Snapshot saves the whole project kit.</h2>
       </div>
-      <p>A Snapshot saves Kforge Labs state: favorite nodes, saved workflows, modules, tags, archive, and the current sidebar organization. Use one named snapshot per project, shot, client, or experiment.</p>
+      <p>A snapshot saves your favorite nodes, workflows, modules, tags, and the current sidebar organization. Use one named snapshot per project, shot, client, or experiment.</p>
       <figure class="visual full">
         <img src="./img/snapshot-flow.svg" alt="Snapshot flow from sidebar state to saved file to project library and later reload">
       </figure>
+    </section>
+
+    <section class="band band-text">
+      <div>
+        <p class="eyebrow">Two-layer save</p>
+        <h2>Save when you mean it. Auto-save catches the rest.</h2>
+      </div>
+      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). Every Load also writes a pre-load recovery file first, so destructive Loads are reversible from the Recovery section.</p>
     </section>
 
     <section class="section">
@@ -100,52 +108,52 @@ SPDX-License-Identifier: GPL-3.0-only
       <article>
         <h3>Snapshots</h3>
         <p>Save and reload the whole project kit.</p>
-        <div class="function-list" aria-label="Snapshot functions">
-          <span>Load</span>
-          <span>Quick Save</span>
-          <span>Save</span>
-          <span>Settings</span>
-        </div>
+        <ul class="function-list" aria-label="Snapshot functions">
+          <li>Load</li>
+          <li>Quick Save</li>
+          <li>Save</li>
+          <li>Settings</li>
+        </ul>
       </article>
       <article>
         <h3>Nodes</h3>
         <p>Keep favorite nodes organized and easy to update.</p>
-        <div class="function-list" aria-label="Node functions">
-          <span>Search</span>
-          <span>Add</span>
-          <span>Remove</span>
-          <span>Group</span>
-        </div>
+        <ul class="function-list" aria-label="Node functions">
+          <li>Search</li>
+          <li>Add</li>
+          <li>Remove</li>
+          <li>Smart view</li>
+        </ul>
       </article>
       <article>
         <h3>Search</h3>
-        <p>Find saved work from one field. Tags keep exact capitalization.</p>
-        <div class="function-list" aria-label="Search functions">
-          <span>Nodes</span>
-          <span>Workflows</span>
-          <span>Folders</span>
-          <span>Tags</span>
-        </div>
+        <p>Find by name, repo, or tag — partial matches OK.</p>
+        <ul class="function-list" aria-label="Search functions">
+          <li>Nodes</li>
+          <li>Workflows</li>
+          <li>Folders</li>
+          <li>Tags</li>
+        </ul>
       </article>
       <article>
         <h3>Workflows</h3>
         <p>Save full scripts or reusable node selections.</p>
-        <div class="function-list" aria-label="Workflow functions">
-          <span>Save script</span>
-          <span>Save selection</span>
-          <span>Load</span>
-          <span>Insert module</span>
-        </div>
+        <ul class="function-list" aria-label="Workflow functions">
+          <li>Save script</li>
+          <li>Save selection</li>
+          <li>Load</li>
+          <li>Insert module</li>
+        </ul>
       </article>
       <article>
-        <h3>Safety / setup</h3>
-        <p>Quiet helpers protect projects and make saved kits portable.</p>
-        <div class="function-list" aria-label="Safety and setup functions">
-          <span>Autosaves</span>
-          <span>Missing packs</span>
-          <span>Starter preset</span>
-          <span>Library folder</span>
-        </div>
+        <h3>Smart organization</h3>
+        <p>Reshape your saved work folders, drag-drop, and move.</p>
+        <ul class="function-list" aria-label="Organization functions">
+          <li>Create folders</li>
+          <li>Drag and drop</li>
+          <li>Move setups</li>
+          <li>Rename or archive</li>
+        </ul>
       </article>
     </section>
 
@@ -160,7 +168,8 @@ SPDX-License-Identifier: GPL-3.0-only
           <span class="focus-dot focus-save" aria-hidden="true"></span>
         </div>
         <div class="recipe-callout blue" aria-label="Save snapshot notes">
-          <p><strong>Save</strong> updates the current project kit. <strong>Save as new</strong> creates another named snapshot.</p>
+          <p><strong>Save</strong> updates the current project kit.</p>
+          <p><strong>Save as new</strong> creates another named snapshot.</p>
         </div>
         <figcaption>Save the current sidebar state as a named project snapshot.</figcaption>
       </figure>
@@ -170,7 +179,8 @@ SPDX-License-Identifier: GPL-3.0-only
           <span class="focus-dot focus-load" aria-hidden="true"></span>
         </div>
         <div class="recipe-callout blue" aria-label="Load snapshot notes">
-          <p><strong>Snapshot row</strong> restores that saved project kit. <strong>Recovery auto-saves</strong> are available below saved snapshots.</p>
+          <p><strong>Load snapshot</strong> row restores that saved project kit.</p>
+          <p><strong>Recovery auto-saves</strong> are available below.</p>
         </div>
         <figcaption>Load a snapshot when you switch projects or return to a shot.</figcaption>
       </figure>
@@ -180,7 +190,8 @@ SPDX-License-Identifier: GPL-3.0-only
           <span class="focus-dot focus-module" aria-hidden="true"></span>
         </div>
         <div class="recipe-callout amber" aria-label="Save selected nodes as module notes">
-          <p><strong>Workflow save-selection</strong> is the bottom-right workflow action. Use it after selecting nodes on the canvas.</p>
+          <p><strong>Save</strong> saves the entire canvas under the workflows tree.</p>
+          <p><strong>Save selection</strong> stores only the selected canvas nodes. Tag it with 'Module' to insert it back into another canvas later.</p>
         </div>
         <figcaption>Save selected nodes as a module, then insert that module into another canvas.</figcaption>
       </figure>
@@ -190,23 +201,29 @@ SPDX-License-Identifier: GPL-3.0-only
           <span class="focus-dot focus-node-search" aria-hidden="true"></span>
         </div>
         <div class="recipe-callout green" aria-label="Node search notes">
-          <p><strong>Node search</strong> narrows favorites so useful nodes are easier to scan and add.</p>
+          <p><strong>Search</strong> narrows displayed items so useful nodes and workflows are easier to find.</p>
         </div>
         <figcaption>Search narrows the Nodes list so useful favorites are easier to scan and add.</figcaption>
       </figure>
       <figure class="visual recipe-real">
         <div class="recipe-shot">
-          <img src="./img/screenshots/search-B.png" alt="Search results showing matching nodes and workflows">
-          <span class="focus-dot focus-workflow-search" aria-hidden="true"></span>
+          <img src="./img/screenshots/right-click-functions.png" alt="Right-click context menu on a saved workflow showing available actions">
         </div>
-        <div class="recipe-callout purple" aria-label="Workflow search notes">
-          <p><strong>One search field</strong> finds nodes and workflows, including saved workflows found through tags.</p>
+        <div class="recipe-callout purple" aria-label="Right-click actions notes">
+          <p><strong>Right-click</strong> any saved workflow or module for a full action menu.</p>
+          <p><strong>Load</strong>, rename, retag, move between folders, or archive — all without leaving the sidebar.</p>
         </div>
-        <figcaption>Search finds both nodes and workflows from the same field, including saved workflows found through tags.</figcaption>
+        <figcaption>Manage saved workflows and modules directly from the right-click menu.</figcaption>
       </figure>
-      <figure class="visual">
-        <img src="./img/autosave-recovery.svg" alt="Annotated mockup showing autosave recovery">
-        <figcaption>If something goes sideways, load an autosave from the Snapshot Load dialog.</figcaption>
+      <figure class="visual recipe-real">
+        <div class="recipe-shot">
+          <img src="./img/screenshots/folder-actions.png" alt="Sidebar showing folder actions — create, rename, delete, drag-and-drop">
+        </div>
+        <div class="recipe-callout green" aria-label="Folder actions notes">
+          <p><strong>Create</strong> or <strong>delete</strong> folders to shape your library.</p>
+          <p><strong>Drag and drop</strong> to rearrange items between folders.</p>
+        </div>
+        <figcaption>Organize your saved kit with folders — group, rename, or rearrange anytime.</figcaption>
       </figure>
     </section>
   </main>
