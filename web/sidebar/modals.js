@@ -1203,6 +1203,7 @@ export function showLoadSnapshotDialog({
     getLibraryInfo,
     writePreLoadAutosave,
     markStateSaved,
+    markStateAutosaved,
     listAutosaves,
     revealPresetFolder,
     onToast,
@@ -1412,9 +1413,20 @@ export function showLoadSnapshotDialog({
             }
             if (picksOk && workflowsOk) {
                 setCurrentPresetName(restoredName);
-                if (typeof markStateSaved === "function") markStateSaved();
+                // Baseline as "auto-saved", NOT "saved". The named file
+                // on disk is still the OLDER deliberate save — only
+                // periodic.json matches what's now in memory. Calling
+                // `markStateSaved()` here would mis-claim the named save
+                // is up to date and blur the deliberate-save model
+                // (named saves only change on Save / Quick Save). The
+                // dot turns blue, prompting Quick Save when the user
+                // wants to commit the restored state to the named file.
+                if (typeof markStateAutosaved === "function") markStateAutosaved();
                 const backupSuffix = backupName ? ` (backup: ${backupName})` : "";
-                toast(`Restored auto-save${restoredName ? ` "${restoredName}"` : ""}${backupSuffix}.`);
+                toast(
+                    `Restored auto-save${restoredName ? ` of "${restoredName}"` : ""}` +
+                    ` — Quick Save to commit to the named file${backupSuffix}.`
+                );
             } else if (picksOk || workflowsOk) {
                 setCurrentPresetName(null);
                 toast(

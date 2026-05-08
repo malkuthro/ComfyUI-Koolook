@@ -175,6 +175,21 @@ The format is inspired by Keep a Changelog and SemVer.
   `packBadge` parameter; CSS rule `.koolook-pack-badge` removed from
   `constants.js`.
 
+### Fixed
+- **Snapshot status reads "auto-saved" — not "saved" — after restoring
+  from an auto-save.** Previously, restoring `<preset>_autosave/
+  periodic.json` (via the new YES path on the Load dialog OR the
+  long-existing Recovery section) called `markStateSaved()`, which
+  baselined the *named-save* fingerprint to the auto-save's content.
+  The dot turned green even though `<preset>.json` on disk still held
+  the OLDER deliberate save — blurring the deliberate-save model the
+  Path C UX deliberately reinforces. New `markStateAutosaved()` export
+  in `snapshot.js` baselines the *periodic* fingerprint instead, so the
+  dot reads "auto-saved" (blue) until the user explicitly Quick Saves
+  or Saves the restored state into the named file. Toast message also
+  updated to nudge: `Restored auto-save of "Foo" — Quick Save to commit
+  to the named file.` Fixes the regression flagged on PR #111 review.
+
 ### Changed
 - **Load dialog header + Recovery group headers now share a layout.** The
   library section and each `<preset>_autosave` group header now use the
