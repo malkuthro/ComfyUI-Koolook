@@ -360,6 +360,27 @@ figcaption {
   background: var(--pink);
 }
 
+.function-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.function-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #3d3d3d;
+  border-radius: 4px;
+  background: #1a1a1f;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .recipes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
