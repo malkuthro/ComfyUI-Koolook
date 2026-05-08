@@ -174,26 +174,47 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
     body.appendChild(msg);
 
     let overlay;
-    // `onCancel` lets callers that wrap this in a Promise actually settle
-    // when the user cancels — without it, the recovery toast's "Discard
-    // offline copy" Promise stayed pending forever (button stuck in
-    // "Discarding…"), and similarly `dropPlaceholdersForPacks` (issue
-    // #84 part 2) leaked a pending Promise on every cancel. Optional;
-    // existing callers that ignore cancel keep working unchanged.
+    // `onCancel` fires once for EVERY non-OK dismissal: Cancel button,
+    // Escape, AND overlay-click. Promise-wrapping callers (recovery
+    // toast's "Discard offline copy", `dropPlaceholdersForPacks` from
+    // issue #84) need every dismissal path to settle the Promise — an
+    // earlier cut wired the Cancel button only, so Esc / click-outside
+    // still leaked. The `settled` flag keeps `onCancel` idempotent so
+    // the Cancel-button path doesn't double-fire when overlay teardown
+    // re-enters via the wrapped `overlay.remove`. Optional; existing
+    // callers that don't pass `onCancel` keep working unchanged.
+    let settled = false;
+    const settleCancel = () => {
+        if (settled) return;
+        settled = true;
+        if (typeof onCancel !== "function") return;
+        try { onCancel(); }
+        catch (e) { console.error("[Koolook] confirm modal onCancel failed:", e); }
+    };
+
     const cancel = makeModalButton({
         label: cancelLabel || "Cancel",
-        onClick: () => {
-            overlay.remove();
-            if (typeof onCancel === "function") onCancel();
-        },
+        onClick: () => { settleCancel(); overlay.remove(); },
     });
     const ok = makeModalButton({
         label: confirmLabel || "OK",
         primary: !danger,
         danger,
-        onClick: () => { overlay.remove(); onConfirm(); },
+        // Mark settled BEFORE removing the overlay so the wrapped
+        // `overlay.remove` below doesn't fire `onCancel` on the OK path.
+        onClick: () => { settled = true; overlay.remove(); onConfirm(); },
     });
     ({ overlay } = makeModalShell({ title, body, actions: [cancel, ok] }));
+
+    // Escape and overlay-click route through `makeModalShell.close()`,
+    // which calls `overlay.remove()` (the listener-cleanup override) but
+    // is unaware of `onCancel`. Re-wrap to settle the cancel callback
+    // before the underlying teardown runs.
+    const baseRemove = overlay.remove.bind(overlay);
+    overlay.remove = () => {
+        settleCancel();
+        baseRemove();
+    };
 }
 
 export function showSaveWorkflowModal({ titleSuffix, defaultName, defaultDir, defaultModule = false, onSave }) {
