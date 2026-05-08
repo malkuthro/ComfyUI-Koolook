@@ -35,7 +35,7 @@
     <path d="M536 488 l-18 -12 v24 z" fill="#c9944b"/>
     <rect x="562" y="412" width="276" height="126" rx="16" fill="#1a1a1f" stroke="#c9944b"/>
     <text x="590" y="456" fill="#f9fafb" font-size="24" font-weight="700">Tags</text>
-    <text x="590" y="496" fill="#707982" font-size="17">Tag folders keep their case:</text>
-    <text x="590" y="522" fill="#707982" font-size="17">Depth and depth are separate.</text>
+    <text x="590" y="496" fill="#707982" font-size="17">Tags keep exact capitalization:</text>
+    <text x="590" y="522" fill="#707982" font-size="17">Depth and depth can be separate.</text>
   </g>
 </svg>

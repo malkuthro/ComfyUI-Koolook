@@ -14,7 +14,7 @@ Use the sidebar as a reusable project kit.
 | Feature | What it does |
 |---|---|
 | **Snapshots** | Save and load the whole Kforge Labs state: favorite nodes, workflows, modules, tags, archive, and recovery data. |
-| **Search** | Find nodes, workflows, directories, and tagged workflows from one field. Tag folders preserve case. |
+| **Search** | Find nodes, workflows, directories, and tags from one field. Tags keep exact capitalization, so `Depth` and `depth` can be separate folders. |
 | **Nodes** | Keep favorite nodes close, grouped by theme or repository. |
 | **Workflows** | Save full canvases, save selections, load workflows, or insert saved modules into the current canvas. |
 | **Recovery** | Use autosaves, starter presets, snapshot library settings, and missing-pack install helpers. |
