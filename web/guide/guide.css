@@ -307,9 +307,28 @@ figcaption {
 }
 
 .band > p {
-  max-width: 760px;
   padding: 18px 22px 0;
   font-size: 17px;
+}
+
+/* Text-only band (no figure to provide bottom padding) — its trailing
+   paragraph needs explicit bottom space so the body text doesn't sit
+   flush against the panel's bottom edge. */
+.band-text > p:last-child {
+  padding-bottom: 22px;
+}
+
+/* Inline code spans — used for filename / path fragments inside body
+   prose like <snapshot>_autosave/. Slight tinted bg + monospace stack
+   so they read as code without dominating the line. */
+.band p code,
+.band-text p code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
 }
 
 .full {

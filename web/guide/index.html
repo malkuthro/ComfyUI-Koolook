@@ -69,12 +69,20 @@ SPDX-License-Identifier: GPL-3.0-only
     <section class="band">
       <div>
         <p class="eyebrow">Most important idea</p>
-        <h2>Snapshot = your project kit</h2>
+        <h2>Snapshot saves the whole project kit.</h2>
       </div>
       <p>A snapshot saves your favorite nodes, workflows, modules, tags, and the current sidebar organization. Use one named snapshot per project, shot, client, or experiment.</p>
       <figure class="visual full">
         <img src="./img/snapshot-flow.svg" alt="Snapshot flow from sidebar state to saved file to project library and later reload">
       </figure>
+    </section>
+
+    <section class="band band-text">
+      <div>
+        <p class="eyebrow">Two-layer save</p>
+        <h2>Save when you mean it. Auto-save catches the rest.</h2>
+      </div>
+      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). Every Load also writes a pre-load recovery file first, so destructive Loads are reversible from the Recovery section.</p>
     </section>
 
     <section class="section">
