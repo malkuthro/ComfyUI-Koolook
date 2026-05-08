@@ -7,6 +7,16 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Bundled visual onboarding guide for the Kforge Labs sidebar.** The
+  existing Tools-row `H` help shortcut now opens `web/guide/index.html`, an
+  offline visual guide that frames Snapshots as a reusable project kit for
+  favorite nodes, cross-sidebar search, saved workflows, modules, tags,
+  autosaves, and starter presets. Its static styling borrows the dark,
+  token-driven card language from the ForgeFlow sibling project's design docs.
+  The first version ships annotated mock images under
+  `web/guide/img/` so they can be replaced by real ComfyUI screenshots later
+  without changing the guide structure. Linked from the README and user guide
+  index for users browsing docs outside ComfyUI.
 - **Subgraph-aware module saves.** Selection saves now carry the
   transitively referenced `definitions.subgraphs` entries for selected
   ComfyUI subgraph wrapper nodes, so the saved workflow has the definitions
@@ -67,7 +77,16 @@ The format is inspired by Keep a Changelog and SemVer.
   save now use the approved compact letter / simple-glyph treatment from
   `docs/designs/sidebar-icon-proposals.html`, reducing repeated generic
   cloud / grid / floppy symbols while leaving all actions and tooltips
-  unchanged. Tools now also exposes an `H` help shortcut to the user guide.
+  unchanged. The existing Tools-row `H` help shortcut is now wired to the
+  bundled visual onboarding guide.
+- **Node help text tightened for scannability.** The Easy Resize description
+  and HDR VAE encode/decode tooltips now use shorter, action-oriented text so
+  the ComfyUI node help stays readable while detailed behavior remains in the
+  user guide.
+- **README refocused as a short product front door.** The repo landing page
+  now leads with the Kforge Labs sidebar, Snapshots, search, workflows, and
+  recovery, then links out to the deeper user/maintainer/fork docs instead of
+  carrying long maintainer workflow and implementation sections inline.
 - **Node-list hover previews now stay at the intended 300px mock-node width.**
   The preview card previously had only a `min-width` plus viewport `max-width`,
   so long node descriptions could set the card's intrinsic width and stretch the

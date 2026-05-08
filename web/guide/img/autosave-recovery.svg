@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-labelledby="title desc">
+  <title id="title">Autosave recovery recipe</title>
+  <desc id="desc">Annotated mock screenshot for recovering from autosaves.</desc>
+  <rect width="900" height="600" fill="#131315"/>
+  <g font-family="Arial, sans-serif">
+    <rect x="82" y="92" width="300" height="396" rx="18" fill="#151515" stroke="#302f2f"/>
+    <text x="112" y="136" fill="#f9fafb" font-size="24" font-weight="700">Load Snapshot</text>
+    <rect x="112" y="176" width="240" height="52" rx="9" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="136" y="209" fill="#f9fafb" font-size="16">Client_Shot010</text>
+    <rect x="112" y="246" width="240" height="52" rx="9" fill="#0e0e0e" stroke="#302f2f"/>
+    <text x="136" y="279" fill="#f9fafb" font-size="16">Lookdev_HDR</text>
+    <text x="112" y="348" fill="#4268ba" font-size="15" font-weight="700">AUTOSAVES</text>
+    <rect x="112" y="368" width="240" height="52" rx="9" fill="#162556" stroke="#4268ba"/>
+    <text x="136" y="401" fill="#f9fafb" font-size="15">_autosave_periodic_01</text>
+    <path d="M352 394 H548" stroke="#4268ba" stroke-width="4"/>
+    <path d="M548 394 l-18 -12 v24 z" fill="#4268ba"/>
+    <rect x="574" y="296" width="250" height="172" rx="16" fill="#1a1a1f" stroke="#4268ba"/>
+    <text x="602" y="342" fill="#f9fafb" font-size="25" font-weight="700">Recover safely</text>
+    <text x="602" y="384" fill="#707982" font-size="17">Autosaves are kept in the</text>
+    <text x="602" y="410" fill="#707982" font-size="17">same Snapshot library.</text>
+    <text x="602" y="436" fill="#707982" font-size="17">Load one if state was lost.</text>
+    <rect x="574" y="114" width="250" height="122" rx="16" fill="#1a1a1f" stroke="#c9944b"/>
+    <text x="602" y="160" fill="#f9fafb" font-size="25" font-weight="700">Library folder</text>
+    <text x="602" y="202" fill="#707982" font-size="17">Set it per project or facility.</text>
+  </g>
+</svg>

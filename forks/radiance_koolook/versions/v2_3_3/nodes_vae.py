@@ -103,11 +103,8 @@ class Easy_hdr_VAE_encode:
                     EXTENDED_SOURCE_SPACES,
                     {
                         "default": "Linear",
-                        "tooltip": "Color space of the input pixels. "
-                        "Auto-converted to scene-linear Rec.709 before exposure "
-                        "and HDR processing. Log curves (LogC3, LogC4, S-Log3, "
-                        "V-Log, DaVinci Intermediate, Log3G10) and ACES variants "
-                        "(ACEScg, ACES 2065-1) are decoded properly.",
+                        "tooltip": "Input color space. Converted to scene-linear "
+                        "Rec.709 before exposure and HDR handling.",
                     },
                 ),
             },
@@ -119,41 +116,29 @@ class Easy_hdr_VAE_encode:
                         "min": -10.0,
                         "max": 10.0,
                         "step": 0.1,
-                        "tooltip": "Exposure adjustment in stops, applied in "
-                        "linear space (correct semantics regardless of input "
-                        "color space).",
+                        "tooltip": "Exposure in stops, applied after color conversion.",
                     },
                 ),
                 "alpha_handling": (
                     ["Preserve", "Ignore"],
                     {
                         "default": "Preserve",
-                        "tooltip": "Preserve: surface input alpha as the third "
-                        "IMAGE output (zeros if input had no alpha). "
-                        "Ignore: always emit zeros for alpha.",
+                        "tooltip": "Preserve input alpha, or emit blank alpha.",
                     },
                 ),
                 "hdr_mode": (
                     HDR_MODES,
                     {
                         "default": "Soft Clip",
-                        "tooltip": "How to handle values outside [0,1] before "
-                        "encoding. Clip (SDR): hard clamp. Soft Clip: tanh "
-                        "rolloff above 0.85. Compress (Log): encode through a "
-                        "cinema log curve (uses source_space if it is a log "
-                        "space, otherwise ARRI LogC4) — pairs with the same "
-                        "hdr_mode on decode for HDR-clean roundtrips. "
-                        "Passthrough: no clamp.",
+                        "tooltip": "Out-of-range handling before encode. Match this "
+                        "setting on decode for roundtrips.",
                     },
                 ),
                 "latent_sampling": (
                     LATENT_SAMPLING_MODES,
                     {
                         "default": "sample",
-                        "tooltip": "How to sample from the VAE posterior. "
-                        "'sample' is ComfyUI's default (random). 'mean' or "
-                        "'mode' are deterministic — best for img2img where "
-                        "you want minimum reconstruction noise.",
+                        "tooltip": "sample is random; mean/mode are deterministic.",
                     },
                 ),
             },
@@ -164,11 +149,8 @@ class Easy_hdr_VAE_encode:
     FUNCTION = "encode"
     CATEGORY = "Koolook/VAE"
     DESCRIPTION = (
-        "Encode 32-bit Linear / ACEScg / cinema-log images or image "
-        "sequences (video) to VAE latents. 12 source spaces, 4 HDR "
-        "modes, deterministic sampling option, real alpha roundtrip. "
-        "Skips upstream Radiance's 4K tile engine for compatibility "
-        "with video VAEs (Wan 2.2, Hunyuan, CogVideoX, LTX)."
+        "Encode Linear, ACES, or cinema-log images/video to VAE latents. "
+        "Use matching HDR settings on decode for clean roundtrips."
     )
 
     def encode(
@@ -328,8 +310,7 @@ class Easy_hdr_VAE_decode:
                     EXTENDED_TARGET_SPACES,
                     {
                         "default": "Linear",
-                        "tooltip": "Color space to convert the decoded image into. "
-                        "Same 12 spaces as the encoder.",
+                        "tooltip": "Output color space for the decoded image.",
                     },
                 ),
             },
@@ -341,29 +322,21 @@ class Easy_hdr_VAE_decode:
                         "min": -10.0,
                         "max": 10.0,
                         "step": 0.1,
-                        "tooltip": "Exposure adjustment in stops, applied in "
-                        "linear space for correctness.",
+                        "tooltip": "Exposure in stops, applied in linear space.",
                     },
                 ),
                 "hdr_mode": (
                     HDR_MODES,
                     {
                         "default": "Clip (SDR)",
-                        "tooltip": "Must match the encode setting. "
-                        "Compress (Log): inverts log-curve encoding with "
-                        "soft-shoulder + log-space highlight denoise for "
-                        "clean HDR output. Soft Clip / Passthrough: extended "
-                        "sRGB EOTF. Clip (SDR): standard sRGB EOTF.",
+                        "tooltip": "Match the encode HDR mode for roundtrips.",
                     },
                 ),
                 "source_space": (
                     EXTENDED_SOURCE_SPACES,
                     {
                         "default": "Linear",
-                        "tooltip": "Only used with hdr_mode='Compress (Log)' "
-                        "to identify which log curve was used at encode. "
-                        "Set this to whatever you set source_space to on "
-                        "the encoder. Ignored for other hdr_modes.",
+                        "tooltip": "For Compress (Log), match the encoder source_space.",
                     },
                 ),
             },
@@ -374,11 +347,8 @@ class Easy_hdr_VAE_decode:
     FUNCTION = "decode"
     CATEGORY = "Koolook/VAE"
     DESCRIPTION = (
-        "Decode VAE latents (image or video) directly to 32-bit "
-        "Linear / ACEScg / cinema-log images. 12 target spaces, "
-        "Compress (Log) HDR pipeline with soft-shoulder + log denoise. "
-        "Rank-agnostic — works with whatever tensor shape the underlying "
-        "VAE returns."
+        "Decode image or video VAE latents to Linear, ACES, or cinema-log "
+        "images. Match encode HDR settings for clean roundtrips."
     )
 
     def decode(
