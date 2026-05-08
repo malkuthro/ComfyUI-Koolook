@@ -1,121 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">Sidebar map</title>
-  <desc id="desc">Annotated mock screenshot of the Kforge Labs sidebar based on the current interface.</desc>
+  <desc id="desc">Annotated screenshot of the Kforge Labs sidebar.</desc>
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
       <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000" flood-opacity="0.35"/>
     </filter>
+    <style>
+      .label { fill: #f9fafb; font: 700 20px Arial, sans-serif; }
+      .note { fill: #707982; font: 16px Arial, sans-serif; }
+      .call { fill: none; stroke-width: 3; }
+      .box { fill: rgba(66,104,186,0.10); stroke-width: 3; rx: 8; }
+    </style>
   </defs>
-  <rect width="1200" height="900" fill="#0e0e0e"/>
-  <g font-family="Arial, sans-serif">
-    <rect x="50" y="34" width="430" height="820" rx="4" fill="#151515" stroke="#302f2f" filter="url(#shadow)"/>
+  <rect width="1200" height="820" fill="#0e0e0e"/>
 
-    <circle cx="74" cy="72" r="7" fill="#6fc56f"/>
-    <text x="98" y="80" fill="#f9fafb" font-size="24">Koolook_v03</text>
-    <text x="252" y="80" fill="#707982" font-size="16">· saved</text>
-    <rect x="314" y="52" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="327" y="77" fill="#f9fafb" font-size="24">↧</text>
-    <rect x="366" y="52" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="379" y="77" fill="#f9fafb" font-size="24">▣</text>
-    <rect x="418" y="52" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="431" y="77" fill="#f9fafb" font-size="24">⚙</text>
-    <path d="M64 112 H456" stroke="#302f2f" stroke-width="2"/>
+  <image href="screenshots/sidebar-overview.png" x="44" y="30" width="594" height="720" preserveAspectRatio="xMidYMid meet" filter="url(#shadow)"/>
 
-    <text x="64" y="152" fill="#9ca3af" font-size="16" font-weight="700" letter-spacing="3">TOOLS</text>
-    <rect x="338" y="126" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="350" y="151" fill="#f9fafb" font-size="24">↓</text>
-    <rect x="390" y="126" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="402" y="151" fill="#f9fafb" font-size="24">↧</text>
-    <rect x="442" y="126" width="26" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="450" y="151" fill="#f9fafb" font-size="22">▦</text>
-    <path d="M64 188 H456" stroke="#302f2f" stroke-width="2"/>
+  <rect class="box" x="52" y="38" width="574" height="56" stroke="#4a8058"/>
+  <path class="call" d="M638 66 H735" stroke="#4a8058"/>
+  <circle cx="638" cy="66" r="7" fill="#4a8058"/>
+  <text class="label" x="760" y="62">Snapshot row</text>
+  <text class="note" x="760" y="88">Load, Quick Save, Save, Settings.</text>
 
-    <rect x="64" y="216" width="392" height="50" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="86" y="248" fill="#707982" font-size="24">⌕</text>
-    <text x="122" y="248" fill="#707982" font-size="22">Search nodes &amp; workflows...</text>
-    <path d="M64 298 H456" stroke="#302f2f" stroke-width="2"/>
+  <rect class="box" x="52" y="104" width="574" height="58" stroke="#4268ba"/>
+  <path class="call" d="M638 132 H735" stroke="#4268ba"/>
+  <circle cx="638" cy="132" r="7" fill="#4268ba"/>
+  <text class="label" x="760" y="128">Tools row</text>
+  <text class="note" x="760" y="154">Maintenance plus the Help guide.</text>
 
-    <text x="64" y="348" fill="#9ca3af" font-size="18" font-weight="700" letter-spacing="2">NODES</text>
-    <rect x="330" y="326" width="62" height="42" rx="6" fill="#162556" stroke="#4268ba"/>
-    <text x="350" y="354" fill="#f9fafb" font-size="24">⌘</text>
-    <rect x="392" y="326" width="54" height="42" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="411" y="354" fill="#f9fafb" font-size="24">≡</text>
-    <rect x="450" y="326" width="38" height="42" rx="6" fill="#032e15" stroke="#4a8058"/>
-    <text x="458" y="358" fill="#f9fafb" font-size="34">+</text>
-    <path d="M64 390 H456" stroke="#302f2f" stroke-width="2"/>
+  <rect class="box" x="52" y="178" width="574" height="54" stroke="#c9944b"/>
+  <path class="call" d="M638 205 H735" stroke="#c9944b"/>
+  <circle cx="638" cy="205" r="7" fill="#c9944b"/>
+  <text class="label" x="760" y="201">Search</text>
+  <text class="note" x="760" y="227">Find nodes, workflows, folders, and tags.</text>
 
-    <text x="64" y="438" fill="#9ca3af" font-size="18" font-weight="700" letter-spacing="2">WORKFLOWS</text>
-    <rect x="390" y="414" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="402" y="439" fill="#f9fafb" font-size="22">▣</text>
-    <rect x="440" y="414" width="42" height="34" rx="6" fill="#1a1a1f" stroke="#707982"/>
-    <text x="448" y="439" fill="#f9fafb" font-size="22">▦</text>
-    <path d="M64 470 H456" stroke="#302f2f" stroke-width="2"/>
+  <rect class="box" x="52" y="278" width="574" height="80" stroke="#a04040"/>
+  <path class="call" d="M638 318 H735" stroke="#a04040"/>
+  <circle cx="638" cy="318" r="7" fill="#a04040"/>
+  <text class="label" x="760" y="314">Nodes</text>
+  <text class="note" x="760" y="340">Favorites grouped by theme or repository name.</text>
 
-    <g font-size="24" fill="#f9fafb">
-      <text x="78" y="520">⌄</text>
-      <text x="110" y="520" fill="#ffb84d">☆</text>
-      <text x="150" y="520" font-weight="700">Nodes (favorites)</text>
-      <circle cx="438" cy="508" r="18" fill="#24242c"/>
-      <text x="431" y="516" fill="#d8d8d8" font-size="18">11</text>
-      <text x="110" y="566">›</text>
-      <text x="142" y="566">▱</text>
-      <text x="178" y="566">image</text>
-      <circle cx="438" cy="554" r="18" fill="#24242c"/>
-      <text x="433" y="562" fill="#d8d8d8" font-size="18">1</text>
-      <text x="110" y="612">›</text>
-      <text x="142" y="612">▱</text>
-      <text x="178" y="612">Koolook</text>
-      <circle cx="438" cy="600" r="18" fill="#24242c"/>
-      <text x="433" y="608" fill="#d8d8d8" font-size="18">7</text>
-      <path d="M64 638 H456" stroke="#302f2f" stroke-width="2"/>
-      <text x="78" y="682">⌄</text>
-      <text x="110" y="682" fill="#68aaff">▦</text>
-      <text x="150" y="682" font-weight="700">Workflows</text>
-      <circle cx="438" cy="670" r="18" fill="#24242c"/>
-      <text x="433" y="678" fill="#d8d8d8" font-size="18">6</text>
-      <text x="110" y="724">›</text>
-      <text x="142" y="724">▱</text>
-      <text x="178" y="724">_Modules</text>
-    </g>
-    <g font-size="24" fill="#f9fafb" transform="translate(0 -28)">
-      <path d="M64 746 H456" stroke="#302f2f" stroke-width="2"/>
-      <text x="78" y="790">⌄</text>
-      <text x="110" y="790">▱</text>
-      <text x="150" y="790" font-weight="700">Tags</text>
-      <circle cx="438" cy="778" r="18" fill="#24242c"/>
-      <text x="433" y="786" fill="#d8d8d8" font-size="18">3</text>
-    </g>
+  <rect class="box" x="52" y="374" width="574" height="74" stroke="#452e83"/>
+  <path class="call" d="M638 411 H735" stroke="#452e83"/>
+  <circle cx="638" cy="411" r="7" fill="#452e83"/>
+  <text class="label" x="760" y="407">Workflows / modules</text>
+  <text class="note" x="760" y="433">Save scripts, save selections, or insert modules.</text>
 
-    <g font-size="18" fill="#f9fafb">
-      <path d="M490 72 H650" stroke="#4a8058" stroke-width="3"/>
-      <circle cx="490" cy="72" r="7" fill="#4a8058"/>
-      <text x="674" y="66" font-weight="700">Snapshot row</text>
-      <text x="674" y="94" fill="#707982" font-size="15">Load, Quick Save, Save, Settings.</text>
+  <rect class="box" x="52" y="458" width="574" height="214" stroke="#4a8058"/>
+  <path class="call" d="M638 565 H735" stroke="#4a8058"/>
+  <circle cx="638" cy="565" r="7" fill="#4a8058"/>
+  <text class="label" x="760" y="561">Saved lists</text>
+  <text class="note" x="760" y="587">Nodes, Workflows, and Tags stay visible below.</text>
 
-      <path d="M490 148 H650" stroke="#4268ba" stroke-width="3"/>
-      <circle cx="490" cy="148" r="7" fill="#4268ba"/>
-      <text x="674" y="142" font-weight="700">Tools row</text>
-      <text x="674" y="170" fill="#707982" font-size="15">Maintenance plus the Help guide.</text>
-
-      <path d="M490 242 H650" stroke="#c9944b" stroke-width="3"/>
-      <circle cx="490" cy="242" r="7" fill="#c9944b"/>
-      <text x="674" y="236" font-weight="700">Search</text>
-      <text x="674" y="264" fill="#707982" font-size="15">Find nodes, workflows, and tags fast.</text>
-
-      <path d="M490 348 H650" stroke="#a04040" stroke-width="3"/>
-      <circle cx="490" cy="348" r="7" fill="#a04040"/>
-      <text x="674" y="342" font-weight="700">Nodes</text>
-      <text x="674" y="370" fill="#707982" font-size="15">Favorites grouped by theme or repository name.</text>
-
-      <path d="M490 674 H650" stroke="#452e83" stroke-width="3"/>
-      <circle cx="490" cy="674" r="7" fill="#452e83"/>
-      <text x="674" y="668" font-weight="700">Workflows / modules</text>
-      <text x="674" y="696" fill="#707982" font-size="15">Save scripts, save selections, or insert modules.</text>
-
-      <path d="M490 724 H650" stroke="#4a8058" stroke-width="3"/>
-      <circle cx="490" cy="724" r="7" fill="#4a8058"/>
-      <text x="674" y="718" font-weight="700">Tags</text>
-      <text x="674" y="746" fill="#707982" font-size="15">Find saved work by task or project role.</text>
-    </g>
-  </g>
+  <text x="760" y="672" fill="#c9944b" font-family="Arial, sans-serif" font-size="18" font-weight="700">Real screenshot base</text>
+  <text x="760" y="700" fill="#707982" font-family="Arial, sans-serif" font-size="16">Only the colored boxes and callout lines are overlays.</text>
 </svg>
