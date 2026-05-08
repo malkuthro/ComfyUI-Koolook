@@ -561,24 +561,67 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
         }
     }
     if (missingTypes.length > 0) {
+        // Two distinct failure modes hide behind "missing type":
+        //   • pack miss — registered_node_types has no entry for a custom-node
+        //     type. Fix: install the pack(s).
+        //   • subgraph miss — the type IS a subgraph UUID, but its definition
+        //     hasn't been registered into registered_node_types yet (subgraphs
+        //     are registered as a side effect of native Load, not at startup).
+        //     Fix: right-click the source workflow → Load once in the current
+        //     session, which routes through `app.loadGraphData` and registers
+        //     each `definitions.subgraphs[]` entry by UUID. Subsequent Inserts
+        //     then resolve.
+        // Pre-fix, the mixed case (both classes present) silently fell into the
+        // pack-miss branch and listed UUIDs alongside pack types under "install
+        // the pack(s)" — the user installed the pack, retried, and hit an
+        // unexplained second "still missing" failure for the unregistered
+        // subgraph. Surface BOTH classes when both are present so one toast
+        // covers both fixes in order.
+        // Toast wording goes plain English on purpose — "subgraph definition
+        // not registered" was technically accurate but confused the user, who
+        // just wants to know "what do I do to make Insert work?" Engineer-speak
+        // (subgraph / registered / definition) lives in code comments and
+        // console.warn for devs; user-facing copy talks in gestures and
+        // outcomes ("right-click → Load it once, then left-click Insert will
+        // work"). The "Load" verb mirrors the actual menu item label in
+        // workflowRowContextMenu so the user doesn't hunt for a "paste" or
+        // "set up" item that doesn't exist.
         const subgraphMisses = missingTypes.filter(t => SUBGRAPH_UUID_RE.test(t));
-        if (subgraphMisses.length === missingTypes.length) {
-            toast(
-                `Cannot insert "${wfName}" — subgraph definition is not registered. ` +
-                `Load the workflow once in this session to register it, then retry Insert.`,
-                4500
-            );
-            console.warn(`[Koolook] insert "${wfName}" aborted; missing subgraph definitions:`, missingTypes);
-            return { ok: false, reason: "missing-types", missingTypes };
+        const packMisses = missingTypes.filter(t => !SUBGRAPH_UUID_RE.test(t));
+        let message;
+        if (packMisses.length === 0) {
+            // Pure subgraph case — only definitions are missing. Skip the
+            // "why" (subgraphs need registration after a fresh session); jump
+            // straight to the gesture. If it wears off after a restart the
+            // toast just re-fires and the user does the same gesture again —
+            // no pre-emptive edge-case warning needed in the toast itself.
+            message =
+                `Can't Insert "${wfName}" yet — Right-click → Load it once, ` +
+                `then left-click Insert will work.`;
+        } else if (subgraphMisses.length === 0) {
+            // Pure pack case — only registered-pack types are missing.
+            const sample = packMisses.slice(0, 3).join(", ");
+            const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
+            message =
+                `Can't Insert "${wfName}" — missing node${packMisses.length === 1 ? "" : "s"}: ` +
+                `${sample}${more}. Install the pack(s) first, then retry.`;
+        } else {
+            // Mixed case — both classes missing. Numbered two-step instruction
+            // so the user knows the order; mentioning both upfront preempts a
+            // second "still missing" toast after the user installs the pack
+            // and retries Insert without the Load step.
+            const sample = packMisses.slice(0, 3).join(", ");
+            const more = packMisses.length > 3 ? ` (+${packMisses.length - 3} more)` : "";
+            message =
+                `Can't Insert "${wfName}" yet — ` +
+                `(1) install pack(s) for ${sample}${more}, ` +
+                `(2) Right-click → Load it once. Then left-click Insert will work.`;
         }
-        const sample = missingTypes.slice(0, 3).join(", ");
-        const more = missingTypes.length > 3 ? ` (+${missingTypes.length - 3} more)` : "";
-        toast(
-            `Cannot insert "${wfName}" — missing node type${missingTypes.length === 1 ? "" : "s"}: ` +
-            `${sample}${more}. Install the required pack(s) first.`,
-            4500
+        toast(message, 6500);
+        console.warn(
+            `[Koolook] insert "${wfName}" aborted;`,
+            { packMisses, subgraphMisses }
         );
-        console.warn(`[Koolook] insert "${wfName}" aborted; missing types:`, missingTypes);
         return { ok: false, reason: "missing-types", missingTypes };
     }
 

@@ -45,6 +45,22 @@ The format is inspired by Keep a Changelog and SemVer.
   selected folder name visually prominent before the user chooses it.
 
 ### Changed
+- **"Create directory" moved off the Workflows toolbar onto right-click of
+  the section header.** The 📂 (`pi-folder-open`) button used to live in the
+  Workflows action bar between the section label and the Save buttons. Tree-
+  structure operations (create / rename / delete a folder) already live on
+  right-click of the row representing the structure being mutated — the per-
+  folder menu offers "Create subdirectory…" / "Rename directory…" / "Delete
+  directory" — but top-level dir creation was the lone outlier sitting in the
+  toolbar. Moving it to right-click on the **"Workflows"** header row makes
+  the action bar homogeneous (only save actions: Save canvas, Save selection)
+  and unifies the mental model: every tree-structure operation lives on
+  right-click of the structure node it acts on. Implemented via a new
+  optional `rootContextMenu` field on section descriptors plumbed through
+  `buildFolder`; only Workflows opts in for now (Nodes/Tags keep today's
+  no-context-menu section header). Fresh-install path is unchanged — the
+  Save modal's "+ New directory…" entry still creates the first directory
+  when the workflow store is empty. Closes #104.
 - **Node-list hover previews now stay at the intended 300px mock-node width.**
   The preview card previously had only a `min-width` plus viewport `max-width`,
   so long node descriptions could set the card's intrinsic width and stretch the
@@ -175,6 +191,22 @@ The format is inspired by Keep a Changelog and SemVer.
     same `_resolve_target` check the file-write routes use.
 
 ### Fixed
+- **Insert pre-flight toast now surfaces both pack misses AND subgraph
+  misses when a saved workflow has both, in plain English.** Previously,
+  the "all-misses-are-subgraph-UUIDs" early-return only fired when
+  *every* missing type was a UUID; mixed cases fell through to a single
+  "install the required pack(s)" message that listed UUIDs alongside
+  pack types but mentioned nothing about the registration step the
+  subgraph also needs. Users installed the pack, retried Insert, and
+  hit a second unexplained "still missing" failure. Now the toast
+  branches three ways — pure-pack / pure-subgraph / mixed — and the
+  mixed case names both fixes upfront as a numbered two-step ("install
+  pack(s) + right-click → Load it once"). Wording also de-jargoned —
+  "subgraph definition not registered" was technically accurate but
+  confused users who just wanted to know what to do. Engineer-speak
+  stays in code comments and console.warn for devs; user-facing copy
+  now talks in gestures and outcomes ("Right-click → Load it, then
+  left-click Insert will work").
 - **Atomic preset writes — server crash mid-save can no longer corrupt
   your snapshot library, and a hostile `.tmp` symlink can no longer
   redirect writes outside the library.** `POST /koolook/presets/file`

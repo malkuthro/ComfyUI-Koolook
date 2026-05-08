@@ -317,6 +317,10 @@ function renderTree({ treeEl, query }) {
                 startExpanded: true,
                 path: sectionPath,
                 forceExpanded: isFiltered,
+                // Optional per-section right-click on the section header row.
+                // `makeFolderRow` no-ops if undefined, so non-opting sections
+                // (Nodes, Tags) keep today's behavior.
+                onContextMenu: section.rootContextMenu,
                 childrenBuilder: (children) => {
                     const ctx = makeSectionCtx(children, sectionPath, isFiltered, validPaths);
                     ctx.data = result;
@@ -1651,6 +1655,38 @@ function archiveFolderContextMenu(event, dirPath, archivedCount) {
     ]);
 }
 
+// Right-click on the "Workflows" section header — the row labeled "Workflows"
+// at the top of the Workflows tree. Hosts top-level directory creation, which
+// used to live as a 📂 toolbar button in Row 3 alongside the save buttons.
+// Moved here so the Workflows action bar contains only save actions and tree-
+// structure operations live where tree-structure operations already live —
+// on right-click of the row representing the structure being mutated. Mirrors
+// the per-folder right-click menu's "Create subdirectory…" pattern, just one
+// level up.
+function workflowsRootContextMenu(event) {
+    showContextMenu(event, [
+        {
+            label: "Create directory…",
+            action: () => {
+                showInputModal({
+                    title: "Create directory",
+                    label: "Directory name",
+                    placeholder: "e.g. Inpainting",
+                    confirmLabel: "Create",
+                    onSubmit: (name) => persistMutation({
+                        // Top-level directory creation. Subdirectories are
+                        // created via right-click → "Create subdirectory…"
+                        // on an existing folder row.
+                        mutate: () => addDirectory([], name),
+                        onSuccess: () => toast(`Directory "${name}" created.`),
+                        onNoOp: () => toast(`Directory "${name}" already exists.`),
+                    }),
+                });
+            },
+        },
+    ]);
+}
+
 function directoryRowContextMenu(event, dirPath) {
     const dir = dirOf(dirPath);
     const dirName = dirPath[dirPath.length - 1];
@@ -1923,9 +1959,12 @@ addSection({
     id: SECTION_ID_WORKFLOWS,
     label: WORKFLOWS_GROUP_LABEL,
     iconKind: "workflows",
+    rootContextMenu: workflowsRootContextMenu,
     // No emptyMessage — when the workflow store is empty and no search is
-    // active, we silently hide the section. The toolbar above still lets the
-    // user create a directory or save a workflow.
+    // active, we silently hide the section. Saving a workflow uses the save
+    // modal's "+ New directory…" entry to seed the first directory; once the
+    // section is non-empty, right-click on the "Workflows" header creates
+    // additional top-level dirs (see `workflowsRootContextMenu`).
     gather(q) {
         return gatherWorkflows(q);
     },
@@ -2495,26 +2534,11 @@ export function renderPanel(container) {
     wfLabel.textContent = "Workflows";
     wfRow.appendChild(wfLabel);
 
-    wfRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-folder-open",
-        title: "Create new workflow directory",
-        onClick: () => {
-            showInputModal({
-                title: "Create directory",
-                label: "Directory name",
-                placeholder: "e.g. Inpainting",
-                confirmLabel: "Create",
-                onSubmit: (name) => persistMutation({
-                    // Top-level directory creation. Subdirectories are created
-                    // via right-click → "Create subdirectory…" on an existing
-                    // folder.
-                    mutate: () => addDirectory([], name),
-                    onSuccess: () => toast(`Directory "${name}" created.`),
-                    onNoOp: () => toast(`Directory "${name}" already exists.`),
-                }),
-            });
-        },
-    }));
+    // Top-level directory creation lives on right-click of the "Workflows"
+    // section header (see `workflowsRootContextMenu`). The action bar below
+    // is reserved for save actions only — keeping it homogeneous so beginners
+    // aren't asked to mentally separate "save the canvas" from "make a
+    // folder" in the same toolbar.
 
     // Shared save handler for both buttons. Uses persistMutation so the cache
     // mutation rolls back automatically if both /userdata and the localStorage
