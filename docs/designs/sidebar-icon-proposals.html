@@ -1,0 +1,411 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kforge Labs Sidebar Icon Proposals</title>
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --panel: #151515;
+      --panel-soft: #1a1a1f;
+      --border: #302f2f;
+      --border-strong: #4f4f54;
+      --text: #f9fafb;
+      --muted: #8f959c;
+      --dim: #555b62;
+      --sky: #6db4ff;
+      --sky-bg: #052f4a;
+      --green: #7bcf80;
+      --green-bg: #032e15;
+      --amber: #ffb84d;
+      --orange: #e0a64a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #090909;
+      color: var(--text);
+      font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .intro {
+      margin: 0 0 22px;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .proposal {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .proposal-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #121212;
+    }
+
+    .proposal-title {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .proposal-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .sidebar {
+      width: 430px;
+      min-height: 560px;
+      background: var(--panel);
+      padding: 10px 8px 14px;
+    }
+
+    .proposal .sidebar { margin: 0 auto; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 0;
+    }
+
+    .status {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+    }
+
+    .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .state { color: var(--muted); font-size: 12px; }
+
+    .divider {
+      border-top: 1px solid rgba(255,255,255,.08);
+      margin: 8px 0;
+    }
+
+    .label {
+      color: #a8abb0;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-size: 11px;
+      font-weight: 700;
+      flex: 1;
+    }
+
+    .search {
+      height: 42px;
+      margin: 14px 0;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      color: #8f9297;
+      font-size: 13px;
+    }
+
+    .btn {
+      width: 40px;
+      height: 30px;
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      background: var(--panel-soft);
+      color: #d8dadd;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+
+    .btn.wide { width: 50px; }
+    .btn.sky { color: var(--sky); border-color: rgba(109,180,255,.45); background: rgba(5,47,74,.7); }
+    .btn.green { color: #dff4df; border-color: rgba(123,207,128,.45); background: rgba(3,46,21,.85); }
+    .btn.dim { color: #b9bdc2; }
+    .btn.add-node {
+      height: 32px;
+      color: #dff4df;
+      background: linear-gradient(180deg, rgba(3,46,21,.95), rgba(6,58,27,.82));
+      border-color: rgba(123,207,128,.55);
+    }
+    .btn.add-node svg { width: 24px; height: 24px; }
+
+    .seg {
+      display: inline-flex;
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      overflow: hidden;
+      background: var(--panel-soft);
+    }
+
+    .seg .btn {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .seg .active {
+      color: #dcecff;
+      background: rgba(109,180,255,.22);
+    }
+
+    svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.85;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .letter-mark {
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1;
+      color: currentColor;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .filled-square {
+      width: 15px;
+      height: 15px;
+      border-radius: 2px;
+      background: #d8dadd;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.2);
+    }
+
+    .stair-mark {
+      display: inline-grid;
+      grid-template-rows: repeat(3, 5px);
+      gap: 3px;
+      width: 22px;
+      height: 22px;
+      align-content: center;
+    }
+
+    .stair-mark span {
+      display: block;
+      width: 12px;
+      height: 5px;
+      background: currentColor;
+    }
+
+    .stair-mark span:nth-child(2) { margin-left: 5px; }
+    .stair-mark span:nth-child(3) { margin-left: 10px; }
+
+
+    .small svg { width: 18px; height: 18px; }
+    .tree { padding-top: 4px; }
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 3px;
+      font-size: 15px;
+    }
+
+    .tree-row.big { font-size: 16px; font-weight: 700; margin-top: 5px; }
+    .chev { color: #c9ccd1; font-size: 10px; width: 12px; }
+    .indent { padding-left: 28px; font-weight: 500; }
+    .tree-icon { width: 20px; height: 20px; color: #d8dadd; display: inline-flex; }
+    .tree-icon.star { color: var(--amber); }
+    .tree-icon.work { color: var(--sky); }
+    .count {
+      margin-left: auto;
+      min-width: 24px;
+      text-align: center;
+      border-radius: 10px;
+      background: rgba(255,255,255,.07);
+      color: #cfd2d6;
+      padding: 1px 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .notes {
+      padding: 12px 16px 16px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+      margin-top: 10px;
+    }
+
+    .legend span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .proposal-b .btn {
+      border-radius: 4px;
+      background: #111;
+      border-color: #3b3b40;
+    }
+
+    .proposal-b .btn svg {
+      stroke-width: 1.6;
+    }
+
+    .proposal-b .btn.sky,
+    .proposal-b .seg .active {
+      color: #9fd0ff;
+      background: linear-gradient(90deg, rgba(5,47,74,.9), rgba(26,26,31,.9));
+    }
+
+    .proposal-b .btn.green {
+      color: #a7e8aa;
+      background: linear-gradient(90deg, rgba(3,46,21,.95), rgba(26,26,31,.9));
+    }
+
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kforge Labs Sidebar Icon Proposals</h1>
+  <p class="intro">Two visual directions for replacing the generic action icons. Both preserve the current compact ComfyUI sidebar density; only the icon language and semantic color treatment change.</p>
+
+  <div class="grid">
+    <section class="proposal proposal-a">
+      <div class="proposal-head">
+        <h2 class="proposal-title">Proposal A — ForgeFlow Polish</h2>
+        <p class="proposal-copy">Conservative: refined line icons, clearer semantic color, familiar shapes. Lowest implementation risk.</p>
+      </div>
+      <div class="sidebar">
+        <div class="row">
+          <div class="status"><span class="dot"></span><span class="name">Koolook_v03</span><span class="state">· saved</span></div>
+          <button class="btn wide" title="Load snapshot"><span class="letter-mark">L</span></button>
+          <button class="btn wide" title="Quick save"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8V4"/><path d="M8 20v-6h8v6"/></svg></button>
+          <button class="btn wide" title="Save snapshot"><span class="letter-mark">S</span></button>
+          <button class="btn wide" title="Settings"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19 12a7.7 7.7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 3.1a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L5.1 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 3.1h5l.3-3.1a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Tools</span>
+          <button class="btn wide" title="Export starter"><span class="letter-mark">E</span></button>
+          <button class="btn wide" title="Install missing packs"><span class="letter-mark">I</span></button>
+          <button class="btn wide" title="Drop missing placeholders"><svg viewBox="0 0 24 24"><path d="M10 10 5 5"/><path d="M5 5v5"/><path d="M5 5h5"/><path d="m14 10 5-5"/><path d="M19 5v5"/><path d="M19 5h-5"/><path d="m10 14-5 5"/><path d="M5 19v-5"/><path d="M5 19h5"/><path d="m14 14 5 5"/><path d="M19 19v-5"/><path d="M19 19h-5"/><circle cx="12" cy="12" r="1.2"/></svg></button>
+          <button class="btn wide" title="Help"><span class="letter-mark">H</span></button>
+        </div>
+        <div class="divider"></div>
+        <div class="search"><svg viewBox="0 0 24 24" class="small"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>Search nodes & workflows...</div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Nodes</span>
+          <span class="seg"><button class="btn active" title="By pack"><span class="stair-mark"><span></span><span></span><span></span></span></button><button class="btn" title="By theme"><svg viewBox="0 0 24 24"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h12"/></svg></button></span>
+          <button class="btn green wide add-node" title="Add selected nodes"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Workflows</span>
+          <button class="btn wide" title="Save canvas"><span class="filled-square"></span></button>
+          <button class="btn wide" title="Save selection as module"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M17 14v6"/><path d="M14 17h6"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="tree">
+          <div class="tree-row big"><span class="chev">▾</span><span class="tree-icon star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span>Nodes (favorites)<span class="count">11</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9H3z"/></svg></span>image<span class="count">1</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9H3z"/></svg></span>Koolook<span class="count">7</span></div>
+          <div class="divider"></div>
+          <div class="tree-row big"><span class="chev">▾</span><span class="tree-icon work"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="5" height="5" rx="1"/><rect x="15" y="4" width="5" height="5" rx="1"/><rect x="4" y="15" width="5" height="5" rx="1"/><rect x="15" y="15" width="5" height="5" rx="1"/></svg></span>Workflows<span class="count">6</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9H3z"/></svg></span>_Modules<span class="count">3</span></div>
+        </div>
+      </div>
+      <div class="notes">Best when we want an immediate improvement without inventing a branded icon system. The main change is semantic consistency: sky means mode/selection, green means primary add/create, neutral means utility.</div>
+    </section>
+
+    <section class="proposal proposal-b">
+      <div class="proposal-head">
+        <h2 class="proposal-title">Proposal B — Kforge Glyphs</h2>
+        <p class="proposal-copy">More custom: angular glyphs, paired “state capsule” buttons, and stronger Kforge/Fabrication flavor.</p>
+      </div>
+      <div class="sidebar">
+        <div class="row">
+          <div class="status"><span class="dot"></span><span class="name">Koolook_v03</span><span class="state">· saved</span></div>
+          <button class="btn wide" title="Load snapshot"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 9h8"/><path d="M12 9v7"/><path d="m9 13 3 3 3-3"/></svg></button>
+          <button class="btn wide" title="Quick save"><svg viewBox="0 0 24 24"><path d="M6 4h10l2 2v14H6z"/><path d="M9 4v5h6V4"/><path d="M9 15h6"/><path d="M9 18h6"/></svg></button>
+          <button class="btn wide" title="Save snapshot"><svg viewBox="0 0 24 24"><path d="M5 6h14v12H5z"/><path d="M8 15h8"/><path d="M12 15V8"/><path d="m9 11 3-3 3 3"/></svg></button>
+          <button class="btn wide" title="Settings"><svg viewBox="0 0 24 24"><path d="M12 5v3"/><path d="M12 16v3"/><path d="M5 12h3"/><path d="M16 12h3"/><path d="m7 7 2 2"/><path d="m15 15 2 2"/><path d="m17 7-2 2"/><path d="m9 15-2 2"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Tools</span>
+          <button class="btn wide" title="Export starter"><svg viewBox="0 0 24 24"><path d="M5 18h14"/><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M7 6h10"/></svg></button>
+          <button class="btn wide" title="Install missing packs"><svg viewBox="0 0 24 24"><path d="M4 8h16v8H4z"/><path d="M8 8V5h8v3"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg></button>
+          <button class="btn wide" title="Drop missing placeholders"><svg viewBox="0 0 24 24"><path d="M4 5h6v6H4z"/><path d="M14 5h6v6h-6z"/><path d="M4 15h6v6H4z"/><path d="M14 15h6v6h-6z"/><path d="M11 8h2"/><path d="M11 18h2"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="search"><svg viewBox="0 0 24 24" class="small"><path d="M5 11a6 6 0 1 0 12 0 6 6 0 0 0-12 0Z"/><path d="m15.5 15.5 4 4"/></svg>Search nodes & workflows...</div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Nodes</span>
+          <span class="seg"><button class="btn active" title="By pack"><svg viewBox="0 0 24 24"><path d="M12 4v5"/><path d="M7 12h10"/><path d="M7 12v3"/><path d="M17 12v3"/><path d="M12 12v3"/><rect x="4" y="15" width="6" height="5"/><rect x="9" y="15" width="6" height="5"/><rect x="14" y="15" width="6" height="5"/></svg></button><button class="btn" title="By theme"><svg viewBox="0 0 24 24"><path d="M6 6h12"/><path d="M9 12h9"/><path d="M6 18h12"/></svg></button></span>
+          <button class="btn green wide" title="Add selected nodes"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/><path d="M7 7h10v10H7z"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="row"><span class="label">Workflows</span>
+          <button class="btn wide" title="Save canvas"><svg viewBox="0 0 24 24"><path d="M6 4h10l2 2v14H6z"/><path d="M9 4v5h6V4"/><path d="M9 15h6"/><path d="M9 18h6"/></svg></button>
+          <button class="btn wide" title="Save selection as module"><svg viewBox="0 0 24 24"><path d="M5 5h5v5H5z"/><path d="M14 5h5v5h-5z"/><path d="M5 14h5v5H5z"/><path d="M16.5 14v5"/><path d="M14 16.5h5"/></svg></button>
+        </div>
+        <div class="divider"></div>
+        <div class="tree">
+          <div class="tree-row big"><span class="chev">▾</span><span class="tree-icon star"><svg viewBox="0 0 24 24"><path d="M12 4 15 10l6 .8-4.5 4.2 1.2 6-5.7-3.1L6.3 21l1.2-6L3 10.8l6-.8z"/></svg></span>Nodes (favorites)<span class="count">11</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M4 8h7l2 2h7v8H4z"/></svg></span>image<span class="count">1</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M4 8h7l2 2h7v8H4z"/></svg></span>Koolook<span class="count">7</span></div>
+          <div class="divider"></div>
+          <div class="tree-row big"><span class="chev">▾</span><span class="tree-icon work"><svg viewBox="0 0 24 24"><path d="M5 5h5v5H5z"/><path d="M14 5h5v5h-5z"/><path d="M5 14h5v5H5z"/><path d="M14 14h5v5h-5z"/></svg></span>Workflows<span class="count">6</span></div>
+          <div class="tree-row indent"><span class="chev">›</span><span class="tree-icon"><svg viewBox="0 0 24 24"><path d="M4 8h7l2 2h7v8H4z"/></svg></span>_Modules<span class="count">3</span></div>
+        </div>
+      </div>
+      <div class="notes">Best if we want a recognizable Kforge look. More distinctive, but it should ship as a small local icon registry so the shapes stay consistent over time.</div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

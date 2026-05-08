@@ -117,6 +117,38 @@ const SECTION_ID_NODES = "nodes";
 const SECTION_ID_WORKFLOWS = "workflows";
 const SECTION_ID_TAGS = "tags";
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+const HELP_URL = "https://github.com/malkuthro/ComfyUI-Koolook/tree/main/docs/user_guide";
+
+const TOOLBAR_ICONS = {
+    loadSnapshot: { kind: "letter", text: "L" },
+    saveSnapshot: { kind: "letter", text: "S" },
+    help: { kind: "letter", text: "H" },
+    exportStarter: { kind: "letter", text: "E" },
+    installMissing: { kind: "letter", text: "I" },
+    dropMissing: {
+        kind: "svg",
+        shapes: [
+            ["path", { d: "M10 10 5 5" }],
+            ["path", { d: "M5 5v5" }],
+            ["path", { d: "M5 5h5" }],
+            ["path", { d: "m14 10 5-5" }],
+            ["path", { d: "M19 5v5" }],
+            ["path", { d: "M19 5h-5" }],
+            ["path", { d: "m10 14-5 5" }],
+            ["path", { d: "M5 19v-5" }],
+            ["path", { d: "M5 19h5" }],
+            ["path", { d: "m14 14 5 5" }],
+            ["path", { d: "M19 19v-5" }],
+            ["path", { d: "M19 19h-5" }],
+            ["circle", { cx: "12", cy: "12", r: "1.2" }],
+        ],
+    },
+    repoMode: { kind: "stair" },
+    categoryMode: { kind: "list" },
+    saveWorkflow: { kind: "square" },
+};
+
 // =============================================================================
 // Folder expansion state — Map<path, boolean>; truthy = expanded.
 // Path keys are auto-prefixed by the engine with the owning section's id, so
@@ -1160,26 +1192,66 @@ function gatherTags(query) {
 // DOM helpers
 // =============================================================================
 
-// Toolbar button factory — replaces the four near-identical button-construction
-// blocks in `renderPanel` for icon-only buttons (export, new-dir, save-canvas,
-// save-selection). The "+" Add-to-favorites button (`addBtn`) is text-content
-// only and stays hand-rolled; this factory does not cover that case. Every
-// covered button shares the `koolook-add-btn koolook-icon-btn` pair (both
-// styling rules; the disabled state on `:disabled` lives on `koolook-icon-btn`).
-// `iconClass` is the PrimeIcons class (e.g. `pi pi-download`).
-//
-// The icon span is built with `createElement` + `className` rather than
-// `innerHTML = …${iconClass}…` so a future caller passing a non-static
-// `iconClass` (e.g. data sourced from a workflow or registry) can't inject
-// markup. All current callers pass static literals — this is helper-boundary
-// hardening, not a fix for an active vulnerability.
-function makeToolbarButton({ iconClass, title, onClick }) {
+function makeIconElement(icon) {
+    if (icon && icon.kind === "letter") {
+        const el = document.createElement("span");
+        el.className = "koolook-letter-icon";
+        el.textContent = icon.text;
+        el.setAttribute("aria-hidden", "true");
+        return el;
+    }
+    if (icon && icon.kind === "square") {
+        const el = document.createElement("span");
+        el.className = "koolook-filled-square-icon";
+        el.setAttribute("aria-hidden", "true");
+        return el;
+    }
+    if (icon && icon.kind === "stair") {
+        const el = document.createElement("span");
+        el.className = "koolook-stair-icon";
+        el.setAttribute("aria-hidden", "true");
+        for (let i = 0; i < 3; i += 1) {
+            el.appendChild(document.createElement("span"));
+        }
+        return el;
+    }
+    if (icon && icon.kind === "list") {
+        const el = document.createElement("span");
+        el.className = "koolook-list-icon";
+        el.setAttribute("aria-hidden", "true");
+        for (let i = 0; i < 3; i += 1) {
+            el.appendChild(document.createElement("span"));
+        }
+        return el;
+    }
+    if (icon && icon.kind === "svg") {
+        const svg = document.createElementNS(SVG_NS, "svg");
+        svg.classList.add("koolook-inline-svg-icon");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("aria-hidden", "true");
+        for (const [tag, attrs] of icon.shapes || []) {
+            const shape = document.createElementNS(SVG_NS, tag);
+            for (const [key, value] of Object.entries(attrs)) {
+                shape.setAttribute(key, value);
+            }
+            svg.appendChild(shape);
+        }
+        return svg;
+    }
+    const el = document.createElement("span");
+    el.className = typeof icon === "string" ? icon : (icon?.iconClass || "");
+    el.setAttribute("aria-hidden", "true");
+    return el;
+}
+
+// Toolbar button factory for icon-only action buttons. Icons are passed as
+// either PrimeIcon class strings or static local glyph descriptors.
+function makeToolbarButton({ iconClass, icon, title, onClick }) {
     const btn = document.createElement("button");
     btn.className = "koolook-add-btn koolook-icon-btn";
-    const icon = document.createElement("span");
-    icon.className = iconClass;
-    btn.appendChild(icon);
+    btn.appendChild(makeIconElement(icon || iconClass));
     btn.title = title;
+    btn.setAttribute("aria-label", title);
     btn.addEventListener("click", onClick);
     return btn;
 }
@@ -2255,7 +2327,7 @@ export function renderPanel(container) {
     window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus);
 
     snapshotRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-cloud-download",
+        icon: TOOLBAR_ICONS.loadSnapshot,
         title: "Load a saved snapshot (replaces current state)",
         onClick: openLoadDialog,
     }));
@@ -2291,7 +2363,7 @@ export function renderPanel(container) {
     window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled);
     snapshotRow.appendChild(quickSaveBtn);
     snapshotRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-cloud-upload",
+        icon: TOOLBAR_ICONS.saveSnapshot,
         title: "Save current state — overwrites the last-loaded preset, or prompts for a name",
         onClick: openSaveDialog,
     }));
@@ -2325,7 +2397,7 @@ export function renderPanel(container) {
     toolsRow.appendChild(toolsLabel);
 
     toolsRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-download",
+        icon: TOOLBAR_ICONS.exportStarter,
         title: "Export current state as starter_preset.json (copies snapshot JSON to clipboard — paste into web/starter_preset.json to ship as the next release's starter)",
         onClick: exportStarterPreset,
     }));
@@ -2338,7 +2410,7 @@ export function renderPanel(container) {
     // confirmation. Click handlers don't read picks here — the modal pulls
     // a fresh `loadUserPicks()` snapshot at open-time.
     toolsRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-cloud-download",
+        icon: TOOLBAR_ICONS.installMissing,
         title: "Install missing custom nodes for current picks (via ComfyUI-Manager)",
         onClick: () => showInstallMissingModal({ picks: loadUserPicks() }),
     }));
@@ -2352,7 +2424,7 @@ export function renderPanel(container) {
     // handoff to Manager's UI-driven install path that doesn't go through
     // /customnode/install/git_url's security gate.
     toolsRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-th-large",
+        icon: TOOLBAR_ICONS.dropMissing,
         title: "Drop placeholders for missing packs onto canvas — then use Manager's \"Install Missing Custom Nodes\" (works at security_level=normal)",
         onClick: async () => {
             const picks = loadUserPicks();
@@ -2376,6 +2448,12 @@ export function renderPanel(container) {
             }
             await dropPlaceholdersForPacks(byUrl);
         },
+    }));
+
+    toolsRow.appendChild(makeToolbarButton({
+        icon: TOOLBAR_ICONS.help,
+        title: "Open Kforge Labs user guide",
+        onClick: () => window.open(HELP_URL, "_blank", "noopener,noreferrer"),
     }));
 
     container.appendChild(toolsRow);
@@ -2427,14 +2505,13 @@ export function renderPanel(container) {
     const modeToggle = document.createElement("div");
     modeToggle.className = "koolook-mode-toggle";
 
-    function makeModeBtn(modeId, iconClass, title) {
+    function makeModeBtn(modeId, icon, title) {
         const btn = document.createElement("button");
         btn.className = "koolook-mode-toggle-btn";
         btn.title = title;
+        btn.setAttribute("aria-label", title);
         btn.dataset.mode = modeId;
-        const icon = document.createElement("span");
-        icon.className = iconClass;
-        btn.appendChild(icon);
+        btn.appendChild(makeIconElement(icon));
         btn.addEventListener("click", () => {
             if (loadGroupMode() === modeId) return;
             saveGroupMode(modeId);
@@ -2446,12 +2523,12 @@ export function renderPanel(container) {
 
     const repoModeBtn = makeModeBtn(
         "repo",
-        "pi pi-sitemap",
+        TOOLBAR_ICONS.repoMode,
         "Group by pack — each repo's nodes under their original category subtree.",
     );
     const categoryModeBtn = makeModeBtn(
         "category",
-        "pi pi-bars",
+        TOOLBAR_ICONS.categoryMode,
         "Group by theme — picks regrouped by category theme (e.g. all image nodes together) regardless of source pack.",
     );
 
@@ -2474,8 +2551,10 @@ export function renderPanel(container) {
     addBtn.className = "koolook-add-btn koolook-icon-btn koolook-add-btn-green";
     const addBtnIcon = document.createElement("i");
     addBtnIcon.className = "pi pi-plus";
+    addBtnIcon.setAttribute("aria-hidden", "true");
     addBtn.appendChild(addBtnIcon);
     addBtn.title = "Add the selected canvas node(s) to favorites";
+    addBtn.setAttribute("aria-label", "Add the selected canvas node(s) to favorites");
     addBtn.addEventListener("click", () => {
         const types = getSelectedNodeTypes();
         if (types.length === 0) {
@@ -2582,7 +2661,7 @@ export function renderPanel(container) {
     };
 
     wfRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-save",
+        icon: TOOLBAR_ICONS.saveWorkflow,
         title: "Save entire canvas as a workflow",
         onClick: () => {
             // Check emptiness first so a serialize() throw doesn't get
