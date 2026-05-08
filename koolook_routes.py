@@ -519,13 +519,30 @@ def register_routes(routes) -> None:
                     stat = entry.stat()
                 except OSError:
                     continue
-                out.append(
-                    {
-                        "name": entry.name,
-                        "mtime": stat.st_mtime,
-                        "size": stat.st_size,
-                    }
-                )
+                row = {
+                    "name": entry.name,
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                }
+                # Library-root rows only: stat the matching `<base>_autosave/
+                # periodic.json` and surface its mtime when strictly newer
+                # than the named file. Powers the Load dialog's inline
+                # "Newer auto-save available — restore?" affordance — the
+                # autosave UX needs the system to proactively offer the
+                # recovery copy when the user's last manual save is stale,
+                # rather than burying it inside the Recovery disclosure.
+                # One extra stat per row, no read — cheap even on large
+                # libraries.
+                if not subdir_q:
+                    base_name = entry.name[: -len(".json")]
+                    auto_path = target_dir / f"{base_name}_autosave" / "periodic.json"
+                    try:
+                        a_stat = auto_path.stat()
+                        if a_stat.st_mtime > stat.st_mtime:
+                            row["latestAutosaveMtime"] = a_stat.st_mtime
+                    except OSError:
+                        pass
+                out.append(row)
         except OSError as exc:
             raise web.HTTPInternalServerError(
                 reason=f"Could not list preset library: {exc}"

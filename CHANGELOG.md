@@ -7,6 +7,28 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Load dialog asks YES/NO when an auto-save is newer than the saved
+  version.** Click any preset row in Snapshot → Load and, if the
+  matching `<preset>_autosave/periodic.json` is more recent than the
+  named save's on-disk mtime, the confirm dialog upgrades from a single
+  "Load preset" button to a YES/NO question: "Auto-save is NEWER than
+  the saved version. Do you want to load the auto-saved version?". YES
+  loads the auto-save, NO loads the older deliberate save (the row the
+  user originally clicked), Esc cancels. Both paths run the standard
+  pre-load auto-save protection so either choice is reversible.
+  Replaces the earlier inline "↻ Newer auto-save" subline on the row
+  itself — putting the question on the row asked the user to compare
+  two timestamps before they had committed to loading anything; moving
+  it to the post-click modal puts the choice exactly where the user has
+  already decided to load and just needs to pick which version. The
+  list rows render as before (one timestamp, one × button) so the
+  library list stays scannable. Server-side: `/koolook/presets/list`
+  augments root rows with `latestAutosaveMtime` via one extra `stat()`
+  per row — no file read, cheap on large libraries. Aligns the system
+  with the mental model: named saves stay deliberate (only updated on
+  Save / Quick Save), and the auto-save is treated as a recovery copy
+  the system surfaces at decision time rather than a parallel save
+  destination the user has to remember to check.
 - **Bundled visual onboarding guide for the Kforge Labs sidebar.** The
   existing Tools-row `H` help shortcut now opens `web/guide/index.html`, an
   offline visual guide that frames Snapshots as a reusable project kit for
@@ -55,6 +77,16 @@ The format is inspired by Keep a Changelog and SemVer.
   selected folder name visually prominent before the user chooses it.
 
 ### Changed
+- **Snapshot timestamps now use 24-hour format with relative-recent tier.**
+  The Load dialog's "saved …" line and the snapshot status-dot tooltip
+  previously formatted local time as 12-hour `en-US` (`May 8, 12:56 AM`),
+  which read visually like noon for timestamps just past midnight — the
+  classic US "12 AM = midnight" trap. Times now render as: `just now`
+  (<1 min), `12 min ago` (<60 min), `today 14:32` / `yesterday 23:58`
+  (same / previous calendar day), or `May 6 14:32` (older; year appended
+  when not current). Centralized in a new `format_time.js` helper used
+  by both the Load dialog rows and the status tooltip so future surfaces
+  stay aligned.
 - **"Create directory" moved off the Workflows toolbar onto right-click of
   the section header.** The 📂 (`pi-folder-open`) button used to live in the
   Workflows action bar between the section label and the Save buttons. Tree-
