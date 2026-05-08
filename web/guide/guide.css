@@ -421,6 +421,117 @@ figcaption {
   font-weight: 700;
 }
 
+.module-sketch {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(210px, 0.8fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.module-canvas {
+  position: relative;
+  min-height: 250px;
+  border: 1px solid #343434;
+  border-radius: 6px;
+  background: #101010;
+  overflow: hidden;
+}
+
+.selected-node {
+  position: absolute;
+  border: 2px solid rgba(201, 148, 75, 0.9);
+  border-radius: 4px;
+  background: rgba(201, 148, 75, 0.18);
+}
+
+.selected-node::before,
+.selected-node::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(249, 250, 251, 0.18);
+}
+
+.selected-node::before {
+  top: 28px;
+}
+
+.selected-node::after {
+  top: 48px;
+}
+
+.selected-node.wide {
+  top: 44px;
+  left: 28px;
+  width: 58%;
+  height: 142px;
+}
+
+.selected-node.tall {
+  top: 24px;
+  right: 32px;
+  width: 26%;
+  height: 184px;
+}
+
+.selection-line {
+  position: absolute;
+  right: 28px;
+  bottom: 34px;
+  left: 28px;
+  border-top: 2px dashed rgba(201, 148, 75, 0.72);
+}
+
+.module-action {
+  display: grid;
+  gap: 14px;
+}
+
+.icon-strip {
+  position: relative;
+  width: min(100%, 260px);
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid #3d3d3d;
+  border-radius: 6px;
+  background: #151515;
+}
+
+.icon-strip img {
+  width: 260px;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  transform: translateY(-268px);
+}
+
+.icon-focus {
+  position: absolute;
+  top: 10px;
+  left: 194px;
+  width: 58px;
+  height: 42px;
+  border: 2px solid #c9944b;
+  border-radius: 8px;
+  background: rgba(201, 148, 75, 0.2);
+  box-shadow: 0 0 0 3px rgba(201, 148, 75, 0.12);
+}
+
+.module-action p {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid #c9944b;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.module-action strong {
+  color: var(--text);
+}
+
 @media (max-width: 980px) {
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -434,6 +545,10 @@ figcaption {
   }
 
   .overview-map {
+    grid-template-columns: 1fr;
+  }
+
+  .module-sketch {
     grid-template-columns: 1fr;
   }
 
