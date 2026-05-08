@@ -24,7 +24,7 @@ license = {file = "LICENSE"}
 [project.urls]
 Repository = "https://github.com/malkuthro/ComfyUI-Koolook"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = "https://github.com/malkuthro/ComfyUI-Koolook/wiki"
+Documentation = "https://malkuthro.github.io/ComfyUI-Koolook/web/guide/"
 "Bug Tracker" = "https://github.com/malkuthro/ComfyUI-Koolook/issues"
 
 [tool.comfy]

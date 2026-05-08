@@ -19,10 +19,11 @@ Use the sidebar as a reusable project kit.
 | **Workflows** | Save the whole script, save a selection of nodes, load workflows, or insert saved modules into the current canvas. |
 | **Recovery** | Use autosaves, starter presets, snapshot library settings, and missing-pack install helpers. |
 
-New users should start with the bundled visual guide:
-[`web/guide/index.html`](web/guide/index.html)
+New users should start with the visual guide:
 
-Inside ComfyUI, open it from the Kforge Labs sidebar with **Tools → Info**.
+- **Browse on the web:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
+- **Inside ComfyUI:** Kforge Labs sidebar → **Tools** row → **Help** (`H` icon).
+  The in-app button opens the bundled offline copy at [`web/guide/index.html`](web/guide/index.html).
 
 ## Included Nodes
 
@@ -62,7 +63,8 @@ Restart ComfyUI after installation.
 
 ## Learn More
 
-- **Visual sidebar guide:** [`web/guide/index.html`](web/guide/index.html)
+- **Visual sidebar guide:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
+  (offline copy: [`web/guide/index.html`](web/guide/index.html))
 - **User guide:** [`docs/user_guide/`](docs/user_guide/)
 - **Change history:** [`CHANGELOG.md`](CHANGELOG.md)
 - **Maintainer docs:** [`docs/maintainers/`](docs/maintainers/)
