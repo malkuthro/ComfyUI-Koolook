@@ -61,6 +61,13 @@ The format is inspired by Keep a Changelog and SemVer.
   no-context-menu section header). Fresh-install path is unchanged — the
   Save modal's "+ New directory…" entry still creates the first directory
   when the workflow store is empty. Closes #104.
+- **Kforge Labs sidebar action icons now use a first-pass ForgeFlow-style
+  icon set.** Snapshot Load / Save, Tools export / install / help, the
+  missing-pack canvas handoff, repo-mode grouping, and whole-canvas workflow
+  save now use the approved compact letter / simple-glyph treatment from
+  `docs/designs/sidebar-icon-proposals.html`, reducing repeated generic
+  cloud / grid / floppy symbols while leaving all actions and tooltips
+  unchanged. Tools now also exposes an `H` help shortcut to the user guide.
 - **Node-list hover previews now stay at the intended 300px mock-node width.**
   The preview card previously had only a `min-width` plus viewport `max-width`,
   so long node descriptions could set the card's intrinsic width and stretch the

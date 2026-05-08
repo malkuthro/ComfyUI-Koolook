@@ -105,7 +105,7 @@ export function ensureStyle() {
     s.textContent = `
 .koolook-sidebar { display: flex; flex-direction: column; height: 100%; font-size: 13px; user-select: none; padding-top: 10px; }
 .koolook-search-row { margin: 6px; flex-shrink: 0; }
-.koolook-actions-row { display: flex; align-items: center; gap: 4px; padding: 2px 6px; flex-shrink: 0; }
+.koolook-actions-row { display: flex; align-items: center; gap: 3px; padding: 2px 6px; flex-shrink: 0; }
 .koolook-actions-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; font-weight: 600; }
 /* Snapshot status indicator — replaces the static "Snapshot" label. Shows
    the currently-tracked preset name + a colored dot indicating whether the
@@ -126,8 +126,8 @@ export function ensureStyle() {
 .koolook-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.55; font-size: 11px; pointer-events: none; }
 .koolook-search { width: 100%; padding: 5px 8px 5px 26px; box-sizing: border-box; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: var(--input-text, inherit); font-size: 12px; outline: none; }
 .koolook-search:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
-.koolook-add-btn { padding: 0 10px; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; cursor: pointer; color: var(--input-text, inherit); font-size: 12px; line-height: 1; flex-shrink: 0; }
-.koolook-add-btn:hover { background: rgba(255,255,255,0.1); }
+.koolook-add-btn { padding: 0; width: 28px; height: 17px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: var(--comfy-input-bg, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 3px; cursor: pointer; color: rgba(218,221,226,0.78); font-size: 12px; line-height: 1; flex-shrink: 0; }
+.koolook-add-btn:hover { background: rgba(255,255,255,0.1); color: rgba(248,249,250,0.96); }
 .koolook-add-btn:active { background: rgba(255,255,255,0.15); }
 /* Dusty-green accent on the "+" Add-to-favorites button — distinguishes the
    primary action in the Nodes row from the neutral toolbar buttons it sits
@@ -135,8 +135,17 @@ export function ensureStyle() {
 .koolook-add-btn-green { background: rgba(120, 165, 100, 0.25); border-color: rgba(120, 165, 100, 0.5); }
 .koolook-add-btn-green:hover { background: rgba(120, 165, 100, 0.45); }
 .koolook-add-btn-green:active { background: rgba(120, 165, 100, 0.6); }
-.koolook-icon-btn { padding: 0 10px; font-size: 12px; }
+.koolook-icon-btn { padding: 0; width: 28px; height: 17px; font-size: 12px; }
 .koolook-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.koolook-icon-btn > .pi { font-size: 11px; }
+.koolook-letter-icon { font-size: 11px; font-weight: 800; line-height: 1; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.koolook-inline-svg-icon { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.koolook-filled-square-icon { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: currentColor; opacity: 0.9; }
+.koolook-stair-icon, .koolook-list-icon { display: inline-grid; grid-template-rows: repeat(3, 1.75px); gap: 2px; width: 15px; height: 10px; align-content: center; }
+.koolook-stair-icon span, .koolook-list-icon span { display: block; width: 11px; height: 1.75px; background: currentColor; border-radius: 0; }
+.koolook-stair-icon span:nth-child(2) { margin-left: 2px; }
+.koolook-stair-icon span:nth-child(3) { margin-left: 4px; }
+.koolook-add-btn-green > .pi { font-size: 13px; -webkit-text-stroke: 0.5px currentColor; }
 .koolook-tree { flex: 1; overflow-y: auto; padding: 0 4px 8px; }
 .koolook-row { display: flex; align-items: center; padding: 3px 6px; cursor: pointer; gap: 6px; border-radius: 3px; line-height: 1.3; }
 .koolook-row:hover { background: var(--comfy-input-bg, rgba(255,255,255,0.06)); }
@@ -262,10 +271,10 @@ export function ensureStyle() {
 .koolook-snapshot-row-btn:hover { background: rgba(255,255,255,0.08); }
 .koolook-snapshot-row-btn-danger:hover { background: rgba(220,80,80,0.25); border-color: rgba(220,80,80,0.4); }
 .koolook-snapshot-empty { padding: 20px; opacity: 0.5; font-size: 12px; text-align: center; }
-.koolook-mode-toggle { display: inline-flex; gap: 0; margin-right: 4px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; overflow: hidden; }
-.koolook-mode-toggle-btn { padding: 0 8px; height: 22px; background: transparent; border: none; cursor: pointer; color: inherit; font-size: 11px; opacity: 0.5; line-height: 1; }
-.koolook-mode-toggle-btn:hover { background: rgba(255,255,255,0.06); opacity: 0.85; }
-.koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); opacity: 1; }
+.koolook-mode-toggle { display: inline-flex; gap: 0; margin-right: 3px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 3px; overflow: hidden; }
+.koolook-mode-toggle-btn { padding: 0; width: 28px; height: 17px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; background: transparent; border: none; cursor: pointer; color: rgba(218,221,226,0.78); font-size: 11px; opacity: 1; line-height: 1; }
+.koolook-mode-toggle-btn:hover { background: rgba(255,255,255,0.06); color: rgba(248,249,250,0.96); }
+.koolook-mode-toggle-btn.koolook-mode-active { background: rgba(80,140,235,0.25); color: rgba(248,249,250,0.96); }
 .koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
 .koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
 .koolook-pack-badge { opacity: 0.5; font-size: 11px; margin-left: 6px; flex-shrink: 0; white-space: nowrap; }

@@ -7,6 +7,7 @@ Three audience buckets — pick where to look based on what you're trying to do.
 | Use a node in your ComfyUI workflow | [`user_guide/`](user_guide/) | Per-node guides, screenshots, recipes |
 | Look something up — a term, a node ID, a list | [`reference/`](reference/) | [Glossary](reference/glossary.md), node inventory, spec sheets |
 | Cut a release / fork a node / debug CI / hit the Comfy Registry API | [`maintainers/`](maintainers/) | [Releasing](maintainers/releasing.md), [Registry API](maintainers/registry-api.md), [Node versioning rules](maintainers/node-versioning.md) |
+| Compare UI design proposals before implementation | [`designs/`](designs/) | Focused mockups and screenshots for in-progress UX decisions |
 
 ## Files that intentionally stay at the repo root
 
