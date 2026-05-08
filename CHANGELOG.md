@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-08
+
 ### Added
 - **Visual sidebar guide now hosted on GitHub Pages.** The bundled guide at
   [`web/guide/index.html`](web/guide/index.html) is now also live at
