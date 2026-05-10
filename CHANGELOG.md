@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-10
+
 ### Changed
 - Comfy Registry documentation metadata and README onboarding now point new
   users to the KForge Labs ComfyUI-Koolook spotlight as the public first-read
