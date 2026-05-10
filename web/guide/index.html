@@ -77,12 +77,12 @@ SPDX-License-Identifier: GPL-3.0-only
       </figure>
     </section>
 
-    <section class="band band-text">
+    <section class="band band-text" id="two-layer-save">
       <div>
         <p class="eyebrow">Two-layer save</p>
         <h2>Save when you mean it. Auto-save catches the rest.</h2>
       </div>
-      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). Every Load also writes a pre-load recovery file first, so destructive Loads are reversible from the Recovery section.</p>
+      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy <span class="save-kind save-kind-periodic">PERIODIC</span> under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). At load time, Kforge Labs also creates a timestamped recovery copy of the kit being replaced <span class="save-kind save-kind-preload">PRE-LOAD_*</span> in that same <code>&lt;snapshot&gt;_autosave/</code> folder, so you can restore it later from <code>Snapshot row → &lt;project name&gt; → L (Load) → Recovery auto-saves</code>. See Showcase 2 below.</p>
     </section>
 
     <section class="section">
@@ -127,7 +127,7 @@ SPDX-License-Identifier: GPL-3.0-only
       </article>
       <article>
         <h3>Search</h3>
-        <p>Find by name, repo, or tag — partial matches OK.</p>
+        <p>Filter your curated kit by node, workflow, folder, or tag.</p>
         <ul class="function-list" aria-label="Search functions">
           <li>Nodes</li>
           <li>Workflows</li>
@@ -157,74 +157,85 @@ SPDX-License-Identifier: GPL-3.0-only
       </article>
     </section>
 
-    <section class="recipes">
+    <section class="showcases">
       <div class="section-copy wide">
         <p class="eyebrow">Visual recipes</p>
         <h2>Common things you will do</h2>
       </div>
-      <figure class="visual recipe-real">
-        <div class="recipe-shot">
-          <img src="./img/screenshots/save-snapshot.png" alt="Save snapshot dialog showing library folder and save options">
-          <span class="focus-dot focus-save" aria-hidden="true"></span>
+      <article class="showcase showcase-reverse">
+        <div class="showcase-copy">
+          <p class="eyebrow">Snapshot library</p>
+          <h3>Load a project kit when you return to a shot.</h3>
+          <p><strong>Load snapshot</strong> row restores that saved project kit. Use the named snapshot list when you want to switch projects, return to a shot, or reload a deliberate save. <span class="section-ref-note">See also: <a class="section-ref" href="#two-layer-save">TWO-LAYER SAVE</a></span></p>
         </div>
-        <div class="recipe-callout blue" aria-label="Save snapshot notes">
-          <p><strong>Save</strong> updates the current project kit.</p>
-          <p><strong>Save as new</strong> creates another named snapshot.</p>
-        </div>
-        <figcaption>Save the current sidebar state as a named project snapshot.</figcaption>
-      </figure>
-      <figure class="visual recipe-real">
-        <div class="recipe-shot">
+        <figure class="showcase-media">
           <img src="./img/screenshots/load-snapshot.png" alt="Load snapshot dialog showing saved snapshots and recovery autosaves">
-          <span class="focus-dot focus-load" aria-hidden="true"></span>
+        </figure>
+      </article>
+      <article class="showcase">
+        <div class="showcase-copy">
+          <p class="eyebrow">Snapshot library · Auto-save options</p>
+          <h3>Save when you mean it. Auto-save catches the rest.</h3>
+          <p>The Load dialog also shows <strong>Recovery auto-saves</strong> for each kit. <strong>Periodic</strong> is the latest background auto-save. <strong>Pre-load</strong> entries are timestamped copies made when another kit replaced this one. <span class="section-ref-note">See also: <a class="section-ref" href="#two-layer-save">TWO-LAYER SAVE</a></span></p>
         </div>
-        <div class="recipe-callout blue" aria-label="Load snapshot notes">
-          <p><strong>Load snapshot</strong> row restores that saved project kit.</p>
-          <p><strong>Recovery auto-saves</strong> are available below.</p>
+        <figure class="showcase-media">
+          <img src="./img/screenshots/auto-Save__pre-Load.png" alt="Recovery auto-saves section showing periodic and pre-load recovery entries">
+        </figure>
+      </article>
+      <article class="showcase showcase-reverse">
+        <div class="showcase-copy">
+          <p class="eyebrow">Reusable modules</p>
+          <h3>Save selected nodes as a module.</h3>
+          <p><strong>Save</strong> saves the entire canvas under the workflows tree. <strong>Save selection</strong> stores only the selected canvas nodes. Tag it with <code>Module</code> to insert it back into another canvas later.</p>
         </div>
-        <figcaption>Load a snapshot when you switch projects or return to a shot.</figcaption>
-      </figure>
-      <figure class="visual recipe-real module-recipe">
-        <div class="recipe-shot">
-          <img src="./img/screenshots/all-icons-new.png" alt="Sidebar toolbar screenshot with workflow save-selection highlighted">
+        <figure class="showcase-media module-shot">
+          <div class="showcase-image-wrap">
+            <img src="./img/screenshots/all-icons-new.png" alt="Sidebar toolbar screenshot with workflow save-selection highlighted">
+          </div>
           <span class="focus-dot focus-module" aria-hidden="true"></span>
+        </figure>
+      </article>
+      <article class="showcase">
+        <div class="showcase-copy">
+          <p class="eyebrow">Tags</p>
+          <h3>Give saved workflows another way to show up.</h3>
+          <p>Add <strong>tags</strong> to saved workflows and modules so the same item can appear under more than one useful label. A module can live in its folder, show up under Tags, and still be found from Search.</p>
         </div>
-        <div class="recipe-callout amber" aria-label="Save selected nodes as module notes">
-          <p><strong>Save</strong> saves the entire canvas under the workflows tree.</p>
-          <p><strong>Save selection</strong> stores only the selected canvas nodes. Tag it with 'Module' to insert it back into another canvas later.</p>
+        <figure class="showcase-media tags-shot">
+          <img src="./img/screenshots/add-tags.png" alt="Tags modal showing current tags and an Add tag field">
+          <img src="./img/screenshots/inventory-tags.png" alt="Sidebar Tags section showing module, UP-scale, and Wan 22 tag folders">
+        </figure>
+      </article>
+      <article class="showcase showcase-reverse">
+        <div class="showcase-copy">
+          <p class="eyebrow">Search</p>
+          <h3>Find useful favorites faster.</h3>
+          <p>Search inside the kit you already curated: verified <strong>nodes</strong>, saved <strong>workflows</strong>, <strong>folders</strong>, and <strong>tags</strong> arranged your way. You do not need the full exact name — type <strong>the part you remember</strong> and it filters across those layers.</p>
         </div>
-        <figcaption>Save selected nodes as a module, then insert that module into another canvas.</figcaption>
-      </figure>
-      <figure class="visual recipe-real">
-        <div class="recipe-shot">
+        <figure class="showcase-media portrait-shot">
           <img src="./img/screenshots/search-C.png" alt="Search results showing matching favorite nodes">
-          <span class="focus-dot focus-node-search" aria-hidden="true"></span>
+        </figure>
+      </article>
+      <article class="showcase">
+        <div class="showcase-copy">
+          <p class="eyebrow">Context actions</p>
+          <h3>Manage saved workflows from the sidebar.</h3>
+          <p><strong>Right-click</strong> any saved workflow or module for a full action menu. <strong>Load</strong>, rename, retag, move between folders, or archive — all without leaving the sidebar.</p>
         </div>
-        <div class="recipe-callout green" aria-label="Node search notes">
-          <p><strong>Search</strong> narrows displayed items so useful nodes and workflows are easier to find.</p>
-        </div>
-        <figcaption>Search narrows the Nodes list so useful favorites are easier to scan and add.</figcaption>
-      </figure>
-      <figure class="visual recipe-real">
-        <div class="recipe-shot">
+        <figure class="showcase-media portrait-shot">
           <img src="./img/screenshots/right-click-functions.png" alt="Right-click context menu on a saved workflow showing available actions">
+        </figure>
+      </article>
+      <article class="showcase showcase-reverse">
+        <div class="showcase-copy">
+          <p class="eyebrow">Folder organization</p>
+          <h3>Shape the library around the way you work.</h3>
+          <p><strong>Create</strong> or <strong>delete</strong> folders to shape your library. <strong>Drag and drop</strong> to rearrange items between folders, then group, rename, or rearrange anytime.</p>
         </div>
-        <div class="recipe-callout purple" aria-label="Right-click actions notes">
-          <p><strong>Right-click</strong> any saved workflow or module for a full action menu.</p>
-          <p><strong>Load</strong>, rename, retag, move between folders, or archive — all without leaving the sidebar.</p>
-        </div>
-        <figcaption>Manage saved workflows and modules directly from the right-click menu.</figcaption>
-      </figure>
-      <figure class="visual recipe-real">
-        <div class="recipe-shot">
+        <figure class="showcase-media">
           <img src="./img/screenshots/folder-actions.png" alt="Sidebar showing folder actions — create, rename, delete, drag-and-drop">
-        </div>
-        <div class="recipe-callout green" aria-label="Folder actions notes">
-          <p><strong>Create</strong> or <strong>delete</strong> folders to shape your library.</p>
-          <p><strong>Drag and drop</strong> to rearrange items between folders.</p>
-        </div>
-        <figcaption>Organize your saved kit with folders — group, rename, or rearrange anytime.</figcaption>
-      </figure>
+        </figure>
+      </article>
     </section>
   </main>
 </body>

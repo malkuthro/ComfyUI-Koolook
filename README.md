@@ -3,6 +3,11 @@
 Kforge Labs for ComfyUI: a project-kit sidebar plus Koolook nodes for VFX,
 image, and video workflows.
 
+**Start here:** [KForge Labs ComfyUI-Koolook overview](https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/)
+
+That overview explains the sidebar, snapshots, saved workflows, modules,
+recovery tools, and included nodes for new users.
+
 The main experience is the **Kforge Labs sidebar**. It helps you keep a
 project setup together: favorite nodes, saved workflows, reusable modules,
 tags, snapshots, and recovery tools.
@@ -19,7 +24,9 @@ Use the sidebar as a reusable project kit.
 | **Workflows** | Save the whole script, save a selection of nodes, load workflows, or insert saved modules into the current canvas. |
 | **Recovery** | Use autosaves, starter presets, snapshot library settings, and missing-pack install helpers. |
 
-New users should start with the visual guide:
+New here? Start with the
+[KForge overview](https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/).
+Using it inside ComfyUI? Open the operational guide:
 
 - **Browse on the web:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
 - **Inside ComfyUI:** Kforge Labs sidebar → **Tools** row → **Help** (`H` icon).
@@ -63,7 +70,8 @@ Restart ComfyUI after installation.
 
 ## Learn More
 
-- **Visual sidebar guide:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
+- **Public overview:** [kforgelabs.com/comfyui-projects/comfyui-koolook/](https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/)
+- **In-app visual guide:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
   (offline copy: [`web/guide/index.html`](web/guide/index.html))
 - **User guide:** [`docs/user_guide/`](docs/user_guide/)
 - **Change history:** [`CHANGELOG.md`](CHANGELOG.md)

@@ -6,6 +6,18 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Changed
+- Comfy Registry documentation metadata and README onboarding now point new
+  users to the KForge Labs ComfyUI-Koolook spotlight as the public first-read
+  overview, while keeping the bundled visual guide framed as the in-app
+  operational guide.
+- The bundled visual guide's six recipe examples now use the KForge spotlight
+  style: wide divided showcase rows with explanatory copy paired to the
+  relevant screenshot, instead of separate compact recipe cards.
+- The bundled visual guide now includes a Tags showcase between Modules and
+  Search, showing how saved workflows can appear under multiple labels and
+  remain searchable without duplication.
+
 ## [0.3.0] - 2026-05-08
 
 ### Added
