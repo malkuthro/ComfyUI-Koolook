@@ -24,7 +24,7 @@ license = {file = "LICENSE"}
 [project.urls]
 Repository = "https://github.com/malkuthro/ComfyUI-Koolook"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = "https://malkuthro.github.io/ComfyUI-Koolook/web/guide/"
+Documentation = "https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/"
 "Bug Tracker" = "https://github.com/malkuthro/ComfyUI-Koolook/issues"
 
 [tool.comfy]
@@ -39,4 +39,3 @@ extend-exclude = [".venv", "forks", "upscaler_FIX", "nuke_CAM_exporter"]
 
 [tool.ruff.lint.per-file-ignores]
 "k_easy_resize.py" = ["F841"]
-
