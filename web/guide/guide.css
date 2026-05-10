@@ -535,10 +535,6 @@ figcaption {
   box-shadow: 0 18px 46px rgb(0 0 0 / 24%);
 }
 
-.showcase-image-wrap {
-  position: relative;
-}
-
 .portrait-shot img {
   width: min(100%, 680px);
   margin: 0 auto;

@@ -82,7 +82,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <p class="eyebrow">Two-layer save</p>
         <h2>Save when you mean it. Auto-save catches the rest.</h2>
       </div>
-      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy <span class="save-kind save-kind-periodic">PERIODIC</span> under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). At load time, Kforge Labs also creates a timestamped recovery copy of the kit being replaced <span class="save-kind save-kind-preload">PRE-LOAD_*</span> in that same <code>&lt;snapshot&gt;_autosave/</code> folder, so you can restore it later from <code>Snapshot row → &lt;project name&gt; → L (Load) → Recovery auto-saves</code>. See Showcase 2 below.</p>
+      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy <span class="save-kind save-kind-periodic">PERIODIC</span> under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). At load time, Kforge Labs also creates a timestamped recovery copy of the kit being replaced <span class="save-kind save-kind-preload">PRE-LOAD_*</span> in that same <code>&lt;snapshot&gt;_autosave/</code> folder, so you can restore it later from <code>Snapshot row → &lt;project name&gt; → L (Load) → Recovery auto-saves</code>. See <a href="#showcase-auto-save-options">Showcase 2</a> below.</p>
     </section>
 
     <section class="section">
@@ -162,7 +162,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <p class="eyebrow">Visual recipes</p>
         <h2>Common things you will do</h2>
       </div>
-      <article class="showcase showcase-reverse">
+      <article class="showcase showcase-reverse" id="showcase-auto-save-options">
         <div class="showcase-copy">
           <p class="eyebrow">Snapshot library</p>
           <h3>Load a project kit when you return to a shot.</h3>
@@ -179,7 +179,7 @@ SPDX-License-Identifier: GPL-3.0-only
           <p>The Load dialog also shows <strong>Recovery auto-saves</strong> for each kit. <strong>Periodic</strong> is the latest background auto-save. <strong>Pre-load</strong> entries are timestamped copies made when another kit replaced this one. <span class="section-ref-note">See also: <a class="section-ref" href="#two-layer-save">TWO-LAYER SAVE</a></span></p>
         </div>
         <figure class="showcase-media">
-          <img src="./img/screenshots/auto-Save__pre-Load.png" alt="Recovery auto-saves section showing periodic and pre-load recovery entries">
+          <img src="./img/screenshots/auto-save-pre-load.png" alt="Recovery auto-saves section showing periodic and pre-load recovery entries">
         </figure>
       </article>
       <article class="showcase showcase-reverse">
@@ -189,9 +189,7 @@ SPDX-License-Identifier: GPL-3.0-only
           <p><strong>Save</strong> saves the entire canvas under the workflows tree. <strong>Save selection</strong> stores only the selected canvas nodes. Tag it with <code>Module</code> to insert it back into another canvas later.</p>
         </div>
         <figure class="showcase-media module-shot">
-          <div class="showcase-image-wrap">
-            <img src="./img/screenshots/all-icons-new.png" alt="Sidebar toolbar screenshot with workflow save-selection highlighted">
-          </div>
+          <img src="./img/screenshots/all-icons-new.png" alt="Sidebar toolbar screenshot with workflow save-selection highlighted">
           <span class="focus-dot focus-module" aria-hidden="true"></span>
         </figure>
       </article>
