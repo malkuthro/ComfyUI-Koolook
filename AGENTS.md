@@ -6,6 +6,14 @@ Read `CLAUDE.md` before making substantive changes. It contains the
 project-specific workflow, dev-sync rules, release rules, and sidebar
 maintenance notes.
 
+## External Repository Boundary
+
+If a user request appears to involve files, workflows, repositories, or
+publishing targets that are not present in this repository, stop and confirm
+the exact target before acting. Dictation typos and shorthand are common; do
+not infer a sibling repository or revive old local workflows from broad
+filesystem search results without explicit user confirmation.
+
 ## Visual QA Is Mandatory For UI Work
 
 For any change that affects rendered UI, guide pages, screenshots,
