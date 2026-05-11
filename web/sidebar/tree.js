@@ -1611,6 +1611,41 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         },
     };
 
+    const updateFromCanvasItem = {
+        label: "Update from current canvas",
+        action: () => {
+            if (!canvasIsNonEmpty()) {
+                toast("Canvas is empty.");
+                return;
+            }
+            const graph = serializeFullCanvas();
+            if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+                toast("Failed to serialize canvas. See console.");
+                return;
+            }
+            const sourceTags = getWorkflowTags(dirPath, wfName) || [];
+            const sourceIsModule = isWorkflowModule(dirPath, wfName);
+            persistMutation({
+                mutate: () => {
+                    if (getWorkflowGraph(dirPath, wfName) === null) return false;
+                    const result = saveWorkflowEntry(dirPath, wfName, graph, { module: sourceIsModule });
+                    if (!result) return false;
+                    for (const t of sourceTags) addTag(dirPath, wfName, t);
+                    if (sourceIsModule) addTag(dirPath, wfName, MODULE_TAG);
+                    return result;
+                },
+                onSuccess: (result) => {
+                    if (result && result.archivedAs) {
+                        toast(`Updated "${wfName}" from canvas (previous version archived as "${result.archivedAs}").`);
+                    } else {
+                        toast(`Updated "${wfName}" from canvas.`);
+                    }
+                },
+                onNoOp: () => toast(`Could not update — "${wfName}" no longer exists.`),
+            });
+        },
+    };
+
     const tagsItem = {
         label: "Tags…",
         action: () => {
@@ -1649,6 +1684,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
             label: "Insert into canvas",
             action: () => insertWorkflowOntoCanvas(dirPath, wfName),
         },
+        ...(!isArchived ? [updateFromCanvasItem] : []),
         {
             label: "Rename…",
             action: () => {
