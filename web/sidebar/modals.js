@@ -2166,6 +2166,66 @@ export function showSnapshotSettingsDialog({
     refresh();
 }
 
+export function showShortcutSettingsDialog({
+    shortcuts,
+    defaults,
+    onSave,
+    onReset,
+    onToast,
+}) {
+    const toastFn = onToast || (() => {});
+    const body = document.createElement("div");
+    const rows = [];
+    for (const [action, combo] of Object.entries(shortcuts || {})) {
+        const row = document.createElement("div");
+        row.style.marginBottom = "8px";
+        const label = modalLabel(action);
+        const input = document.createElement("input");
+        input.className = "koolook-modal-input";
+        input.value = combo || "";
+        input.placeholder = defaults && defaults[action] ? defaults[action] : "Ctrl+K";
+        row.appendChild(label);
+        row.appendChild(input);
+        body.appendChild(row);
+        rows.push({ action, input });
+    }
+
+    const hint = document.createElement("div");
+    hint.className = "koolook-modal-pathline";
+    hint.textContent = "Use combos like Ctrl+K, Ctrl+Shift+S, Alt+H";
+    body.appendChild(hint);
+
+    let overlay;
+    const close = () => overlay.remove();
+    const cancel = makeModalButton({ label: "Cancel", onClick: close });
+    const reset = makeModalButton({
+        label: "Reset defaults",
+        onClick: () => {
+            const next = typeof onReset === "function" ? onReset() : defaults;
+            for (const row of rows) {
+                row.input.value = next && next[row.action] ? next[row.action] : "";
+            }
+            toastFn("Shortcuts reset to defaults.");
+        },
+    });
+    const save = makeModalButton({
+        label: "Save",
+        primary: true,
+        onClick: () => {
+            const map = {};
+            for (const row of rows) map[row.action] = row.input.value.trim();
+            if (typeof onSave === "function") onSave(map);
+            toastFn("Shortcuts saved.");
+            close();
+        },
+    });
+
+    ({ overlay } = makeModalShell({
+        title: "Keyboard shortcuts",
+        body,
+        actions: [cancel, reset, save],
+    }));
+}
 
 // =============================================================================
 // Context menu helper

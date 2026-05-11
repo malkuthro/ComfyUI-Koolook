@@ -81,6 +81,7 @@ import {
     showSaveSnapshotDialog,
     showLoadSnapshotDialog,
     showSnapshotSettingsDialog,
+    showShortcutSettingsDialog,
 } from "./modals.js";
 import { attachHoverPreview, teardownPreview } from "./node_preview.js";
 import {
@@ -107,6 +108,14 @@ import {
     listAutosaves,
     revealPresetFolder,
 } from "./snapshot.js";
+import {
+    DEFAULT_SHORTCUTS,
+    getShortcutMap,
+    saveShortcutMap,
+    resetShortcuts,
+    actionFromKeyboardEvent,
+    isTypingTarget,
+} from "./shortcuts.js";
 
 // =============================================================================
 // Built-in section IDs. These are also pathState key prefixes — every
@@ -148,6 +157,7 @@ const TOOLBAR_ICONS = {
     repoMode: { kind: "stair" },
     categoryMode: { kind: "list" },
     saveWorkflow: { kind: "square" },
+    shortcuts: { kind: "letter", text: "K" },
 };
 
 // =============================================================================
@@ -166,6 +176,7 @@ const pinnedPaths = new Set();
 // Section registry. Sections render in declaration order, separated by
 // dividers. Built-in sections register at module load (bottom of this file).
 const SECTIONS = [];
+let shortcutsKeydownCleanup = null;
 
 // =============================================================================
 // Engine — public surface (3 functions)
@@ -2224,6 +2235,38 @@ export function renderPanel(container) {
         onToast: toast,
     });
 
+    let shortcutsMap = getShortcutMap();
+    const openShortcutSettings = () => showShortcutSettingsDialog({
+        shortcuts: shortcutsMap,
+        defaults: DEFAULT_SHORTCUTS,
+        onSave: (next) => {
+            saveShortcutMap(next);
+            shortcutsMap = getShortcutMap();
+        },
+        onReset: () => {
+            shortcutsMap = resetShortcuts();
+            return shortcutsMap;
+        },
+        onToast: toast,
+    });
+
+    async function quickSaveCurrentSnapshot() {
+        const current = getCurrentPresetName();
+        if (!current) {
+            toast("No preset loaded — use Save to name a new one.");
+            return;
+        }
+        try {
+            const snap = gatherSnapshot(current);
+            await writePreset(current, snap);
+            markStateSaved();
+            toast(`Quick-saved "${current}".`);
+        } catch (e) {
+            console.error("[Koolook] quick save failed:", e);
+            toast(`Could not Quick Save: ${e.message}`);
+        }
+    }
+
     // ---- Row 0: Snapshot library action bar (top-level kit ops) ----
     // Mirrors the Nodes/Workflows action-row pattern but lives above the
     // search field — these are infrequent meta-actions (save/load the
@@ -2330,22 +2373,7 @@ export function renderPanel(container) {
     const quickSaveBtn = makeToolbarButton({
         iconClass: "pi pi-save",
         title: "Quick Save — overwrite the currently loaded preset (no dialog)",
-        onClick: async () => {
-            const current = getCurrentPresetName();
-            if (!current) {
-                toast("No preset loaded — use Save to name a new one.");
-                return;
-            }
-            try {
-                const snap = gatherSnapshot(current);
-                await writePreset(current, snap);
-                markStateSaved();
-                toast(`Quick-saved "${current}".`);
-            } catch (e) {
-                console.error("[Koolook] quick save failed:", e);
-                toast(`Could not Quick Save: ${e.message}`);
-            }
-        },
+        onClick: quickSaveCurrentSnapshot,
     });
     function refreshQuickSaveDisabled() {
         quickSaveBtn.disabled = !getCurrentPresetName();
@@ -2362,6 +2390,11 @@ export function renderPanel(container) {
         iconClass: "pi pi-cog",
         title: "Snapshot library settings (where presets are saved on disk)",
         onClick: openSettingsDialog,
+    }));
+    snapshotRow.appendChild(makeToolbarButton({
+        icon: TOOLBAR_ICONS.shortcuts,
+        title: "Keyboard shortcuts settings",
+        onClick: openShortcutSettings,
     }));
 
     container.appendChild(snapshotRow);
@@ -2785,4 +2818,43 @@ export function renderPanel(container) {
             renderTree({ treeEl: tree, query: search.value });
         }
     });
+
+    if (shortcutsKeydownCleanup) shortcutsKeydownCleanup();
+    const keydownHandler = (e) => {
+        if (!container.isConnected) return;
+        if (!container.contains(document.activeElement) && !container.matches(":hover")) return;
+        if (document.querySelector(".koolook-modal-overlay")) return;
+        if (isTypingTarget(e.target)) return;
+
+        const action = actionFromKeyboardEvent(e, shortcutsMap);
+        if (!action) return;
+        e.preventDefault();
+
+        if (action === "focusSearch") {
+            search.focus();
+            search.select();
+            return;
+        }
+        if (action === "saveSnapshot") {
+            openSaveDialog();
+            return;
+        }
+        if (action === "loadSnapshot") {
+            openLoadDialog();
+            return;
+        }
+        if (action === "quickSaveSnapshot") {
+            quickSaveCurrentSnapshot();
+            return;
+        }
+        if (action === "openHelp") {
+            window.open(GUIDE_URL, "_blank", "noopener,noreferrer");
+            return;
+        }
+        if (action === "openShortcutSettings") {
+            openShortcutSettings();
+        }
+    };
+    document.addEventListener("keydown", keydownHandler);
+    shortcutsKeydownCleanup = () => document.removeEventListener("keydown", keydownHandler);
 }
