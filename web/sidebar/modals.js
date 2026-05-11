@@ -2019,6 +2019,18 @@ export function showSnapshotSettingsDialog({
         navRow.appendChild(rootsSelect);
         pickerBody.appendChild(navRow);
 
+        const pathRow = document.createElement("div");
+        pathRow.className = "koolook-path-input-row";
+        const pathInput = document.createElement("input");
+        pathInput.className = "koolook-modal-input";
+        pathInput.placeholder = "Paste an absolute folder path";
+        const goBtn = makeModalButton({ label: "Go", onClick: () => {} });
+        const pasteBtn = makeModalButton({ label: "Paste", onClick: () => {} });
+        pathRow.appendChild(pathInput);
+        pathRow.appendChild(goBtn);
+        pathRow.appendChild(pasteBtn);
+        pickerBody.appendChild(pathRow);
+
         const list = document.createElement("div");
         list.className = "koolook-browse-list";
         pickerBody.appendChild(list);
@@ -2047,6 +2059,8 @@ export function showSnapshotSettingsDialog({
             }
 
             selectedPath = data.path || "";
+            pathInput.value = selectedPath;
+            pathInput.title = selectedPath;
             choose.disabled = !selectedPath;
             renderSelectedFolder(current, selectedPath);
             current.title = selectedPath;
@@ -2090,6 +2104,37 @@ export function showSnapshotSettingsDialog({
                 list.appendChild(row);
             }
         }
+
+        const goToTypedPath = async () => {
+            const typed = pathInput.value.trim();
+            if (!typed) {
+                toast("Path is empty.");
+                return;
+            }
+            await render(typed);
+        };
+
+        goBtn.onclick = () => { goToTypedPath(); };
+        pathInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") goToTypedPath();
+        });
+        pasteBtn.onclick = async () => {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+                toast("Clipboard access unavailable. Paste manually into the path field.");
+                return;
+            }
+            try {
+                const text = (await navigator.clipboard.readText()).trim();
+                if (!text) {
+                    toast("Clipboard is empty.");
+                    return;
+                }
+                pathInput.value = text;
+                await goToTypedPath();
+            } catch (e) {
+                toast("Could not read clipboard. Paste manually into the path field.");
+            }
+        };
 
         const cancel = makeModalButton({ label: "Cancel", onClick: closePicker });
         const newFolder = makeModalButton({
