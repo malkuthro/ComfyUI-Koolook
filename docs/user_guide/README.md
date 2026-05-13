@@ -13,7 +13,7 @@ attribution is visible without needing a fork-shaped directory tree.
 | ComfyUI menu | Status | Nodes |
 |---|---|---|
 | `Koolook/Pipeline` | 🚧 page TBD | `EasyAIPipeline` |
-| `Koolook/Image` | 🚧 page TBD | `EasyResize_Koolook`, `easy_ImageBatch` |
+| `Koolook/Image` | 🚧 `EasyResize_Koolook` page TBD · ✅ [`easy_ImageBatch`](nodes/koolook_image/easy_image_batch.md) | `EasyResize_Koolook`, `easy_ImageBatch` |
 | `Koolook/Camera` | 🚧 page TBD | `KoolookLoadCameraPosesAbsolute` |
 | `Koolook/Wan_Video` | 🚧 page TBD | `EasyWan22Prompt` |
 | `Koolook/VAE` | ✅ [`nodes/radiance_koolook_v2_3_3/`](nodes/radiance_koolook_v2_3_3/) | `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode` |
