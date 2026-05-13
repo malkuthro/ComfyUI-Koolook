@@ -6,6 +6,65 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Easy Image Batch (`easy_ImageBatch`): "White" placeholder + `source_batch`
+  input.** The `placeholder_color` dropdown now offers `Black / Gray / White`
+  (fill values `0.0 / 0.5 / 1.0`); previously only Black and Gray were
+  exposed. A new optional `source_batch` (IMAGE) input accepts a pre-batched
+  image stack (e.g. straight from Load Video). When `source_batch` is
+  connected and a slot's individual `imageN` is *not* connected, the node
+  pulls frame `imageN_frame - start_frame` from `source_batch` — so
+  `imageN_frame` controls both *which source frame to pick* and *where to
+  place it on the output timeline*. This collapses the typical
+  "Load Video → Get Images From Batch In Range × N → Easy Image Batch"
+  helper chain into the node itself. Explicit `imageN` inputs still
+  override the source-batch pick for that slot, so existing workflows keep
+  working unchanged. `image1` is now optional too (you can drive the node
+  entirely from `source_batch`); a clear error is raised if neither
+  `image1` nor `source_batch` is connected.
+- **Easy Image Batch unlimited keyframes via `source_frames` field.** A new
+  optional multiline STRING input (positioned right above `image1_frame`)
+  accepts a list of VFX-numbered frames separated by commas, newlines,
+  spaces, or any mix (e.g. `"1, 27, 41, 63, 85, 120"` or one number per
+  line) — for sequences needing more than 4 keyframes from a
+  `source_batch`. Each number both picks `source_batch[N - start_frame]`
+  and places it at the same timeline position (same convention as the
+  per-slot `imageN_frame` fields). Bad tokens warn and are skipped;
+  out-of-range values warn and are skipped.
+
+  **List-vs-slot interaction rule:** when `source_frames` is non-empty,
+  the 4 manual slots contribute ONLY where `imageN` is explicitly
+  connected — the `imageN_frame` defaults (0, 4, 8, 12) do NOT pick from
+  `source_batch` in this mode. So the list fully controls the selection,
+  with explicit `imageN` connections used solely to override individual
+  positions. When `source_frames` is empty, the original 4-keyframe
+  behaviour is preserved (unconnected slots fall back to
+  `source_batch[imageN_frame]`).
+
+  Priority order (later wins): `source_frames` list → 4 manual slots.
+  Output dedup is automatic (set-based tracking).
+- **Easy Image Batch: two new outputs — `selected_image_batch` (IMAGE)
+  and `selected_frames` (STRING).** `selected_image_batch` contains
+  only the keyframes that actually landed, packed back-to-back in
+  ascending timeline order with no placeholders (length 0 if nothing
+  was placed). `selected_frames` is a comma-separated VFX-frame-number
+  string of the placed keyframes (e.g. `"1, 27, 41, 63"`) — same
+  format as the `source_frames` input, so the output round-trips
+  cleanly into another `easy_ImageBatch` instance for chaining or
+  re-using selections. Outputs are appended at slot positions 3 and 4,
+  so existing wires on `image_batch` and `alpha_batch` are unaffected.
+
+### Changed
+- **Easy Image Batch second output renamed `mask_batch` → `alpha_batch`,
+  with the same value convention as before.** The default behaviour is
+  unchanged — selected (occupied) frames = `0.0` (black), missing
+  frames = `1.0` (white) — so existing workflows wire up identically.
+  A new `invert_alpha` boolean toggle (default `false`, labels *"inpaint"*
+  / *"compositing"*) flips the alpha to compositing-style
+  (`selected = 1.0, empty = 0.0`) when needed. The output slot keeps its
+  position (second output) so wires re-attach automatically when the
+  node reloads.
+
 ## [0.3.1] - 2026-05-10
 
 ### Changed
