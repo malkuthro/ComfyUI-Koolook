@@ -2214,11 +2214,6 @@ export function renderPanel(container) {
     const openSettingsDialog = () => showSnapshotSettingsDialog({
         getSettings,
         saveSettings,
-        getCurrentPresetName,
-        setCurrentPresetName,
-        gatherSnapshot,
-        writePreset,
-        markStateSaved,
         browseDirectories,
         createBrowseDirectory,
         onToast: toast,
