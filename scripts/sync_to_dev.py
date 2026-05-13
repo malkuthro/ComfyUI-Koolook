@@ -63,6 +63,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Default ComfyUI-Manager reboot endpoint. ComfyUI-Manager registers this
 # as a GET route; hitting it makes the server `os.execv` itself, so the
@@ -138,10 +139,23 @@ def trigger_restart(url: str, timeout: float = 2.0) -> tuple[bool, str]:
           restart's `os.execv` raced our read); the request still landed,
           so we treat this as success.
     """
+    # Restrict to http/https. `urlopen` would otherwise accept `file://`,
+    # `ftp://`, etc. — a typo in `--restart-url` could surprise the
+    # maintainer by opening a local file via the same code path that
+    # normally talks to ComfyUI-Manager. Static analyzers (Bandit B310)
+    # also flag the broader urlopen surface; this guard makes the
+    # `# nosec` annotation below truthful rather than dismissive.
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        return False, (
+            f"restart skipped: --restart-url must be http(s); got "
+            f"scheme '{scheme}' in {url}"
+        )
+
     try:
         # ComfyUI-Manager registers /manager/reboot as GET, but POST
         # also lands harmlessly — using GET keeps it simple.
-        urllib.request.urlopen(url, timeout=timeout)
+        urllib.request.urlopen(url, timeout=timeout)  # nosec B310 - scheme validated above
         return True, "restart triggered"
     except urllib.error.HTTPError as e:
         if e.code == 404:
