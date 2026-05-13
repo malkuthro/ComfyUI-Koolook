@@ -34,7 +34,7 @@ without needing an external `ImageFromBatch` slicer.
 | `placeholder_color` | enum | `Black` | Fill colour for unoccupied frames in `image_batch`. `Black = 0.0`, `Gray = 0.5`, `White = 1.0`. Independent of `alpha_batch`. |
 | `invert_alpha` | `BOOLEAN` | `false` (`inpaint`) | Off = inpaint convention (selected = `0.0` black, empty = `1.0` white). On = compositing alpha (selected = `1.0`, empty = `0.0`). |
 | `source_frames` | multiline `STRING` | `""` | Optional list of VFX frame numbers to pick from `source_batch`. Tokens may be separated by commas, newlines, spaces, tabs, or any mix (`"1, 27\n41 63"` → `[1, 27, 41, 63]`). Each token picks `source_batch[N - 1]` and places it at output index `N - cut_start_frame`. Bad tokens warn and skip. Frames not present in `source_batch` warn; frames outside the cut window are dropped silently and reported in the end-of-run summary. |
-| `image1_frame` … `image4_frame` | `INT` | `1`, `5`, `9`, `13` | VFX frame number (1-based) for the slot's keyframe. In Mode 2 also used as the `source_batch` pick index. |
+| `image1_frame` … `image4_frame` | `INT` | `5`, `9`, `13`, `17` | VFX frame number (1-based) for the slot's keyframe. In Mode 2 also used as the `source_batch` pick index. |
 
 ### Optional input slots
 

@@ -82,7 +82,7 @@ The format is inspired by Keep a Changelog and SemVer.
   Builds in the workflow that previously used an external
   `ImageFromBatch (batch_index, length)` to slice the Easy Image Batch
   output. Defaults: `cut_start_frame=1`, `total_frames=81` (was `16`),
-  `imageN_frame` defaults bumped to `1, 5, 9, 13` (was `0, 4, 8, 12`)
+  `imageN_frame` defaults bumped to `5, 9, 13, 17` (was `0, 4, 8, 12`)
   so they're valid VFX-1-based frame numbers.
 
   **Migration note:** saved workflows that had `start_frame` set will

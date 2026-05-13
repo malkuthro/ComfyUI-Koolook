@@ -156,7 +156,7 @@ class easy_ImageBatch:
                     "placeholder": "extra frames from source_batch, e.g. 1, 27, 41, 63, 85 (commas and/or newlines)",
                 }),
                 "image1_frame": ("INT", {
-                    "default": 1,
+                    "default": 5,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
@@ -168,7 +168,7 @@ class easy_ImageBatch:
                 "image1": ("IMAGE", ),
                 "image2": ("IMAGE", ),
                 "image2_frame": ("INT", {
-                    "default": 5,
+                    "default": 9,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
@@ -176,7 +176,7 @@ class easy_ImageBatch:
                 }),
                 "image3": ("IMAGE", ),
                 "image3_frame": ("INT", {
-                    "default": 9,
+                    "default": 13,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
@@ -184,7 +184,7 @@ class easy_ImageBatch:
                 }),
                 "image4": ("IMAGE", ),
                 "image4_frame": ("INT", {
-                    "default": 13,
+                    "default": 17,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
