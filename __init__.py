@@ -13,6 +13,9 @@ from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # A
 from .k_easy_track import NODE_CLASS_MAPPINGS as cam_loader_mappings
 from .k_easy_track import NODE_DISPLAY_NAME_MAPPINGS as cam_loader_display
 
+from .k_easy_pattern import NODE_CLASS_MAPPINGS as pattern_mappings
+from .k_easy_pattern import NODE_DISPLAY_NAME_MAPPINGS as pattern_display
+
 from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
 from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
 
@@ -40,6 +43,7 @@ NODE_CLASS_MAPPINGS = {
     **pipeline_mappings,
     **batch_mappings,
     **cam_loader_mappings,
+    **pattern_mappings,
     **radiance_koolook_mappings,
 }
 
@@ -49,6 +53,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **pipeline_display,
     **batch_display,
     **cam_loader_display,
+    **pattern_display,
     **radiance_koolook_display,
 }
 

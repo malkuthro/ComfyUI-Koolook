@@ -43,6 +43,7 @@ Using it inside ComfyUI? Open the operational guide:
 | `KoolookLoadCameraPosesAbsolute` | Koolook Load Camera Poses (Absolute Path) | `Koolook/Camera` |
 | `Easy_hdr_VAE_encode` | Easy HDR VAE Encode (Koolook) | `Koolook/VAE` |
 | `Easy_hdr_VAE_decode` | Easy HDR VAE Decode (Koolook) | `Koolook/VAE` |
+| `Easy_Pattern` | Easy Pattern (Koolook) | `Koolook/Testing` |
 
 The root Koolook nodes and the slim Radiance Koolook VAE wrappers have no
 extra Python dependencies beyond `torch`, which ComfyUI already requires.
