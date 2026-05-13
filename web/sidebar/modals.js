@@ -1820,11 +1820,6 @@ export function showLoadSnapshotDialog({
 export function showSnapshotSettingsDialog({
     getSettings,
     saveSettings,
-    getCurrentPresetName,
-    setCurrentPresetName,
-    gatherSnapshot,
-    writePreset,
-    markStateSaved,
     browseDirectories,
     createBrowseDirectory,
     onToast,
@@ -1898,7 +1893,7 @@ export function showSnapshotSettingsDialog({
         if (!saved) {
             const note = document.createElement("div");
             note.className = "koolook-settings-save-note";
-            note.textContent = "Will save the current snapshot here.";
+            note.textContent = "Saves folder location only. Use Save/Quick Save to write a snapshot.";
             hint.appendChild(note);
         }
     }
@@ -1913,10 +1908,10 @@ export function showSnapshotSettingsDialog({
         if (!save) return;
         const dirty = input.value.trim() !== savedLibraryPath;
         save.disabled = !dirty;
-        save.textContent = dirty ? "Save folder + snapshot" : "Saved";
+        save.textContent = dirty ? "Save folder" : "Saved";
         save.classList.toggle("koolook-modal-btn-primary", dirty);
         save.title = dirty
-            ? "Save the folder and current snapshot"
+            ? "Save snapshot folder location"
             : "Snapshot folder is saved";
         renderPathSummary({ saved: !dirty });
     }
@@ -1964,30 +1959,8 @@ export function showSnapshotSettingsDialog({
             input.title = savedLibraryPath;
             revealPathEnd();
             hint.title = `Currently in effect: ${result.resolvedPath} (${sourceLabel})`;
-            const currentName = typeof getCurrentPresetName === "function"
-                ? getCurrentPresetName()
-                : null;
-            if (rawValue && currentName && typeof writePreset === "function" &&
-                typeof gatherSnapshot === "function") {
-                try {
-                    await writePreset(currentName, gatherSnapshot(currentName));
-                    if (typeof setCurrentPresetName === "function") {
-                        setCurrentPresetName(currentName);
-                    }
-                    if (typeof markStateSaved === "function") markStateSaved();
-                    toast(`Saved "${currentName}" to ${pathLeaf(savedLibraryPath)}.`);
-                } catch (copyErr) {
-                    console.error("[Koolook] settings path saved but snapshot copy failed:", copyErr);
-                    toast(
-                        `Library folder saved, but "${currentName}" was not copied there: ` +
-                        `${copyErr.message}. Use Save or Quick Save to retry.`
-                    );
-                }
-                updateSaveState();
-                return;
-            }
             toast(rawValue
-                ? "Library folder saved."
+                ? "Library folder saved. Use Save/Quick Save to write snapshots here."
                 : "Override cleared — using env var / default."
             );
             updateSaveState();

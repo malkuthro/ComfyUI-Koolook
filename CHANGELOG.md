@@ -6,6 +6,13 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **Snapshot Settings folder save no longer writes a snapshot.** Saving the
+  library-path field in the Settings dialog no longer writes the in-memory
+  snapshot. Folder-save is now path-only: the button reads "Save folder", the
+  hint points to Save / Quick Save, and snapshot writes remain explicit actions.
+  Resolves #129.
+
 ## [0.3.1] - 2026-05-10
 
 ### Changed
