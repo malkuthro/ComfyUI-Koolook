@@ -53,6 +53,21 @@ The format is inspired by Keep a Changelog and SemVer.
   cleanly into another `easy_ImageBatch` instance for chaining or
   re-using selections. Outputs are appended at slot positions 3 and 4,
   so existing wires on `image_batch` and `alpha_batch` are unaffected.
+- **`Easy_Pattern` node** under category `Koolook/Testing`. Generates a
+  batch of solid-color frames `[B, H, W, 3]` with optional per-frame
+  index overlay; configurable `start_from` / `step` / `zero_pad` /
+  `prefix` / `suffix` for the stamped text, and five overlay positions
+  (`center` / `top-left` / `top-right` / `bottom-left` / `bottom-right`).
+  Background and text colors each have a `*_color_mode` dropdown
+  (`White` / `Black` / `Gray` / `Custom`) backed by an optional hex
+  string consulted only when the mode is `Custom` — same idiom
+  `EasyResize_Koolook` already uses for `pad_color_mode` and
+  `panel_color_mode`, so "Gray" means the same `#808080` 50%-gray across
+  nodes. Defaults out-of-box to an 81-frame magenta pattern with
+  white centered text — useful for verifying sequence merging, frame
+  insertion, batch indexing, and video-pipeline frame order at a glance.
+  Drafted in an external AI chat, ingested in-tree, relicensed from the
+  AI's MIT boilerplate to the project's GPL-3.0-or-later.
 
 ### Changed
 - **Easy Image Batch second output renamed `mask_batch` → `alpha_batch`,
@@ -93,6 +108,21 @@ The format is inspired by Keep a Changelog and SemVer.
   result is still what you want — under the old code, `start_frame=N`
   also offset the source-batch index, which the new model intentionally
   does not.
+- **`scripts/sync_to_dev.py` auto-restarts the live ComfyUI server** by
+  hitting ComfyUI-Manager's `/manager/reboot` endpoint after a successful
+  sync. Default-on because dev-sync is invoked precisely when the
+  maintainer wants new code visible, and Python custom-node modules load
+  once at server start — without a restart, `.py` changes stay invisible.
+  Use `--no-restart` to stage files without disturbing the live session;
+  `--restart-url` overrides the endpoint for non-default ComfyUI
+  hosts/ports. Restart failures (Manager missing, server not running,
+  etc.) print a diagnostic but do not fail the sync. The
+  `RUNTIME_PATHS` manifest also gains `k_easy_pattern.py` so new
+  top-level node files reach the dev install instead of being silently
+  dropped — without this entry the modified `__init__.py` would import
+  a module the live install doesn't have, aborting the whole pack's
+  registration.
+
 ### Fixed
 - **Snapshot Settings folder save no longer writes a snapshot.** Saving the
   library-path field in the Settings dialog no longer writes the in-memory

@@ -22,15 +22,26 @@ Example layouts:
     Windows: C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook
 
 Usage:
-    python scripts/sync_to_dev.py            # copy all runtime files
+    python scripts/sync_to_dev.py            # copy + auto-restart ComfyUI
     python scripts/sync_to_dev.py --dry-run  # show what would copy
+    python scripts/sync_to_dev.py --no-restart # copy only; don't restart
     python scripts/sync_to_dev.py --init     # first-run: create the
                                              # target folder if missing
                                              # (parent custom_nodes/ must
                                              # already exist), then sync
 
+After copying, the script POSTs to ComfyUI-Manager's reboot endpoint
+(`http://127.0.0.1:8188/manager/reboot` by default) so the live server
+re-execs and picks up the new Python files. This is on by default
+because the only reason to invoke this script is to see new code —
+file-only sync without a restart leaves Python `.py` changes invisible
+(custom-node modules load once at server start). Use `--no-restart` to
+opt out, e.g. when staging files for a session you don't want to disturb.
+Restart failures (Manager not installed, ComfyUI not running, etc.)
+print a diagnostic but do NOT fail the sync.
+
 Exit codes:
-    0  success
+    0  success (sync completed; restart is best-effort and won't change this)
     2  KOLOOK_COMFYUI_DEV_PATH unset, parent missing, or target missing
        (without --init)
     3  --init refused: parent is not an existing directory or doesn't
@@ -48,8 +59,18 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+# Default ComfyUI-Manager reboot endpoint. ComfyUI-Manager registers this
+# as a GET route; hitting it makes the server `os.execv` itself, so the
+# same terminal/process picks the new node code up without a manual kill
+# + relaunch cycle. Override via `--restart-url` or skip via
+# `--no-restart` if your install runs on a different port / has no
+# Manager / you want to stage files without disturbing the live session.
+DEFAULT_RESTART_URL = "http://127.0.0.1:8188/manager/reboot"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -101,6 +122,50 @@ def _build_line() -> str:
     return f"{sha} - {_get_worktree_name()}"
 
 
+def trigger_restart(url: str, timeout: float = 2.0) -> tuple[bool, str]:
+    """Best-effort POST/GET to ComfyUI-Manager's reboot endpoint.
+
+    Returns ``(success, human_message)``. Never raises — the sync
+    itself succeeded by the time we call this, and a failed restart
+    should never mask that with a non-zero exit. The maintainer can
+    always restart manually if the auto-restart didn't take.
+
+    Failure-mode mapping:
+        - Connection refused          → ComfyUI not running; nothing to do.
+        - HTTP 404                    → Manager not installed at this URL.
+        - HTTP 2xx                    → restart triggered cleanly.
+        - Connection reset / timeout  → the server died mid-response (the
+          restart's `os.execv` raced our read); the request still landed,
+          so we treat this as success.
+    """
+    try:
+        # ComfyUI-Manager registers /manager/reboot as GET, but POST
+        # also lands harmlessly — using GET keeps it simple.
+        urllib.request.urlopen(url, timeout=timeout)
+        return True, "restart triggered"
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False, (
+                f"restart skipped: ComfyUI-Manager not detected at {url} "
+                f"(404). Install Manager or pass --no-restart."
+            )
+        return False, f"restart skipped: endpoint returned HTTP {e.code}"
+    except urllib.error.URLError as e:
+        reason = e.reason
+        if isinstance(reason, ConnectionRefusedError):
+            return False, f"restart skipped: ComfyUI not running at {url}"
+        # Read timeout / connection reset usually means the server
+        # received the request and rebooted before completing the
+        # response — desired outcome.
+        if isinstance(reason, (TimeoutError, ConnectionResetError)) or "timed out" in str(reason).lower():
+            return True, "restart triggered (server stopped responding during reboot — normal)"
+        return False, f"restart skipped: unreachable ({reason})"
+    except (ConnectionResetError, OSError):
+        # Same race as above: server began rebooting before we finished
+        # reading. The request landed; that's what matters.
+        return True, "restart triggered (connection reset during reboot)"
+
+
 def write_build_info(target: Path, scope: str | None) -> None:
     """Drop a tiny JSON next to the sidebar JS so the in-browser footer
     can render `dev <sha> · <time>` (and an italic <scope> on a second
@@ -133,6 +198,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "config.json",
     "k_ai_pipeline.py",
     "k_easy_image_batch.py",
+    "k_easy_pattern.py",
     "k_easy_resize.py",
     "k_easy_track.py",
     "k_easy_wan22_prompt.py",
@@ -286,6 +352,30 @@ def main() -> int:
             "the footer renders just identifier + timestamp."
         ),
     )
+    parser.add_argument(
+        "--no-restart",
+        action="store_true",
+        help=(
+            "Skip the auto-restart of the live ComfyUI server. By default "
+            "the script POSTs to ComfyUI-Manager's reboot endpoint after a "
+            "successful sync so the new Python files are actually loaded "
+            "(custom-node `.py` files load once at server start; without a "
+            "restart the maintainer's changes won't be visible). Use this "
+            "flag when you want to stage files without disturbing a live "
+            "session (rare — `dev-sync` is normally invoked precisely "
+            "because you want to see new code)."
+        ),
+    )
+    parser.add_argument(
+        "--restart-url",
+        type=str,
+        default=DEFAULT_RESTART_URL,
+        help=(
+            f"Override the restart endpoint. Default: {DEFAULT_RESTART_URL}. "
+            f"Adjust if your ComfyUI listens on a non-standard host/port. "
+            f"Ignored when --no-restart is set or --dry-run is used."
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -314,6 +404,9 @@ def main() -> int:
     print(f"{verb} {n} entries -> {target}")
     if not args.dry_run:
         write_build_info(target, args.scope)
+        if not args.no_restart:
+            ok, msg = trigger_restart(args.restart_url)
+            print(msg)
     return 0
 
 
