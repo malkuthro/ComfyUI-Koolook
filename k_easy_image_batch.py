@@ -14,79 +14,114 @@ _PLACEHOLDER_FILL = {
 
 class easy_ImageBatch:
     """
-    Build an IMAGE batch of `total_frames` length from up to 4 keyframes,
-    filling undefined frames with a chosen placeholder color (Black / 50% Gray /
-    White). Returns four outputs:
+    Place up to N keyframes on a 1-based VFX timeline, then output a
+    *cut window* of that timeline as a fixed-length IMAGE batch with
+    placeholder fill (Black / 50% Gray / White) for unoccupied frames.
+    Returns four outputs:
 
-    - `image_batch`           — full timeline IMAGE batch with placeholders.
-    - `alpha_batch`           — MASK at full timeline length. Default
+    - `image_batch`           — IMAGE batch of length `total_frames`,
+        representing the cut window starting at VFX frame
+        `cut_start_frame` and lasting `total_frames` frames. Selected
+        positions carry the picked images; everything else is the
+        placeholder.
+    - `alpha_batch`           — MASK at the same length. Default
         convention: selected = 0.0 (black), empty = 1.0 (white). Toggle
         `invert_alpha` flips to compositing-style (selected = 1.0).
     - `selected_image_batch`  — IMAGE containing only the keyframes that
-        actually landed, packed back-to-back in ascending timeline order
-        (no placeholders). Empty (length 0) if nothing was placed.
-    - `selected_frames`       — STRING, comma-separated VFX frame numbers
-        of the placed keyframes (e.g. "1, 27, 41, 63"). Same format as
-        the `source_frames` input → round-trippable into another
-        `easy_ImageBatch` instance.
+        actually landed *inside the cut*, packed back-to-back in
+        ascending order (no placeholders). Empty if nothing was placed.
+    - `selected_frames`       — STRING, comma-separated VFX frame
+        numbers of the placed-inside-cut keyframes (e.g.
+        `"41, 63, 78, 88, 98, 121"`). Same format as the `source_frames`
+        input → round-trippable into another `easy_ImageBatch`.
 
-    Three input modes, freely mixable:
+    Frame-numbering conventions
+    ---------------------------
+    All frame numbers (`source_frames`, `imageN_frame`, `cut_start_frame`)
+    are **VFX-numbered, 1-based**. Internally:
 
+        source pick index   = vfx_frame - 1                # always
+        output (cut) index  = vfx_frame - cut_start_frame  # cut window
+
+    `source_batch[0]` is treated as VFX frame 1. There is no exposed
+    knob to renumber `source_batch` — if your stack represents a
+    different VFX range, renumber externally before connecting.
+
+    Cut window
+    ----------
+    The output represents VFX frames `[cut_start_frame ..
+    cut_start_frame + total_frames - 1]`. Frames outside this window
+    are placed but silently *dropped from the cut* (a single summary
+    line is logged at the end listing them). Frames inside the window
+    are placed at output index `vfx - cut_start_frame`. The default
+    `cut_start_frame = 1` means the cut starts at VFX frame 1, so the
+    full timeline shows up — equivalent to "no cut".
+
+    Three input modes, freely mixable
+    ---------------------------------
     1. Per-slot images (up to 4): connect `imageN` and set `imageN_frame`
-       to its VFX timeline position. `start_frame` shifts the timeline
-       (internal indices are 0-based).
-    2. `source_batch` (optional pre-batched IMAGE, e.g. straight from Load
-       Video) + the 4 slots: when a slot's `imageN` is *not* connected,
-       the node pulls frame `imageN_frame - start_frame` from
-       `source_batch` instead. `imageN_frame` controls *both* which source
-       frame to pick *and* where to place it on the output timeline —
-       collapsing the typical "Load Video → Get Images From Batch In
-       Range × N" helper chain into a single node.
-    3. `source_batch` + `source_frames` (optional comma/newline/whitespace-
+       to its VFX timeline position. The image lands at output index
+       `imageN_frame - cut_start_frame` if that's inside the cut.
+    2. `source_batch` (optional pre-batched IMAGE, e.g. straight from
+       Load Video) + the 4 slots: when a slot's `imageN` is *not*
+       connected, the node pulls VFX frame `imageN_frame` from
+       `source_batch` (i.e. `source_batch[imageN_frame - 1]`) and
+       places it at output index `imageN_frame - cut_start_frame`.
+       Collapses the "Load Video → Get Images From Batch In Range × N"
+       helper chain into a single node.
+    3. `source_batch` + `source_frames` (optional comma/newline/whitespace
        separated string like `"1, 27, 41, 63, 85, 120"`): for keyframe
-       counts beyond 4. Each number is a VFX-numbered frame that both
-       picks `source_batch[N - start_frame]` and places it at the same
-       timeline position. Bad tokens warn and are skipped.
+       counts beyond 4. Each number picks
+       `source_batch[N - 1]` and places it at output index
+       `N - cut_start_frame` (if inside the cut). Bad tokens warn and
+       are skipped; frames not present in `source_batch` warn; frames
+       outside the cut window are dropped silently and summarised at
+       the end.
 
        Important: when `source_frames` is non-empty, the 4 manual slots
        contribute ONLY where `imageN` is explicitly connected — the
-       `imageN_frame` defaults (0, 4, 8, 12) do NOT pick from
-       `source_batch` in this mode. This way the list fully controls the
-       selection, with explicit `imageN` connections used solely to
-       override individual positions.
+       `imageN_frame` defaults do NOT pick from `source_batch` in this
+       mode. The list fully controls the selection, with explicit
+       `imageN` connections used solely to override individual positions.
 
     Priority order (later wins): `source_frames` list → 4 manual slots.
-    So explicit `imageN` inputs always override list entries at the same
-    timeline position. At least one of `image1` or `source_batch` must
-    be provided. All keyframes (and source_batch frames) must share the
-    same H/W/C.
+    Explicit `imageN` inputs always override list entries at the same
+    cut-output position. Output dedup is automatic (set-based). At least
+    one of `image1` or `source_batch` must be provided. All keyframes
+    (and `source_batch` frames) must share the same H/W/C.
 
     Useful for preparing sparse control sequences for video models like
     Wan 2.2, where placeholder frames indicate no latent update.
 
-    Example
-    -------
+    Example A — cut_start_frame=1 (no cut, full timeline)
+    -----------------------------------------------------
     Inputs:
-        source_batch        = Load Video (100 frames)
-        source_frames       = "1, 27, 41, 63"
-        start_frame         = 1
-        total_frames        = 64
-        placeholder_color   = "Black"
-        invert_alpha        = False  (inpaint convention)
+        source_batch       = Load Video (121 frames)
+        source_frames      = "1, 27, 41, 63, 78, 88, 98, 121"
+        cut_start_frame    = 1
+        total_frames       = 121
+        placeholder_color  = "Gray"
 
     Outputs:
-        image_batch          — 64 frames; timeline indices 0/26/40/62
-                               carry the picked source frames, all other
-                               64-4=60 frames are black placeholder.
-        alpha_batch          — 64-frame MASK; the 4 selected indices are
-                               0.0 (black), the 60 placeholders are 1.0
-                               (white).
-        selected_image_batch — 4 frames, packed back-to-back in timeline
-                               order (the picks at frames 1/27/41/63).
-        selected_frames      — "1, 27, 41, 63"  (paste-able into the
-                               `source_frames` input of another
-                               `easy_ImageBatch` instance to reuse the
-                               same selection).
+        image_batch          — 121 frames; the 8 picked frames sit at
+                               their natural positions (1→idx 0,
+                               27→idx 26, …, 121→idx 120). Rest is gray.
+        selected_image_batch — 8 frames, packed back-to-back.
+        selected_frames      — "1, 27, 41, 63, 78, 88, 98, 121"
+
+    Example B — cut_start_frame=41, total_frames=81 (cut)
+    -----------------------------------------------------
+    Same inputs as Example A, but cut_start_frame=41 / total_frames=81.
+
+    Outputs:
+        image_batch          — 81 frames representing VFX 41..121.
+                               Frames 41/63/78/88/98/121 land at output
+                               indices 0/22/37/47/57/80. Frames 1, 27
+                               are *outside the cut* and dropped.
+        selected_image_batch — 6 frames (the in-cut picks).
+        selected_frames      — "41, 63, 78, 88, 98, 121"
+        Console summary:     — "cut window: frames 41..121 (81 frames).
+                               6 placed; 2 outside cut: 1, 27."
     """
 
     @classmethod
@@ -94,15 +129,15 @@ class easy_ImageBatch:
         return {
             "required": {
                 "total_frames": ("INT", {
-                    "default": 16,
+                    "default": 81,
                     "min": 1,
                     "max": 1024,
                     "step": 1,
                     "display": "number"
                 }),
-                "start_frame": ("INT", {
+                "cut_start_frame": ("INT", {
                     "default": 1,
-                    "min": 0,
+                    "min": 1,
                     "max": 999999,
                     "step": 1,
                     "display": "number"
@@ -121,8 +156,8 @@ class easy_ImageBatch:
                     "placeholder": "extra frames from source_batch, e.g. 1, 27, 41, 63, 85 (commas and/or newlines)",
                 }),
                 "image1_frame": ("INT", {
-                    "default": 0,
-                    "min": 0,
+                    "default": 1,
+                    "min": 1,
                     "max": 999999,
                     "step": 1,
                     "display": "number"
@@ -133,24 +168,24 @@ class easy_ImageBatch:
                 "image1": ("IMAGE", ),
                 "image2": ("IMAGE", ),
                 "image2_frame": ("INT", {
-                    "default": 4,
-                    "min": 0,
+                    "default": 5,
+                    "min": 1,
                     "max": 999999,
                     "step": 1,
                     "display": "number"
                 }),
                 "image3": ("IMAGE", ),
                 "image3_frame": ("INT", {
-                    "default": 8,
-                    "min": 0,
+                    "default": 9,
+                    "min": 1,
                     "max": 999999,
                     "step": 1,
                     "display": "number"
                 }),
                 "image4": ("IMAGE", ),
                 "image4_frame": ("INT", {
-                    "default": 12,
-                    "min": 0,
+                    "default": 13,
+                    "min": 1,
                     "max": 999999,
                     "step": 1,
                     "display": "number"
@@ -167,7 +202,7 @@ class easy_ImageBatch:
     def create_batch(
         self,
         total_frames,
-        start_frame,
+        cut_start_frame,
         placeholder_color,
         invert_alpha,
         source_frames,
@@ -235,13 +270,17 @@ class easy_ImageBatch:
         # end to build `selected_image_batch` (just the placed frames, packed)
         # and `selected_frames` (their VFX numbers as a comma-separated string).
         placed_indices: set[int] = set()
+        # VFX frame numbers that were referenced but landed outside the cut
+        # window. Collected once and printed as a single summary line at the
+        # end so each frame doesn't generate its own console warning.
+        outside_cut: list[int] = []
 
         source_len = source_batch.shape[0] if source_batch is not None else 0
 
         # 1) source_frames list (optional, additive). Each token is a VFX-numbered
-        #    frame: it picks source_batch[N - start_frame] AND places it at the
-        #    same timeline position. The 4 manual slots run after this and
-        #    override per-position when needed.
+        #    frame: it picks source_batch[N - 1] (VFX 1-based, hardcoded) AND
+        #    places it at output index N - cut_start_frame. The 4 manual slots
+        #    run after this and override per-position when needed.
         #
         #    The field is multiline: tokens may be separated by commas, newlines,
         #    spaces, tabs, or any mix of them ("1, 27\n41 63" → [1, 27, 41, 63]).
@@ -262,24 +301,21 @@ class easy_ImageBatch:
                             f"[easy_ImageBatch] source_frames: ignoring non-integer token '{tok}'."
                         )
                         continue
-                    target_index = f - start_frame
-                    if not (0 <= target_index < source_len):
+                    source_index = f - 1
+                    output_index = f - cut_start_frame
+                    if not (0 <= source_index < source_len):
                         print(
-                            f"[easy_ImageBatch] source_frames: source frame index {target_index} "
-                            f"(frame {f} - start {start_frame}) is out of range for "
-                            f"source_batch of length {source_len}; skipping."
+                            f"[easy_ImageBatch] source_frames: VFX frame {f} doesn't exist in "
+                            f"source_batch (size {source_len}, covers frames 1..{source_len}); "
+                            "skipping."
                         )
                         continue
-                    if not (0 <= target_index < total_frames):
-                        print(
-                            f"[easy_ImageBatch] source_frames: frame {f} maps to timeline "
-                            f"index {target_index} which is out of range "
-                            f"(0..{total_frames - 1}); skipping."
-                        )
+                    if not (0 <= output_index < total_frames):
+                        outside_cut.append(f)
                         continue
-                    image_batch[target_index] = source_batch[target_index]
-                    alpha_batch[target_index] = 0.0
-                    placed_indices.add(target_index)
+                    image_batch[output_index] = source_batch[source_index]
+                    alpha_batch[output_index] = 0.0
+                    placed_indices.add(output_index)
 
         # 2) Resolve each manual slot to (frame_image, timeline_frame). A slot
         #    contributes iff (a) its imageN is connected, or (b) source_batch
@@ -305,18 +341,18 @@ class easy_ImageBatch:
             if slot_frame is None:
                 continue  # Optional slot with no frame value — skip.
 
-            target_index = slot_frame - start_frame
+            output_index = slot_frame - cut_start_frame
 
             if slot_img is not None:
                 frame_tensor = slot_img[0]
             elif slot_source_fallback:
-                # Pull the same source index as the target timeline index.
-                source_index = target_index
+                # Pull VFX frame `slot_frame` from source_batch (1-based).
+                source_index = slot_frame - 1
                 if not (0 <= source_index < source_len):
                     print(
-                        f"[easy_ImageBatch] {slot_label}: source frame index {source_index} "
-                        f"(frame {slot_frame} - start {start_frame}) is out of range for "
-                        f"source_batch of length {source_len}; skipping."
+                        f"[easy_ImageBatch] {slot_label}: VFX frame {slot_frame} doesn't "
+                        f"exist in source_batch (size {source_len}, covers frames "
+                        f"1..{source_len}); skipping."
                     )
                     continue
                 frame_tensor = source_batch[source_index]
@@ -326,16 +362,12 @@ class easy_ImageBatch:
                 # slot empty so it doesn't pollute the selection.
                 continue
 
-            if 0 <= target_index < total_frames:
-                image_batch[target_index] = frame_tensor
-                alpha_batch[target_index] = 0.0
-                placed_indices.add(target_index)
+            if 0 <= output_index < total_frames:
+                image_batch[output_index] = frame_tensor
+                alpha_batch[output_index] = 0.0
+                placed_indices.add(output_index)
             else:
-                print(
-                    f"[easy_ImageBatch] {slot_label}: frame {slot_frame} maps to index "
-                    f"{target_index} which is out of range (0..{total_frames - 1}); "
-                    "skipping this keyframe."
-                )
+                outside_cut.append(slot_frame)
 
         if invert_alpha:
             alpha_batch = 1.0 - alpha_batch
@@ -349,7 +381,26 @@ class easy_ImageBatch:
         else:
             # No keyframes placed — emit a 0-length batch with the same H/W/C.
             selected_image_batch = image_batch[:0]
-        selected_frames_out = ", ".join(str(idx + start_frame) for idx in sorted_indices)
+        selected_frames_out = ", ".join(
+            str(idx + cut_start_frame) for idx in sorted_indices
+        )
+
+        # One-line summary of the cut window. Always logged so it's easy to
+        # confirm what the node produced; mentions outside-cut drops when any.
+        cut_end = cut_start_frame + total_frames - 1
+        if outside_cut:
+            unique_outside = sorted(set(outside_cut))
+            outside_str = ", ".join(str(f) for f in unique_outside)
+            print(
+                f"[easy_ImageBatch] cut window: frames {cut_start_frame}..{cut_end} "
+                f"({total_frames} frames). {len(sorted_indices)} placed; "
+                f"{len(unique_outside)} outside cut: {outside_str}."
+            )
+        else:
+            print(
+                f"[easy_ImageBatch] cut window: frames {cut_start_frame}..{cut_end} "
+                f"({total_frames} frames). {len(sorted_indices)} placed."
+            )
 
         return (image_batch, alpha_batch, selected_image_batch, selected_frames_out, )
 

@@ -64,6 +64,35 @@ The format is inspired by Keep a Changelog and SemVer.
   (`selected = 1.0, empty = 0.0`) when needed. The output slot keeps its
   position (second output) so wires re-attach automatically when the
   node reloads.
+- **Easy Image Batch: `start_frame` renamed to `cut_start_frame` and
+  reinterpreted as a built-in cut window.** The output now represents
+  VFX frames `[cut_start_frame .. cut_start_frame + total_frames - 1]`.
+  Frames placed outside this window are silently dropped from the output
+  (a single end-of-run summary lists them, replacing the previous
+  per-frame "out of range" warnings). Math:
+
+      source pick index   = vfx_frame - 1                 (hardcoded VFX 1-based)
+      output (cut) index  = vfx_frame - cut_start_frame   (cut window)
+
+  The two were previously conflated under `start_frame`, which produced
+  the wrong source pick whenever `start_frame` differed from `1`. With
+  the new model each slot picks `source_batch[vfx-1]` and places it at
+  output index `vfx - cut_start_frame` independently.
+
+  Builds in the workflow that previously used an external
+  `ImageFromBatch (batch_index, length)` to slice the Easy Image Batch
+  output. Defaults: `cut_start_frame=1`, `total_frames=81` (was `16`),
+  `imageN_frame` defaults bumped to `1, 5, 9, 13` (was `0, 4, 8, 12`)
+  so they're valid VFX-1-based frame numbers.
+
+  **Migration note:** saved workflows that had `start_frame` set will
+  load with the field's stored value into `cut_start_frame` (same field
+  position, same units). Behaviour is preserved when `cut_start_frame=1`
+  is the default and the source_batch starts at VFX frame 1; if you had
+  set `start_frame` to a non-1 value, re-check that your source pick
+  result is still what you want — under the old code, `start_frame=N`
+  also offset the source-batch index, which the new model intentionally
+  does not.
 
 ## [0.3.1] - 2026-05-10
 
