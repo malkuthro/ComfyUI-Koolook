@@ -1623,8 +1623,8 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
 
             const selectedCount = getSelectedNodeCount();
             const totalNodeCount = getCanvasNodeCount();
-
             const allNodesSelected = selectedCount > 0 && selectedCount === totalNodeCount;
+
             let graph = null;
             let sourceLabel = "canvas";
 
@@ -1642,33 +1642,14 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                     toast("Failed to serialize selection. See console.");
                     return;
                 }
-                 graph = selectionResult.graph;
-                 sourceLabel = "selection";
-             } else {
-                 graph = serializeFullCanvas();
--            }
--
--            if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
--                toast("Failed to serialize canvas. See console.");
-+                if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
-+                    toast("Failed to serialize canvas. See console.");
-+                    return;
-+                }
-+            }
-+
-+            if (!graph) {
-+                toast("Failed to serialize canvas. See console.");
-                 return;
-             }
                 graph = selectionResult.graph;
                 sourceLabel = "selection";
             } else {
                 graph = serializeFullCanvas();
-            }
-
-            if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
-                toast("Failed to serialize canvas. See console.");
-                return;
+                if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+                    toast("Failed to serialize canvas. See console.");
+                    return;
+                }
             }
 
             const sourceTags = getWorkflowTags(dirPath, wfName) || [];
