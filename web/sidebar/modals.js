@@ -1817,6 +1817,281 @@ export function showLoadSnapshotDialog({
 // default). A read-only line shows the currently-resolved path + source so
 // the user can see what's actually in effect right now.
 // =============================================================================
+// =============================================================================
+// Folder-browse picker — issue #137, mockup §6 (navigate-into model).
+//
+// Replaces the legacy ``openBrowseDialog`` (a select-driven "pick a sibling"
+// browser scoped to the Settings dialog) with a top-level reusable picker
+// driven by a path input. The path input is the source of truth: typing a
+// path + Enter navigates, clicking a folder row drills in (and updates the
+// input), ↑ Up climbs one level. Files are shown greyed below the
+// directories as a "yes, this is the folder I expected" affordance — they
+// do NOT count toward the selection and clicking them is inert.
+//
+// Visual spec: docs/designs/snapshot-dialogs.html §6.
+// Visual harness: docs/designs/_harness/folder-picker.html.
+// =============================================================================
+export function showFolderPicker({
+    title,
+    subtitle,
+    initialPath,
+    browseDirectories,
+    createBrowseDirectory,
+    onUseFolder,
+    onCancel,
+}) {
+    const body = document.createElement("div");
+    body.className = "koolook-folder-picker";
+
+    if (subtitle) {
+        const sub = document.createElement("div");
+        sub.className = "koolook-modal-pathline";
+        sub.textContent = subtitle;
+        body.appendChild(sub);
+    }
+
+    // Toolbar row: ↑ Up + path input. The toolbar is rebuilt in place when
+    // the New folder… flow opens (a transient name-input replaces the
+    // path-input UI), and restored on Create / Cancel.
+    const toolbar = document.createElement("div");
+    toolbar.className = "koolook-folder-picker-toolbar";
+
+    const upBtn = makeModalButton({
+        label: "↑ Up",
+        onClick: () => { if (currentParent) navigate(currentParent); },
+    });
+    upBtn.classList.add("koolook-folder-picker-up");
+
+    const pathInput = document.createElement("input");
+    pathInput.className = "koolook-modal-input koolook-folder-picker-path";
+    pathInput.value = initialPath || "";
+    pathInput.spellcheck = false;
+    pathInput.title = "Type or paste a path and press Enter, or click a subfolder below.";
+    pathInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const target = pathInput.value.trim();
+            if (target) navigate(target);
+        }
+    });
+
+    toolbar.appendChild(upBtn);
+    toolbar.appendChild(pathInput);
+    body.appendChild(toolbar);
+
+    // List body.
+    const list = document.createElement("div");
+    list.className = "koolook-folder-picker-list";
+    body.appendChild(list);
+
+    let currentPath = initialPath || "";
+    let currentParent = "";
+    let overlay;
+    const close = () => overlay.remove();
+
+    function renderState(text, isError) {
+        list.innerHTML = "";
+        const el = document.createElement("div");
+        el.className = isError
+            ? "koolook-folder-picker-empty koolook-folder-picker-error"
+            : "koolook-folder-picker-empty";
+        el.textContent = text;
+        list.appendChild(el);
+    }
+
+    function revealPathEnd() {
+        // Even with `direction: rtl` the caret/scroll position needs a nudge
+        // after programmatic value changes so the END of the path is on-
+        // screen. Defer to the next tick so layout has settled.
+        setTimeout(() => { pathInput.scrollLeft = pathInput.scrollWidth; }, 0);
+    }
+
+    function renderListing(data) {
+        list.innerHTML = "";
+        const dirs = data.dirs || [];
+        const files = data.files || [];
+        if (!dirs.length && !files.length) {
+            renderState("Folder is empty.");
+            return;
+        }
+        for (const d of dirs) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "koolook-folder-picker-row";
+            row.title = `Open ${d.name}`;
+            const icon = document.createElement("span");
+            icon.className = "koolook-folder-picker-icon";
+            icon.textContent = "📁";
+            row.appendChild(icon);
+            const name = document.createElement("span");
+            name.className = "koolook-folder-picker-name";
+            name.textContent = d.name;
+            row.appendChild(name);
+            row.addEventListener("click", () => navigate(d.path));
+            list.appendChild(row);
+        }
+        for (const f of files) {
+            const row = document.createElement("div");
+            row.className = "koolook-folder-picker-row koolook-folder-picker-row-file";
+            row.title = "Files are shown for context only — Use this folder commits the folder, not a file.";
+            const icon = document.createElement("span");
+            icon.className = "koolook-folder-picker-icon";
+            icon.textContent = "📄";
+            row.appendChild(icon);
+            const name = document.createElement("span");
+            name.className = "koolook-folder-picker-name";
+            name.textContent = f.name;
+            row.appendChild(name);
+            list.appendChild(row);
+        }
+    }
+
+    async function navigate(target) {
+        renderState("Loading…");
+        useBtn.disabled = true;
+        upBtn.disabled = true;
+        newFolderBtn.disabled = true;
+        let data;
+        try {
+            // ``{files: true}`` is the opt-in for the files-for-context
+            // affordance — the listing endpoint returns greyed file
+            // entries below the directory rows so the user can verify
+            // "yes, this is the folder I expected" before committing.
+            data = await browseDirectories(target, { files: true });
+        } catch (e) {
+            renderState(e.message || String(e), true);
+            // Keep the input value as-typed so the user can fix it and retry.
+            useBtn.disabled = true;
+            upBtn.disabled = !currentParent;
+            newFolderBtn.disabled = false;
+            return;
+        }
+        currentPath = data.path;
+        currentParent = data.parentPath || "";
+        pathInput.value = data.path;
+        revealPathEnd();
+        useBtn.disabled = false;
+        upBtn.disabled = !currentParent;
+        newFolderBtn.disabled = typeof createBrowseDirectory !== "function";
+        renderListing(data);
+    }
+
+    // Footer buttons.
+    const newFolderBtn = makeModalButton({
+        label: "New folder…",
+        onClick: () => openNewFolderInput(),
+    });
+
+    const cancelBtn = makeModalButton({
+        label: "Cancel",
+        onClick: () => {
+            close();
+            if (onCancel) onCancel();
+        },
+    });
+
+    const useBtn = makeModalButton({
+        label: "Use this folder",
+        primary: true,
+        onClick: () => {
+            const chosen = pathInput.value.trim();
+            if (!chosen) return;
+            close();
+            if (onUseFolder) onUseFolder(chosen);
+        },
+    });
+
+    // Inline new-folder input — swaps toolbar contents transiently. Cleaner
+    // than another modal-on-modal: the picker stays open, the body still
+    // shows the destination's existing children, and the user has visual
+    // continuity about *where* the new folder is being created.
+    function openNewFolderInput() {
+        if (typeof createBrowseDirectory !== "function") return;
+        // Snapshot the parent at the moment New folder… is clicked, so a
+        // late navigation doesn't redirect the create call. (Defensive —
+        // we disable nav while the input is open, but the assignment makes
+        // the contract explicit.)
+        const parentForCreate = currentPath;
+
+        toolbar.innerHTML = "";
+        toolbar.classList.add("koolook-folder-picker-toolbar-newfolder");
+
+        const label = document.createElement("span");
+        label.className = "koolook-folder-picker-newfolder-label";
+        // Show only the leaf folder name to keep the toolbar height stable;
+        // the full path is visible on hover via the ``title`` attribute and
+        // was on screen in the path input the user just dismissed.
+        label.textContent = `New folder in ${pathLeaf(parentForCreate)}:`;
+        label.title = parentForCreate;
+        toolbar.appendChild(label);
+
+        const nameInput = document.createElement("input");
+        nameInput.className = "koolook-modal-input koolook-folder-picker-newfolder-input";
+        nameInput.placeholder = "untitled";
+        nameInput.spellcheck = false;
+        toolbar.appendChild(nameInput);
+
+        function restoreToolbar() {
+            toolbar.classList.remove("koolook-folder-picker-toolbar-newfolder");
+            toolbar.innerHTML = "";
+            toolbar.appendChild(upBtn);
+            toolbar.appendChild(pathInput);
+            revealPathEnd();
+        }
+
+        const createBtn = makeModalButton({
+            label: "Create",
+            primary: true,
+            onClick: async () => {
+                const name = nameInput.value.trim();
+                if (!name) { nameInput.focus(); return; }
+                createBtn.disabled = true;
+                cancelInline.disabled = true;
+                try {
+                    const r = await createBrowseDirectory(parentForCreate, name);
+                    restoreToolbar();
+                    // Navigate INTO the newly created folder so the user can
+                    // immediately commit or drill further.
+                    await navigate(r.path || `${parentForCreate}/${name}`);
+                } catch (e) {
+                    renderState(e.message || String(e), true);
+                    createBtn.disabled = false;
+                    cancelInline.disabled = false;
+                }
+            },
+        });
+
+        const cancelInline = makeModalButton({
+            label: "Cancel",
+            onClick: () => restoreToolbar(),
+        });
+
+        toolbar.appendChild(createBtn);
+        toolbar.appendChild(cancelInline);
+
+        nameInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); createBtn.click(); }
+            if (e.key === "Escape") { e.preventDefault(); restoreToolbar(); }
+        });
+        setTimeout(() => nameInput.focus(), 0);
+    }
+
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
+
+    ({ overlay } = makeModalShell({
+        title,
+        body,
+        actions: [newFolderBtn, spacer, cancelBtn, useBtn],
+    }));
+
+    // Initial load — kick off with whatever path the caller supplied (or
+    // the empty string, which the server resolves to the configured
+    // library dir).
+    navigate(initialPath || "");
+}
+
+
 export function showSnapshotSettingsDialog({
     getSettings,
     saveSettings,

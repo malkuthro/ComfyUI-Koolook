@@ -234,6 +234,30 @@ def _list_child_dirs(path: Path) -> list[dict]:
     return out
 
 
+def _list_child_files(path: Path) -> list[dict]:
+    """List child *.json files in ``path``.
+
+    Powers the folder picker's "yes, this is the folder I expected"
+    affordance (mockup section 6) — files are rendered greyed so the user
+    can visually confirm the listing without selecting one. Restricted to
+    JSON because the picker is exclusively used to choose a snapshot
+    library folder; surfacing non-snapshot files would be misleading
+    (they cannot become preset library content).
+    """
+    out = []
+    for entry in path.iterdir():
+        try:
+            if not entry.is_file():
+                continue
+            if not entry.name.lower().endswith(".json"):
+                continue
+        except OSError:
+            continue
+        out.append({"name": entry.name})
+    out.sort(key=lambda r: r["name"].lower())
+    return out
+
+
 def _validate_new_dir_name(name: object) -> str:
     """Validate a user-created folder name for the browse picker."""
     if not isinstance(name, str):
@@ -403,11 +427,19 @@ def register_routes(routes) -> None:
     async def browse_dirs(request):
         """List child directories for the Settings dialog's path picker.
 
-        This intentionally returns directory names only, not files. The
-        selected path is still saved through the existing settings endpoint,
-        so the library-path resolution and write checks stay centralized.
+        With ``?files=1`` also returns child ``*.json`` files — used by the
+        redesigned folder picker (issue #137, mockup section 6) to render a
+        greyed "this is the folder I expected" affordance below the
+        directories. Default response shape stays directory-only so any
+        existing callers (legacy Settings dialog) continue to work
+        unchanged.
+
+        The selected path is still saved through the existing settings
+        endpoint, so the library-path resolution and write checks stay
+        centralized.
         """
         path = _browse_start_path(request.query.get("path", "").strip())
+        include_files = request.query.get("files", "").strip() in {"1", "true", "yes"}
         try:
             resolved = path.resolve(strict=False)
         except OSError as exc:
@@ -419,18 +451,20 @@ def register_routes(routes) -> None:
         roots = [{"name": str(root), "path": str(root)} for root in _browse_roots()]
         try:
             dirs = _list_child_dirs(resolved)
+            files = _list_child_files(resolved) if include_files else []
         except OSError as exc:
             raise web.HTTPInternalServerError(
                 reason=f"Could not list directories: {exc}"
             ) from exc
-        return web.json_response(
-            {
-                "path": str(resolved),
-                "parentPath": str(parent) if parent else "",
-                "roots": roots,
-                "dirs": dirs,
-            }
-        )
+        body = {
+            "path": str(resolved),
+            "parentPath": str(parent) if parent else "",
+            "roots": roots,
+            "dirs": dirs,
+        }
+        if include_files:
+            body["files"] = files
+        return web.json_response(body)
 
     @routes.post("/koolook/presets/browse/new-folder")
     async def create_browse_dir(request):

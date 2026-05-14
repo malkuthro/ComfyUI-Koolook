@@ -130,9 +130,23 @@ When implementing a UI change that has a corresponding mockup in
 `sidebar-icon-proposals.html`), **the design file is the spec**. Before
 asking the maintainer to review the implementation:
 
-1. Render the implementation in a real browser — `dev-sync` against the
-   live ComfyUI install for runtime UI, or a local static server
-   (`python3 -m http.server`) for standalone HTML mockups.
+1. Render the implementation in a real browser. Three options, in order
+   of preference for agent-driven iteration:
+   - **In-tree visual harness** (`docs/designs/_harness/<feature>.html`)
+     — mounts the live `web/sidebar/` modules in isolation against a
+     static preview server (`python3 -m http.server` from the worktree
+     root, port `8765` matches the `design-server` config in
+     [`.claude/launch.json`](.claude/launch.json)). The agent can spin
+     this up, screenshot, iterate, and tear down without touching the
+     maintainer's live ComfyUI install. Use this for component-level
+     visual diffing.
+   - **`dev-sync` to a live ComfyUI install** — required for any
+     integration-level verification (snapshot save round-trip, theme
+     variables provided by Comfy's frontend, cross-dialog flows). User-
+     initiated only per the dev-sync rule above; never run from an
+     automated flow.
+   - **Static server on `docs/designs/`** for iterating on the mockup
+     itself (`python3 -m http.server` + open the `.html` file).
 2. Screenshot the implemented UI at the same states the mockup shows
    (default, hover, expanded, selected, error, etc.).
 3. Diff each screenshot against the corresponding card/section in the
@@ -144,9 +158,11 @@ The maintainer should never be the first set of eyes on the rendered
 result. Type checks and tests verify code correctness, not visual
 fidelity to the design — if a mockup exists for the change you are
 implementing, visual verification is a hard gate, not an optional polish
-step. Same rule applies when iterating on the mockup itself: confirm the
-edit renders as intended (Launch preview panel, `python3 -m http.server`,
-or other static server) before asking for feedback.
+step.
+
+Full workflow including how to add new harness pages and what the
+agent-driven path does (and does not) replace:
+[`docs/maintainers/visual-harness.md`](docs/maintainers/visual-harness.md).
 
 ## Releasing
 

@@ -302,6 +302,40 @@ export function ensureStyle() {
 .koolook-build-tag { flex-shrink: 0; padding: 6px 10px 14px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
 .koolook-build-sha { font-size: 13px; letter-spacing: 0.06em; }
 .koolook-build-scope { display: block; font-size: 12px; margin-top: 3px; letter-spacing: 0.02em; font-family: var(--font-family, sans-serif); font-style: italic; }
+/* Folder-browse picker (issue #137, mockup section 6). Navigate-into
+   model: path input shows current location, clicking a folder row
+   drills in, the Up button climbs one level. Files appear greyed so
+   the user can confirm 'yes, this is the folder I expected' before
+   committing.
+   The picker reuses the modal shell (overlay, title, action row);
+   only the body chrome (toolbar / list / row styling) is folder-
+   picker-specific. Reminder per the recovery-list comment above:
+   this whole CSS string is a JS template literal, so do NOT use
+   backticks in comments here — they prematurely close the template
+   literal and break the entire sidebar at load. */
+.koolook-folder-picker { min-width: 480px; max-width: 600px; }
+.koolook-folder-picker-toolbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.koolook-folder-picker-up { flex-shrink: 0; }
+/* End-visible path overflow: 'direction: rtl' makes the input's
+   overflow-axis right-to-left, 'unicode-bidi: plaintext' keeps the
+   Latin path characters in natural left-to-right order. Net effect:
+   long paths clip the LEFT (leading /Users/...) and always show the
+   trailing folder name on the right. Per mockup section 6. */
+.koolook-folder-picker-path { flex: 1; min-width: 0; direction: rtl; text-align: left; unicode-bidi: plaintext; font-family: var(--font-family-mono, ui-monospace, monospace); font-size: 12px; }
+.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; background: rgba(0,0,0,0.18); }
+.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.05); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
+.koolook-folder-picker-row:last-child { border-bottom: none; }
+.koolook-folder-picker-row:hover { background: rgba(255,255,255,0.08); }
+.koolook-folder-picker-row-file { cursor: default; opacity: 0.45; }
+.koolook-folder-picker-row-file:hover { background: transparent; }
+.koolook-folder-picker-icon { font-size: 13px; line-height: 1; flex-shrink: 0; }
+.koolook-folder-picker-row:not(.koolook-folder-picker-row-file) .koolook-folder-picker-icon { filter: hue-rotate(-30deg) saturate(1.4); }
+.koolook-folder-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-folder-picker-empty { padding: 18px 14px; opacity: 0.6; font-size: 12px; font-style: italic; text-align: center; }
+.koolook-folder-picker-error { color: #ffae9a; font-style: normal; opacity: 0.9; }
+.koolook-folder-picker-spacer { flex: 1; }
+.koolook-folder-picker-newfolder-label { font-size: 11px; opacity: 0.6; flex-shrink: 0; }
+.koolook-folder-picker-newfolder-input { flex: 1; min-width: 0; }
 `;
     document.head.appendChild(s);
 }

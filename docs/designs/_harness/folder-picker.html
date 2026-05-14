@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Folder picker harness — Koolook snapshot dialogs (#137)</title>
+<style>
+    /* Page chrome only — DO NOT add component CSS here. Component CSS comes
+       from the sidebar's own ``ensureStyle()`` so what we render is byte-for-
+       byte the same stylesheet ComfyUI loads at runtime. */
+    :root { color-scheme: dark; }
+    html, body {
+        margin: 0;
+        background: #1e1e1f;
+        color: #d6d8db;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        min-height: 100%;
+    }
+    /* Mimic the ComfyUI host's CSS custom properties so theme tokens resolve
+       to something reasonable. Real Comfy provides these; the harness fakes
+       them so the modal doesn't look unstyled. Values cribbed from the
+       ComfyUI dark theme defaults. */
+    :root {
+        --comfy-menu-bg: #2a2a2a;
+        --comfy-input-bg: rgba(0,0,0,0.3);
+        --border-color: rgba(255,255,255,0.15);
+        --input-text: #d6d8db;
+        --p-primary-color: rgba(100,150,255,0.5);
+    }
+    .harness-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .harness-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-right: auto;
+    }
+    .harness-title small { opacity: 0.55; font-weight: 400; font-size: 12px; }
+    .harness-header button {
+        padding: 6px 12px;
+        background: #353636;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 4px;
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .harness-header button:hover { background: #454646; }
+    .harness-stage {
+        padding: 48px 24px;
+        min-height: 70vh;
+    }
+    .harness-empty {
+        opacity: 0.55;
+        font-style: italic;
+        text-align: center;
+        padding: 60px 0;
+    }
+</style>
+</head>
+<body>
+
+<div class="harness-header">
+    <div class="harness-title">
+        Folder picker harness
+        <small>commit 2 of issue #137 — diff against snapshot-dialogs.html §6</small>
+    </div>
+    <button id="btn-default">Default state</button>
+    <button id="btn-new-folder">New folder… input</button>
+    <button id="btn-empty-dir">Empty directory</button>
+    <button id="btn-error">Error state</button>
+</div>
+
+<div class="harness-stage">
+    <div class="harness-empty" id="empty-hint">
+        Click a header button to mount the picker. The picker overlay
+        renders on top of this page exactly as it does in ComfyUI.
+    </div>
+</div>
+
+<script type="module">
+    // Cache-bust on every load so editing modals.js / constants.js while the
+    // harness page is open picks up the fresh code on `window.location.reload()`
+    // instead of serving the browser's module cache. Dev-only — the harness
+    // is never served in production. Pinned to the document load time so all
+    // imports in one page share the same bundle (no cross-module drift).
+    const BUST = "?bust=" + Date.now();
+    const { ensureStyle } = await import("../../../web/sidebar/constants.js" + BUST);
+    const { showFolderPicker } = await import("../../../web/sidebar/modals.js" + BUST);
+
+    // Inject the sidebar's actual stylesheet into this document so the modal
+    // chrome (overlay, dialog box, buttons) matches what ComfyUI renders.
+    ensureStyle();
+
+    // ---------------------------------------------------------------------
+    // Canned filesystem for the picker stubs. Maps absolute path → listing.
+    // The picker's navigate-into model drills through these without ever
+    // hitting a real backend. The shape matches the
+    // ``/koolook/presets/browse`` endpoint: ``{path, parentPath, roots,
+    // dirs, files}``.
+    // ---------------------------------------------------------------------
+    const ROOTS = [{ name: "/", path: "/" }];
+
+    const FS = {
+        "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets": {
+            dirs: [
+                { name: "Koolook_v03_autosave", path: "<parent>/Koolook_v03_autosave" },
+                { name: "default_autosave", path: "<parent>/default_autosave" },
+            ],
+            files: [
+                { name: "Koolook_v03.json" },
+                { name: "starter.json" },
+            ],
+        },
+        "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default": {
+            dirs: [
+                { name: "koolook-presets", path: "<parent>/koolook-presets" },
+                { name: "workflows", path: "<parent>/workflows" },
+            ],
+            files: [
+                { name: "comfy.settings.json" },
+            ],
+        },
+        "/Users/maintainer/Documents/empty-folder": {
+            dirs: [],
+            files: [],
+        },
+    };
+
+    const ERROR_PATH = "/Users/maintainer/Documents/missing-path";
+    const DEFAULT_PATH =
+        "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets";
+
+    function parentOf(absolute) {
+        const parts = absolute.split("/").filter(Boolean);
+        if (!parts.length) return "";
+        parts.pop();
+        return "/" + parts.join("/");
+    }
+
+    function resolveTemplate(entry, parent) {
+        return {
+            name: entry.name,
+            path: entry.path.replace("<parent>", parent),
+        };
+    }
+
+    function harnessBrowse(initial) {
+        return async function browseDirectories(path) {
+            const target = (path && path.trim()) || initial;
+            if (target === ERROR_PATH) {
+                throw new Error(`Directory does not exist: ${target}`);
+            }
+            const node = FS[target];
+            if (!node) {
+                throw new Error(`Directory does not exist: ${target}`);
+            }
+            return {
+                path: target,
+                parentPath: parentOf(target),
+                roots: ROOTS,
+                dirs: node.dirs.map((d) => resolveTemplate(d, target)),
+                files: node.files.slice(),
+            };
+        };
+    }
+
+    function harnessCreate() {
+        return async function createBrowseDirectory(parentPath, name) {
+            const node = FS[parentPath];
+            if (!node) throw new Error(`Parent folder not found: ${parentPath}`);
+            const created = { name, path: `${parentPath}/${name}` };
+            node.dirs.push(created);
+            // Make the new folder navigable.
+            FS[created.path] = { dirs: [], files: [] };
+            return created;
+        };
+    }
+
+    function showPicker({ initial, dirOverride } = {}) {
+        const startAt = initial || DEFAULT_PATH;
+        const browse = harnessBrowse(startAt);
+        const browseUnderTest = dirOverride
+            ? async (p) => browse(dirOverride)  // hit a specific listing on first call
+            : browse;
+        showFolderPicker({
+            title: "Choose snapshot library folder",
+            subtitle: "Where snapshots are saved and loaded from.",
+            initialPath: startAt,
+            browseDirectories: browseUnderTest,
+            createBrowseDirectory: harnessCreate(),
+            onUseFolder: (chosen) => {
+                console.log("[harness] use-folder:", chosen);
+                window.__harness_lastChoice = chosen;
+            },
+            onCancel: () => {
+                console.log("[harness] cancel");
+            },
+        });
+    }
+
+    document.getElementById("btn-default").addEventListener("click", () =>
+        showPicker({ initial: DEFAULT_PATH })
+    );
+    document.getElementById("btn-new-folder").addEventListener("click", () => {
+        showPicker({ initial: DEFAULT_PATH });
+        // After-mount: click the New folder… button to put the picker
+        // straight into the new-folder-input state for screenshotting.
+        setTimeout(() => {
+            const btn = [...document.querySelectorAll("button")].find(
+                (b) => /new folder/i.test(b.textContent)
+            );
+            btn?.click();
+        }, 80);
+    });
+    document.getElementById("btn-empty-dir").addEventListener("click", () =>
+        showPicker({ initial: "/Users/maintainer/Documents/empty-folder" })
+    );
+    document.getElementById("btn-error").addEventListener("click", () =>
+        showPicker({ initial: ERROR_PATH })
+    );
+
+    // Auto-trigger the default state so the harness has something on screen
+    // when the agent screenshots it without clicking.
+    showPicker({ initial: DEFAULT_PATH });
+</script>
+
+</body>
+</html>
