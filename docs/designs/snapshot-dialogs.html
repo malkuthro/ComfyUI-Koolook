@@ -680,8 +680,6 @@
       color: #d8dadd;
     }
 
-    .compare-list { margin: 6px 0 0 18px; padding: 0; font-size: 12px; color: var(--muted); }
-    .compare-list li { margin: 2px 0; }
 
     .legend {
       margin-top: 22px;
@@ -951,14 +949,6 @@
                   </div>
                   <button class="preset-row-del">×</button>
                 </div>
-                <div class="recovery-row">
-                  <span class="recovery-kind recovery-kind-periodic">Periodic</span>
-                  <div class="recovery-row-info">
-                    May 12 14:32
-                    <div class="recovery-row-meta">11 picks · 6 workflows</div>
-                  </div>
-                  <button class="preset-row-del">×</button>
-                </div>
               </div>
               <div class="recovery-group">
                 <div class="recovery-group-head">
@@ -983,7 +973,7 @@
             <button class="modal-btn subtle">Close</button>
           </div>
         </div>
-        <div class="anno fix">One group per <code>&lt;preset&gt;_autosave/</code> subfolder. Each row shows kind badge (Pre-load / Periodic) + timestamp + small picks/workflows meta. <strong>No filenames exposed</strong> — the badge + time is enough for the user to choose a recovery point; the on-disk filename is implementation detail. Each group header has its own <strong>Open folder ↗</strong> link so the user can jump to the subfolder if they want to inspect or back it up manually.</div>
+        <div class="anno fix">One group per <code>&lt;preset&gt;_autosave/</code> subfolder, and <strong>only one row per group</strong> — whichever of <em>Pre-load</em> or <em>Periodic</em> is newest. Each row shows kind badge + timestamp + small picks/workflows meta. <strong>No filenames exposed</strong> — the badge + time is enough; the on-disk filename is implementation detail. The Recovery section auto-expands when the user clicks a preset row, so the related auto-save is visible without manual expansion. Each group header still has its own <strong>Open folder ↗</strong> link for manual inspection/backup.</div>
       </div>
     </section>
 
@@ -1040,16 +1030,24 @@
     <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Default view shows only what the user needs to decide; details hide behind ⓘ</span></header>
     <div class="card-body">
       <div class="modal" style="max-width: 460px;">
-        <div class="modal-head"><h3 class="modal-title">Replace current state?</h3></div>
+        <div class="modal-head"><h3 class="modal-title">Auto-save is newer than the saved version</h3></div>
         <div class="modal-body">
-          <p class="modal-message">Auto-save is newer than the saved version.</p>
-          <ul class="compare-list">
-            <li>Saved by user &nbsp;— <span class="stamp">May 12 09:00</span></li>
-            <li>Latest autosave — <span class="stamp">May 12 14:47</span>
-              <span class="autosave-location">in Koolook_v03_autosave/</span>
-            </li>
-          </ul>
-          <details class="info-disclosure">
+          <div class="preset-list">
+            <div class="preset-row">
+              <div class="preset-row-info">
+                <div class="preset-row-name">Koolook_v03.json</div>
+                <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 09:00</div>
+              </div>
+            </div>
+            <div class="preset-row">
+              <div class="preset-row-info">
+                <div class="preset-row-name">pre_load_2026-05-12T14-47-22.json</div>
+                <div class="preset-row-meta">14 picks · 7 workflows · autosaved May 12 14:47</div>
+                <span class="autosave-location">in Koolook_v03_autosave/</span>
+              </div>
+            </div>
+          </div>
+          <details class="info-disclosure" style="margin-top: 12px;">
             <summary>What gets saved / loaded</summary>
             <div class="disclosure-body">
               Loading replaces your current picks and workflows. A recovery copy of your current state is written first into the same autosave folder, so this choice is reversible. Press Esc to cancel.
@@ -1057,11 +1055,11 @@
           </details>
         </div>
         <div class="modal-actions">
-          <button class="modal-btn subtle">NO — loads user-saved version</button>
-          <button class="modal-btn primary">YES — load latest autosave</button>
+          <button class="modal-btn subtle">NO</button>
+          <button class="modal-btn primary">YES — load latest</button>
         </div>
       </div>
-      <div class="anno fix">Labels match the user's mental model — <strong>Saved by user</strong> vs. <strong>Latest autosave</strong> — so there's no ambiguity about which side is the deliberate save. The small sky-tinted subtitle (<code>in Koolook_v03_autosave/</code>) tells the user <em>where</em> the autosave file lives without exposing the implementation-detail filename or whether it's a periodic or pre-load. Server decides which file is newest; the user just sees "the latest." Disclosure body simplified — no filename, no periodic/pre_load mention.</div>
+      <div class="anno fix">Each option is rendered as a normal <code>preset-row</code> — same shape the user already reads in the Load dialog (bold name + <em>picks · workflows · saved-date</em> meta line), so there's nothing new to parse. NO loads <code>Koolook_v03.json</code>, YES loads the newest file inside <code>Koolook_v03_autosave/</code>. The two rows make the diff obvious without spelling it out: the autosave row carries a later timestamp and (typically) higher picks/workflow counts because it captured WIP added after the morning save. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> so they sit on one row and read as a binary.</div>
     </div>
   </section>
 
@@ -1184,7 +1182,7 @@
     <li>Library row labels: <strong>"Saved to"</strong> (Save dialog) / <strong>"Loaded from"</strong> (Load dialog).</li>
     <li>"Open folder ↗" text link sits in the top-right of the path box, above the path itself.</li>
     <li>Generic <strong>"Open folder"</strong> wording (no platform-specific Finder/Explorer split).</li>
-    <li>Autosave modal: labels are <strong>"Saved by user"</strong> / <strong>"Latest autosave"</strong>. Filename hidden; small subtitle shows the on-disk folder location only.</li>
+    <li>Autosave modal: head is the only message (<em>"Auto-save is newer than the saved version"</em>) — no second "Replace current state?" question, since the user just clicked Load. The two options are rendered as standard <code>preset-row</code>s (same shape as the Load dialog list — bold filename + <em>picks · workflows · saved-date</em>) so nothing about the layout is new. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> on one row.</li>
     <li>Reset-to-default — <strong>dropped</strong>. Empty path inside the Save to… / Load from… picker clears the override if needed.</li>
     <li>Recovery section: kind badge (Pre-load / Periodic) + timestamp + meta. No filenames exposed in rows.</li>
     <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to Yes.</li>
