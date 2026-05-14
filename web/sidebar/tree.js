@@ -68,9 +68,10 @@ import {
     insertWorkflowOntoCanvas,
     insertNode,
     getSelectedNodeTypes,
+    getSelectedNodeCount,
+    getCanvasNodeCount,
     dropPlaceholdersForPacks,
 } from "./canvas_io.js";
-import { app } from "../../../../scripts/app.js";
 import { discoverMissingPacks } from "./installer.js";
 import {
     showInputModal,
@@ -1620,21 +1621,8 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 return;
             }
 
-            const selectedCount = (() => {
-                try {
-                    const sel = (app.canvas && app.canvas.selected_nodes) || {};
-                    return Object.values(sel).filter(n => n && n.id != null).length;
-                } catch {
-                    return 0;
-                }
-            })();
-            const totalNodeCount = (() => {
-                try {
-                    return (app.graph && app.graph._nodes && app.graph._nodes.length) || 0;
-                } catch {
-                    return 0;
-                }
-            })();
+            const selectedCount = getSelectedNodeCount();
+            const totalNodeCount = getCanvasNodeCount();
 
             const allNodesSelected = selectedCount > 0 && selectedCount === totalNodeCount;
             let graph = null;
@@ -1650,6 +1638,28 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                     toast("Failed to serialize selection. See console.");
                     return;
                 }
+                if (!selectionResult.graph || !Array.isArray(selectionResult.graph.nodes) || selectionResult.graph.nodes.length === 0) {
+                    toast("Failed to serialize selection. See console.");
+                    return;
+                }
+                 graph = selectionResult.graph;
+                 sourceLabel = "selection";
+             } else {
+                 graph = serializeFullCanvas();
+-            }
+-
+-            if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+-                toast("Failed to serialize canvas. See console.");
++                if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
++                    toast("Failed to serialize canvas. See console.");
++                    return;
++                }
++            }
++
++            if (!graph) {
++                toast("Failed to serialize canvas. See console.");
+                 return;
+             }
                 graph = selectionResult.graph;
                 sourceLabel = "selection";
             } else {
