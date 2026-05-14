@@ -61,3 +61,26 @@ jobs:
         # tracked separately via issue #44. Re-enable by removing --skip
         # once that issue is resolved upstream.
         run: python tools/preflight_release.py --skip manager-meta -v
+
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        # Install the deps directly — this project is a ComfyUI custom node,
+        # not a pip-installable package, so ``pip install .[test]`` tries to
+        # build a wheel and fails on flat-layout discovery of ``web/`` and
+        # ``forks/``. The pyproject's ``[project.optional-dependencies]
+        # test`` block is the spec; CI mirrors it explicitly. ``aiohttp`` is
+        # a runtime dep of ``koolook_routes`` and must be importable even
+        # when only a pure helper is under test.
+        run: pip install "pytest>=8" "aiohttp>=3.9"
+
+      - name: Run pytest
+        run: pytest -q

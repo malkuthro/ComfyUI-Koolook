@@ -1168,11 +1168,12 @@
     <li>Library row labels: <strong>"Saved to"</strong> (Save dialog) / <strong>"Loaded from"</strong> (Load dialog).</li>
     <li>"Open folder ↗" text link sits in the top-right of the path box, above the path itself.</li>
     <li>Generic <strong>"Open folder"</strong> wording (no platform-specific Finder/Explorer split).</li>
-    <li>Autosave modal: head is the only message (<em>"Auto-save is newer than the saved version"</em>) — no second "Replace current state?" question, since the user just clicked Load. The two options are rendered as standard <code>preset-row</code>s (same shape as the Load dialog list — bold filename + <em>picks · workflows · saved-date</em>) so nothing about the layout is new. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> on one row.</li>
+    <li><strong>Autosave-newer YES/NO modal — dropped.</strong> When a preset has a newer autosave (server row-augment reports <code>latestAutosaveMtime &gt; mtime</code>), clicking the preset in the Load dialog expands a single <em>scoped recovery row</em> directly beneath the clicked preset, showing the freshest entry (newest of <code>periodic.json</code> or any <code>pre_load_*.json</code> in the corresponding <code>&lt;preset&gt;_autosave/</code> subdir). The user chooses by clicking: re-click the named row to load named, click the scoped recovery row to restore the autosave. No extra modal layer; both options are visible alongside the preset list.</li>
     <li>Reset-to-default — <strong>dropped</strong>. Empty path inside the Save to… / Load from… picker clears the override if needed.</li>
-    <li>Recovery section: kind badge (Pre-load / Periodic) + timestamp + meta. No filenames exposed in rows.</li>
-    <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to Yes.</li>
-    <li>Folder picker top has a short subtitle describing what the picker is for, matching every other dialog.</li>
+    <li>Recovery row chrome: kind badge (Pre-load / Periodic) + timestamp + meta. No filenames exposed in rows.</li>
+    <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to <em>"Yes — delete '\<name\>'"</em>. Escape cancels.</li>
+    <li>Folder picker: <strong>title only, no descriptive subtitle.</strong> Any explanatory gloss goes on the title's hover tooltip — same convention as every other dialog (<a class="text-link" href="../maintainers/conventions.md">conventions.md § Modal headers</a>).</li>
+    <li><strong>Visual harness</strong> in <code>docs/designs/_harness/</code> mounts each redesigned dialog against the live <code>web/sidebar/</code> modules so agents and maintainers can diff implementations against this mockup without dev-syncing. Workflow: <a class="text-link" href="../maintainers/visual-harness.md">visual-harness.md</a>.</li>
   </ul>
 
   <h2>Still open for review</h2>

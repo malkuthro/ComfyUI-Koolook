@@ -82,7 +82,6 @@ import {
     showInstallMissingModal,
     showSaveSnapshotDialog,
     showLoadSnapshotDialog,
-    showSnapshotSettingsDialog,
 } from "./modals.js";
 import { attachHoverPreview, teardownPreview } from "./node_preview.js";
 import {
@@ -95,7 +94,6 @@ import {
     presetExists,
     deletePreset,
     getLibraryInfo,
-    getSettings,
     saveSettings,
     browseDirectories,
     createBrowseDirectory,
@@ -2258,6 +2256,10 @@ export function renderPanel(container) {
         gatherSnapshot,
         sanitizeName,
         getLibraryInfo,
+        saveSettings,
+        browseDirectories,
+        createBrowseDirectory,
+        revealPresetFolder,
         markStateSaved,
         onToast: toast,
     });
@@ -2269,18 +2271,14 @@ export function renderPanel(container) {
         setCurrentPresetName,
         getCurrentPresetName,
         getLibraryInfo,
+        saveSettings,
+        browseDirectories,
+        createBrowseDirectory,
         writePreLoadAutosave,
         markStateSaved,
         markStateAutosaved,
         listAutosaves,
         revealPresetFolder,
-        onToast: toast,
-    });
-    const openSettingsDialog = () => showSnapshotSettingsDialog({
-        getSettings,
-        saveSettings,
-        browseDirectories,
-        createBrowseDirectory,
         onToast: toast,
     });
 
@@ -2418,11 +2416,10 @@ export function renderPanel(container) {
         title: "Save current state — overwrites the last-loaded preset, or prompts for a name",
         onClick: openSaveDialog,
     }));
-    snapshotRow.appendChild(makeToolbarButton({
-        iconClass: "pi pi-cog",
-        title: "Snapshot library settings (where presets are saved on disk)",
-        onClick: openSettingsDialog,
-    }));
+    // Settings cog removed in #137: library-path change now lives inside the
+    // Save dialog ("Save to...") and the Load dialog ("Load from..."), both
+    // backed by the same folder picker. The cog is gone; the snapshot row
+    // is now: status indicator | Load | Quick Save | Save.
 
     container.appendChild(snapshotRow);
 

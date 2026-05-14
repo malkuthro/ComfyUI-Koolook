@@ -19,7 +19,7 @@ import {
     reboot,
 } from "./installer.js";
 
-function makeModalShell({ title, body, actions }) {
+function makeModalShell({ title, titleTooltip, body, actions }) {
     const overlay = document.createElement("div");
     overlay.className = "koolook-modal-overlay";
 
@@ -29,6 +29,13 @@ function makeModalShell({ title, body, actions }) {
     const titleEl = document.createElement("div");
     titleEl.className = "koolook-modal-title";
     titleEl.textContent = title;
+    // Optional hover-tooltip for explanatory context. Per
+    // ``docs/maintainers/conventions.md``: header sections stay clean
+    // (title only, no descriptive subtitle); use this tooltip for the
+    // one-sentence "what does this dialog do" gloss instead. Functional
+    // info rows (library-path indicator, etc.) live in the body, not
+    // the header — they are not the same thing as a description.
+    if (titleTooltip) titleEl.title = titleTooltip;
     modal.appendChild(titleEl);
 
     if (body) modal.appendChild(body);
@@ -153,10 +160,12 @@ export function showInputModal({ title, label, defaultValue, placeholder, confir
 export function showConfirmModal({ title, message, confirmLabel, cancelLabel, danger, onConfirm, onCancel, subtitle }) {
     const body = document.createElement("div");
 
-    // Optional subtitle — same contract as showInputModal / showThreeWayDialog.
-    // Used by the Save-as-new overwrite-confirm path to surface the library
-    // breadcrumb so the user keeps "where am I writing to" context across
-    // the multi-modal Save flow (input modal → existence check → confirm).
+    // Optional subtitle — same contract as showInputModal. Renders above
+    // the message so callers can surface context (e.g. the library path
+    // breadcrumb on the Save-as-new overwrite-confirm path) before the
+    // user scans the action question. The redesigned Save / Load dialogs
+    // surface that breadcrumb inline in their own body, but other callers
+    // still benefit from the slot.
     if (subtitle) {
         if (typeof subtitle === "string") {
             const sub = document.createElement("div");
@@ -998,80 +1007,26 @@ function pathLeaf(path) {
     return parts.length ? parts[parts.length - 1] : String(path || "");
 }
 
-function renderLibraryLocation(el, path, { label = "Library folder", title } = {}) {
-    el.innerHTML = "";
-    const folder = document.createElement("div");
-    folder.className = "koolook-settings-folder-name";
-    // `title` override skips the `<label>: <leaf>` formatting so callers
-    // (autosave group headers) can render just the subdir name without
-    // the "Library folder:" prefix while still reusing the same CSS
-    // pair (`folder-name` + `folder-path`) for visual consistency.
-    folder.textContent = title ?? `${label}: ${path ? pathLeaf(path) : "(unavailable)"}`;
-    el.appendChild(folder);
-
-    const full = document.createElement("div");
-    full.className = "koolook-settings-folder-path";
-    full.textContent = path || "Path unavailable";
-    el.appendChild(full);
-    el.title = path || "";
-}
-
-// Local helper: a 3-button confirm modal (Save / Save as new / Cancel) for
-// the Save flow when there's a current preset to overwrite. `showConfirmModal`
-// is 2-button only; we'd need to bend it. Cleaner to assemble directly with
-// `makeModalShell`.
-function showThreeWayDialog({ title, message, primaryLabel, secondaryLabel, cancelLabel, onPrimary, onSecondary, subtitle }) {
-    const body = document.createElement("div");
-
-    // Optional subtitle — same contract as showInputModal. Sits above the
-    // message so library path / context is visible before the user scans
-    // the action question.
-    if (subtitle) {
-        if (typeof subtitle === "string") {
-            const sub = document.createElement("div");
-            sub.className = "koolook-modal-pathline";
-            sub.textContent = subtitle;
-            body.appendChild(sub);
-        } else {
-            body.appendChild(subtitle);
-        }
-    }
-
-    const msg = document.createElement("div");
-    msg.className = "koolook-modal-message";
-    msg.textContent = message;
-    body.appendChild(msg);
-
-    let overlay;
-    const close = () => overlay.remove();
-
-    const cancel = makeModalButton({
-        label: cancelLabel || "Cancel",
-        onClick: close,
-    });
-    const secondary = makeModalButton({
-        label: secondaryLabel,
-        onClick: () => { close(); onSecondary(); },
-    });
-    const primary = makeModalButton({
-        label: primaryLabel,
-        primary: true,
-        onClick: () => { close(); onPrimary(); },
-    });
-    ({ overlay } = makeModalShell({
-        title,
-        body,
-        actions: [cancel, secondary, primary],
-    }));
-}
-
 // =============================================================================
-// Save flow.
+// Save flow — redesigned per issue #137, mockup section 2.
 //
-// One click semantics:
-//   - If a current preset is tracked → confirm "Save over <name>?" with
-//     three options (overwrite / rename / cancel).
-//   - If not → straight to a name prompt with `preset YYYY-MM-DD` default.
+// One unified dialog (was three: three-way overwrite / input prompt / confirm).
+// Layout:
+//
+//   [ Save snapshot                                            ]
+//   [ Saved to                              Open folder ↗      ]
+//   [ <leaf folder>                                            ]
+//   [ <full path>                                              ]
+//   [                                                          ]
+//   [ Save current state over "<name>"?                        ]
+//   [                                                          ]
+//   [ [ Save to… ]            [ Cancel ] [ Save as new… ] [Save]]
+//
+// The Save button cycles through four states per mockup section 5:
+// Default ("Save") → In progress ("Saving…", disabled) → Done ("Saved",
+// subtle disabled). When the user changes the library via Save to…, the
+// dialog enters Dirty state — Save label flips to "Save to new folder"
+// so the click reads as "you're about to write into a different place."
 //
 // Save success → updates the tracker so subsequent Save clicks default
 // to overwrite-the-same-one.
@@ -1084,97 +1039,286 @@ export function showSaveSnapshotDialog({
     gatherSnapshot,
     sanitizeName,
     getLibraryInfo,
+    saveSettings,
+    browseDirectories,
+    createBrowseDirectory,
+    revealPresetFolder,
     markStateSaved,
     onToast,
 }) {
     const toast = onToast || (() => {});
+    const current = getCurrentPresetName();
 
-    // Build a reactive library-path subtitle element. Both the input modal
-    // (Save as new…) and the three-way overwrite dialog reuse the same node
-    // so the user sees consistent context regardless of which path they
-    // entered the Save flow through. Async-populated to avoid blocking the
-    // modal open on a server round-trip — the user sees "(loading…)" briefly,
-    // then the resolved path.
-    function buildPathSubtitle() {
-        const el = document.createElement("div");
-        el.className = "koolook-modal-pathline";
-        el.textContent = "Library: (loading…)";
-        if (typeof getLibraryInfo === "function") {
-            getLibraryInfo().then((info) => {
-                if (info && typeof info.path === "string" && info.path) {
-                    el.className = "koolook-load-library-location";
-                    renderLibraryLocation(el, info.path, { label: "Library folder" });
-                } else {
-                    el.textContent = "Library path unavailable.";
-                }
-            }).catch(() => {
-                el.textContent = "Library path unavailable.";
-            });
-        } else {
-            el.textContent = "";
+    // Internal state: original library path (set after the first
+    // getLibraryInfo() resolution) and current library path (mutated when
+    // the user picks a different folder via Save to…). The two diverge
+    // → Dirty state → primary label becomes "Save to new folder".
+    let originalLibraryPath = "";
+    let currentLibraryPath = "";
+
+    const body = document.createElement("div");
+
+    // -----------------------------------------------------------------
+    // Library-row info block (top of body). Pure information — the
+    // mockup explicitly puts every action in the bottom command bar.
+    // Async-populated so the dialog opens immediately without waiting
+    // on a server round-trip; the path appears in place when ready.
+    // -----------------------------------------------------------------
+    const libRow = document.createElement("div");
+    libRow.className = "koolook-snap-lib-row";
+
+    const libRowTop = document.createElement("div");
+    libRowTop.className = "koolook-snap-lib-row-top";
+    const libLabel = document.createElement("span");
+    libLabel.className = "koolook-snap-lib-label";
+    libLabel.textContent = "Saved to";
+    libRowTop.appendChild(libLabel);
+
+    const openFolderLink = document.createElement("a");
+    openFolderLink.className = "koolook-snap-open-folder-link";
+    openFolderLink.href = "#";
+    openFolderLink.textContent = "Open folder ↗";
+    openFolderLink.title = "Open the snapshot library folder in your file manager";
+    openFolderLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (typeof revealPresetFolder !== "function") return;
+        try {
+            const r = await revealPresetFolder();
+            toast(`Opened: ${r.path}`);
+        } catch (err) {
+            console.error("[Koolook] reveal failed:", err);
+            toast(`Could not open library folder: ${err.message}`);
         }
-        return el;
+    });
+    libRowTop.appendChild(openFolderLink);
+    libRow.appendChild(libRowTop);
+
+    const libName = document.createElement("div");
+    libName.className = "koolook-settings-folder-name";
+    libName.textContent = "Library folder: (loading…)";
+    libRow.appendChild(libName);
+
+    const libPath = document.createElement("div");
+    libPath.className = "koolook-settings-folder-path";
+    libRow.appendChild(libPath);
+
+    body.appendChild(libRow);
+
+    function renderLibRow(path) {
+        currentLibraryPath = path || "";
+        const leaf = currentLibraryPath ? pathLeaf(currentLibraryPath) : "(unavailable)";
+        libName.textContent = leaf;
+        libPath.textContent = currentLibraryPath || "Path unavailable";
+        libRow.title = currentLibraryPath || "";
+        updatePrimaryLabel();
     }
 
-    async function doSave(name, { confirmOverwrite }) {
-        const sanitized = sanitizeName(name);
-        if (!sanitized) {
-            toast("Snapshot name is empty after stripping unsafe characters.");
+    if (typeof getLibraryInfo === "function") {
+        getLibraryInfo().then((info) => {
+            const path = (info && typeof info.path === "string") ? info.path : "";
+            originalLibraryPath = path;
+            renderLibRow(path);
+        }).catch(() => {
+            libName.textContent = "Library path unavailable";
+            libPath.textContent = "";
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // Message line — "Save current state over '<name>'?" if there's a
+    // tracked preset, or "Save current state as a new preset" if not.
+    // -----------------------------------------------------------------
+    const msg = document.createElement("p");
+    msg.className = "koolook-modal-message koolook-snap-save-message";
+    msg.textContent = current
+        ? `Save current state over "${current}"?`
+        : "Save current state as a new preset.";
+    body.appendChild(msg);
+
+    // -----------------------------------------------------------------
+    // Primary "Save" button — four-state per mockup section 5. The
+    // helper centralises label / class / disabled so the dialog only
+    // toggles state names, never DOM attributes directly.
+    // -----------------------------------------------------------------
+    let primaryState = current ? "default" : "default-new";
+    const primaryBtn = document.createElement("button");
+    primaryBtn.className = "koolook-modal-btn";
+
+    function isDirty() {
+        return Boolean(
+            originalLibraryPath &&
+            currentLibraryPath &&
+            originalLibraryPath !== currentLibraryPath
+        );
+    }
+
+    function updatePrimaryLabel() {
+        // ``dirty`` only meaningfully changes behaviour when there's a tracked
+        // preset to overwrite — otherwise the primary action is "ask for a
+        // name and write" regardless of the destination folder. Without this
+        // guard, opening Save with no tracked preset, then changing the
+        // folder via Save to…, would enter the "dirty" branch with
+        // ``current === null`` and the primary click would call
+        // ``doOverwrite(null)`` → ``sanitizeName(null)`` instead of routing
+        // to the Save-as-new name prompt.
+        if (!current) {
+            primaryState = "default-new";
+        } else {
+            primaryState = isDirty() ? "dirty" : "default";
+        }
+        renderPrimary();
+    }
+
+    function renderPrimary() {
+        primaryBtn.classList.remove(
+            "koolook-modal-btn-primary",
+            "koolook-snap-save-in-progress",
+            "koolook-snap-save-done",
+        );
+        switch (primaryState) {
+            case "default":
+                primaryBtn.textContent = "Save";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = `Overwrite "${current}" with the current state.`;
+                break;
+            case "default-new":
+                // No tracked preset → Save needs a name → routes to Save as new.
+                primaryBtn.textContent = "Save";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = "Choose a name and write the snapshot.";
+                break;
+            case "dirty":
+                primaryBtn.textContent = "Save to new folder";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = `Write into ${currentLibraryPath}.`;
+                break;
+            case "in-progress":
+                primaryBtn.textContent = "Saving…";
+                primaryBtn.classList.add(
+                    "koolook-modal-btn-primary",
+                    "koolook-snap-save-in-progress",
+                );
+                primaryBtn.disabled = true;
+                primaryBtn.title = "";
+                break;
+            case "done":
+                primaryBtn.textContent = "Saved";
+                primaryBtn.classList.add("koolook-snap-save-done");
+                primaryBtn.disabled = true;
+                primaryBtn.title = "";
+                break;
+        }
+    }
+    renderPrimary();
+
+    // -----------------------------------------------------------------
+    // Footer buttons.
+    // -----------------------------------------------------------------
+    const saveToBtn = makeModalButton({
+        label: "Save to…",
+        onClick: () => openSaveTo(),
+    });
+
+    const cancelBtn = makeModalButton({
+        label: "Cancel",
+        onClick: () => close(),
+    });
+
+    const saveAsNewBtn = makeModalButton({
+        label: "Save as new…",
+        onClick: () => {
+            promptForName(current ? `${current} (copy)` : `preset ${todayStamp()}`);
+        },
+    });
+
+    primaryBtn.addEventListener("click", async () => {
+        if (primaryBtn.disabled) return;
+        if (primaryState === "default-new") {
+            promptForName(`preset ${todayStamp()}`);
             return;
         }
-        // For Save-as-new only: check existence + prompt to overwrite.
-        // The "overwrite current" path skipped this prompt by design
-        // (the user already confirmed via the three-way dialog).
-        //
-        // `presetExists` is now tri-state: true / false / null. The
-        // null case means the existence check itself failed (network
-        // down, server error) — refuse to silently write, since we
-        // can't tell whether we'd be clobbering an existing preset.
-        if (confirmOverwrite) {
-            const exists = await presetExists(sanitized);
-            if (exists === null) {
-                toast(
-                    "Cannot reach the preset library to verify name. " +
-                    "Save canceled — check Settings or your connection."
-                );
-                return;
-            }
-            if (exists === true) {
-                showConfirmModal({
-                    title: "Overwrite existing preset?",
-                    message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
-                    confirmLabel: "Overwrite",
-                    danger: true,
-                    // Carry the library breadcrumb across the input → exists →
-                    // confirm chain so the user knows which library they're
-                    // overwriting in (matters when Settings → libraryPath has
-                    // been changed mid-session, or facility users juggle
-                    // multiple shared libraries).
-                    subtitle: buildPathSubtitle(),
-                    onConfirm: () => writeAndToast(sanitized),
-                });
-                return;
-            }
+        // "default" or "dirty" — write over the tracked preset (dirty
+        // means the library path changed; the preset *name* is the same).
+        await doOverwrite(current);
+    });
+
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
+
+    let overlay;
+    const close = () => overlay.remove();
+
+    // -----------------------------------------------------------------
+    // Save to… → folder picker. On Use this folder, persist via
+    // saveSettings() and update the in-dialog state. The original path
+    // is kept (in `originalLibraryPath`) so the dirty indicator stays
+    // accurate even after navigating multiple times.
+    // -----------------------------------------------------------------
+    function openSaveTo() {
+        if (typeof browseDirectories !== "function") {
+            toast("Folder picker unavailable in this session.");
+            return;
         }
-        writeAndToast(sanitized);
+        showFolderPicker({
+            title: "Save snapshots to",
+            titleTooltip: "Pick the library folder this Save will write into.",
+            initialPath: currentLibraryPath,
+            browseDirectories,
+            createBrowseDirectory,
+            onUseFolder: async (chosen) => {
+                if (typeof saveSettings !== "function") {
+                    renderLibRow(chosen);
+                    return;
+                }
+                try {
+                    const r = await saveSettings(chosen);
+                    renderLibRow(r.savedLibraryPath || chosen);
+                    toast(`Snapshot library set to: ${currentLibraryPath}.`);
+                } catch (err) {
+                    console.error("[Koolook] saveSettings failed:", err);
+                    toast(`Could not save library path: ${err.message}`);
+                }
+            },
+        });
     }
 
-    async function writeAndToast(name) {
+    // -----------------------------------------------------------------
+    // Overwrite the tracked preset directly. The mockup intentionally
+    // skips a second "are you sure?" — the dialog already says the
+    // destination preset name and (if dirty) the folder change, so the
+    // click is informed.
+    // -----------------------------------------------------------------
+    async function doOverwrite(name) {
+        primaryState = "in-progress";
+        renderPrimary();
         try {
-            const snap = gatherSnapshot(name);
-            await writePreset(name, snap);
-            setCurrentPresetName(name);
-            // Baseline the saved-state fingerprint — flips the sidebar
-            // status indicator from "unsaved" to "saved" without waiting
-            // for an unrelated mutation event to refresh it.
+            const sanitized = sanitizeName(name);
+            const snap = gatherSnapshot(sanitized);
+            await writePreset(sanitized, snap);
+            setCurrentPresetName(sanitized);
             if (typeof markStateSaved === "function") markStateSaved();
-            toast(`Saved "${name}".`);
+            primaryState = "done";
+            renderPrimary();
+            toast(`Saved "${sanitized}".`);
+            // Brief "Saved" pause for legibility, then close — per the
+            // four-state pattern, the user sees the confirmation tag
+            // before the dialog disappears.
+            setTimeout(close, 600);
         } catch (e) {
             console.error("[Koolook] preset save failed:", e);
             toast(`Could not save preset: ${e.message}`);
+            updatePrimaryLabel();
         }
     }
 
+    // -----------------------------------------------------------------
+    // Save as new… → name prompt → existence check → write. The
+    // existence-check guard lives here (not in `doOverwrite`) because
+    // overwrite intent is explicit; rename intent is not.
+    // -----------------------------------------------------------------
     function promptForName(defaultName) {
         showInputModal({
             title: "Save snapshot",
@@ -1182,34 +1326,96 @@ export function showSaveSnapshotDialog({
             defaultValue: defaultName,
             placeholder: "e.g. Wan video kit",
             confirmLabel: "Save",
-            subtitle: buildPathSubtitle(),
-            onSubmit: (typed) => doSave(typed, { confirmOverwrite: true }),
+            onSubmit: async (typed) => {
+                const sanitized = sanitizeName(typed);
+                if (!sanitized) {
+                    toast("Snapshot name is empty after stripping unsafe characters.");
+                    return;
+                }
+                const exists = await presetExists(sanitized);
+                if (exists === null) {
+                    toast(
+                        "Cannot reach the preset library to verify name. " +
+                        "Save canceled — check the library path or your connection."
+                    );
+                    return;
+                }
+                if (exists === true) {
+                    showConfirmModal({
+                        title: "Overwrite existing preset?",
+                        message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
+                        confirmLabel: "Overwrite",
+                        danger: true,
+                        onConfirm: () => writeAsNew(sanitized),
+                    });
+                    return;
+                }
+                writeAsNew(sanitized);
+            },
         });
     }
 
-    const current = getCurrentPresetName();
-    if (current) {
-        showThreeWayDialog({
-            title: "Save snapshot",
-            message: `Save current state over "${current}"?`,
-            primaryLabel: "Save",
-            secondaryLabel: "Save as new…",
-            cancelLabel: "Cancel",
-            subtitle: buildPathSubtitle(),
-            onPrimary: () => doSave(current, { confirmOverwrite: false }),
-            onSecondary: () => promptForName(`${current} (copy)`),
-        });
-    } else {
-        promptForName(`preset ${todayStamp()}`);
+    async function writeAsNew(name) {
+        primaryState = "in-progress";
+        renderPrimary();
+        try {
+            const snap = gatherSnapshot(name);
+            await writePreset(name, snap);
+            setCurrentPresetName(name);
+            if (typeof markStateSaved === "function") markStateSaved();
+            primaryState = "done";
+            renderPrimary();
+            toast(`Saved "${name}".`);
+            setTimeout(close, 600);
+        } catch (e) {
+            console.error("[Koolook] preset save failed:", e);
+            toast(`Could not save preset: ${e.message}`);
+            updatePrimaryLabel();
+        }
     }
+
+    ({ overlay } = makeModalShell({
+        title: "Save snapshot",
+        titleTooltip: "Write the current sidebar state to a preset file.",
+        body,
+        actions: [saveToBtn, spacer, cancelBtn, saveAsNewBtn, primaryBtn],
+    }));
 }
 
 // =============================================================================
-// Load flow.
+// Load flow — redesigned per issue #137, mockup section 3.
 //
-// Single dialog with the preset list. Each row click loads (with confirm),
-// each row's × button deletes (with confirm). Top of the dialog shows the
-// current library path so the user can see where they're loading from.
+// Single dialog. Layout:
+//
+//   [ Load snapshot                                            ]
+//   [ Loaded from                            Open folder ↗     ]
+//   [ <leaf folder>                                            ]
+//   [ <full path>                                              ]
+//   [                                                          ]
+//   [ <preset row>             [×]                             ]
+//   [ <preset row>             [×]                             ]
+//   [ ↓ when a preset has a newer autosave, clicking it expands ]
+//   [   exactly ONE scoped recovery row beneath that preset:   ]
+//   [   [Pre-load badge] May 12 14:47 · 11 picks · 6 wf        ]
+//   [                                                          ]
+//   [ [ Load from… ]                              [ Close ]    ]
+//
+// Click flow:
+//   * Preset row, no newer autosave → load directly (with pre-load backup).
+//   * Preset row WITH a newer autosave → scope the recovery section to that
+//     preset alone, render one row (newest of periodic / pre_load_*),
+//     insert it directly below the clicked preset. The user then chooses:
+//     click the named row again to load named, or click the recovery row
+//     to load the autosave.
+//   * Recovery row → restore that autosave (with pre-load backup).
+//
+// Delete (×) is inline: clicking × outlines the target row red and the
+// command-bar Close button transforms to "Yes (delete)". A second click on
+// Yes commits; Escape cancels and reverts.
+//
+// Load from… opens the folder picker (commit 2). On Use this folder, the
+// dialog persists the path via saveSettings() and refreshes the preset
+// listing.
 //
 // Load success → updates the tracker so a subsequent Save defaults to
 // overwriting that preset.
@@ -1222,6 +1428,9 @@ export function showLoadSnapshotDialog({
     setCurrentPresetName,
     getCurrentPresetName,
     getLibraryInfo,
+    saveSettings,
+    browseDirectories,
+    createBrowseDirectory,
     writePreLoadAutosave,
     markStateSaved,
     markStateAutosaved,
@@ -1231,59 +1440,65 @@ export function showLoadSnapshotDialog({
 }) {
     const toast = onToast || (() => {});
     const body = document.createElement("div");
-
-    // Captured from `getLibraryInfo()` resolution below — the recovery
-    // section uses it to render full subdir paths (`<library>/<subdir>`)
-    // under each group header, matching the library section's title-plus-
-    // path layout. Empty string is the not-yet-resolved sentinel; group
-    // headers fall back to no subtitle in that case.
     let libraryPath = "";
 
-    // Header row: library title + path (rendered by `renderLibraryLocation`
-    // for visual parity with the recovery group headers below) on the
-    // left, `📂 Open` button on the right. Same flex layout (`flex-start`
-    // alignment + `space-between` justification) as group headers so both
-    // sections feel like one consistent UI.
-    const pathRow = document.createElement("div");
-    pathRow.className = "koolook-load-library-row";
-    pathRow.style.display = "flex";
-    pathRow.style.alignItems = "flex-start";
-    pathRow.style.justifyContent = "space-between";
-    pathRow.style.gap = "8px";
-    const pathLine = document.createElement("div");
-    pathLine.className = "koolook-load-library-location";
-    pathLine.style.flex = "1";
-    pathLine.style.minWidth = "0";
-    pathLine.textContent = "Library: (loading…)";
-    pathRow.appendChild(pathLine);
-    if (typeof revealPresetFolder === "function") {
-        const openLibraryBtn = document.createElement("button");
-        // `koolook-snapshot-row-btn` matches the size + styling of the
-        // group-header Open button in the recovery section, so both
-        // surfaces look like the same control instead of one large
-        // (`koolook-modal-button`) and one small (row-btn) variant.
-        openLibraryBtn.className = "koolook-snapshot-row-btn";
-        openLibraryBtn.textContent = "📂 Open";
-        openLibraryBtn.title = "Open the snapshot library folder in your file manager";
-        openLibraryBtn.style.flex = "0 0 auto";
-        openLibraryBtn.addEventListener("click", async () => {
-            try {
-                const r = await revealPresetFolder();
-                toast(`Opened: ${r.path}`);
-            } catch (e) {
-                console.error("[Koolook] reveal failed:", e);
-                toast(`Could not open library folder: ${e.message}`);
-            }
-        });
-        pathRow.appendChild(openLibraryBtn);
-    }
-    body.appendChild(pathRow);
+    // ---- Library row (mockup section 3, "Loaded from") ----
+    // Pure information row at the top. Label + Open folder link sit on the
+    // top edge so a long absolute path can never cover the link area.
+    const libRow = document.createElement("div");
+    libRow.className = "koolook-snap-lib-row";
+
+    const libRowTop = document.createElement("div");
+    libRowTop.className = "koolook-snap-lib-row-top";
+    const libLabel = document.createElement("span");
+    libLabel.className = "koolook-snap-lib-label";
+    libLabel.textContent = "Loaded from";
+    libRowTop.appendChild(libLabel);
+
+    const openFolderLink = document.createElement("a");
+    openFolderLink.className = "koolook-snap-open-folder-link";
+    openFolderLink.href = "#";
+    openFolderLink.textContent = "Open folder ↗";
+    openFolderLink.title = "Open the snapshot library folder in your file manager";
+    openFolderLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (typeof revealPresetFolder !== "function") return;
+        try {
+            const r = await revealPresetFolder();
+            toast(`Opened: ${r.path}`);
+        } catch (err) {
+            console.error("[Koolook] reveal failed:", err);
+            toast(`Could not open library folder: ${err.message}`);
+        }
+    });
+    libRowTop.appendChild(openFolderLink);
+    libRow.appendChild(libRowTop);
+
+    const libName = document.createElement("div");
+    libName.className = "koolook-settings-folder-name";
+    libName.textContent = "Library folder: (loading…)";
+    libRow.appendChild(libName);
+
+    const libPath = document.createElement("div");
+    libPath.className = "koolook-settings-folder-path";
+    libRow.appendChild(libPath);
+
+    body.appendChild(libRow);
 
     const listWrap = document.createElement("div");
     body.appendChild(listWrap);
 
     let overlay;
     const close = () => overlay.remove();
+
+    // Per-dialog state. ``pendingDelete`` holds the preview whose × was
+    // clicked and the row element currently outlined red; the Close
+    // button's label flips to "Yes (delete)" until the user confirms or
+    // Escape cancels. ``scopedRecoveryRow`` holds the inline single-row
+    // recovery widget that opens beneath a preset row that has a newer
+    // autosave — exactly one is shown at a time (mockup section 3).
+    let pendingDelete = null;
+    let scopedRecoveryRow = null;
 
     function renderEmpty(text) {
         const el = document.createElement("div");
@@ -1299,6 +1514,7 @@ export function showLoadSnapshotDialog({
         try { previews = await listPresets(); }
         catch (e) { previews = []; }
         listWrap.innerHTML = "";
+        clearScopedRecovery();
         if (previews.length === 0) {
             listWrap.appendChild(renderEmpty("No presets in this library yet. Use Save to create one."));
             return;
@@ -1320,7 +1536,7 @@ export function showLoadSnapshotDialog({
             meta.className = "koolook-snapshot-row-meta";
             meta.textContent = formatPreviewMeta(p);
             info.appendChild(meta);
-            info.addEventListener("click", () => promptApply(p));
+            info.addEventListener("click", () => onPresetClick(p, row));
             row.appendChild(info);
 
             const actions = document.createElement("div");
@@ -1329,7 +1545,7 @@ export function showLoadSnapshotDialog({
             delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
             delBtn.textContent = "×";
             delBtn.title = `Delete "${p.displayName}"`;
-            delBtn.addEventListener("click", (e) => { e.stopPropagation(); promptDelete(p); });
+            delBtn.addEventListener("click", (e) => { e.stopPropagation(); armDelete(p, row); });
             actions.appendChild(delBtn);
             row.appendChild(actions);
 
@@ -1338,13 +1554,11 @@ export function showLoadSnapshotDialog({
         listWrap.appendChild(list);
     }
 
-    // Action helpers. Extracted from the in-line `onConfirm` bodies so
-    // both the standard load flow AND the autosave-newer YES/NO choice
-    // modal can dispatch the same pre-load-autosave + applySnapshot +
-    // tracker-rebase + partial-failure logic without duplicating ~30
-    // lines per call site. `close()` here refers to the OUTER Load
-    // Snapshot dialog's overlay — closures over `close` from the
-    // enclosing `showLoadSnapshotDialog` scope.
+    // Action helpers. Backup-chain logic is identical to the pre-#137
+    // version — what changes is the *routing* into these helpers (no
+    // more "Replace current state?" confirm modal for the unambiguous
+    // case, and no YES/NO choice modal at all). ``close()`` here refers
+    // to the OUTER Load Snapshot dialog's overlay.
     async function doNamedLoad(preview) {
         try {
             // Defensive auto-save BEFORE any destructive write — see
@@ -1465,346 +1679,254 @@ export function showLoadSnapshotDialog({
         }
     }
 
-    function promptApply(preview) {
-        // When the corresponding `<base>_autosave/periodic.json` is
-        // strictly newer than the named save, route to the YES/NO
-        // choice modal so the user can pick which version to load
-        // without navigating the Recovery disclosure or having to
-        // mentally reason about which timestamp is newer. The standard
-        // single-button confirm is reserved for rows where there's no
-        // newer auto-save (the unambiguous case).
+    // ---- Click routing ----
+    // Mockup section 3: clicking a preset that has a newer autosave does
+    // NOT load it; it expands a single scoped recovery row beneath the
+    // clicked preset. The user then re-clicks the named row (to load
+    // named) or clicks the recovery row (to load the autosave). Presets
+    // with no newer autosave skip the choice entirely — direct load.
+    function onPresetClick(preview, rowEl) {
+        // Cancel any pending delete-confirm on a different row.
+        if (pendingDelete && pendingDelete.preview.fileName !== preview.fileName) {
+            cancelDelete();
+        }
+        // A second click on the SAME preset that already has its scoped
+        // recovery row open commits the named load — the user has seen
+        // both options and is choosing the named version.
+        if (scopedRecoveryRow && scopedRecoveryRow.parentPreview.fileName === preview.fileName) {
+            doNamedLoad(preview);
+            return;
+        }
+        clearScopedRecovery();
         if (typeof preview.latestAutosaveMtime === "number" &&
             typeof preview.mtime === "number" &&
             preview.latestAutosaveMtime > preview.mtime) {
-            promptApplyChoice(preview);
+            insertScopedRecovery(preview, rowEl);
             return;
         }
-        showConfirmModal({
-            title: "Replace current state?",
-            message:
-                `Loading "${preview.displayName}" will replace your current ` +
-                `picks and workflows with the snapshot's contents (` +
-                `${formatPreviewMeta(preview)}). A pre-load auto-save of your ` +
-                `current state will be written first as a recovery point.`,
-            confirmLabel: "Load preset",
-            danger: true,
-            onConfirm: () => doNamedLoad(preview),
-        });
+        // No newer autosave — direct load. The dialog already says
+        // "Load snapshot" at the title; a second "Replace current state?"
+        // confirm modal is the kind of extra friction the redesign drops.
+        doNamedLoad(preview);
     }
 
-    // YES/NO choice modal — appears when the row's auto-save is newer
-    // than its named save. Built directly via `makeModalShell` (not
-    // `showConfirmModal`) because we need ESC / overlay click to mean
-    // "cancel both" rather than "fire one of the actions": showConfirm
-    // would bind one of the two paths to its cancel handler, which
-    // also runs on Escape. Two affirmative buttons, one neutral
-    // dismissal — this layout requires the direct shell.
-    function promptApplyChoice(preview) {
-        const namedStamp = formatLocalStamp(new Date(preview.mtime * 1000));
-        const autoStamp = formatLocalStamp(new Date(preview.latestAutosaveMtime * 1000));
+    // Build a single inline row representing the newest recovery file
+    // for the clicked preset, slotted in the DOM directly after the
+    // preset row. Loading state shows briefly while listAutosaves()
+    // resolves; error/empty states render in place so the user knows
+    // the affordance opened but yielded nothing.
+    async function insertScopedRecovery(preview, anchorRow) {
+        const slot = document.createElement("div");
+        slot.className = "koolook-snapshot-scoped-recovery";
+        slot.appendChild(renderEmpty("Loading recovery…"));
+        anchorRow.insertAdjacentElement("afterend", slot);
+        scopedRecoveryRow = { el: slot, parentPreview: preview };
 
-        const body = document.createElement("div");
-
-        const intro = document.createElement("div");
-        intro.className = "koolook-modal-message";
-        intro.textContent =
-            `Loading "${preview.displayName}" will replace your current ` +
-            `picks and workflows. A pre-load auto-save of your current ` +
-            `state will be written first as a recovery point.`;
-        body.appendChild(intro);
-
-        const compareHead = document.createElement("div");
-        compareHead.className = "koolook-modal-message";
-        compareHead.style.marginTop = "10px";
-        compareHead.textContent = "Auto-save is NEWER than the saved version:";
-        body.appendChild(compareHead);
-
-        const compareList = document.createElement("ul");
-        compareList.style.margin = "4px 0 0 18px";
-        compareList.style.padding = "0";
-        compareList.style.fontSize = "12px";
-        const liNamed = document.createElement("li");
-        liNamed.textContent = `Saved version — ${namedStamp}`;
-        const liAuto = document.createElement("li");
-        liAuto.textContent = `Auto-save — ${autoStamp}`;
-        compareList.appendChild(liNamed);
-        compareList.appendChild(liAuto);
-        body.appendChild(compareList);
-
-        const question = document.createElement("div");
-        question.className = "koolook-modal-message";
-        question.style.marginTop = "10px";
-        question.textContent =
-            "Do you want to load the auto-saved version? " +
-            "(NO loads the saved version. Press Esc to cancel.)";
-        body.appendChild(question);
-
-        let shell;
-        const noBtn = makeModalButton({
-            label: "NO",
-            onClick: () => { shell.close(); doNamedLoad(preview); },
-        });
-        const yesBtn = makeModalButton({
-            label: "YES — load auto-save",
-            primary: true,
-            onClick: () => {
-                shell.close();
-                doAutosaveRestore({
-                    dir: `${preview.fileName}_autosave`,
-                    fileName: "periodic",
-                });
-            },
-        });
-        shell = makeModalShell({
-            title: "Replace current state?",
-            body,
-            actions: [noBtn, yesBtn],
-        });
-    }
-
-    function promptDelete(preview) {
-        showConfirmModal({
-            title: "Delete preset?",
-            message: `"${preview.displayName}" will be removed from the library. This cannot be undone.`,
-            confirmLabel: "Delete",
-            danger: true,
-            onConfirm: async () => {
-                try {
-                    await deletePreset(preview.fileName);
-                    // If the deleted preset was the one tracked as
-                    // "currently loaded," clear the tracker. Otherwise
-                    // the next Save would offer to "Save over '<deleted>'"
-                    // and silently re-create the file.
-                    if (typeof getCurrentPresetName === "function" &&
-                        getCurrentPresetName() === preview.fileName) {
-                        setCurrentPresetName(null);
-                    }
-                    toast(`Deleted "${preview.displayName}".`);
-                    await refresh();
-                } catch (e) {
-                    console.error("[Koolook] preset delete failed:", e);
-                    toast(`Could not delete "${preview.displayName}": ${e.message}`);
-                }
-            },
-        });
-    }
-
-    // ---- Recovery auto-saves section (collapsible) ----
-    // Closes the gap from the v2 layout: pre-load and periodic autosaves
-    // live in `<preset>_autosave/` subfolders, deliberately hidden from the
-    // main Load list to keep that list clean. But "hidden" can't mean
-    // "unreachable" — the whole point of pre-load autosave is recovery.
-    // This section is the explicit recovery path: lazy-loaded on first
-    // expand, grouped by subdir, click-to-restore (with the same pre-load
-    // protection the regular Load flow uses).
-    const recoverySection = document.createElement("details");
-    recoverySection.className = "koolook-recovery-section";
-    const recoverySummary = document.createElement("summary");
-    recoverySummary.className = "koolook-recovery-summary";
-    // Native `<details>` already renders a disclosure triangle on
-    // `<summary>`. Don't add a second arrow character here — the previous
-    // `▸ / ▾` text duplicated the native marker and the user saw two
-    // arrows side-by-side.
-    recoverySummary.textContent = "Recovery auto-saves";
-    recoverySection.appendChild(recoverySummary);
-    const recoveryList = document.createElement("div");
-    recoveryList.className = "koolook-recovery-list";
-    recoverySection.appendChild(recoveryList);
-
-    function promptDeleteAutosave(item) {
-        showConfirmModal({
-            title: "Delete recovery auto-save?",
-            message: `"${item.dir}/${item.fileName}" will be removed. ` +
-                     `If this is the only remaining recovery point for that ` +
-                     `preset, you won't be able to restore from it later.`,
-            confirmLabel: "Delete",
-            danger: true,
-            onConfirm: async () => {
-                try {
-                    await deletePreset(item.fileName, { dir: item.dir });
-                    toast(`Deleted "${item.dir}/${item.fileName}".`);
-                    await refreshRecovery();
-                } catch (e) {
-                    console.error("[Koolook] autosave delete failed:", e);
-                    toast(`Could not delete: ${e.message}`);
-                }
-            },
-        });
-    }
-
-    function promptApplyAutosave(item) {
-        const tooltipName = `${item.dir}/${item.fileName}`;
-        showConfirmModal({
-            title: "Restore from auto-save?",
-            message:
-                `Restoring "${tooltipName}" will replace your current ` +
-                `picks and workflows with the auto-save's contents (` +
-                `${formatPreviewMeta(item)}). A pre-load auto-save of ` +
-                `your current state will be written first as a recovery ` +
-                `point — this restore is itself reversible.`,
-            confirmLabel: "Restore",
-            danger: true,
-            onConfirm: () => doAutosaveRestore(item),
-        });
-    }
-
-    let recoveryLoaded = false;
-    async function refreshRecovery() {
-        recoveryList.innerHTML = "";
-        recoveryList.appendChild(renderEmpty("Loading…"));
-        let entries = [];
+        let items = [];
         if (typeof listAutosaves === "function") {
-            try { entries = await listAutosaves(); } catch (e) { entries = []; }
+            try { items = await listAutosaves(); } catch (e) { items = []; }
         }
-        recoveryList.innerHTML = "";
-        if (entries.length === 0) {
-            recoveryList.appendChild(renderEmpty("No recovery auto-saves yet."));
+        // Filter to this preset's autosave subdir AND pick the single
+        // freshest entry by mtime. ``periodic.json`` and the rotated
+        // ``pre_load_*.json`` files all live in
+        // ``<preset>_autosave/`` — pick whichever was written most
+        // recently regardless of kind.
+        const subdir = `${preview.fileName.replace(/\.json$/i, "")}_autosave`;
+        const scoped = items
+            .filter((item) => item.dir === subdir)
+            .sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+        slot.innerHTML = "";
+        if (scoped.length === 0) {
+            slot.appendChild(renderEmpty("No recovery auto-save for this preset."));
             return;
         }
-        // Group by subdir for readability. Map iteration preserves first-
-        // seen order, which from the server is alphabetical-by-subdir —
-        // matches expectations.
-        const groups = new Map();
-        for (const p of entries) {
-            if (!groups.has(p.dir)) groups.set(p.dir, []);
-            groups.get(p.dir).push(p);
+        const newest = scoped[0];
+        const list = document.createElement("div");
+        list.className = "koolook-snapshot-list";
+        const row = document.createElement("div");
+        row.className = "koolook-snapshot-row koolook-snapshot-scoped-recovery-row";
+
+        const info = document.createElement("div");
+        info.className = "koolook-snapshot-row-info";
+        info.title = "Click to load this auto-save instead of the named preset.";
+
+        const name = document.createElement("div");
+        name.className = "koolook-snapshot-row-name";
+        const kindBadge = document.createElement("span");
+        kindBadge.className = "koolook-recovery-kind koolook-recovery-kind-" + newest.kind;
+        kindBadge.textContent = newest.kind === "pre_load" ? "Pre-load" :
+                                newest.kind === "periodic" ? "Periodic" : "Other";
+        name.appendChild(kindBadge);
+        // Per locked-in decision: recovery rows show kind + timestamp +
+        // meta, no filenames. Timestamp comes from formatPreviewMeta
+        // (which already prefers mtime → "saved <local-stamp>").
+        info.appendChild(name);
+
+        const meta = document.createElement("div");
+        meta.className = "koolook-snapshot-row-meta";
+        meta.textContent = formatPreviewMeta(newest);
+        info.appendChild(meta);
+
+        info.addEventListener("click", () => doAutosaveRestore(newest));
+        row.appendChild(info);
+        list.appendChild(row);
+        slot.appendChild(list);
+    }
+
+    function clearScopedRecovery() {
+        if (scopedRecoveryRow && scopedRecoveryRow.el && scopedRecoveryRow.el.parentNode) {
+            scopedRecoveryRow.el.remove();
         }
-        for (const [subdir, items] of groups) {
-            const groupEl = document.createElement("div");
-            groupEl.className = "koolook-recovery-group";
-            // Subfolder header: title (subdir name) + path subtitle on the
-            // left, `📂 Open` button on the right. Mirrors the library
-            // section's layout exactly — same flex options, same
-            // `renderLibraryLocation` rendering pair (`folder-name` +
-            // `folder-path` CSS), same Open button class. Visually the
-            // two surfaces should be indistinguishable apart from the
-            // contents.
-            const groupHeader = document.createElement("div");
-            groupHeader.className = "koolook-recovery-group-header";
-            groupHeader.style.display = "flex";
-            groupHeader.style.alignItems = "flex-start";
-            groupHeader.style.justifyContent = "space-between";
-            groupHeader.style.gap = "8px";
-            const headerInfo = document.createElement("div");
-            headerInfo.style.flex = "1";
-            headerInfo.style.minWidth = "0";
-            const fullSubdirPath = libraryPath ? `${libraryPath}/${subdir}` : "";
-            renderLibraryLocation(headerInfo, fullSubdirPath, { title: subdir });
-            groupHeader.appendChild(headerInfo);
-            if (typeof revealPresetFolder === "function") {
-                const openBtn = document.createElement("button");
-                openBtn.className = "koolook-snapshot-row-btn";
-                openBtn.textContent = "📂 Open";
-                openBtn.title = `Open "${subdir}/" in your file manager`;
-                openBtn.style.flex = "0 0 auto";
-                openBtn.addEventListener("click", async (e) => {
-                    e.stopPropagation();
-                    try {
-                        const r = await revealPresetFolder({ dir: subdir });
-                        toast(`Opened: ${r.path}`);
-                    } catch (err) {
-                        console.error("[Koolook] reveal failed:", err);
-                        toast(`Could not open "${subdir}/": ${err.message}`);
-                    }
-                });
-                groupHeader.appendChild(openBtn);
+        scopedRecoveryRow = null;
+    }
+
+    // ---- Inline delete confirm ----
+    // Mockup-locked: × outlines the row red, Close transforms to
+    // "Yes (delete)". A second confirm click commits; Escape cancels.
+    function armDelete(preview, rowEl) {
+        if (pendingDelete) cancelDelete();
+        clearScopedRecovery();
+        rowEl.classList.add("koolook-snapshot-row-pending-delete");
+        pendingDelete = { preview, rowEl };
+        applyCloseButtonState();
+    }
+
+    function cancelDelete() {
+        if (!pendingDelete) return;
+        pendingDelete.rowEl.classList.remove("koolook-snapshot-row-pending-delete");
+        pendingDelete = null;
+        applyCloseButtonState();
+    }
+
+    async function commitDelete() {
+        const target = pendingDelete;
+        if (!target) return;
+        try {
+            await deletePreset(target.preview.fileName);
+            if (typeof getCurrentPresetName === "function" &&
+                getCurrentPresetName() === target.preview.fileName) {
+                setCurrentPresetName(null);
             }
-            groupEl.appendChild(groupHeader);
-            // Wrap rows in the same `koolook-snapshot-list` container the
-            // library section uses so each group gets the same bordered-
-            // box treatment around its rows. Without this, the recovery
-            // rows render flat (no border, no rounded corners) and
-            // visually diverge from the Koolook_v03 row even though the
-            // row contents are identical.
-            const rowsList = document.createElement("div");
-            rowsList.className = "koolook-snapshot-list";
-            for (const item of items) {
-                const row = document.createElement("div");
-                row.className = "koolook-snapshot-row";
-
-                const info = document.createElement("div");
-                info.className = "koolook-snapshot-row-info";
-                info.title = `Click to restore "${item.dir}/${item.fileName}"`;
-
-                const name = document.createElement("div");
-                name.className = "koolook-snapshot-row-name";
-                const kindBadge = document.createElement("span");
-                kindBadge.className = "koolook-recovery-kind koolook-recovery-kind-" + item.kind;
-                kindBadge.textContent = item.kind === "pre_load" ? "Pre-load" :
-                                        item.kind === "periodic" ? "Periodic" : "Other";
-                name.appendChild(kindBadge);
-                // Show the bare filename (`pre_load_2026-05-07T14-32-…`,
-                // `periodic`) instead of the snapshot's self-reported
-                // displayName, which for autosaves is a redundant
-                // `Periodic auto-save · <subdir> · <iso>` string that
-                // pushes the timestamp off-screen on narrow modals.
-                name.appendChild(document.createTextNode(item.fileName));
-                info.appendChild(name);
-
-                const meta = document.createElement("div");
-                meta.className = "koolook-snapshot-row-meta";
-                // mtime is when the file was actually written — strictly
-                // more relevant for "which autosave is freshest" than the
-                // snapshot's self-reported `exportedAt` (the two match for
-                // autosaves anyway, but mtime is what survives an out-of-
-                // band file copy in Finder).
-                meta.textContent = formatPreviewMeta(item);
-                info.appendChild(meta);
-
-                info.addEventListener("click", () => promptApplyAutosave(item));
-                row.appendChild(info);
-
-                const actions = document.createElement("div");
-                actions.className = "koolook-snapshot-row-actions";
-                const delBtn = document.createElement("button");
-                delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
-                delBtn.textContent = "×";
-                delBtn.title = `Delete "${item.dir}/${item.fileName}"`;
-                delBtn.addEventListener("click", (e) => { e.stopPropagation(); promptDeleteAutosave(item); });
-                actions.appendChild(delBtn);
-                row.appendChild(actions);
-
-                rowsList.appendChild(row);
-            }
-            groupEl.appendChild(rowsList);
-            recoveryList.appendChild(groupEl);
+            toast(`Deleted "${target.preview.displayName}".`);
+            pendingDelete = null;
+            applyCloseButtonState();
+            await refresh();
+        } catch (e) {
+            console.error("[Koolook] preset delete failed:", e);
+            toast(`Could not delete "${target.preview.displayName}": ${e.message}`);
+            cancelDelete();
         }
     }
 
-    // Lazy-load on first expand; the autosave listing is N+1 reads (one
-    // per file to validate it's a snapshot and extract the displayName)
-    // and we don't want to pay that cost when the user is just looking
-    // for a regular preset.
-    recoverySection.addEventListener("toggle", () => {
-        if (!recoverySection.open) return;
-        if (recoveryLoaded) return;
-        recoveryLoaded = true;
-        refreshRecovery();
+    // Footer buttons.
+    const loadFromBtn = makeModalButton({
+        label: "Load from…",
+        onClick: () => openLoadFrom(),
     });
-    body.appendChild(recoverySection);
 
-    const closeBtn = makeModalButton({ label: "Close", onClick: close });
+    const closeBtn = makeModalButton({
+        label: "Close",
+        onClick: () => {
+            if (pendingDelete) {
+                commitDelete();
+                return;
+            }
+            close();
+        },
+    });
+
+    function applyCloseButtonState() {
+        if (pendingDelete) {
+            closeBtn.textContent = `Yes — delete "${pendingDelete.preview.displayName}"`;
+            closeBtn.classList.add("koolook-modal-btn-danger");
+            closeBtn.title = "Confirm deletion. Press Esc to cancel.";
+        } else {
+            closeBtn.textContent = "Close";
+            closeBtn.classList.remove("koolook-modal-btn-danger");
+            closeBtn.title = "";
+        }
+    }
+
+    function openLoadFrom() {
+        if (typeof browseDirectories !== "function") {
+            toast("Folder picker unavailable in this session.");
+            return;
+        }
+        showFolderPicker({
+            title: "Load snapshots from",
+            titleTooltip: "Switch the snapshot library this Load is reading from.",
+            initialPath: libraryPath,
+            browseDirectories,
+            createBrowseDirectory,
+            onUseFolder: async (chosen) => {
+                if (typeof saveSettings === "function") {
+                    try { await saveSettings(chosen); }
+                    catch (err) {
+                        console.error("[Koolook] saveSettings failed:", err);
+                        toast(`Could not save library path: ${err.message}`);
+                        return;
+                    }
+                }
+                libraryPath = chosen;
+                renderLibRow(chosen);
+                refresh();
+                toast(`Loading snapshots from: ${chosen}.`);
+            },
+        });
+    }
+
+    function renderLibRow(path) {
+        libraryPath = path || "";
+        const leaf = libraryPath ? pathLeaf(libraryPath) : "(unavailable)";
+        libName.textContent = leaf;
+        libPath.textContent = libraryPath || "Path unavailable";
+        libRow.title = libraryPath || "";
+    }
+
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
+
     ({ overlay } = makeModalShell({
         title: "Load snapshot",
+        titleTooltip: "Restore the sidebar state from a preset file.",
         body,
-        actions: [closeBtn],
+        actions: [loadFromBtn, spacer, closeBtn],
     }));
+
+    // Escape-to-cancel for inline delete. The modal shell already wires
+    // Escape to overlay close; intercept BEFORE that fires so a pending
+    // delete just unwinds the row state without dismissing the whole
+    // dialog. ``capture: true`` runs this listener before the shell's.
+    // Listener is captured by name so we can tear it down on close —
+    // ``document.addEventListener`` does not auto-clean up when the
+    // dialog overlay is removed, and repeated open/close cycles would
+    // otherwise stack one stale handler per session. Tie the cleanup to
+    // ``overlay.remove`` (the canonical close path that every dismissal
+    // route already goes through, thanks to the shell's wrapping).
+    const escapeForDelete = (e) => {
+        if (e.key !== "Escape") return;
+        if (!pendingDelete) return;
+        e.stopPropagation();
+        cancelDelete();
+    };
+    document.addEventListener("keydown", escapeForDelete, { capture: true });
+    const overlayRemoveBeforeCleanup = overlay.remove.bind(overlay);
+    overlay.remove = () => {
+        document.removeEventListener("keydown", escapeForDelete, { capture: true });
+        overlayRemoveBeforeCleanup();
+    };
+
     refresh();
     if (typeof getLibraryInfo === "function") {
         getLibraryInfo().then((info) => {
-            if (info) {
-                renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
-                // Stash for the recovery section's group-header path
-                // subtitle. If recovery is already loaded (user expanded
-                // before this resolved), refresh so the path appears.
-                libraryPath = info.path || "";
-                if (recoveryLoaded) refreshRecovery();
-            } else {
-                pathLine.textContent = "Library path unavailable.";
-            }
-        }).catch(() => { pathLine.textContent = "Library path unavailable."; });
+            if (info && typeof info.path === "string") renderLibRow(info.path);
+            else { libName.textContent = "Library path unavailable"; libPath.textContent = ""; }
+        }).catch(() => {
+            libName.textContent = "Library path unavailable";
+            libPath.textContent = "";
+        });
     } else {
-        pathLine.textContent = "";
+        libName.textContent = "";
     }
 }
 
@@ -1817,328 +1939,273 @@ export function showLoadSnapshotDialog({
 // default). A read-only line shows the currently-resolved path + source so
 // the user can see what's actually in effect right now.
 // =============================================================================
-export function showSnapshotSettingsDialog({
-    getSettings,
-    saveSettings,
+// =============================================================================
+// Folder-browse picker — issue #137, mockup §6 (navigate-into model).
+//
+// Replaces the legacy ``openBrowseDialog`` (a select-driven "pick a sibling"
+// browser scoped to the Settings dialog) with a top-level reusable picker
+// driven by a path input. The path input is the source of truth: typing a
+// path + Enter navigates, clicking a folder row drills in (and updates the
+// input), ↑ Up climbs one level. Files are shown greyed below the
+// directories as a "yes, this is the folder I expected" affordance — they
+// do NOT count toward the selection and clicking them is inert.
+//
+// Visual spec: docs/designs/snapshot-dialogs.html §6.
+// Visual harness: docs/designs/_harness/folder-picker.html.
+// =============================================================================
+export function showFolderPicker({
+    title,
+    titleTooltip,
+    initialPath,
     browseDirectories,
     createBrowseDirectory,
-    onToast,
+    onUseFolder,
+    onCancel,
 }) {
-    const toast = onToast || (() => {});
     const body = document.createElement("div");
+    body.className = "koolook-folder-picker";
 
-    body.appendChild(modalLabel("Library path"));
+    // Toolbar row: ↑ Up + path input. The toolbar is rebuilt in place when
+    // the New folder… flow opens (a transient name-input replaces the
+    // path-input UI), and restored on Create / Cancel.
+    const toolbar = document.createElement("div");
+    toolbar.className = "koolook-folder-picker-toolbar";
 
-    const inputRow = document.createElement("div");
-    inputRow.className = "koolook-path-input-row";
-
-    const input = document.createElement("input");
-    input.className = "koolook-modal-input";
-    input.placeholder = "/absolute/path/to/library  (leave empty to use env-var or default)";
-    input.disabled = true;
-    inputRow.appendChild(input);
-
-    const browseBtn = makeModalButton({
-        label: "Browse...",
-        onClick: () => openBrowseDialog(input.value.trim() || ""),
+    const upBtn = makeModalButton({
+        label: "↑ Up",
+        onClick: () => { if (currentParent) navigate(currentParent); },
     });
-    browseBtn.disabled = true;
-    inputRow.appendChild(browseBtn);
-    body.appendChild(inputRow);
+    upBtn.classList.add("koolook-folder-picker-up");
 
-    const hint = document.createElement("div");
-    hint.style.cssText = "font-size: 11px; opacity: 0.55; margin: 8px 0 12px; line-height: 1.5; word-break: break-all;";
-    hint.textContent = "Loading current settings…";
-    body.appendChild(hint);
+    const pathInput = document.createElement("input");
+    pathInput.className = "koolook-modal-input koolook-folder-picker-path";
+    pathInput.value = initialPath || "";
+    pathInput.spellcheck = false;
+    pathInput.title = "Type or paste a path and press Enter, or click a subfolder below.";
+    pathInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const target = pathInput.value.trim();
+            if (target) navigate(target);
+        }
+    });
 
+    toolbar.appendChild(upBtn);
+    toolbar.appendChild(pathInput);
+    body.appendChild(toolbar);
+
+    // List body.
+    const list = document.createElement("div");
+    list.className = "koolook-folder-picker-list";
+    body.appendChild(list);
+
+    let currentPath = initialPath || "";
+    let currentParent = "";
     let overlay;
-    let savedLibraryPath = "";
     const close = () => overlay.remove();
 
-    function renderSelectedFolder(el, path) {
-        el.innerHTML = "";
-        if (!path) {
-            el.textContent = "No folder selected";
-            return;
-        }
-        const label = document.createElement("span");
-        label.textContent = "Selected folder: ";
-        const name = document.createElement("strong");
-        name.className = "koolook-browse-selected-name";
-        name.textContent = pathLeaf(path);
-        const full = document.createElement("div");
-        full.className = "koolook-browse-selected-path";
-        full.textContent = path;
-        el.appendChild(label);
-        el.appendChild(name);
-        el.appendChild(full);
-    }
-
-    function renderPathSummary({ saved }) {
-        const rawPath = input.value.trim();
-        const folder = rawPath ? pathLeaf(rawPath) : "(default)";
-        const label = saved ? "Saved folder" : "Selected folder";
-        hint.innerHTML = "";
-
-        const name = document.createElement("div");
-        name.className = "koolook-settings-folder-name";
-        name.textContent = `${label}: ${folder}`;
-        hint.appendChild(name);
-
-        const path = document.createElement("div");
-        path.className = "koolook-settings-folder-path";
-        path.textContent = rawPath || "Using env var / default preset folder";
-        hint.appendChild(path);
-
-        if (!saved) {
-            const note = document.createElement("div");
-            note.className = "koolook-settings-save-note";
-            note.textContent = "Saves folder location only. Use Save/Quick Save to write a snapshot.";
-            hint.appendChild(note);
-        }
+    function renderState(text, isError) {
+        list.innerHTML = "";
+        const el = document.createElement("div");
+        el.className = isError
+            ? "koolook-folder-picker-empty koolook-folder-picker-error"
+            : "koolook-folder-picker-empty";
+        el.textContent = text;
+        list.appendChild(el);
     }
 
     function revealPathEnd() {
-        setTimeout(() => {
-            input.scrollLeft = input.scrollWidth;
-        }, 0);
+        // Even with `direction: rtl` the caret/scroll position needs a nudge
+        // after programmatic value changes so the END of the path is on-
+        // screen. Defer to the next tick so layout has settled.
+        setTimeout(() => { pathInput.scrollLeft = pathInput.scrollWidth; }, 0);
     }
 
-    function updateSaveState() {
-        if (!save) return;
-        const dirty = input.value.trim() !== savedLibraryPath;
-        save.disabled = !dirty;
-        save.textContent = dirty ? "Save folder" : "Saved";
-        save.classList.toggle("koolook-modal-btn-primary", dirty);
-        save.title = dirty
-            ? "Save snapshot folder location"
-            : "Snapshot folder is saved";
-        renderPathSummary({ saved: !dirty });
-    }
-
-    async function refresh() {
-        let settings;
-        try { settings = await getSettings(); }
-        catch (e) { settings = null; }
-        if (!settings) {
-            hint.textContent =
-                "Settings endpoint unavailable — server-side routes not registered. " +
-                "Restart ComfyUI to fix.";
+    function renderListing(data) {
+        list.innerHTML = "";
+        const dirs = data.dirs || [];
+        const files = data.files || [];
+        if (!dirs.length && !files.length) {
+            renderState("Folder is empty.");
             return;
         }
-        savedLibraryPath = settings.savedLibraryPath || "";
-        input.value = savedLibraryPath;
-        revealPathEnd();
-        // Native tooltip surfaces the full path on hover — the input is only
-        // ~440px wide so long paths get truncated by horizontal scroll.
-        // The user can still drag-select to view, but the tooltip avoids
-        // making them do so.
-        input.title = settings.savedLibraryPath || "";
-        input.disabled = false;
-        let sourceLabel;
-        if (settings.source === "settings") sourceLabel = "from this Settings panel";
-        else if (settings.source === "env") sourceLabel = `from ${settings.envVar} env var`;
-        else sourceLabel = "built-in default";
-        browseBtn.disabled = typeof browseDirectories !== "function";
-        updateSaveState();
-        hint.title = `Currently in effect: ${settings.resolvedPath} (${sourceLabel})`;
+        for (const d of dirs) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "koolook-folder-picker-row";
+            row.title = `Open ${d.name}`;
+            const icon = document.createElement("span");
+            icon.className = "koolook-folder-picker-icon";
+            icon.textContent = "📁";
+            row.appendChild(icon);
+            const name = document.createElement("span");
+            name.className = "koolook-folder-picker-name";
+            name.textContent = d.name;
+            row.appendChild(name);
+            row.addEventListener("click", () => navigate(d.path));
+            list.appendChild(row);
+        }
+        for (const f of files) {
+            const row = document.createElement("div");
+            row.className = "koolook-folder-picker-row koolook-folder-picker-row-file";
+            row.title = "Files are shown for context only — Use this folder commits the folder, not a file.";
+            const icon = document.createElement("span");
+            icon.className = "koolook-folder-picker-icon";
+            icon.textContent = "📄";
+            row.appendChild(icon);
+            const name = document.createElement("span");
+            name.className = "koolook-folder-picker-name";
+            name.textContent = f.name;
+            row.appendChild(name);
+            list.appendChild(row);
+        }
     }
 
-    async function doSave(rawValue) {
-        if (rawValue === savedLibraryPath) {
-            updateSaveState();
-            return;
-        }
+    async function navigate(target) {
+        renderState("Loading…");
+        useBtn.disabled = true;
+        upBtn.disabled = true;
+        newFolderBtn.disabled = true;
+        let data;
         try {
-            const result = await saveSettings(rawValue);
-            const sourceLabel = result.source === "settings"
-                ? "from this Settings panel"
-                : (result.source === "env" ? "from env var" : "built-in default");
-            savedLibraryPath = result.savedLibraryPath || "";
-            input.value = savedLibraryPath;
-            input.title = savedLibraryPath;
-            revealPathEnd();
-            hint.title = `Currently in effect: ${result.resolvedPath} (${sourceLabel})`;
-            toast(rawValue
-                ? "Library folder saved. Use Save/Quick Save to write snapshots here."
-                : "Override cleared — using env var / default."
-            );
-            updateSaveState();
+            // ``{files: true}`` is the opt-in for the files-for-context
+            // affordance — the listing endpoint returns greyed file
+            // entries below the directory rows so the user can verify
+            // "yes, this is the folder I expected" before committing.
+            data = await browseDirectories(target, { files: true });
         } catch (e) {
-            console.error("[Koolook] settings save failed:", e);
-            toast(`Could not save settings: ${e.message}`);
+            renderState(e.message || String(e), true);
+            // Keep the input value as-typed so the user can fix it and retry.
+            useBtn.disabled = true;
+            upBtn.disabled = !currentParent;
+            newFolderBtn.disabled = false;
+            return;
         }
+        currentPath = data.path;
+        currentParent = data.parentPath || "";
+        pathInput.value = data.path;
+        revealPathEnd();
+        useBtn.disabled = false;
+        upBtn.disabled = !currentParent;
+        newFolderBtn.disabled = typeof createBrowseDirectory !== "function";
+        renderListing(data);
     }
 
-    function openBrowseDialog(startPath) {
-        if (typeof browseDirectories !== "function") return;
-        const pickerBody = document.createElement("div");
+    // Footer buttons.
+    const newFolderBtn = makeModalButton({
+        label: "New folder…",
+        onClick: () => openNewFolderInput(),
+    });
 
-        const current = document.createElement("div");
-        current.className = "koolook-browse-current";
-        current.textContent = "Loading...";
-        pickerBody.appendChild(current);
+    const cancelBtn = makeModalButton({
+        label: "Cancel",
+        onClick: () => {
+            close();
+            if (onCancel) onCancel();
+        },
+    });
 
-        const navRow = document.createElement("div");
-        navRow.className = "koolook-browse-nav";
-        const upBtn = makeModalButton({ label: "Up", onClick: () => {} });
-        const driveLabel = document.createElement("span");
-        driveLabel.className = "koolook-browse-drive-label";
-        driveLabel.textContent = "Location";
-        const rootsSelect = document.createElement("select");
-        rootsSelect.className = "koolook-modal-select";
-        navRow.appendChild(upBtn);
-        navRow.appendChild(driveLabel);
-        navRow.appendChild(rootsSelect);
-        pickerBody.appendChild(navRow);
+    const useBtn = makeModalButton({
+        label: "Use this folder",
+        primary: true,
+        onClick: () => {
+            const chosen = pathInput.value.trim();
+            if (!chosen) return;
+            close();
+            if (onUseFolder) onUseFolder(chosen);
+        },
+    });
 
-        const list = document.createElement("div");
-        list.className = "koolook-browse-list";
-        pickerBody.appendChild(list);
+    // Inline new-folder input — swaps toolbar contents transiently. Cleaner
+    // than another modal-on-modal: the picker stays open, the body still
+    // shows the destination's existing children, and the user has visual
+    // continuity about *where* the new folder is being created.
+    function openNewFolderInput() {
+        if (typeof createBrowseDirectory !== "function") return;
+        // Snapshot the parent at the moment New folder… is clicked, so a
+        // late navigation doesn't redirect the create call. (Defensive —
+        // we disable nav while the input is open, but the assignment makes
+        // the contract explicit.)
+        const parentForCreate = currentPath;
 
-        let selectedPath = startPath;
-        let overlay;
-        const closePicker = () => overlay.remove();
+        toolbar.innerHTML = "";
+        toolbar.classList.add("koolook-folder-picker-toolbar-newfolder");
 
-        async function render(path) {
-            choose.disabled = true;
-            list.innerHTML = "";
-            const loading = document.createElement("div");
-            loading.className = "koolook-snapshot-empty";
-            loading.textContent = "Loading...";
-            list.appendChild(loading);
-            let data;
-            try {
-                data = await browseDirectories(path);
-            } catch (e) {
-                list.innerHTML = "";
-                const err = document.createElement("div");
-                err.className = "koolook-snapshot-empty";
-                err.textContent = e.message;
-                list.appendChild(err);
-                return;
-            }
+        const label = document.createElement("span");
+        label.className = "koolook-folder-picker-newfolder-label";
+        // Show only the leaf folder name to keep the toolbar height stable;
+        // the full path is visible on hover via the ``title`` attribute and
+        // was on screen in the path input the user just dismissed.
+        label.textContent = `New folder in ${pathLeaf(parentForCreate)}:`;
+        label.title = parentForCreate;
+        toolbar.appendChild(label);
 
-            selectedPath = data.path || "";
-            choose.disabled = !selectedPath;
-            renderSelectedFolder(current, selectedPath);
-            current.title = selectedPath;
-            upBtn.disabled = !data.parentPath;
-            upBtn.onclick = () => { if (data.parentPath) render(data.parentPath); };
+        const nameInput = document.createElement("input");
+        nameInput.className = "koolook-modal-input koolook-folder-picker-newfolder-input";
+        nameInput.placeholder = "untitled";
+        nameInput.spellcheck = false;
+        toolbar.appendChild(nameInput);
 
-            rootsSelect.innerHTML = "";
-            for (const root of data.roots || []) {
-                const opt = document.createElement("option");
-                opt.value = root.path;
-                const isCurrentRoot = selectedPath &&
-                    selectedPath.toLowerCase().startsWith(root.path.toLowerCase());
-                opt.textContent = isCurrentRoot ? selectedPath : root.name;
-                if (isCurrentRoot) {
-                    opt.selected = true;
-                }
-                rootsSelect.appendChild(opt);
-            }
-            rootsSelect.onchange = () => render(rootsSelect.value);
-
-            list.innerHTML = "";
-            const dirs = Array.isArray(data.dirs) ? data.dirs : [];
-            if (dirs.length === 0) {
-                const empty = document.createElement("div");
-                empty.className = "koolook-snapshot-empty";
-                empty.textContent = "No folders inside selected folder.";
-                list.appendChild(empty);
-                return;
-            }
-            const childLabel = document.createElement("div");
-            childLabel.className = "koolook-browse-list-label";
-            childLabel.textContent = "Folders inside selected folder";
-            list.appendChild(childLabel);
-            for (const dir of dirs) {
-                const row = document.createElement("button");
-                row.type = "button";
-                row.className = "koolook-browse-row";
-                row.textContent = dir.name;
-                row.title = dir.path;
-                row.addEventListener("click", () => render(dir.path));
-                list.appendChild(row);
-            }
+        function restoreToolbar() {
+            toolbar.classList.remove("koolook-folder-picker-toolbar-newfolder");
+            toolbar.innerHTML = "";
+            toolbar.appendChild(upBtn);
+            toolbar.appendChild(pathInput);
+            revealPathEnd();
         }
 
-        const cancel = makeModalButton({ label: "Cancel", onClick: closePicker });
-        const newFolder = makeModalButton({
-            label: "New folder...",
-            onClick: () => {
-                if (typeof createBrowseDirectory !== "function") return;
-                showInputModal({
-                    title: "New snapshot folder",
-                    label: "Folder name",
-                    defaultValue: "",
-                    placeholder: "e.g. koolook-presets3",
-                    confirmLabel: "Create",
-                    subtitle: `Inside: ${selectedPath}`,
-                    onSubmit: async (name) => {
-                        const trimmed = name.trim();
-                        if (!trimmed) {
-                            toast("Folder name is empty.");
-                            return;
-                        }
-                        try {
-                            const result = await createBrowseDirectory(selectedPath, trimmed);
-                            await render(result.path);
-                            toast(`Created folder "${pathLeaf(result.path)}".`);
-                        } catch (e) {
-                            console.error("[Koolook] create folder failed:", e);
-                            toast(e.message);
-                        }
-                    },
-                });
-            },
-        });
-        const choose = makeModalButton({
-            label: "Use this folder",
+        const createBtn = makeModalButton({
+            label: "Create",
             primary: true,
-            onClick: () => {
-                input.value = selectedPath || "";
-                input.title = selectedPath || "";
-                revealPathEnd();
-                updateSaveState();
-                closePicker();
+            onClick: async () => {
+                const name = nameInput.value.trim();
+                if (!name) { nameInput.focus(); return; }
+                createBtn.disabled = true;
+                cancelInline.disabled = true;
+                try {
+                    const r = await createBrowseDirectory(parentForCreate, name);
+                    restoreToolbar();
+                    // Navigate INTO the newly created folder so the user can
+                    // immediately commit or drill further.
+                    await navigate(r.path || `${parentForCreate}/${name}`);
+                } catch (e) {
+                    renderState(e.message || String(e), true);
+                    createBtn.disabled = false;
+                    cancelInline.disabled = false;
+                }
             },
         });
 
-        ({ overlay } = makeModalShell({
-            title: "Browse snapshot folder",
-            body: pickerBody,
-            actions: [cancel, newFolder, choose],
-        }));
-        render(startPath);
+        const cancelInline = makeModalButton({
+            label: "Cancel",
+            onClick: () => restoreToolbar(),
+        });
+
+        toolbar.appendChild(createBtn);
+        toolbar.appendChild(cancelInline);
+
+        nameInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); createBtn.click(); }
+            if (e.key === "Escape") { e.preventDefault(); restoreToolbar(); }
+        });
+        setTimeout(() => nameInput.focus(), 0);
     }
 
-    const cancel = makeModalButton({ label: "Close", onClick: close });
-    const reset = makeModalButton({
-        label: "Reset to default",
-        onClick: () => doSave(""),
-    });
-    const save = makeModalButton({
-        label: "Save",
-        onClick: () => doSave(input.value.trim()),
-    });
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && input.value.trim() !== savedLibraryPath) {
-            doSave(input.value.trim());
-        }
-    });
-    input.addEventListener("input", updateSaveState);
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
 
     ({ overlay } = makeModalShell({
-        title: "Snapshot library settings",
+        title,
+        titleTooltip,
         body,
-        actions: [cancel, reset, save],
+        actions: [newFolderBtn, spacer, cancelBtn, useBtn],
     }));
-    updateSaveState();
-    refresh();
-}
 
+    // Initial load — kick off with whatever path the caller supplied (or
+    // the empty string, which the server resolves to the configured
+    // library dir).
+    navigate(initialPath || "");
+}
 
 // =============================================================================
 // Context menu helper

@@ -182,24 +182,13 @@ export function ensureStyle() {
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
-.koolook-path-input-row { display: flex; gap: 8px; align-items: center; }
-.koolook-path-input-row .koolook-modal-input { flex: 1; min-width: 0; }
-.koolook-path-input-row .koolook-modal-btn { flex-shrink: 0; }
+/* Library-folder name + path pair used by the redesigned Save and Load
+   dialogs to render the inline 'Saved to' / 'Loaded from' info row.
+   Naming kept from the (deleted) Settings dialog for git-blame continuity;
+   the two classes have always rendered the same shape (leaf folder name
+   on the first line, full absolute path on the second). */
 .koolook-settings-folder-name { opacity: 0.95; font-size: 12px; font-weight: 600; color: var(--input-text, inherit); }
 .koolook-settings-folder-path { opacity: 0.68; font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; line-height: 1.35; }
-.koolook-settings-save-note { margin-top: 7px; padding: 6px 8px; border: 1px solid rgba(255, 184, 77, 0.35); border-radius: 4px; color: #ffce7a; background: rgba(255, 184, 77, 0.08); line-height: 1.35; opacity: 1; }
-.koolook-load-library-location { margin-bottom: 10px; }
-.koolook-browse-current { font-size: 11px; opacity: 0.7; margin-bottom: 8px; overflow-wrap: anywhere; line-height: 1.35; white-space: pre-line; }
-.koolook-browse-selected-name { font-size: 13px; font-weight: 700; opacity: 1; color: var(--input-text, inherit); }
-.koolook-browse-selected-path { margin-top: 2px; opacity: 0.68; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
-.koolook-browse-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-.koolook-browse-drive-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.04em; }
-.koolook-browse-nav .koolook-modal-select { flex: 1; min-width: 0; }
-.koolook-browse-list { max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
-.koolook-browse-list-label { padding: 6px 10px 4px; font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.025); border-bottom: 1px solid rgba(255,255,255,0.05); }
-.koolook-browse-row { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.05); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
-.koolook-browse-row:last-child { border-bottom: none; }
-.koolook-browse-row:hover { background: rgba(255,255,255,0.08); }
 .koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .koolook-modal-checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; opacity: 0.85; cursor: pointer; user-select: none; }
 .koolook-modal-checkbox-row input[type="checkbox"] { cursor: pointer; }
@@ -302,6 +291,69 @@ export function ensureStyle() {
 .koolook-build-tag { flex-shrink: 0; padding: 6px 10px 14px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
 .koolook-build-sha { font-size: 13px; letter-spacing: 0.06em; }
 .koolook-build-scope { display: block; font-size: 12px; margin-top: 3px; letter-spacing: 0.02em; font-family: var(--font-family, sans-serif); font-style: italic; }
+/* Folder-browse picker (issue #137, mockup section 6). Navigate-into
+   model: path input shows current location, clicking a folder row
+   drills in, the Up button climbs one level. Files appear greyed so
+   the user can confirm 'yes, this is the folder I expected' before
+   committing.
+   The picker reuses the modal shell (overlay, title, action row);
+   only the body chrome (toolbar / list / row styling) is folder-
+   picker-specific. Reminder per the recovery-list comment above:
+   this whole CSS string is a JS template literal, so do NOT use
+   backticks in comments here — they prematurely close the template
+   literal and break the entire sidebar at load. */
+.koolook-folder-picker { min-width: 480px; max-width: 600px; }
+.koolook-folder-picker-toolbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.koolook-folder-picker-up { flex-shrink: 0; }
+/* End-visible path overflow: 'direction: rtl' makes the input's
+   overflow-axis right-to-left, 'unicode-bidi: plaintext' keeps the
+   Latin path characters in natural left-to-right order. Net effect:
+   long paths clip the LEFT (leading /Users/...) and always show the
+   trailing folder name on the right. Per mockup section 6. */
+.koolook-folder-picker-path { flex: 1; min-width: 0; direction: rtl; text-align: left; unicode-bidi: plaintext; font-family: var(--font-family-mono, ui-monospace, monospace); font-size: 12px; }
+.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; background: rgba(0,0,0,0.18); }
+.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.05); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
+.koolook-folder-picker-row:last-child { border-bottom: none; }
+.koolook-folder-picker-row:hover { background: rgba(255,255,255,0.08); }
+.koolook-folder-picker-row-file { cursor: default; opacity: 0.45; }
+.koolook-folder-picker-row-file:hover { background: transparent; }
+.koolook-folder-picker-icon { font-size: 13px; line-height: 1; flex-shrink: 0; }
+.koolook-folder-picker-row:not(.koolook-folder-picker-row-file) .koolook-folder-picker-icon { filter: hue-rotate(-30deg) saturate(1.4); }
+.koolook-folder-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-folder-picker-empty { padding: 18px 14px; opacity: 0.6; font-size: 12px; font-style: italic; text-align: center; }
+.koolook-folder-picker-error { color: #ffae9a; font-style: normal; opacity: 0.9; }
+.koolook-folder-picker-spacer { flex: 1; }
+.koolook-folder-picker-newfolder-label { font-size: 11px; opacity: 0.6; flex-shrink: 0; }
+.koolook-folder-picker-newfolder-input { flex: 1; min-width: 0; }
+/* Save dialog redesign (issue #137, mockup section 2). The library row
+   at the top is purely informational — label + Open folder link sit on
+   the top edge so a long absolute path can't overlap the link. Every
+   action lives in the bottom command bar (Save to... | Cancel | Save
+   as new... | Save). */
+.koolook-snap-lib-row { padding: 8px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; background: rgba(0,0,0,0.18); margin-bottom: 12px; }
+.koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.koolook-snap-lib-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.05em; }
+.koolook-snap-open-folder-link { font-size: 11px; opacity: 0.7; color: var(--p-primary-color, rgba(120,170,255,1)); text-decoration: none; }
+.koolook-snap-open-folder-link:hover { opacity: 1; text-decoration: underline; }
+.koolook-snap-save-message { margin: 6px 0 0; }
+/* Four-state primary button (mockup section 5). The in-progress and
+   done states sit on different button classes so the colour shift
+   reads at a glance: default+dirty are primary blue (action), in-
+   progress is dimmed primary (busy), done is subtle grey (confirmed,
+   no further action expected). Disabled state is enforced via the
+   'disabled' attribute, not just the class — keyboard activation
+   short-circuits naturally. */
+.koolook-snap-save-in-progress { opacity: 0.7; cursor: progress; }
+.koolook-snap-save-done { background: rgba(120, 200, 120, 0.18); border-color: rgba(120, 200, 120, 0.5); color: #b3e3b3; opacity: 0.95; cursor: default; }
+/* Load dialog redesign (issue #137, mockup section 3). The scoped
+   recovery row sits as a sibling immediately after the preset row that
+   triggered it, so the kind badge plus timestamp meta line up below
+   the named row with no nested chrome. The inline delete state outlines
+   the row in red and the bottom Close button transforms to Yes (delete).
+   Reminder: no backticks in comments inside this CSS template literal. */
+.koolook-snapshot-scoped-recovery { margin: -1px 0 4px; padding-left: 14px; border-left: 2px solid rgba(120, 170, 255, 0.35); }
+.koolook-snapshot-scoped-recovery-row { background: rgba(80, 140, 235, 0.06); }
+.koolook-snapshot-row-pending-delete { outline: 1.5px solid rgba(220, 80, 80, 0.75); outline-offset: -1px; background: rgba(220, 80, 80, 0.06); }
 `;
     document.head.appendChild(s);
 }

@@ -748,11 +748,18 @@ export async function saveSettings(libraryPath) {
     return await resp.json();
 }
 
-// Directory browser for the Settings dialog. The server returns directory
-// entries only; the selected path is still persisted via saveSettings().
-export async function browseDirectories(path) {
-    const q = path ? `?path=${encodeURIComponent(path)}` : "";
-    const resp = await fetch(`${ROUTE_BROWSE}${q}`);
+// Directory browser used by both the legacy Settings dialog and the
+// folder picker introduced for issue #137 (mockup section 6). The default
+// response shape returns directories only; ``{files: true}`` also pulls
+// the parent's ``*.json`` children for the picker's greyed-files-for-
+// context affordance. Selected path is still persisted via
+// ``saveSettings()`` — this is a listing endpoint only.
+export async function browseDirectories(path, { files = false } = {}) {
+    const params = new URLSearchParams();
+    if (path) params.set("path", path);
+    if (files) params.set("files", "1");
+    const q = params.toString();
+    const resp = await fetch(`${ROUTE_BROWSE}${q ? `?${q}` : ""}`);
     if (!resp.ok) {
         throw new Error(`Could not browse directories: ${await readErrorReason(resp)}.`);
     }

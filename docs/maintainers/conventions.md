@@ -42,3 +42,42 @@ render Mermaid (open feature request
 the diagram only renders when viewed on GitHub or in Obsidian. So the
 working loop is "write Mermaid → push or open in Obsidian to verify
 rendering."
+
+## Modal headers: title only, no descriptive subtitle
+
+Every dialog box in the sidebar (Save, Load, Folder picker, Settings,
+Confirm, Input, …) keeps the header clean: **title text only**. An
+explanatory one-liner like *"Where snapshots are saved and loaded
+from."* below the title creates more noise than signal — if the title
+isn't self-explanatory, rephrasing the title is the fix, not adding a
+sentence underneath.
+
+Where the gloss is genuinely useful:
+
+- **Title hover tooltip** — pass it as `titleTooltip` to
+  `makeModalShell` / the dialog's caller-facing API. The user discovers
+  it on mouseover when they need it; clutter-free otherwise.
+- **Info icon** beside the title — same idea, more discoverable but
+  more visual weight. Use only when the gloss is genuinely needed for
+  first-time use (rare).
+
+What is **not** a "descriptive subtitle" and stays as-is:
+
+- **Functional info rows** in the dialog body — the "Saved to: `<path>`
+  · Change…" library-path line in Save / Load. These are part of the
+  *interaction surface*, not the header, and the snapshot-dialogs
+  redesign mockup explicitly puts them inside the body card.
+- **Subtitles that show live state** — async-loading library info, etc.
+
+Why: dialogs need to read at a glance. The mockups in
+[`docs/designs/`](../designs/) treat the header as a single line for
+exactly this reason; implementations must match. The first time the
+maintainer flagged this was the snapshot folder picker rendering
+"Where snapshots are saved and loaded from." as a subtitle, which the
+mockup did not show.
+
+How to apply when implementing or updating a dialog: pass the title
+text as the visible header and route any explanatory copy to
+`titleTooltip`. If a dialog helper doesn't accept `titleTooltip` yet,
+plumb it through (see `makeModalShell` in `web/sidebar/modals.js` for
+the pattern).

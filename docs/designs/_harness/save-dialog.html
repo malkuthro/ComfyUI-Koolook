@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Save dialog harness — Koolook snapshot dialogs (#137)</title>
+<style>
+    :root { color-scheme: dark; }
+    html, body {
+        margin: 0;
+        background: #1e1e1f;
+        color: #d6d8db;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        min-height: 100%;
+    }
+    :root {
+        --comfy-menu-bg: #2a2a2a;
+        --comfy-input-bg: rgba(0,0,0,0.3);
+        --border-color: rgba(255,255,255,0.15);
+        --input-text: #d6d8db;
+        --p-primary-color: rgba(100,150,255,0.5);
+    }
+    .harness-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .harness-title { font-size: 16px; font-weight: 600; margin-right: auto; }
+    .harness-title small { opacity: 0.55; font-weight: 400; font-size: 12px; }
+    .harness-header button {
+        padding: 6px 12px;
+        background: #353636;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 4px;
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .harness-header button:hover { background: #454646; }
+    .harness-stage { padding: 32px 24px; min-height: 60vh; }
+</style>
+</head>
+<body>
+
+<div class="harness-header">
+    <div class="harness-title">
+        Save dialog harness
+        <small>commit 3 of issue #137 — diff against snapshot-dialogs.html §2</small>
+    </div>
+    <button id="btn-tracked">Tracked preset (Default)</button>
+    <button id="btn-untracked">Untracked (Save as new)</button>
+    <button id="btn-dirty">Dirty (folder changed)</button>
+    <button id="btn-saving">In-progress (Saving…)</button>
+    <button id="btn-done">Done (Saved)</button>
+</div>
+
+<div class="harness-stage" id="stage"></div>
+
+<script type="module">
+    // Wrap the harness body in an async IIFE with a visible catch so any
+    // import / runtime error surfaces in the DOM rather than vanishing
+    // silently into an unhandled top-level await rejection.
+    (async () => {
+    const BUST = "?bust=" + Date.now();
+    const { ensureStyle } = await import("../../../web/sidebar/constants.js" + BUST);
+    const { showSaveSnapshotDialog } = await import("../../../web/sidebar/modals.js" + BUST);
+    ensureStyle();
+
+    // ---------------------------------------------------------------------
+    // Stub state mirroring the real Save flow's capability surface.
+    // ---------------------------------------------------------------------
+    let trackedPreset = "Koolook_v03";
+    let libraryPath = "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets";
+    const FS = {
+        [libraryPath]: { dirs: [{ name: "subfolder", path: libraryPath + "/subfolder" }], files: [{ name: "Koolook_v03.json" }] },
+    };
+
+    const capabilities = {
+        getCurrentPresetName: () => trackedPreset,
+        setCurrentPresetName: (n) => { trackedPreset = n; },
+        presetExists: async (name) => false,
+        writePreset: async (name, snap) => new Promise(r => setTimeout(r, 400)),
+        gatherSnapshot: (name) => ({ name, picks: [], workflows: [] }),
+        sanitizeName: (s) => (s || "").replace(/[/\\\\]/g, "_").trim(),
+        getLibraryInfo: async () => ({ path: libraryPath, savedLibraryPath: libraryPath }),
+        saveSettings: async (p) => {
+            libraryPath = p;
+            return { savedLibraryPath: p, resolvedPath: p, source: "settings" };
+        },
+        browseDirectories: async (p, { files } = {}) => {
+            const target = p || libraryPath;
+            const node = FS[target] || { dirs: [], files: [] };
+            return {
+                path: target,
+                parentPath: target.split("/").slice(0, -1).join("/") || "",
+                roots: [{ name: "/", path: "/" }],
+                dirs: node.dirs,
+                files: files ? node.files : [],
+            };
+        },
+        createBrowseDirectory: async (p, n) => ({ name: n, path: `${p}/${n}` }),
+        revealPresetFolder: async () => ({ path: libraryPath }),
+        markStateSaved: () => {},
+        onToast: (m) => console.log("[harness toast]", m),
+    };
+
+    function mount(opts = {}) {
+        // Tear down any existing dialog so re-clicks don't stack.
+        document.querySelectorAll(".koolook-modal-overlay").forEach((o) => o.remove());
+
+        if (opts.untracked) trackedPreset = null;
+        else trackedPreset = "Koolook_v03";
+
+        if (opts.dirty) {
+            // Preset the library to the "original" path; user "switched" to
+            // a new path via Save to... mid-dialog → dirty.
+            libraryPath = "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets";
+        } else {
+            libraryPath = "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets";
+        }
+
+        showSaveSnapshotDialog(capabilities);
+
+        if (opts.dirty) {
+            // After mount, simulate the user picking a different library.
+            setTimeout(() => {
+                const fakeNewPath = "/Volumes/Shared/koolook-shared-presets";
+                // Force the dirty state by hand: the real flow goes through
+                // showFolderPicker → saveSettings → renderLibRow. Here we
+                // skip the picker and call saveSettings directly to make
+                // the dirty layout reproducible from a button click.
+                capabilities.saveSettings(fakeNewPath).then(() => {
+                    // The dialog already captured the original path on
+                    // first getLibraryInfo() — refresh the in-dialog state.
+                    const libName = document.querySelector(".koolook-snap-lib-row .koolook-settings-folder-name");
+                    const libPath = document.querySelector(".koolook-snap-lib-row .koolook-settings-folder-path");
+                    if (libName) libName.textContent = "koolook-shared-presets";
+                    if (libPath) libPath.textContent = fakeNewPath;
+                    // Trigger the Save dialog's internal state update by
+                    // simulating a fresh getLibraryInfo() resolution. The
+                    // simplest way is to directly mutate the primary
+                    // button — for harness purposes only.
+                    const primary = [...document.querySelectorAll(".koolook-modal-actions button")].find(b => /^Save/.test(b.textContent));
+                    if (primary) {
+                        primary.textContent = "Save to new folder";
+                        primary.title = "Write into " + fakeNewPath + ".";
+                    }
+                });
+            }, 100);
+        }
+
+        if (opts.saving || opts.done) {
+            setTimeout(() => {
+                const primary = [...document.querySelectorAll(".koolook-modal-actions button")].find(b => /^Save/.test(b.textContent));
+                if (!primary) return;
+                primary.classList.remove("koolook-modal-btn-primary", "koolook-snap-save-done");
+                if (opts.saving) {
+                    primary.textContent = "Saving…";
+                    primary.classList.add("koolook-modal-btn-primary", "koolook-snap-save-in-progress");
+                    primary.disabled = true;
+                } else if (opts.done) {
+                    primary.textContent = "Saved";
+                    primary.classList.add("koolook-snap-save-done");
+                    primary.disabled = true;
+                }
+            }, 80);
+        }
+    }
+
+    document.getElementById("btn-tracked").addEventListener("click", () => mount());
+    document.getElementById("btn-untracked").addEventListener("click", () => mount({ untracked: true }));
+    document.getElementById("btn-dirty").addEventListener("click", () => mount({ dirty: true }));
+    document.getElementById("btn-saving").addEventListener("click", () => mount({ saving: true }));
+    document.getElementById("btn-done").addEventListener("click", () => mount({ done: true }));
+
+    // Auto-mount the default state.
+    mount();
+    })().catch((e) => {
+        const stage = document.getElementById("stage");
+        if (stage) {
+            stage.innerHTML =
+                "<pre style='color:#ffae9a; padding:18px; white-space:pre-wrap;'>" +
+                "Harness boot failed:\n" + (e && e.stack || e && e.message || String(e)) +
+                "</pre>";
+        }
+        console.error("[harness] boot failed", e);
+    });
+</script>
+
+</body>
+</html>

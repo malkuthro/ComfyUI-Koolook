@@ -59,6 +59,40 @@ _DIRNAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+$")
 _HIDDEN_LIST_PREFIXES = ("_autosave_",)
 
 
+def _latest_autosave_mtime(autosave_dir: Path, named_mtime: float) -> float | None:
+    """Returns the newest recovery-file mtime inside ``autosave_dir`` if
+    strictly newer than ``named_mtime``, else ``None``.
+
+    Scans ``periodic.json`` and every ``pre_load_*.json``. Powers the Load
+    dialog's "newer auto-save available" affordance — the dialog needs to
+    surface the freshest recovery file regardless of which mechanism wrote
+    it (the periodic timer vs. an explicit pre-load capture).
+    """
+    newest: float | None = None
+    try:
+        st = (autosave_dir / "periodic.json").stat()
+        newest = st.st_mtime
+    except OSError:
+        pass
+    try:
+        for entry in autosave_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if not entry.name.startswith("pre_load_") or not entry.name.endswith(".json"):
+                continue
+            try:
+                pst = entry.stat()
+            except OSError:
+                continue
+            if newest is None or pst.st_mtime > newest:
+                newest = pst.st_mtime
+    except OSError:
+        pass
+    if newest is not None and newest > named_mtime:
+        return newest
+    return None
+
+
 def _resolve_default_dir() -> Path:
     """Resolve the default preset directory under ComfyUI's user folder.
 
@@ -196,6 +230,30 @@ def _list_child_dirs(path: Path) -> list[dict]:
             out.append({"name": entry.name, "path": str(entry)})
         except OSError:
             continue
+    out.sort(key=lambda r: r["name"].lower())
+    return out
+
+
+def _list_child_files(path: Path) -> list[dict]:
+    """List child *.json files in ``path``.
+
+    Powers the folder picker's "yes, this is the folder I expected"
+    affordance (mockup section 6) — files are rendered greyed so the user
+    can visually confirm the listing without selecting one. Restricted to
+    JSON because the picker is exclusively used to choose a snapshot
+    library folder; surfacing non-snapshot files would be misleading
+    (they cannot become preset library content).
+    """
+    out = []
+    for entry in path.iterdir():
+        try:
+            if not entry.is_file():
+                continue
+            if not entry.name.lower().endswith(".json"):
+                continue
+        except OSError:
+            continue
+        out.append({"name": entry.name})
     out.sort(key=lambda r: r["name"].lower())
     return out
 
@@ -369,11 +427,19 @@ def register_routes(routes) -> None:
     async def browse_dirs(request):
         """List child directories for the Settings dialog's path picker.
 
-        This intentionally returns directory names only, not files. The
-        selected path is still saved through the existing settings endpoint,
-        so the library-path resolution and write checks stay centralized.
+        With ``?files=1`` also returns child ``*.json`` files — used by the
+        redesigned folder picker (issue #137, mockup section 6) to render a
+        greyed "this is the folder I expected" affordance below the
+        directories. Default response shape stays directory-only so any
+        existing callers (legacy Settings dialog) continue to work
+        unchanged.
+
+        The selected path is still saved through the existing settings
+        endpoint, so the library-path resolution and write checks stay
+        centralized.
         """
         path = _browse_start_path(request.query.get("path", "").strip())
+        include_files = request.query.get("files", "").strip() in {"1", "true", "yes"}
         try:
             resolved = path.resolve(strict=False)
         except OSError as exc:
@@ -385,18 +451,20 @@ def register_routes(routes) -> None:
         roots = [{"name": str(root), "path": str(root)} for root in _browse_roots()]
         try:
             dirs = _list_child_dirs(resolved)
+            files = _list_child_files(resolved) if include_files else []
         except OSError as exc:
             raise web.HTTPInternalServerError(
                 reason=f"Could not list directories: {exc}"
             ) from exc
-        return web.json_response(
-            {
-                "path": str(resolved),
-                "parentPath": str(parent) if parent else "",
-                "roots": roots,
-                "dirs": dirs,
-            }
-        )
+        body = {
+            "path": str(resolved),
+            "parentPath": str(parent) if parent else "",
+            "roots": roots,
+            "dirs": dirs,
+        }
+        if include_files:
+            body["files"] = files
+        return web.json_response(body)
 
     @routes.post("/koolook/presets/browse/new-folder")
     async def create_browse_dir(request):
@@ -524,24 +592,25 @@ def register_routes(routes) -> None:
                     "mtime": stat.st_mtime,
                     "size": stat.st_size,
                 }
-                # Library-root rows only: stat the matching `<base>_autosave/
-                # periodic.json` and surface its mtime when strictly newer
-                # than the named file. Powers the Load dialog's inline
-                # "Newer auto-save available — restore?" affordance — the
-                # autosave UX needs the system to proactively offer the
-                # recovery copy when the user's last manual save is stale,
-                # rather than burying it inside the Recovery disclosure.
-                # One extra stat per row, no read — cheap even on large
-                # libraries.
+                # Library-root rows only: scan the matching
+                # `<base>_autosave/` subfolder for the newest recovery file
+                # (``periodic.json`` and every ``pre_load_*.json``) and
+                # surface its mtime when strictly newer than the named
+                # file. Powers the Load dialog's inline "Newer auto-save
+                # available — restore?" affordance — the autosave UX needs
+                # the system to proactively offer the recovery copy when
+                # the user's last manual save is stale, rather than
+                # burying it inside the Recovery disclosure. Issue #137:
+                # before this we only considered ``periodic.json``, which
+                # missed cases where the user's most recent Load wrote a
+                # fresher ``pre_load_*.json`` snapshot. A handful of stats
+                # per row, no reads — still cheap on large libraries.
                 if not subdir_q:
                     base_name = entry.name[: -len(".json")]
-                    auto_path = target_dir / f"{base_name}_autosave" / "periodic.json"
-                    try:
-                        a_stat = auto_path.stat()
-                        if a_stat.st_mtime > stat.st_mtime:
-                            row["latestAutosaveMtime"] = a_stat.st_mtime
-                    except OSError:
-                        pass
+                    autosave_dir = target_dir / f"{base_name}_autosave"
+                    newest = _latest_autosave_mtime(autosave_dir, stat.st_mtime)
+                    if newest is not None:
+                        row["latestAutosaveMtime"] = newest
                 out.append(row)
         except OSError as exc:
             raise web.HTTPInternalServerError(
