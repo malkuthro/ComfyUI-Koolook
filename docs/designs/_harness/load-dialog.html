@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Load dialog harness — Koolook snapshot dialogs (#137)</title>
+<style>
+    :root { color-scheme: dark; }
+    html, body {
+        margin: 0;
+        background: #1e1e1f;
+        color: #d6d8db;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        min-height: 100%;
+    }
+    :root {
+        --comfy-menu-bg: #2a2a2a;
+        --comfy-input-bg: rgba(0,0,0,0.3);
+        --border-color: rgba(255,255,255,0.15);
+        --input-text: #d6d8db;
+        --p-primary-color: rgba(100,150,255,0.5);
+    }
+    .harness-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .harness-title { font-size: 16px; font-weight: 600; margin-right: auto; }
+    .harness-title small { opacity: 0.55; font-weight: 400; font-size: 12px; }
+    .harness-header button {
+        padding: 6px 12px;
+        background: #353636;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 4px;
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .harness-header button:hover { background: #454646; }
+    .harness-stage { padding: 32px 24px; min-height: 60vh; }
+</style>
+</head>
+<body>
+
+<div class="harness-header">
+    <div class="harness-title">
+        Load dialog harness
+        <small>commit 4 of issue #137 — diff against snapshot-dialogs.html §3</small>
+    </div>
+    <button id="btn-default">Default</button>
+    <button id="btn-empty">Empty library</button>
+    <button id="btn-scoped">Scoped recovery (click preset with newer autosave)</button>
+    <button id="btn-pending-delete">Pending delete (× on a row)</button>
+</div>
+
+<div class="harness-stage" id="stage"></div>
+
+<script type="module">
+    (async () => {
+    const BUST = "?bust=" + Date.now();
+    const { ensureStyle } = await import("../../../web/sidebar/constants.js" + BUST);
+    const { showLoadSnapshotDialog } = await import("../../../web/sidebar/modals.js" + BUST);
+    ensureStyle();
+
+    const LIBRARY = "/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets";
+
+    // Two preset rows: one has a newer auto-save (latestAutosaveMtime >
+    // mtime), one does not. Drives the scoped-recovery routing test.
+    const PRESETS = [
+        {
+            fileName: "Koolook_v03.json",
+            displayName: "Koolook_v03",
+            mtime: 1715518320,
+            latestAutosaveMtime: 1715520420, // newer
+            pickCount: 11,
+            workflowCount: 6,
+        },
+        {
+            fileName: "starter.json",
+            displayName: "starter",
+            mtime: 1715000000,
+            pickCount: 3,
+            workflowCount: 2,
+        },
+    ];
+
+    const AUTOSAVES = [
+        {
+            dir: "Koolook_v03_autosave",
+            fileName: "periodic.json",
+            displayName: "Periodic auto-save · Koolook_v03",
+            kind: "periodic",
+            mtime: 1715520400,
+            pickCount: 11,
+            workflowCount: 6,
+        },
+        {
+            dir: "Koolook_v03_autosave",
+            fileName: "pre_load_2026-05-12T14-47-22.json",
+            displayName: "Pre-load auto-save · Koolook_v03",
+            kind: "pre_load",
+            mtime: 1715520420, // newest
+            pickCount: 14,
+            workflowCount: 7,
+        },
+    ];
+
+    const capabilities = {
+        listPresets: async () => harness.empty ? [] : PRESETS,
+        readPreset: async () => ({ kind: "koolook-snapshot", picks: [], workflows: [] }),
+        deletePreset: async (n) => new Promise(r => setTimeout(r, 200)),
+        applySnapshot: async () => ({ picksOk: true, workflowsOk: true }),
+        setCurrentPresetName: () => {},
+        getCurrentPresetName: () => null,
+        getLibraryInfo: async () => ({ path: LIBRARY }),
+        saveSettings: async (p) => ({ savedLibraryPath: p, resolvedPath: p, source: "settings" }),
+        browseDirectories: async (p) => ({
+            path: p || LIBRARY,
+            parentPath: (p || LIBRARY).split("/").slice(0, -1).join("/") || "",
+            roots: [{ name: "/", path: "/" }],
+            dirs: [],
+            files: [{ name: "Koolook_v03.json" }, { name: "starter.json" }],
+        }),
+        createBrowseDirectory: async (p, n) => ({ name: n, path: `${p}/${n}` }),
+        writePreLoadAutosave: async () => "pre_load_HARNESS.json",
+        markStateSaved: () => {},
+        markStateAutosaved: () => {},
+        listAutosaves: async () => AUTOSAVES,
+        revealPresetFolder: async () => ({ path: LIBRARY }),
+        onToast: (m) => console.log("[harness toast]", m),
+    };
+
+    const harness = { empty: false };
+
+    function mount(opts = {}) {
+        document.querySelectorAll(".koolook-modal-overlay").forEach((o) => o.remove());
+        harness.empty = !!opts.empty;
+        showLoadSnapshotDialog(capabilities);
+        if (opts.scoped) {
+            // Click the first preset (which has a newer autosave) to
+            // trigger the scoped-recovery expansion.
+            setTimeout(() => {
+                const rows = [...document.querySelectorAll(".koolook-snapshot-row-info")];
+                rows[0]?.click();
+            }, 120);
+        }
+        if (opts.pendingDelete) {
+            // Click the × on the first preset row to arm inline delete.
+            setTimeout(() => {
+                const dels = [...document.querySelectorAll(".koolook-snapshot-row-btn-danger")];
+                dels[0]?.click();
+            }, 120);
+        }
+    }
+
+    document.getElementById("btn-default").addEventListener("click", () => mount());
+    document.getElementById("btn-empty").addEventListener("click", () => mount({ empty: true }));
+    document.getElementById("btn-scoped").addEventListener("click", () => mount({ scoped: true }));
+    document.getElementById("btn-pending-delete").addEventListener("click", () => mount({ pendingDelete: true }));
+
+    mount();
+    })().catch((e) => {
+        const stage = document.getElementById("stage");
+        if (stage) {
+            stage.innerHTML =
+                "<pre style='color:#ffae9a; padding:18px; white-space:pre-wrap;'>" +
+                "Harness boot failed:\n" + (e && e.stack || e && e.message || String(e)) +
+                "</pre>";
+        }
+        console.error("[harness] boot failed", e);
+    });
+</script>
+
+</body>
+</html>

@@ -1437,11 +1437,39 @@ export function showSaveSnapshotDialog({
 }
 
 // =============================================================================
-// Load flow.
+// Load flow — redesigned per issue #137, mockup section 3.
 //
-// Single dialog with the preset list. Each row click loads (with confirm),
-// each row's × button deletes (with confirm). Top of the dialog shows the
-// current library path so the user can see where they're loading from.
+// Single dialog. Layout:
+//
+//   [ Load snapshot                                            ]
+//   [ Loaded from                            Open folder ↗     ]
+//   [ <leaf folder>                                            ]
+//   [ <full path>                                              ]
+//   [                                                          ]
+//   [ <preset row>             [×]                             ]
+//   [ <preset row>             [×]                             ]
+//   [ ↓ when a preset has a newer autosave, clicking it expands ]
+//   [   exactly ONE scoped recovery row beneath that preset:   ]
+//   [   [Pre-load badge] May 12 14:47 · 11 picks · 6 wf        ]
+//   [                                                          ]
+//   [ [ Load from… ]                              [ Close ]    ]
+//
+// Click flow:
+//   * Preset row, no newer autosave → load directly (with pre-load backup).
+//   * Preset row WITH a newer autosave → scope the recovery section to that
+//     preset alone, render one row (newest of periodic / pre_load_*),
+//     insert it directly below the clicked preset. The user then chooses:
+//     click the named row again to load named, or click the recovery row
+//     to load the autosave.
+//   * Recovery row → restore that autosave (with pre-load backup).
+//
+// Delete (×) is inline: clicking × outlines the target row red and the
+// command-bar Close button transforms to "Yes (delete)". A second click on
+// Yes commits; Escape cancels and reverts.
+//
+// Load from… opens the folder picker (commit 2). On Use this folder, the
+// dialog persists the path via saveSettings() and refreshes the preset
+// listing.
 //
 // Load success → updates the tracker so a subsequent Save defaults to
 // overwriting that preset.
@@ -1454,6 +1482,9 @@ export function showLoadSnapshotDialog({
     setCurrentPresetName,
     getCurrentPresetName,
     getLibraryInfo,
+    saveSettings,
+    browseDirectories,
+    createBrowseDirectory,
     writePreLoadAutosave,
     markStateSaved,
     markStateAutosaved,
@@ -1463,59 +1494,65 @@ export function showLoadSnapshotDialog({
 }) {
     const toast = onToast || (() => {});
     const body = document.createElement("div");
-
-    // Captured from `getLibraryInfo()` resolution below — the recovery
-    // section uses it to render full subdir paths (`<library>/<subdir>`)
-    // under each group header, matching the library section's title-plus-
-    // path layout. Empty string is the not-yet-resolved sentinel; group
-    // headers fall back to no subtitle in that case.
     let libraryPath = "";
 
-    // Header row: library title + path (rendered by `renderLibraryLocation`
-    // for visual parity with the recovery group headers below) on the
-    // left, `📂 Open` button on the right. Same flex layout (`flex-start`
-    // alignment + `space-between` justification) as group headers so both
-    // sections feel like one consistent UI.
-    const pathRow = document.createElement("div");
-    pathRow.className = "koolook-load-library-row";
-    pathRow.style.display = "flex";
-    pathRow.style.alignItems = "flex-start";
-    pathRow.style.justifyContent = "space-between";
-    pathRow.style.gap = "8px";
-    const pathLine = document.createElement("div");
-    pathLine.className = "koolook-load-library-location";
-    pathLine.style.flex = "1";
-    pathLine.style.minWidth = "0";
-    pathLine.textContent = "Library: (loading…)";
-    pathRow.appendChild(pathLine);
-    if (typeof revealPresetFolder === "function") {
-        const openLibraryBtn = document.createElement("button");
-        // `koolook-snapshot-row-btn` matches the size + styling of the
-        // group-header Open button in the recovery section, so both
-        // surfaces look like the same control instead of one large
-        // (`koolook-modal-button`) and one small (row-btn) variant.
-        openLibraryBtn.className = "koolook-snapshot-row-btn";
-        openLibraryBtn.textContent = "📂 Open";
-        openLibraryBtn.title = "Open the snapshot library folder in your file manager";
-        openLibraryBtn.style.flex = "0 0 auto";
-        openLibraryBtn.addEventListener("click", async () => {
-            try {
-                const r = await revealPresetFolder();
-                toast(`Opened: ${r.path}`);
-            } catch (e) {
-                console.error("[Koolook] reveal failed:", e);
-                toast(`Could not open library folder: ${e.message}`);
-            }
-        });
-        pathRow.appendChild(openLibraryBtn);
-    }
-    body.appendChild(pathRow);
+    // ---- Library row (mockup section 3, "Loaded from") ----
+    // Pure information row at the top. Label + Open folder link sit on the
+    // top edge so a long absolute path can never cover the link area.
+    const libRow = document.createElement("div");
+    libRow.className = "koolook-snap-lib-row";
+
+    const libRowTop = document.createElement("div");
+    libRowTop.className = "koolook-snap-lib-row-top";
+    const libLabel = document.createElement("span");
+    libLabel.className = "koolook-snap-lib-label";
+    libLabel.textContent = "Loaded from";
+    libRowTop.appendChild(libLabel);
+
+    const openFolderLink = document.createElement("a");
+    openFolderLink.className = "koolook-snap-open-folder-link";
+    openFolderLink.href = "#";
+    openFolderLink.textContent = "Open folder ↗";
+    openFolderLink.title = "Open the snapshot library folder in your file manager";
+    openFolderLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (typeof revealPresetFolder !== "function") return;
+        try {
+            const r = await revealPresetFolder();
+            toast(`Opened: ${r.path}`);
+        } catch (err) {
+            console.error("[Koolook] reveal failed:", err);
+            toast(`Could not open library folder: ${err.message}`);
+        }
+    });
+    libRowTop.appendChild(openFolderLink);
+    libRow.appendChild(libRowTop);
+
+    const libName = document.createElement("div");
+    libName.className = "koolook-settings-folder-name";
+    libName.textContent = "Library folder: (loading…)";
+    libRow.appendChild(libName);
+
+    const libPath = document.createElement("div");
+    libPath.className = "koolook-settings-folder-path";
+    libRow.appendChild(libPath);
+
+    body.appendChild(libRow);
 
     const listWrap = document.createElement("div");
     body.appendChild(listWrap);
 
     let overlay;
     const close = () => overlay.remove();
+
+    // Per-dialog state. ``pendingDelete`` holds the preview whose × was
+    // clicked and the row element currently outlined red; the Close
+    // button's label flips to "Yes (delete)" until the user confirms or
+    // Escape cancels. ``scopedRecoveryRow`` holds the inline single-row
+    // recovery widget that opens beneath a preset row that has a newer
+    // autosave — exactly one is shown at a time (mockup section 3).
+    let pendingDelete = null;
+    let scopedRecoveryRow = null;
 
     function renderEmpty(text) {
         const el = document.createElement("div");
@@ -1531,6 +1568,7 @@ export function showLoadSnapshotDialog({
         try { previews = await listPresets(); }
         catch (e) { previews = []; }
         listWrap.innerHTML = "";
+        clearScopedRecovery();
         if (previews.length === 0) {
             listWrap.appendChild(renderEmpty("No presets in this library yet. Use Save to create one."));
             return;
@@ -1552,7 +1590,7 @@ export function showLoadSnapshotDialog({
             meta.className = "koolook-snapshot-row-meta";
             meta.textContent = formatPreviewMeta(p);
             info.appendChild(meta);
-            info.addEventListener("click", () => promptApply(p));
+            info.addEventListener("click", () => onPresetClick(p, row));
             row.appendChild(info);
 
             const actions = document.createElement("div");
@@ -1561,7 +1599,7 @@ export function showLoadSnapshotDialog({
             delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
             delBtn.textContent = "×";
             delBtn.title = `Delete "${p.displayName}"`;
-            delBtn.addEventListener("click", (e) => { e.stopPropagation(); promptDelete(p); });
+            delBtn.addEventListener("click", (e) => { e.stopPropagation(); armDelete(p, row); });
             actions.appendChild(delBtn);
             row.appendChild(actions);
 
@@ -1570,13 +1608,11 @@ export function showLoadSnapshotDialog({
         listWrap.appendChild(list);
     }
 
-    // Action helpers. Extracted from the in-line `onConfirm` bodies so
-    // both the standard load flow AND the autosave-newer YES/NO choice
-    // modal can dispatch the same pre-load-autosave + applySnapshot +
-    // tracker-rebase + partial-failure logic without duplicating ~30
-    // lines per call site. `close()` here refers to the OUTER Load
-    // Snapshot dialog's overlay — closures over `close` from the
-    // enclosing `showLoadSnapshotDialog` scope.
+    // Action helpers. Backup-chain logic is identical to the pre-#137
+    // version — what changes is the *routing* into these helpers (no
+    // more "Replace current state?" confirm modal for the unambiguous
+    // case, and no YES/NO choice modal at all). ``close()`` here refers
+    // to the OUTER Load Snapshot dialog's overlay.
     async function doNamedLoad(preview) {
         try {
             // Defensive auto-save BEFORE any destructive write — see
@@ -1697,346 +1733,242 @@ export function showLoadSnapshotDialog({
         }
     }
 
-    function promptApply(preview) {
-        // When the corresponding `<base>_autosave/periodic.json` is
-        // strictly newer than the named save, route to the YES/NO
-        // choice modal so the user can pick which version to load
-        // without navigating the Recovery disclosure or having to
-        // mentally reason about which timestamp is newer. The standard
-        // single-button confirm is reserved for rows where there's no
-        // newer auto-save (the unambiguous case).
+    // ---- Click routing ----
+    // Mockup section 3: clicking a preset that has a newer autosave does
+    // NOT load it; it expands a single scoped recovery row beneath the
+    // clicked preset. The user then re-clicks the named row (to load
+    // named) or clicks the recovery row (to load the autosave). Presets
+    // with no newer autosave skip the choice entirely — direct load.
+    function onPresetClick(preview, rowEl) {
+        // Cancel any pending delete-confirm on a different row.
+        if (pendingDelete && pendingDelete.preview.fileName !== preview.fileName) {
+            cancelDelete();
+        }
+        // A second click on the SAME preset that already has its scoped
+        // recovery row open commits the named load — the user has seen
+        // both options and is choosing the named version.
+        if (scopedRecoveryRow && scopedRecoveryRow.parentPreview.fileName === preview.fileName) {
+            doNamedLoad(preview);
+            return;
+        }
+        clearScopedRecovery();
         if (typeof preview.latestAutosaveMtime === "number" &&
             typeof preview.mtime === "number" &&
             preview.latestAutosaveMtime > preview.mtime) {
-            promptApplyChoice(preview);
+            insertScopedRecovery(preview, rowEl);
             return;
         }
-        showConfirmModal({
-            title: "Replace current state?",
-            message:
-                `Loading "${preview.displayName}" will replace your current ` +
-                `picks and workflows with the snapshot's contents (` +
-                `${formatPreviewMeta(preview)}). A pre-load auto-save of your ` +
-                `current state will be written first as a recovery point.`,
-            confirmLabel: "Load preset",
-            danger: true,
-            onConfirm: () => doNamedLoad(preview),
-        });
+        // No newer autosave — direct load. The dialog already says
+        // "Load snapshot" at the title; a second "Replace current state?"
+        // confirm modal is the kind of extra friction the redesign drops.
+        doNamedLoad(preview);
     }
 
-    // YES/NO choice modal — appears when the row's auto-save is newer
-    // than its named save. Built directly via `makeModalShell` (not
-    // `showConfirmModal`) because we need ESC / overlay click to mean
-    // "cancel both" rather than "fire one of the actions": showConfirm
-    // would bind one of the two paths to its cancel handler, which
-    // also runs on Escape. Two affirmative buttons, one neutral
-    // dismissal — this layout requires the direct shell.
-    function promptApplyChoice(preview) {
-        const namedStamp = formatLocalStamp(new Date(preview.mtime * 1000));
-        const autoStamp = formatLocalStamp(new Date(preview.latestAutosaveMtime * 1000));
+    // Build a single inline row representing the newest recovery file
+    // for the clicked preset, slotted in the DOM directly after the
+    // preset row. Loading state shows briefly while listAutosaves()
+    // resolves; error/empty states render in place so the user knows
+    // the affordance opened but yielded nothing.
+    async function insertScopedRecovery(preview, anchorRow) {
+        const slot = document.createElement("div");
+        slot.className = "koolook-snapshot-scoped-recovery";
+        slot.appendChild(renderEmpty("Loading recovery…"));
+        anchorRow.insertAdjacentElement("afterend", slot);
+        scopedRecoveryRow = { el: slot, parentPreview: preview };
 
-        const body = document.createElement("div");
-
-        const intro = document.createElement("div");
-        intro.className = "koolook-modal-message";
-        intro.textContent =
-            `Loading "${preview.displayName}" will replace your current ` +
-            `picks and workflows. A pre-load auto-save of your current ` +
-            `state will be written first as a recovery point.`;
-        body.appendChild(intro);
-
-        const compareHead = document.createElement("div");
-        compareHead.className = "koolook-modal-message";
-        compareHead.style.marginTop = "10px";
-        compareHead.textContent = "Auto-save is NEWER than the saved version:";
-        body.appendChild(compareHead);
-
-        const compareList = document.createElement("ul");
-        compareList.style.margin = "4px 0 0 18px";
-        compareList.style.padding = "0";
-        compareList.style.fontSize = "12px";
-        const liNamed = document.createElement("li");
-        liNamed.textContent = `Saved version — ${namedStamp}`;
-        const liAuto = document.createElement("li");
-        liAuto.textContent = `Auto-save — ${autoStamp}`;
-        compareList.appendChild(liNamed);
-        compareList.appendChild(liAuto);
-        body.appendChild(compareList);
-
-        const question = document.createElement("div");
-        question.className = "koolook-modal-message";
-        question.style.marginTop = "10px";
-        question.textContent =
-            "Do you want to load the auto-saved version? " +
-            "(NO loads the saved version. Press Esc to cancel.)";
-        body.appendChild(question);
-
-        let shell;
-        const noBtn = makeModalButton({
-            label: "NO",
-            onClick: () => { shell.close(); doNamedLoad(preview); },
-        });
-        const yesBtn = makeModalButton({
-            label: "YES — load auto-save",
-            primary: true,
-            onClick: () => {
-                shell.close();
-                doAutosaveRestore({
-                    dir: `${preview.fileName}_autosave`,
-                    fileName: "periodic",
-                });
-            },
-        });
-        shell = makeModalShell({
-            title: "Replace current state?",
-            body,
-            actions: [noBtn, yesBtn],
-        });
-    }
-
-    function promptDelete(preview) {
-        showConfirmModal({
-            title: "Delete preset?",
-            message: `"${preview.displayName}" will be removed from the library. This cannot be undone.`,
-            confirmLabel: "Delete",
-            danger: true,
-            onConfirm: async () => {
-                try {
-                    await deletePreset(preview.fileName);
-                    // If the deleted preset was the one tracked as
-                    // "currently loaded," clear the tracker. Otherwise
-                    // the next Save would offer to "Save over '<deleted>'"
-                    // and silently re-create the file.
-                    if (typeof getCurrentPresetName === "function" &&
-                        getCurrentPresetName() === preview.fileName) {
-                        setCurrentPresetName(null);
-                    }
-                    toast(`Deleted "${preview.displayName}".`);
-                    await refresh();
-                } catch (e) {
-                    console.error("[Koolook] preset delete failed:", e);
-                    toast(`Could not delete "${preview.displayName}": ${e.message}`);
-                }
-            },
-        });
-    }
-
-    // ---- Recovery auto-saves section (collapsible) ----
-    // Closes the gap from the v2 layout: pre-load and periodic autosaves
-    // live in `<preset>_autosave/` subfolders, deliberately hidden from the
-    // main Load list to keep that list clean. But "hidden" can't mean
-    // "unreachable" — the whole point of pre-load autosave is recovery.
-    // This section is the explicit recovery path: lazy-loaded on first
-    // expand, grouped by subdir, click-to-restore (with the same pre-load
-    // protection the regular Load flow uses).
-    const recoverySection = document.createElement("details");
-    recoverySection.className = "koolook-recovery-section";
-    const recoverySummary = document.createElement("summary");
-    recoverySummary.className = "koolook-recovery-summary";
-    // Native `<details>` already renders a disclosure triangle on
-    // `<summary>`. Don't add a second arrow character here — the previous
-    // `▸ / ▾` text duplicated the native marker and the user saw two
-    // arrows side-by-side.
-    recoverySummary.textContent = "Recovery auto-saves";
-    recoverySection.appendChild(recoverySummary);
-    const recoveryList = document.createElement("div");
-    recoveryList.className = "koolook-recovery-list";
-    recoverySection.appendChild(recoveryList);
-
-    function promptDeleteAutosave(item) {
-        showConfirmModal({
-            title: "Delete recovery auto-save?",
-            message: `"${item.dir}/${item.fileName}" will be removed. ` +
-                     `If this is the only remaining recovery point for that ` +
-                     `preset, you won't be able to restore from it later.`,
-            confirmLabel: "Delete",
-            danger: true,
-            onConfirm: async () => {
-                try {
-                    await deletePreset(item.fileName, { dir: item.dir });
-                    toast(`Deleted "${item.dir}/${item.fileName}".`);
-                    await refreshRecovery();
-                } catch (e) {
-                    console.error("[Koolook] autosave delete failed:", e);
-                    toast(`Could not delete: ${e.message}`);
-                }
-            },
-        });
-    }
-
-    function promptApplyAutosave(item) {
-        const tooltipName = `${item.dir}/${item.fileName}`;
-        showConfirmModal({
-            title: "Restore from auto-save?",
-            message:
-                `Restoring "${tooltipName}" will replace your current ` +
-                `picks and workflows with the auto-save's contents (` +
-                `${formatPreviewMeta(item)}). A pre-load auto-save of ` +
-                `your current state will be written first as a recovery ` +
-                `point — this restore is itself reversible.`,
-            confirmLabel: "Restore",
-            danger: true,
-            onConfirm: () => doAutosaveRestore(item),
-        });
-    }
-
-    let recoveryLoaded = false;
-    async function refreshRecovery() {
-        recoveryList.innerHTML = "";
-        recoveryList.appendChild(renderEmpty("Loading…"));
-        let entries = [];
+        let items = [];
         if (typeof listAutosaves === "function") {
-            try { entries = await listAutosaves(); } catch (e) { entries = []; }
+            try { items = await listAutosaves(); } catch (e) { items = []; }
         }
-        recoveryList.innerHTML = "";
-        if (entries.length === 0) {
-            recoveryList.appendChild(renderEmpty("No recovery auto-saves yet."));
+        // Filter to this preset's autosave subdir AND pick the single
+        // freshest entry by mtime. ``periodic.json`` and the rotated
+        // ``pre_load_*.json`` files all live in
+        // ``<preset>_autosave/`` — pick whichever was written most
+        // recently regardless of kind.
+        const subdir = `${preview.fileName.replace(/\.json$/i, "")}_autosave`;
+        const scoped = items
+            .filter((item) => item.dir === subdir)
+            .sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+        slot.innerHTML = "";
+        if (scoped.length === 0) {
+            slot.appendChild(renderEmpty("No recovery auto-save for this preset."));
             return;
         }
-        // Group by subdir for readability. Map iteration preserves first-
-        // seen order, which from the server is alphabetical-by-subdir —
-        // matches expectations.
-        const groups = new Map();
-        for (const p of entries) {
-            if (!groups.has(p.dir)) groups.set(p.dir, []);
-            groups.get(p.dir).push(p);
+        const newest = scoped[0];
+        const list = document.createElement("div");
+        list.className = "koolook-snapshot-list";
+        const row = document.createElement("div");
+        row.className = "koolook-snapshot-row koolook-snapshot-scoped-recovery-row";
+
+        const info = document.createElement("div");
+        info.className = "koolook-snapshot-row-info";
+        info.title = "Click to load this auto-save instead of the named preset.";
+
+        const name = document.createElement("div");
+        name.className = "koolook-snapshot-row-name";
+        const kindBadge = document.createElement("span");
+        kindBadge.className = "koolook-recovery-kind koolook-recovery-kind-" + newest.kind;
+        kindBadge.textContent = newest.kind === "pre_load" ? "Pre-load" :
+                                newest.kind === "periodic" ? "Periodic" : "Other";
+        name.appendChild(kindBadge);
+        // Per locked-in decision: recovery rows show kind + timestamp +
+        // meta, no filenames. Timestamp comes from formatPreviewMeta
+        // (which already prefers mtime → "saved <local-stamp>").
+        info.appendChild(name);
+
+        const meta = document.createElement("div");
+        meta.className = "koolook-snapshot-row-meta";
+        meta.textContent = formatPreviewMeta(newest);
+        info.appendChild(meta);
+
+        info.addEventListener("click", () => doAutosaveRestore(newest));
+        row.appendChild(info);
+        list.appendChild(row);
+        slot.appendChild(list);
+    }
+
+    function clearScopedRecovery() {
+        if (scopedRecoveryRow && scopedRecoveryRow.el && scopedRecoveryRow.el.parentNode) {
+            scopedRecoveryRow.el.remove();
         }
-        for (const [subdir, items] of groups) {
-            const groupEl = document.createElement("div");
-            groupEl.className = "koolook-recovery-group";
-            // Subfolder header: title (subdir name) + path subtitle on the
-            // left, `📂 Open` button on the right. Mirrors the library
-            // section's layout exactly — same flex options, same
-            // `renderLibraryLocation` rendering pair (`folder-name` +
-            // `folder-path` CSS), same Open button class. Visually the
-            // two surfaces should be indistinguishable apart from the
-            // contents.
-            const groupHeader = document.createElement("div");
-            groupHeader.className = "koolook-recovery-group-header";
-            groupHeader.style.display = "flex";
-            groupHeader.style.alignItems = "flex-start";
-            groupHeader.style.justifyContent = "space-between";
-            groupHeader.style.gap = "8px";
-            const headerInfo = document.createElement("div");
-            headerInfo.style.flex = "1";
-            headerInfo.style.minWidth = "0";
-            const fullSubdirPath = libraryPath ? `${libraryPath}/${subdir}` : "";
-            renderLibraryLocation(headerInfo, fullSubdirPath, { title: subdir });
-            groupHeader.appendChild(headerInfo);
-            if (typeof revealPresetFolder === "function") {
-                const openBtn = document.createElement("button");
-                openBtn.className = "koolook-snapshot-row-btn";
-                openBtn.textContent = "📂 Open";
-                openBtn.title = `Open "${subdir}/" in your file manager`;
-                openBtn.style.flex = "0 0 auto";
-                openBtn.addEventListener("click", async (e) => {
-                    e.stopPropagation();
-                    try {
-                        const r = await revealPresetFolder({ dir: subdir });
-                        toast(`Opened: ${r.path}`);
-                    } catch (err) {
-                        console.error("[Koolook] reveal failed:", err);
-                        toast(`Could not open "${subdir}/": ${err.message}`);
-                    }
-                });
-                groupHeader.appendChild(openBtn);
+        scopedRecoveryRow = null;
+    }
+
+    // ---- Inline delete confirm ----
+    // Mockup-locked: × outlines the row red, Close transforms to
+    // "Yes (delete)". A second confirm click commits; Escape cancels.
+    function armDelete(preview, rowEl) {
+        if (pendingDelete) cancelDelete();
+        clearScopedRecovery();
+        rowEl.classList.add("koolook-snapshot-row-pending-delete");
+        pendingDelete = { preview, rowEl };
+        applyCloseButtonState();
+    }
+
+    function cancelDelete() {
+        if (!pendingDelete) return;
+        pendingDelete.rowEl.classList.remove("koolook-snapshot-row-pending-delete");
+        pendingDelete = null;
+        applyCloseButtonState();
+    }
+
+    async function commitDelete() {
+        const target = pendingDelete;
+        if (!target) return;
+        try {
+            await deletePreset(target.preview.fileName);
+            if (typeof getCurrentPresetName === "function" &&
+                getCurrentPresetName() === target.preview.fileName) {
+                setCurrentPresetName(null);
             }
-            groupEl.appendChild(groupHeader);
-            // Wrap rows in the same `koolook-snapshot-list` container the
-            // library section uses so each group gets the same bordered-
-            // box treatment around its rows. Without this, the recovery
-            // rows render flat (no border, no rounded corners) and
-            // visually diverge from the Koolook_v03 row even though the
-            // row contents are identical.
-            const rowsList = document.createElement("div");
-            rowsList.className = "koolook-snapshot-list";
-            for (const item of items) {
-                const row = document.createElement("div");
-                row.className = "koolook-snapshot-row";
-
-                const info = document.createElement("div");
-                info.className = "koolook-snapshot-row-info";
-                info.title = `Click to restore "${item.dir}/${item.fileName}"`;
-
-                const name = document.createElement("div");
-                name.className = "koolook-snapshot-row-name";
-                const kindBadge = document.createElement("span");
-                kindBadge.className = "koolook-recovery-kind koolook-recovery-kind-" + item.kind;
-                kindBadge.textContent = item.kind === "pre_load" ? "Pre-load" :
-                                        item.kind === "periodic" ? "Periodic" : "Other";
-                name.appendChild(kindBadge);
-                // Show the bare filename (`pre_load_2026-05-07T14-32-…`,
-                // `periodic`) instead of the snapshot's self-reported
-                // displayName, which for autosaves is a redundant
-                // `Periodic auto-save · <subdir> · <iso>` string that
-                // pushes the timestamp off-screen on narrow modals.
-                name.appendChild(document.createTextNode(item.fileName));
-                info.appendChild(name);
-
-                const meta = document.createElement("div");
-                meta.className = "koolook-snapshot-row-meta";
-                // mtime is when the file was actually written — strictly
-                // more relevant for "which autosave is freshest" than the
-                // snapshot's self-reported `exportedAt` (the two match for
-                // autosaves anyway, but mtime is what survives an out-of-
-                // band file copy in Finder).
-                meta.textContent = formatPreviewMeta(item);
-                info.appendChild(meta);
-
-                info.addEventListener("click", () => promptApplyAutosave(item));
-                row.appendChild(info);
-
-                const actions = document.createElement("div");
-                actions.className = "koolook-snapshot-row-actions";
-                const delBtn = document.createElement("button");
-                delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
-                delBtn.textContent = "×";
-                delBtn.title = `Delete "${item.dir}/${item.fileName}"`;
-                delBtn.addEventListener("click", (e) => { e.stopPropagation(); promptDeleteAutosave(item); });
-                actions.appendChild(delBtn);
-                row.appendChild(actions);
-
-                rowsList.appendChild(row);
-            }
-            groupEl.appendChild(rowsList);
-            recoveryList.appendChild(groupEl);
+            toast(`Deleted "${target.preview.displayName}".`);
+            pendingDelete = null;
+            applyCloseButtonState();
+            await refresh();
+        } catch (e) {
+            console.error("[Koolook] preset delete failed:", e);
+            toast(`Could not delete "${target.preview.displayName}": ${e.message}`);
+            cancelDelete();
         }
     }
 
-    // Lazy-load on first expand; the autosave listing is N+1 reads (one
-    // per file to validate it's a snapshot and extract the displayName)
-    // and we don't want to pay that cost when the user is just looking
-    // for a regular preset.
-    recoverySection.addEventListener("toggle", () => {
-        if (!recoverySection.open) return;
-        if (recoveryLoaded) return;
-        recoveryLoaded = true;
-        refreshRecovery();
+    // Footer buttons.
+    const loadFromBtn = makeModalButton({
+        label: "Load from…",
+        onClick: () => openLoadFrom(),
     });
-    body.appendChild(recoverySection);
 
-    const closeBtn = makeModalButton({ label: "Close", onClick: close });
+    const closeBtn = makeModalButton({
+        label: "Close",
+        onClick: () => {
+            if (pendingDelete) {
+                commitDelete();
+                return;
+            }
+            close();
+        },
+    });
+
+    function applyCloseButtonState() {
+        if (pendingDelete) {
+            closeBtn.textContent = `Yes — delete "${pendingDelete.preview.displayName}"`;
+            closeBtn.classList.add("koolook-modal-btn-danger");
+            closeBtn.title = "Confirm deletion. Press Esc to cancel.";
+        } else {
+            closeBtn.textContent = "Close";
+            closeBtn.classList.remove("koolook-modal-btn-danger");
+            closeBtn.title = "";
+        }
+    }
+
+    function openLoadFrom() {
+        if (typeof browseDirectories !== "function") {
+            toast("Folder picker unavailable in this session.");
+            return;
+        }
+        showFolderPicker({
+            title: "Load snapshots from",
+            titleTooltip: "Switch the snapshot library this Load is reading from.",
+            initialPath: libraryPath,
+            browseDirectories,
+            createBrowseDirectory,
+            onUseFolder: async (chosen) => {
+                if (typeof saveSettings === "function") {
+                    try { await saveSettings(chosen); }
+                    catch (err) {
+                        console.error("[Koolook] saveSettings failed:", err);
+                        toast(`Could not save library path: ${err.message}`);
+                        return;
+                    }
+                }
+                libraryPath = chosen;
+                renderLibRow(chosen);
+                refresh();
+                toast(`Loading snapshots from: ${chosen}.`);
+            },
+        });
+    }
+
+    function renderLibRow(path) {
+        libraryPath = path || "";
+        const leaf = libraryPath ? pathLeaf(libraryPath) : "(unavailable)";
+        libName.textContent = leaf;
+        libPath.textContent = libraryPath || "Path unavailable";
+        libRow.title = libraryPath || "";
+    }
+
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
+
     ({ overlay } = makeModalShell({
         title: "Load snapshot",
+        titleTooltip: "Restore the sidebar state from a preset file.",
         body,
-        actions: [closeBtn],
+        actions: [loadFromBtn, spacer, closeBtn],
     }));
+
+    // Escape-to-cancel for inline delete. The modal shell already wires
+    // Escape to overlay close; intercept BEFORE that fires so a pending
+    // delete just unwinds the row state without dismissing the whole
+    // dialog. ``capture: true`` runs this listener before the shell's.
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (!pendingDelete) return;
+        e.stopPropagation();
+        cancelDelete();
+    }, { capture: true });
+
     refresh();
     if (typeof getLibraryInfo === "function") {
         getLibraryInfo().then((info) => {
-            if (info) {
-                renderLibraryLocation(pathLine, info.path, { label: "Library folder" });
-                // Stash for the recovery section's group-header path
-                // subtitle. If recovery is already loaded (user expanded
-                // before this resolved), refresh so the path appears.
-                libraryPath = info.path || "";
-                if (recoveryLoaded) refreshRecovery();
-            } else {
-                pathLine.textContent = "Library path unavailable.";
-            }
-        }).catch(() => { pathLine.textContent = "Library path unavailable."; });
+            if (info && typeof info.path === "string") renderLibRow(info.path);
+            else { libName.textContent = "Library path unavailable"; libPath.textContent = ""; }
+        }).catch(() => {
+            libName.textContent = "Library path unavailable";
+            libPath.textContent = "";
+        });
     } else {
-        pathLine.textContent = "";
+        libName.textContent = "";
     }
 }
 

@@ -356,6 +356,15 @@ export function ensureStyle() {
    short-circuits naturally. */
 .koolook-snap-save-in-progress { opacity: 0.7; cursor: progress; }
 .koolook-snap-save-done { background: rgba(120, 200, 120, 0.18); border-color: rgba(120, 200, 120, 0.5); color: #b3e3b3; opacity: 0.95; cursor: default; }
+/* Load dialog redesign (issue #137, mockup section 3). The scoped
+   recovery row sits as a sibling immediately after the preset row that
+   triggered it, so the kind badge plus timestamp meta line up below
+   the named row with no nested chrome. The inline delete state outlines
+   the row in red and the bottom Close button transforms to Yes (delete).
+   Reminder: no backticks in comments inside this CSS template literal. */
+.koolook-snapshot-scoped-recovery { margin: -1px 0 4px; padding-left: 14px; border-left: 2px solid rgba(120, 170, 255, 0.35); }
+.koolook-snapshot-scoped-recovery-row { background: rgba(80, 140, 235, 0.06); }
+.koolook-snapshot-row-pending-delete { outline: 1.5px solid rgba(220, 80, 80, 0.75); outline-offset: -1px; background: rgba(220, 80, 80, 0.06); }
 `;
     document.head.appendChild(s);
 }
