@@ -298,8 +298,10 @@
       padding: 10px 14px;
       border-bottom: 1px solid var(--border);
     }
+    .picker-head { padding: 14px 18px; background: #181818; }
     .picker-foot { border-bottom: 0; border-top: 1px solid var(--border); background: #131313; display: flex; gap: 8px; }
-    .picker-title { font-weight: 700; font-size: 14px; }
+    .picker-foot .spacer { flex: 1; }
+    .picker-title { font-weight: 700; font-size: 15px; margin: 0; }
     .picker-body { background: #0a0a0a; }
     .picker-row {
       display: flex; align-items: center; gap: 8px;
@@ -309,11 +311,19 @@
       cursor: pointer;
     }
     .picker-row:hover { background: rgba(109,180,255,.07); }
-    .picker-row.selected { background: rgba(109,180,255,.13); border-left: 2px solid var(--sky); padding-left: 12px; }
     .picker-row .folder-icon { color: var(--amber); }
     .picker-row .folder-name { flex: 1; }
+    /* Files shown for context only — visible but not selectable. The picker
+       only commits folders, so file rows are dimmed and inert. */
+    .picker-row.file {
+      cursor: default;
+      color: var(--dim);
+    }
+    .picker-row.file:hover { background: transparent; }
+    .picker-row.file .file-icon { color: var(--dim); }
     .picker-path-input {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       height: 28px;
       padding: 0 10px;
       background: #0a0a0a;
@@ -321,6 +331,12 @@
       border-radius: 3px;
       color: var(--text);
       font: 12px ui-monospace, "Cascadia Mono", Menlo, monospace;
+      /* Keep the END of the path visible when it overflows. direction:rtl
+         flips the overflow anchor; text-align:left keeps the rendered text
+         visually LTR. Result: long paths show their last folder, not the
+         /Users/… prefix. */
+      direction: rtl;
+      text-align: left;
     }
     .picker-breadcrumb {
       font: 12px ui-monospace, "Cascadia Mono", Menlo, monospace;
@@ -337,14 +353,6 @@
       color: #d8dadd;
       font-size: 11px;
     }
-    .picker-selected-bar {
-      padding: 8px 14px;
-      background: rgba(109,180,255,.06);
-      border-top: 1px solid var(--border);
-      font-size: 12px;
-    }
-    .picker-selected-bar .lib-row-name { font-size: 13px; }
-
     /* Top row inside a lib-row info area: label on left, Open folder ↗ on right.
        Keeps the link safely above the path so a long path can't visually cover it. */
     .lib-row-top {
@@ -418,7 +426,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 8px;
+      padding: 10px 12px;
       border: 1px solid var(--border);
       background: #0a0a0a;
       border-radius: 3px;
@@ -432,6 +440,8 @@
       border-radius: 3px;
       font-weight: 700;
       flex: 0 0 auto;
+      position: relative;
+      top: -1px;
     }
     .recovery-kind-preload {
       background: rgba(255,184,77,.16);
@@ -444,7 +454,7 @@
       border: 1px solid rgba(109,180,255,.35);
     }
     .recovery-row-info { flex: 1; min-width: 0; font-size: 12px; }
-    .recovery-row-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .recovery-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
     /* Step-flow visualization for the picker sequence */
     .flow-steps {
@@ -942,10 +952,9 @@
                 </div>
                 <div class="recovery-group-path">/Users/m/.../koolook-presets/Koolook_v03_autosave/</div>
                 <div class="recovery-row">
-                  <span class="recovery-kind recovery-kind-preload">Pre-load</span>
                   <div class="recovery-row-info">
-                    May 12 14:47
-                    <div class="recovery-row-meta">11 picks · 6 workflows</div>
+                    <span class="recovery-kind recovery-kind-preload">Pre-load</span>
+                    <div class="recovery-row-meta">11 picks · 6 workflows · May 12 14:47</div>
                   </div>
                   <button class="preset-row-del">×</button>
                 </div>
@@ -1099,26 +1108,18 @@
       <div class="picker">
         <div class="picker-head">
           <div class="picker-title">Choose snapshot library folder</div>
-          <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">The folder where Kforge Labs reads and writes your snapshot files.</div>
         </div>
         <div class="picker-toolbar">
           <div style="display: flex; gap: 8px; align-items: center;">
-            <input class="picker-path-input" value="/Users/m/ComfyUI/user/default/koolook-presets" />
-          </div>
-          <div class="picker-breadcrumb" style="margin-top: 8px;">
             <button class="picker-up">↑ Up</button>
-            <span>/Users/m/ComfyUI/user/default/</span>
+            <input class="picker-path-input" value="/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets" />
           </div>
         </div>
         <div class="picker-body">
-          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">_unsaved_autosave</span></div>
-          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">archive</span></div>
-          <div class="picker-row selected"><span class="folder-icon">📁</span><span class="folder-name">koolook-presets</span><span style="color: var(--sky); font-size: 11px;">selected</span></div>
-          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">workflows-backup</span></div>
-        </div>
-        <div class="picker-selected-bar">
-          <div class="lib-row-label">Selected folder</div>
-          <div class="lib-row-name">koolook-presets</div>
+          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">Koolook_v03_autosave</span></div>
+          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">default_autosave</span></div>
+          <div class="picker-row file"><span class="file-icon">📄</span><span class="folder-name">Koolook_v03.json</span></div>
+          <div class="picker-row file"><span class="file-icon">📄</span><span class="folder-name">starter.json</span></div>
         </div>
         <div class="picker-foot">
           <button class="modal-btn">New folder…</button>
@@ -1127,7 +1128,7 @@
           <button class="modal-btn primary">Use this folder</button>
         </div>
       </div>
-      <div class="anno fix">Three ways to pick a folder, no OS picker needed: (1) <strong>paste a path</strong> into the top input (PR #132's contribution) — Enter to navigate there, (2) <strong>click subfolders</strong> to drill down with Up to climb, (3) <strong>New folder…</strong> creates one in place. Bottom bar follows the same pattern as Save/Load: utility on the left, Cancel + primary on the right. The selected-folder bar above the buttons is the explicit confirmation of what "Use this folder" will commit.</div>
+      <div class="anno fix"><strong>Navigate-into model</strong> — standard folder-picker behaviour. The path input shows where you currently <em>are</em>, not what you've selected from a sibling list. Clicking a subfolder drills into it; <strong>↑ Up</strong> climbs one level. The body lists that folder's <em>contents</em>: subfolders (clickable, amber 📁) and files (greyed-out 📄, inert — shown only so the user can confirm "yes, this is the folder I expected"). <strong>Use this folder</strong> commits whatever path is currently shown in the input. Three ways to set the path: (1) paste a path → Enter, (2) click subfolders to drill down + ↑ Up to climb, (3) <strong>New folder…</strong> creates one in place. The input always shows the <strong>end</strong> of the path when it overflows (leading <code>/Users/…</code> clips off the left, never the trailing folder name) and is copy-paste-editable for clipboard paths (per PR #132).</div>
 
       <h3 style="margin: 22px 0 10px; font-size: 14px; color: #d8dadd;">Step-flow — clicking "Save to…" or "Load from…"</h3>
       <div class="flow-steps">
