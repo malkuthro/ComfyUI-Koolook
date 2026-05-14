@@ -73,10 +73,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install test deps
-        # The ``test`` extra pulls in pytest and aiohttp (a runtime dep of
-        # ``koolook_routes`` that must be importable even when only a pure
-        # helper is under test).
-        run: pip install .[test]
+        # Install the deps directly — this project is a ComfyUI custom node,
+        # not a pip-installable package, so ``pip install .[test]`` tries to
+        # build a wheel and fails on flat-layout discovery of ``web/`` and
+        # ``forks/``. The pyproject's ``[project.optional-dependencies]
+        # test`` block is the spec; CI mirrors it explicitly. ``aiohttp`` is
+        # a runtime dep of ``koolook_routes`` and must be importable even
+        # when only a pure helper is under test.
+        run: pip install "pytest>=8" "aiohttp>=3.9"
 
       - name: Run pytest
         run: pytest -q
