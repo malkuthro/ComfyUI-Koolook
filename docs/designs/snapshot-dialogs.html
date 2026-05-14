@@ -950,21 +950,6 @@
                   <button class="preset-row-del">×</button>
                 </div>
               </div>
-              <div class="recovery-group">
-                <div class="recovery-group-head">
-                  <div class="recovery-group-title">_unsaved_autosave</div>
-                  <a class="text-link" href="#">Open folder ↗</a>
-                </div>
-                <div class="recovery-group-path">/Users/m/.../koolook-presets/_unsaved_autosave/</div>
-                <div class="recovery-row">
-                  <span class="recovery-kind recovery-kind-periodic">Periodic</span>
-                  <div class="recovery-row-info">
-                    May 11 22:08
-                    <div class="recovery-row-meta">7 picks · 4 workflows</div>
-                  </div>
-                  <button class="preset-row-del">×</button>
-                </div>
-              </div>
             </div>
           </div>
           <div class="modal-actions split">
@@ -973,7 +958,7 @@
             <button class="modal-btn subtle">Close</button>
           </div>
         </div>
-        <div class="anno fix">One group per <code>&lt;preset&gt;_autosave/</code> subfolder, and <strong>only one row per group</strong> — whichever of <em>Pre-load</em> or <em>Periodic</em> is newest. Each row shows kind badge + timestamp + small picks/workflows meta. <strong>No filenames exposed</strong> — the badge + time is enough; the on-disk filename is implementation detail. The Recovery section auto-expands when the user clicks a preset row, so the related auto-save is visible without manual expansion. Each group header still has its own <strong>Open folder ↗</strong> link for manual inspection/backup.</div>
+        <div class="anno fix">Recovery section is <strong>hidden by default</strong>. Clicking a preset row (e.g. <code>Koolook_v03</code> or <code>starter</code>) opens the recovery dropdown and reveals <strong>only that preset's <code>&lt;preset&gt;_autosave/</code> folder</strong> — other presets' autosaves are not shown here. Inside the folder, exactly <strong>one row</strong> is rendered: whichever of <em>Pre-load</em> or <em>Periodic</em> is the newest (the system picks). Row shows kind badge + timestamp + small picks/workflows meta; the on-disk filename is implementation detail and stays hidden. The group header keeps its <strong>Open folder ↗</strong> link for manual inspection/backup.</div>
       </div>
     </section>
 
