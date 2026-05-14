@@ -1635,7 +1635,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                     return;
                 }
                 if (selectionResult.kind !== "ok") {
-                    toast("Failed to serialize selection. See console.");
+                    toast("Selection unavailable. Re-select nodes and try again.");
                     return;
                 }
                 if (!selectionResult.graph || !Array.isArray(selectionResult.graph.nodes) || selectionResult.graph.nodes.length === 0) {
