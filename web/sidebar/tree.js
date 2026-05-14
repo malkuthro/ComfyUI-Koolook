@@ -2258,6 +2258,10 @@ export function renderPanel(container) {
         gatherSnapshot,
         sanitizeName,
         getLibraryInfo,
+        saveSettings,
+        browseDirectories,
+        createBrowseDirectory,
+        revealPresetFolder,
         markStateSaved,
         onToast: toast,
     });

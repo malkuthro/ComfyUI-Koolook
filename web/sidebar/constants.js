@@ -336,6 +336,26 @@ export function ensureStyle() {
 .koolook-folder-picker-spacer { flex: 1; }
 .koolook-folder-picker-newfolder-label { font-size: 11px; opacity: 0.6; flex-shrink: 0; }
 .koolook-folder-picker-newfolder-input { flex: 1; min-width: 0; }
+/* Save dialog redesign (issue #137, mockup section 2). The library row
+   at the top is purely informational — label + Open folder link sit on
+   the top edge so a long absolute path can't overlap the link. Every
+   action lives in the bottom command bar (Save to... | Cancel | Save
+   as new... | Save). */
+.koolook-snap-lib-row { padding: 8px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; background: rgba(0,0,0,0.18); margin-bottom: 12px; }
+.koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.koolook-snap-lib-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.05em; }
+.koolook-snap-open-folder-link { font-size: 11px; opacity: 0.7; color: var(--p-primary-color, rgba(120,170,255,1)); text-decoration: none; }
+.koolook-snap-open-folder-link:hover { opacity: 1; text-decoration: underline; }
+.koolook-snap-save-message { margin: 6px 0 0; }
+/* Four-state primary button (mockup section 5). The in-progress and
+   done states sit on different button classes so the colour shift
+   reads at a glance: default+dirty are primary blue (action), in-
+   progress is dimmed primary (busy), done is subtle grey (confirmed,
+   no further action expected). Disabled state is enforced via the
+   'disabled' attribute, not just the class — keyboard activation
+   short-circuits naturally. */
+.koolook-snap-save-in-progress { opacity: 0.7; cursor: progress; }
+.koolook-snap-save-done { background: rgba(120, 200, 120, 0.18); border-color: rgba(120, 200, 120, 0.5); color: #b3e3b3; opacity: 0.95; cursor: default; }
 `;
     document.head.appendChild(s);
 }

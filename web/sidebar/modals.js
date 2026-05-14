@@ -1073,12 +1073,25 @@ function showThreeWayDialog({ title, message, primaryLabel, secondaryLabel, canc
 }
 
 // =============================================================================
-// Save flow.
+// Save flow — redesigned per issue #137, mockup section 2.
 //
-// One click semantics:
-//   - If a current preset is tracked → confirm "Save over <name>?" with
-//     three options (overwrite / rename / cancel).
-//   - If not → straight to a name prompt with `preset YYYY-MM-DD` default.
+// One unified dialog (was three: three-way overwrite / input prompt / confirm).
+// Layout:
+//
+//   [ Save snapshot                                            ]
+//   [ Saved to                              Open folder ↗      ]
+//   [ <leaf folder>                                            ]
+//   [ <full path>                                              ]
+//   [                                                          ]
+//   [ Save current state over "<name>"?                        ]
+//   [                                                          ]
+//   [ [ Save to… ]            [ Cancel ] [ Save as new… ] [Save]]
+//
+// The Save button cycles through four states per mockup section 5:
+// Default ("Save") → In progress ("Saving…", disabled) → Done ("Saved",
+// subtle disabled). When the user changes the library via Save to…, the
+// dialog enters Dirty state — Save label flips to "Save to new folder"
+// so the click reads as "you're about to write into a different place."
 //
 // Save success → updates the tracker so subsequent Save clicks default
 // to overwrite-the-same-one.
@@ -1091,97 +1104,275 @@ export function showSaveSnapshotDialog({
     gatherSnapshot,
     sanitizeName,
     getLibraryInfo,
+    saveSettings,
+    browseDirectories,
+    createBrowseDirectory,
+    revealPresetFolder,
     markStateSaved,
     onToast,
 }) {
     const toast = onToast || (() => {});
+    const current = getCurrentPresetName();
 
-    // Build a reactive library-path subtitle element. Both the input modal
-    // (Save as new…) and the three-way overwrite dialog reuse the same node
-    // so the user sees consistent context regardless of which path they
-    // entered the Save flow through. Async-populated to avoid blocking the
-    // modal open on a server round-trip — the user sees "(loading…)" briefly,
-    // then the resolved path.
-    function buildPathSubtitle() {
-        const el = document.createElement("div");
-        el.className = "koolook-modal-pathline";
-        el.textContent = "Library: (loading…)";
-        if (typeof getLibraryInfo === "function") {
-            getLibraryInfo().then((info) => {
-                if (info && typeof info.path === "string" && info.path) {
-                    el.className = "koolook-load-library-location";
-                    renderLibraryLocation(el, info.path, { label: "Library folder" });
-                } else {
-                    el.textContent = "Library path unavailable.";
-                }
-            }).catch(() => {
-                el.textContent = "Library path unavailable.";
-            });
-        } else {
-            el.textContent = "";
+    // Internal state: original library path (set after the first
+    // getLibraryInfo() resolution) and current library path (mutated when
+    // the user picks a different folder via Save to…). The two diverge
+    // → Dirty state → primary label becomes "Save to new folder".
+    let originalLibraryPath = "";
+    let currentLibraryPath = "";
+
+    const body = document.createElement("div");
+
+    // -----------------------------------------------------------------
+    // Library-row info block (top of body). Pure information — the
+    // mockup explicitly puts every action in the bottom command bar.
+    // Async-populated so the dialog opens immediately without waiting
+    // on a server round-trip; the path appears in place when ready.
+    // -----------------------------------------------------------------
+    const libRow = document.createElement("div");
+    libRow.className = "koolook-snap-lib-row";
+
+    const libRowTop = document.createElement("div");
+    libRowTop.className = "koolook-snap-lib-row-top";
+    const libLabel = document.createElement("span");
+    libLabel.className = "koolook-snap-lib-label";
+    libLabel.textContent = "Saved to";
+    libRowTop.appendChild(libLabel);
+
+    const openFolderLink = document.createElement("a");
+    openFolderLink.className = "koolook-snap-open-folder-link";
+    openFolderLink.href = "#";
+    openFolderLink.textContent = "Open folder ↗";
+    openFolderLink.title = "Open the snapshot library folder in your file manager";
+    openFolderLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (typeof revealPresetFolder !== "function") return;
+        try {
+            const r = await revealPresetFolder();
+            toast(`Opened: ${r.path}`);
+        } catch (err) {
+            console.error("[Koolook] reveal failed:", err);
+            toast(`Could not open library folder: ${err.message}`);
         }
-        return el;
+    });
+    libRowTop.appendChild(openFolderLink);
+    libRow.appendChild(libRowTop);
+
+    const libName = document.createElement("div");
+    libName.className = "koolook-settings-folder-name";
+    libName.textContent = "Library folder: (loading…)";
+    libRow.appendChild(libName);
+
+    const libPath = document.createElement("div");
+    libPath.className = "koolook-settings-folder-path";
+    libRow.appendChild(libPath);
+
+    body.appendChild(libRow);
+
+    function renderLibRow(path) {
+        currentLibraryPath = path || "";
+        const leaf = currentLibraryPath ? pathLeaf(currentLibraryPath) : "(unavailable)";
+        libName.textContent = leaf;
+        libPath.textContent = currentLibraryPath || "Path unavailable";
+        libRow.title = currentLibraryPath || "";
+        updatePrimaryLabel();
     }
 
-    async function doSave(name, { confirmOverwrite }) {
-        const sanitized = sanitizeName(name);
-        if (!sanitized) {
-            toast("Snapshot name is empty after stripping unsafe characters.");
+    if (typeof getLibraryInfo === "function") {
+        getLibraryInfo().then((info) => {
+            const path = (info && typeof info.path === "string") ? info.path : "";
+            originalLibraryPath = path;
+            renderLibRow(path);
+        }).catch(() => {
+            libName.textContent = "Library path unavailable";
+            libPath.textContent = "";
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // Message line — "Save current state over '<name>'?" if there's a
+    // tracked preset, or "Save current state as a new preset" if not.
+    // -----------------------------------------------------------------
+    const msg = document.createElement("p");
+    msg.className = "koolook-modal-message koolook-snap-save-message";
+    msg.textContent = current
+        ? `Save current state over "${current}"?`
+        : "Save current state as a new preset.";
+    body.appendChild(msg);
+
+    // -----------------------------------------------------------------
+    // Primary "Save" button — four-state per mockup section 5. The
+    // helper centralises label / class / disabled so the dialog only
+    // toggles state names, never DOM attributes directly.
+    // -----------------------------------------------------------------
+    let primaryState = current ? "default" : "default-new";
+    const primaryBtn = document.createElement("button");
+    primaryBtn.className = "koolook-modal-btn";
+
+    function isDirty() {
+        return Boolean(
+            originalLibraryPath &&
+            currentLibraryPath &&
+            originalLibraryPath !== currentLibraryPath
+        );
+    }
+
+    function updatePrimaryLabel() {
+        const dirty = isDirty();
+        primaryState = dirty ? "dirty" : (current ? "default" : "default-new");
+        renderPrimary();
+    }
+
+    function renderPrimary() {
+        primaryBtn.classList.remove(
+            "koolook-modal-btn-primary",
+            "koolook-snap-save-in-progress",
+            "koolook-snap-save-done",
+        );
+        switch (primaryState) {
+            case "default":
+                primaryBtn.textContent = "Save";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = `Overwrite "${current}" with the current state.`;
+                break;
+            case "default-new":
+                // No tracked preset → Save needs a name → routes to Save as new.
+                primaryBtn.textContent = "Save";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = "Choose a name and write the snapshot.";
+                break;
+            case "dirty":
+                primaryBtn.textContent = "Save to new folder";
+                primaryBtn.classList.add("koolook-modal-btn-primary");
+                primaryBtn.disabled = false;
+                primaryBtn.title = `Write into ${currentLibraryPath}.`;
+                break;
+            case "in-progress":
+                primaryBtn.textContent = "Saving…";
+                primaryBtn.classList.add(
+                    "koolook-modal-btn-primary",
+                    "koolook-snap-save-in-progress",
+                );
+                primaryBtn.disabled = true;
+                primaryBtn.title = "";
+                break;
+            case "done":
+                primaryBtn.textContent = "Saved";
+                primaryBtn.classList.add("koolook-snap-save-done");
+                primaryBtn.disabled = true;
+                primaryBtn.title = "";
+                break;
+        }
+    }
+    renderPrimary();
+
+    // -----------------------------------------------------------------
+    // Footer buttons.
+    // -----------------------------------------------------------------
+    const saveToBtn = makeModalButton({
+        label: "Save to…",
+        onClick: () => openSaveTo(),
+    });
+
+    const cancelBtn = makeModalButton({
+        label: "Cancel",
+        onClick: () => close(),
+    });
+
+    const saveAsNewBtn = makeModalButton({
+        label: "Save as new…",
+        onClick: () => {
+            promptForName(current ? `${current} (copy)` : `preset ${todayStamp()}`);
+        },
+    });
+
+    primaryBtn.addEventListener("click", async () => {
+        if (primaryBtn.disabled) return;
+        if (primaryState === "default-new") {
+            promptForName(`preset ${todayStamp()}`);
             return;
         }
-        // For Save-as-new only: check existence + prompt to overwrite.
-        // The "overwrite current" path skipped this prompt by design
-        // (the user already confirmed via the three-way dialog).
-        //
-        // `presetExists` is now tri-state: true / false / null. The
-        // null case means the existence check itself failed (network
-        // down, server error) — refuse to silently write, since we
-        // can't tell whether we'd be clobbering an existing preset.
-        if (confirmOverwrite) {
-            const exists = await presetExists(sanitized);
-            if (exists === null) {
-                toast(
-                    "Cannot reach the preset library to verify name. " +
-                    "Save canceled — check Settings or your connection."
-                );
-                return;
-            }
-            if (exists === true) {
-                showConfirmModal({
-                    title: "Overwrite existing preset?",
-                    message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
-                    confirmLabel: "Overwrite",
-                    danger: true,
-                    // Carry the library breadcrumb across the input → exists →
-                    // confirm chain so the user knows which library they're
-                    // overwriting in (matters when Settings → libraryPath has
-                    // been changed mid-session, or facility users juggle
-                    // multiple shared libraries).
-                    subtitle: buildPathSubtitle(),
-                    onConfirm: () => writeAndToast(sanitized),
-                });
-                return;
-            }
+        // "default" or "dirty" — write over the tracked preset (dirty
+        // means the library path changed; the preset *name* is the same).
+        await doOverwrite(current);
+    });
+
+    const spacer = document.createElement("span");
+    spacer.className = "koolook-folder-picker-spacer";
+
+    let overlay;
+    const close = () => overlay.remove();
+
+    // -----------------------------------------------------------------
+    // Save to… → folder picker. On Use this folder, persist via
+    // saveSettings() and update the in-dialog state. The original path
+    // is kept (in `originalLibraryPath`) so the dirty indicator stays
+    // accurate even after navigating multiple times.
+    // -----------------------------------------------------------------
+    function openSaveTo() {
+        if (typeof browseDirectories !== "function") {
+            toast("Folder picker unavailable in this session.");
+            return;
         }
-        writeAndToast(sanitized);
+        showFolderPicker({
+            title: "Save snapshots to",
+            titleTooltip: "Pick the library folder this Save will write into.",
+            initialPath: currentLibraryPath,
+            browseDirectories,
+            createBrowseDirectory,
+            onUseFolder: async (chosen) => {
+                if (typeof saveSettings !== "function") {
+                    renderLibRow(chosen);
+                    return;
+                }
+                try {
+                    const r = await saveSettings(chosen);
+                    renderLibRow(r.savedLibraryPath || chosen);
+                    toast(`Snapshot library set to: ${currentLibraryPath}.`);
+                } catch (err) {
+                    console.error("[Koolook] saveSettings failed:", err);
+                    toast(`Could not save library path: ${err.message}`);
+                }
+            },
+        });
     }
 
-    async function writeAndToast(name) {
+    // -----------------------------------------------------------------
+    // Overwrite the tracked preset directly. The mockup intentionally
+    // skips a second "are you sure?" — the dialog already says the
+    // destination preset name and (if dirty) the folder change, so the
+    // click is informed.
+    // -----------------------------------------------------------------
+    async function doOverwrite(name) {
+        primaryState = "in-progress";
+        renderPrimary();
         try {
-            const snap = gatherSnapshot(name);
-            await writePreset(name, snap);
-            setCurrentPresetName(name);
-            // Baseline the saved-state fingerprint — flips the sidebar
-            // status indicator from "unsaved" to "saved" without waiting
-            // for an unrelated mutation event to refresh it.
+            const sanitized = sanitizeName(name);
+            const snap = gatherSnapshot(sanitized);
+            await writePreset(sanitized, snap);
+            setCurrentPresetName(sanitized);
             if (typeof markStateSaved === "function") markStateSaved();
-            toast(`Saved "${name}".`);
+            primaryState = "done";
+            renderPrimary();
+            toast(`Saved "${sanitized}".`);
+            // Brief "Saved" pause for legibility, then close — per the
+            // four-state pattern, the user sees the confirmation tag
+            // before the dialog disappears.
+            setTimeout(close, 600);
         } catch (e) {
             console.error("[Koolook] preset save failed:", e);
             toast(`Could not save preset: ${e.message}`);
+            updatePrimaryLabel();
         }
     }
 
+    // -----------------------------------------------------------------
+    // Save as new… → name prompt → existence check → write. The
+    // existence-check guard lives here (not in `doOverwrite`) because
+    // overwrite intent is explicit; rename intent is not.
+    // -----------------------------------------------------------------
     function promptForName(defaultName) {
         showInputModal({
             title: "Save snapshot",
@@ -1189,26 +1380,60 @@ export function showSaveSnapshotDialog({
             defaultValue: defaultName,
             placeholder: "e.g. Wan video kit",
             confirmLabel: "Save",
-            subtitle: buildPathSubtitle(),
-            onSubmit: (typed) => doSave(typed, { confirmOverwrite: true }),
+            onSubmit: async (typed) => {
+                const sanitized = sanitizeName(typed);
+                if (!sanitized) {
+                    toast("Snapshot name is empty after stripping unsafe characters.");
+                    return;
+                }
+                const exists = await presetExists(sanitized);
+                if (exists === null) {
+                    toast(
+                        "Cannot reach the preset library to verify name. " +
+                        "Save canceled — check the library path or your connection."
+                    );
+                    return;
+                }
+                if (exists === true) {
+                    showConfirmModal({
+                        title: "Overwrite existing preset?",
+                        message: `A snapshot named "${sanitized}" already exists. Overwrite it?`,
+                        confirmLabel: "Overwrite",
+                        danger: true,
+                        onConfirm: () => writeAsNew(sanitized),
+                    });
+                    return;
+                }
+                writeAsNew(sanitized);
+            },
         });
     }
 
-    const current = getCurrentPresetName();
-    if (current) {
-        showThreeWayDialog({
-            title: "Save snapshot",
-            message: `Save current state over "${current}"?`,
-            primaryLabel: "Save",
-            secondaryLabel: "Save as new…",
-            cancelLabel: "Cancel",
-            subtitle: buildPathSubtitle(),
-            onPrimary: () => doSave(current, { confirmOverwrite: false }),
-            onSecondary: () => promptForName(`${current} (copy)`),
-        });
-    } else {
-        promptForName(`preset ${todayStamp()}`);
+    async function writeAsNew(name) {
+        primaryState = "in-progress";
+        renderPrimary();
+        try {
+            const snap = gatherSnapshot(name);
+            await writePreset(name, snap);
+            setCurrentPresetName(name);
+            if (typeof markStateSaved === "function") markStateSaved();
+            primaryState = "done";
+            renderPrimary();
+            toast(`Saved "${name}".`);
+            setTimeout(close, 600);
+        } catch (e) {
+            console.error("[Koolook] preset save failed:", e);
+            toast(`Could not save preset: ${e.message}`);
+            updatePrimaryLabel();
+        }
     }
+
+    ({ overlay } = makeModalShell({
+        title: "Save snapshot",
+        titleTooltip: "Write the current sidebar state to a preset file.",
+        body,
+        actions: [saveToBtn, spacer, cancelBtn, saveAsNewBtn, primaryBtn],
+    }));
 }
 
 // =============================================================================
