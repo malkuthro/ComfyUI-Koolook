@@ -191,7 +191,10 @@
             : browse;
         showFolderPicker({
             title: "Choose snapshot library folder",
-            subtitle: "Where snapshots are saved and loaded from.",
+            // Per the modal-header convention (docs/maintainers/conventions.md):
+            // header sections are title-only; explanatory context goes on the
+            // title's hover tooltip, not into a visible subtitle row.
+            titleTooltip: "Where snapshots are saved and loaded from.",
             initialPath: startAt,
             browseDirectories: browseUnderTest,
             createBrowseDirectory: harnessCreate(),

@@ -19,7 +19,7 @@ import {
     reboot,
 } from "./installer.js";
 
-function makeModalShell({ title, body, actions }) {
+function makeModalShell({ title, titleTooltip, body, actions }) {
     const overlay = document.createElement("div");
     overlay.className = "koolook-modal-overlay";
 
@@ -29,6 +29,13 @@ function makeModalShell({ title, body, actions }) {
     const titleEl = document.createElement("div");
     titleEl.className = "koolook-modal-title";
     titleEl.textContent = title;
+    // Optional hover-tooltip for explanatory context. Per
+    // ``docs/maintainers/conventions.md``: header sections stay clean
+    // (title only, no descriptive subtitle); use this tooltip for the
+    // one-sentence "what does this dialog do" gloss instead. Functional
+    // info rows (library-path indicator, etc.) live in the body, not
+    // the header — they are not the same thing as a description.
+    if (titleTooltip) titleEl.title = titleTooltip;
     modal.appendChild(titleEl);
 
     if (body) modal.appendChild(body);
@@ -1833,7 +1840,7 @@ export function showLoadSnapshotDialog({
 // =============================================================================
 export function showFolderPicker({
     title,
-    subtitle,
+    titleTooltip,
     initialPath,
     browseDirectories,
     createBrowseDirectory,
@@ -1842,13 +1849,6 @@ export function showFolderPicker({
 }) {
     const body = document.createElement("div");
     body.className = "koolook-folder-picker";
-
-    if (subtitle) {
-        const sub = document.createElement("div");
-        sub.className = "koolook-modal-pathline";
-        sub.textContent = subtitle;
-        body.appendChild(sub);
-    }
 
     // Toolbar row: ↑ Up + path input. The toolbar is rebuilt in place when
     // the New folder… flow opens (a transient name-input replaces the
@@ -2081,6 +2081,7 @@ export function showFolderPicker({
 
     ({ overlay } = makeModalShell({
         title,
+        titleTooltip,
         body,
         actions: [newFolderBtn, spacer, cancelBtn, useBtn],
     }));
