@@ -81,6 +81,18 @@ function getSelectedNodeIds() {
     }
 }
 
+export function getSelectedNodeCount() {
+    return getSelectedNodeIds().size;
+}
+
+export function getCanvasNodeCount() {
+    try {
+        return (app.graph && app.graph._nodes && app.graph._nodes.length) || 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
 function idKey(id) {
     return id == null ? null : String(id);
 }

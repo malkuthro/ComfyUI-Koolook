@@ -68,6 +68,8 @@ import {
     insertWorkflowOntoCanvas,
     insertNode,
     getSelectedNodeTypes,
+    getSelectedNodeCount,
+    getCanvasNodeCount,
     dropPlaceholdersForPacks,
 } from "./canvas_io.js";
 import { discoverMissingPacks } from "./installer.js";
@@ -1611,6 +1613,68 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         },
     };
 
+    const updateFromCanvasItem = {
+        label: "Update from selection or canvas",
+        action: () => {
+            if (!canvasIsNonEmpty()) {
+                toast("Canvas is empty.");
+                return;
+            }
+
+            const selectedCount = getSelectedNodeCount();
+            const totalNodeCount = getCanvasNodeCount();
+            const allNodesSelected = selectedCount > 0 && selectedCount === totalNodeCount;
+
+            let graph = null;
+            let sourceLabel = "canvas";
+
+            if (selectedCount > 0 && !allNodesSelected) {
+                const selectionResult = serializeSelection();
+                if (selectionResult.kind === "stale") {
+                    toast("Selected node(s) no longer exist.");
+                    return;
+                }
+                if (selectionResult.kind !== "ok") {
+                    toast("Selection unavailable. Re-select nodes and try again.");
+                    return;
+                }
+                if (!selectionResult.graph || !Array.isArray(selectionResult.graph.nodes) || selectionResult.graph.nodes.length === 0) {
+                    toast("Failed to serialize selection. See console.");
+                    return;
+                }
+                graph = selectionResult.graph;
+                sourceLabel = "selection";
+            } else {
+                graph = serializeFullCanvas();
+                if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+                    toast("Failed to serialize canvas. See console.");
+                    return;
+                }
+            }
+
+            const sourceTags = getWorkflowTags(dirPath, wfName) || [];
+            const sourceIsModule = isWorkflowModule(dirPath, wfName);
+            persistMutation({
+                mutate: () => {
+                    if (getWorkflowGraph(dirPath, wfName) === null) return false;
+                    const result = saveWorkflowEntry(dirPath, wfName, graph, { module: sourceIsModule });
+                    if (!result) return false;
+                    for (const t of sourceTags) addTag(dirPath, wfName, t);
+                    if (sourceIsModule) addTag(dirPath, wfName, MODULE_TAG);
+                    return result;
+                },
+                onSuccess: (result) => {
+                    if (result && result.archivedAs) {
+                        toast(`Updated "${wfName}" from ${sourceLabel} (previous version archived as "${result.archivedAs}").`);
+                    } else {
+                        toast(`Updated "${wfName}" from ${sourceLabel}.`);
+                    }
+                },
+                onNoOp: () => toast(`Could not update — "${wfName}" no longer exists.`),
+            });
+        },
+    };
+
     const tagsItem = {
         label: "Tags…",
         action: () => {
@@ -1649,6 +1713,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
             label: "Insert into canvas",
             action: () => insertWorkflowOntoCanvas(dirPath, wfName),
         },
+        ...(!isArchived ? [updateFromCanvasItem] : []),
         {
             label: "Rename…",
             action: () => {
