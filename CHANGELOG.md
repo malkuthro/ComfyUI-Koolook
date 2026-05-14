@@ -7,6 +7,39 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Snapshot dialogs redesign (issue #137).** The Save and Load dialogs
+  now carry an inline "Saved to" / "Loaded from" library row at the top
+  of the body (folder name + full path + "Open folder ↗" link) and a
+  bottom command bar with `Save to…` / `Load from…` that opens a new
+  navigate-into folder picker (matching the mockup in
+  [`docs/designs/snapshot-dialogs.html`](docs/designs/snapshot-dialogs.html)
+  §6). The picker reuses the existing `/koolook/presets/browse` endpoint
+  plus an opt-in `?files=1` parameter that returns child JSON files
+  alongside directories, rendered greyed for a "yes, this is the folder
+  I expected" affordance.
+
+  The Save dialog's primary button now cycles through the four-state
+  pattern (Default / Dirty / In progress / Done) per mockup §5 — picking
+  a different library via `Save to…` relabels Save to *"Save to new
+  folder"* before the click commits.
+
+  The Load dialog's auto-save discovery is now inline: when a preset
+  has a newer recovery file (server row-augment now considers
+  `max(periodic.json, pre_load_*.json)` instead of just
+  `periodic.json`), clicking the preset expands a single scoped
+  recovery row directly beneath it. The user picks by clicking the
+  named row (load named) or the scoped row (load the autosave). The
+  YES/NO modal that used to interrupt the flow is gone. Preset
+  deletion is now inline too — clicking × outlines the row red and
+  the bottom Close button transforms to *"Yes — delete '<name>'"*;
+  Escape cancels.
+
+  The Settings cog is removed from the Snapshot toolbar (row is now
+  status indicator · Load · Quick Save · Save); library-path
+  management lives inside `Save to…` / `Load from…`. The first
+  pytest run (`tests/server/`) ships with this change — 12 cases
+  covering the server row-augment and the picker's filesystem
+  helpers — and CI runs them via a new Pytest job.
 - **Easy Image Batch (`easy_ImageBatch`): "White" placeholder + `source_batch`
   input.** The `placeholder_color` dropdown now offers `Black / Gray / White`
   (fill values `0.0 / 0.5 / 1.0`); previously only Black and Gray were
