@@ -39,3 +39,19 @@ extend-exclude = [".venv", "forks", "upscaler_FIX", "nuke_CAM_exporter"]
 
 [tool.ruff.lint.per-file-ignores]
 "k_easy_resize.py" = ["F841"]
+
+[tool.pytest.ini_options]
+# ``testpaths`` scopes discovery to ``tests/``. ``pythonpath`` makes the repo
+# root importable so tests can ``import koolook_routes`` without an editable
+# install. ``importmode=importlib`` avoids the legacy ``sys.path.prepend``
+# import dance so re-running individual files works cleanly.
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+
+[project.optional-dependencies]
+# Test deps for ``pytest`` runs. CI installs via ``pip install .[test]``;
+# locally use ``.venv/bin/pip install -e '.[test]'`` from the repo root.
+# ``aiohttp`` is a runtime dep of ``koolook_routes`` and must be importable
+# even when only a pure helper is under test.
+test = ["pytest>=8", "aiohttp>=3.9"]

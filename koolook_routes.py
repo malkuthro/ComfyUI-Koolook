@@ -59,6 +59,40 @@ _DIRNAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+$")
 _HIDDEN_LIST_PREFIXES = ("_autosave_",)
 
 
+def _latest_autosave_mtime(autosave_dir: Path, named_mtime: float) -> float | None:
+    """Returns the newest recovery-file mtime inside ``autosave_dir`` if
+    strictly newer than ``named_mtime``, else ``None``.
+
+    Scans ``periodic.json`` and every ``pre_load_*.json``. Powers the Load
+    dialog's "newer auto-save available" affordance — the dialog needs to
+    surface the freshest recovery file regardless of which mechanism wrote
+    it (the periodic timer vs. an explicit pre-load capture).
+    """
+    newest: float | None = None
+    try:
+        st = (autosave_dir / "periodic.json").stat()
+        newest = st.st_mtime
+    except OSError:
+        pass
+    try:
+        for entry in autosave_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if not entry.name.startswith("pre_load_") or not entry.name.endswith(".json"):
+                continue
+            try:
+                pst = entry.stat()
+            except OSError:
+                continue
+            if newest is None or pst.st_mtime > newest:
+                newest = pst.st_mtime
+    except OSError:
+        pass
+    if newest is not None and newest > named_mtime:
+        return newest
+    return None
+
+
 def _resolve_default_dir() -> Path:
     """Resolve the default preset directory under ComfyUI's user folder.
 
@@ -524,24 +558,25 @@ def register_routes(routes) -> None:
                     "mtime": stat.st_mtime,
                     "size": stat.st_size,
                 }
-                # Library-root rows only: stat the matching `<base>_autosave/
-                # periodic.json` and surface its mtime when strictly newer
-                # than the named file. Powers the Load dialog's inline
-                # "Newer auto-save available — restore?" affordance — the
-                # autosave UX needs the system to proactively offer the
-                # recovery copy when the user's last manual save is stale,
-                # rather than burying it inside the Recovery disclosure.
-                # One extra stat per row, no read — cheap even on large
-                # libraries.
+                # Library-root rows only: scan the matching
+                # `<base>_autosave/` subfolder for the newest recovery file
+                # (``periodic.json`` and every ``pre_load_*.json``) and
+                # surface its mtime when strictly newer than the named
+                # file. Powers the Load dialog's inline "Newer auto-save
+                # available — restore?" affordance — the autosave UX needs
+                # the system to proactively offer the recovery copy when
+                # the user's last manual save is stale, rather than
+                # burying it inside the Recovery disclosure. Issue #137:
+                # before this we only considered ``periodic.json``, which
+                # missed cases where the user's most recent Load wrote a
+                # fresher ``pre_load_*.json`` snapshot. A handful of stats
+                # per row, no reads — still cheap on large libraries.
                 if not subdir_q:
                     base_name = entry.name[: -len(".json")]
-                    auto_path = target_dir / f"{base_name}_autosave" / "periodic.json"
-                    try:
-                        a_stat = auto_path.stat()
-                        if a_stat.st_mtime > stat.st_mtime:
-                            row["latestAutosaveMtime"] = a_stat.st_mtime
-                    except OSError:
-                        pass
+                    autosave_dir = target_dir / f"{base_name}_autosave"
+                    newest = _latest_autosave_mtime(autosave_dir, stat.st_mtime)
+                    if newest is not None:
+                        row["latestAutosaveMtime"] = newest
                 out.append(row)
         except OSError as exc:
             raise web.HTTPInternalServerError(

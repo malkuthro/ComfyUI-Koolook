@@ -61,3 +61,22 @@ jobs:
         # tracked separately via issue #44. Re-enable by removing --skip
         # once that issue is resolved upstream.
         run: python tools/preflight_release.py --skip manager-meta -v
+
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        # The ``test`` extra pulls in pytest and aiohttp (a runtime dep of
+        # ``koolook_routes`` that must be importable even when only a pure
+        # helper is under test).
+        run: pip install .[test]
+
+      - name: Run pytest
+        run: pytest -q
