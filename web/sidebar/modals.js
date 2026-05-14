@@ -1153,8 +1153,19 @@ export function showSaveSnapshotDialog({
     }
 
     function updatePrimaryLabel() {
-        const dirty = isDirty();
-        primaryState = dirty ? "dirty" : (current ? "default" : "default-new");
+        // ``dirty`` only meaningfully changes behaviour when there's a tracked
+        // preset to overwrite — otherwise the primary action is "ask for a
+        // name and write" regardless of the destination folder. Without this
+        // guard, opening Save with no tracked preset, then changing the
+        // folder via Save to…, would enter the "dirty" branch with
+        // ``current === null`` and the primary click would call
+        // ``doOverwrite(null)`` → ``sanitizeName(null)`` instead of routing
+        // to the Save-as-new name prompt.
+        if (!current) {
+            primaryState = "default-new";
+        } else {
+            primaryState = isDirty() ? "dirty" : "default";
+        }
         renderPrimary();
     }
 
@@ -1886,12 +1897,24 @@ export function showLoadSnapshotDialog({
     // Escape to overlay close; intercept BEFORE that fires so a pending
     // delete just unwinds the row state without dismissing the whole
     // dialog. ``capture: true`` runs this listener before the shell's.
-    document.addEventListener("keydown", (e) => {
+    // Listener is captured by name so we can tear it down on close —
+    // ``document.addEventListener`` does not auto-clean up when the
+    // dialog overlay is removed, and repeated open/close cycles would
+    // otherwise stack one stale handler per session. Tie the cleanup to
+    // ``overlay.remove`` (the canonical close path that every dismissal
+    // route already goes through, thanks to the shell's wrapping).
+    const escapeForDelete = (e) => {
         if (e.key !== "Escape") return;
         if (!pendingDelete) return;
         e.stopPropagation();
         cancelDelete();
-    }, { capture: true });
+    };
+    document.addEventListener("keydown", escapeForDelete, { capture: true });
+    const overlayRemoveBeforeCleanup = overlay.remove.bind(overlay);
+    overlay.remove = () => {
+        document.removeEventListener("keydown", escapeForDelete, { capture: true });
+        overlayRemoveBeforeCleanup();
+    };
 
     refresh();
     if (typeof getLibraryInfo === "function") {
