@@ -175,8 +175,8 @@ export function ensureStyle() {
 .koolook-toast-btn { padding: 4px 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; color: #fff; cursor: pointer; font-size: 11px; font-family: inherit; }
 .koolook-toast-btn:hover { background: rgba(0,0,0,0.4); }
 .koolook-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9998; display: flex; align-items: center; justify-content: center; }
-.koolook-modal { background: var(--comfy-menu-bg, #2a2a2a); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 16px 18px; min-width: 320px; max-width: 520px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, inherit); }
-.koolook-modal-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.koolook-modal { background: #151515; border: 1px solid #4f4f54; border-radius: 8px; padding: 16px 18px; min-width: 320px; max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); color: var(--input-text, #f9fafb); overflow: hidden; }
+.koolook-modal-title { font-size: 15px; font-weight: 700; margin: -16px -18px 14px; padding: 14px 18px; border-bottom: 1px solid #302f2f; background: #181818; }
 .koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -187,12 +187,12 @@ export function ensureStyle() {
    Naming kept from the (deleted) Settings dialog for git-blame continuity;
    the two classes have always rendered the same shape (leaf folder name
    on the first line, full absolute path on the second). */
-.koolook-settings-folder-name { opacity: 0.95; font-size: 12px; font-weight: 600; color: var(--input-text, inherit); }
-.koolook-settings-folder-path { opacity: 0.68; font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; line-height: 1.35; }
-.koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.koolook-settings-folder-name { opacity: 1; font-size: 13px; font-weight: 700; color: #e6e8ec; margin-top: 2px; }
+.koolook-settings-folder-path { color: #8f959c; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin: 16px -18px -16px; padding: 12px 18px; border-top: 1px solid #302f2f; background: #131313; }
 .koolook-modal-checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; opacity: 0.85; cursor: pointer; user-select: none; }
 .koolook-modal-checkbox-row input[type="checkbox"] { cursor: pointer; }
-.koolook-modal-btn { padding: 6px 14px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; cursor: pointer; font-size: 12px; }
+.koolook-modal-btn { padding: 6px 14px; background: #1a1a1f; border: 1px solid #4f4f54; border-radius: 4px; color: #e6e8ec; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .koolook-modal-btn:hover { background: rgba(255,255,255,0.1); }
 .koolook-modal-btn-primary { background: rgba(80,140,235,0.35); border-color: rgba(80,140,235,0.55); }
 .koolook-modal-btn-primary:hover { background: rgba(80,140,235,0.5); }
@@ -222,13 +222,12 @@ export function ensureStyle() {
 .koolook-install-unresolved-summary { cursor: pointer; font-size: 11px; opacity: 0.75; margin-top: 4px; }
 .koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
 .koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
-.koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; }
-/* Recovery auto-saves section in the Load dialog. Collapsible details
-   element; lazy-loads the list on first expand. Each subdir gets its own
-   group header so users can scan visually for the preset they want to
-   recover from. */
-.koolook-recovery-section { margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px; }
-.koolook-recovery-summary { cursor: pointer; font-size: 12px; opacity: 0.78; padding: 4px 2px; user-select: none; outline: none; }
+.koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid #302f2f; border-radius: 4px; background: #111111; overflow: hidden auto; }
+/* Recovery auto-saves section in the Load dialog. The collapsed summary is
+   always visible at the bottom of the body; clicking a preset with a newer
+   autosave opens one scoped group inside this container. */
+.koolook-recovery-section { margin-top: 14px; border: 1px solid #302f2f; border-radius: 4px; background: rgba(255,255,255,0.02); overflow: hidden; }
+.koolook-recovery-summary { cursor: pointer; font-size: 12px; color: #d8dadd; padding: 10px 12px; user-select: none; outline: none; }
 .koolook-recovery-summary:hover { opacity: 1; }
 /* No outer border on the recovery list — each group carries its own
    bordered rows-list, mirroring the library section's structure. We
@@ -239,25 +238,27 @@ export function ensureStyle() {
    here — they would prematurely close the template literal in ES
    module mode and break the entire constants.js module load (and with
    it the whole sidebar). Use plain quotes or no quotes at all. */
-.koolook-recovery-list { margin-top: 6px; max-height: 240px; overflow-y: auto; }
-.koolook-recovery-group { border-bottom: 1px solid rgba(255,255,255,0.04); }
-.koolook-recovery-group:last-child { border-bottom: none; }
-/* Group header is a flex wrapper hosting the same folder-name plus
-   folder-path pair the library section uses, so it carries no
-   typography of its own — the inner CSS drives appearance. */
-.koolook-recovery-group-header { padding: 4px 0 6px; }
+.koolook-recovery-list { margin-top: 0; max-height: 240px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.04); }
+.koolook-recovery-group { padding: 10px 12px; }
+.koolook-recovery-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.koolook-recovery-group-title { color: #e6e8ec; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-recovery-group-path { color: #8f959c; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-recovery-group + .koolook-recovery-group { margin-top: 10px; }
-.koolook-recovery-kind { font-size: 10px; opacity: 0.65; margin-right: 5px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.04em; }
-.koolook-recovery-kind-pre_load { color: #ffb74d; }
-.koolook-recovery-kind-periodic { color: #6db4ff; }
-.koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.koolook-recovery-kind { display: inline-flex; align-items: center; width: fit-content; font-size: 10px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 3px; font-weight: 700; margin-bottom: 6px; }
+.koolook-recovery-kind-pre_load { background: rgba(255,184,77,0.16); color: #f5d3a0; border: 1px solid rgba(255,184,77,0.35); }
+.koolook-recovery-kind-periodic { background: rgba(109,180,255,0.16); color: #b3d4f5; border: 1px solid rgba(109,180,255,0.35); }
+.koolook-recovery-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #302f2f; border-radius: 3px; background: #111111; }
+.koolook-recovery-row-info { flex: 1; min-width: 0; cursor: pointer; font-size: 12px; }
+.koolook-recovery-row-info:hover .koolook-recovery-row-meta { color: var(--p-primary-color, rgba(120,170,255,1)); }
+.koolook-recovery-row-meta { color: #8f959c; font-size: 11px; line-height: 1.35; }
+.koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #302f2f; background: #111111; }
 .koolook-snapshot-row:last-child { border-bottom: none; }
 .koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }
 .koolook-snapshot-row-info:hover .koolook-snapshot-row-name { color: var(--p-primary-color, rgba(120,170,255,1)); }
-.koolook-snapshot-row-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-snapshot-row-meta { font-size: 11px; opacity: 0.55; margin-top: 2px; }
+.koolook-snapshot-row-name { color: #e6e8ec; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-snapshot-row-meta { color: #8f959c; font-size: 11px; margin-top: 2px; }
 .koolook-snapshot-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.koolook-snapshot-row-btn { padding: 3px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid rgba(255,255,255,0.08); border-radius: 3px; cursor: pointer; color: inherit; font-size: 11px; }
+.koolook-snapshot-row-btn { min-width: 26px; height: 24px; padding: 0 8px; background: rgba(74,5,5,0.45); border: 1px solid rgba(255,138,138,0.45); border-radius: 4px; cursor: pointer; color: #ffd9d9; font-size: 16px; font-weight: 800; line-height: 1; }
 .koolook-snapshot-row-btn:hover { background: rgba(255,255,255,0.08); }
 .koolook-snapshot-row-btn-danger:hover { background: rgba(220,80,80,0.25); border-color: rgba(220,80,80,0.4); }
 .koolook-snapshot-empty { padding: 20px; opacity: 0.5; font-size: 12px; text-align: center; }
@@ -330,10 +331,11 @@ export function ensureStyle() {
    the top edge so a long absolute path can't overlap the link. Every
    action lives in the bottom command bar (Save to... | Cancel | Save
    as new... | Save). */
-.koolook-snap-lib-row { padding: 8px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; background: rgba(0,0,0,0.18); margin-bottom: 12px; }
-.koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.koolook-snap-lib-label { font-size: 10px; opacity: 0.55; text-transform: uppercase; letter-spacing: 0.05em; }
-.koolook-snap-open-folder-link { font-size: 11px; opacity: 0.7; color: var(--p-primary-color, rgba(120,170,255,1)); text-decoration: none; }
+.koolook-snap-lib-row { padding: 10px 12px; border: 1px solid #302f2f; border-radius: 4px; background: rgba(255,255,255,0.025); margin-bottom: 14px; }
+.koolook-snap-lib-row-info { min-width: 0; }
+.koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.koolook-snap-lib-label { color: #8f959c; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.koolook-snap-open-folder-link { font-size: 11px; opacity: 1; color: #6db4ff; text-decoration: none; white-space: nowrap; }
 .koolook-snap-open-folder-link:hover { opacity: 1; text-decoration: underline; }
 .koolook-snap-save-message { margin: 6px 0 0; }
 /* Four-state primary button (mockup section 5). The in-progress and
@@ -345,14 +347,9 @@ export function ensureStyle() {
    short-circuits naturally. */
 .koolook-snap-save-in-progress { opacity: 0.7; cursor: progress; }
 .koolook-snap-save-done { background: rgba(120, 200, 120, 0.18); border-color: rgba(120, 200, 120, 0.5); color: #b3e3b3; opacity: 0.95; cursor: default; }
-/* Load dialog redesign (issue #137, mockup section 3). The scoped
-   recovery row sits as a sibling immediately after the preset row that
-   triggered it, so the kind badge plus timestamp meta line up below
-   the named row with no nested chrome. The inline delete state outlines
-   the row in red and the bottom Close button transforms to Yes (delete).
-   Reminder: no backticks in comments inside this CSS template literal. */
-.koolook-snapshot-scoped-recovery { margin: -1px 0 4px; padding-left: 14px; border-left: 2px solid rgba(120, 170, 255, 0.35); }
-.koolook-snapshot-scoped-recovery-row { background: rgba(80, 140, 235, 0.06); }
+.koolook-delete-confirm-text { align-self: center; color: #ffb1b1; font-size: 12px; font-weight: 600; }
+/* Inline delete state outlines the target row in red. Reminder: no
+   backticks in comments inside this CSS template literal. */
 .koolook-snapshot-row-pending-delete { outline: 1.5px solid rgba(220, 80, 80, 0.75); outline-offset: -1px; background: rgba(220, 80, 80, 0.06); }
 `;
     document.head.appendChild(s);

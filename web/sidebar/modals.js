@@ -6,7 +6,7 @@
 // click / Cancel / OK dismissal paths and ties the document-level keydown
 // listener to the overlay's lifetime so opening many modals doesn't leak.
 // =============================================================================
-import { compareNames, criticalToast, toast } from "./constants.js";
+import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from "./constants.js";
 import { formatLocalStamp } from "./format_time.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
 import {
@@ -990,14 +990,14 @@ function todayStamp() {
 // for legacy rows whose listing endpoint didn't carry mtime.
 function formatPreviewMeta(p) {
     const parts = [];
-    parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
     parts.push(`${p.pickCount} pick${p.pickCount === 1 ? "" : "s"}`);
+    parts.push(`${p.workflowCount} workflow${p.workflowCount === 1 ? "" : "s"}`);
     if (typeof p.mtime === "number" && isFinite(p.mtime)) {
         const stamp = formatLocalStamp(new Date(p.mtime * 1000));
-        if (stamp) parts.push(`saved ${stamp}`);
+        if (stamp) parts.push(p.kind ? stamp : `saved ${stamp}`);
     } else if (p.exportedAt) {
         const stamp = formatLocalStamp(new Date(p.exportedAt));
-        if (stamp) parts.push(`exported ${stamp}`);
+        if (stamp) parts.push(p.kind ? stamp : `exported ${stamp}`);
     }
     return parts.join(" · ");
 }
@@ -1067,6 +1067,9 @@ export function showSaveSnapshotDialog({
     const libRow = document.createElement("div");
     libRow.className = "koolook-snap-lib-row";
 
+    const libRowInfo = document.createElement("div");
+    libRowInfo.className = "koolook-snap-lib-row-info";
+
     const libRowTop = document.createElement("div");
     libRowTop.className = "koolook-snap-lib-row-top";
     const libLabel = document.createElement("span");
@@ -1091,16 +1094,17 @@ export function showSaveSnapshotDialog({
         }
     });
     libRowTop.appendChild(openFolderLink);
-    libRow.appendChild(libRowTop);
+    libRowInfo.appendChild(libRowTop);
 
     const libName = document.createElement("div");
     libName.className = "koolook-settings-folder-name";
     libName.textContent = "Library folder: (loading…)";
-    libRow.appendChild(libName);
+    libRowInfo.appendChild(libName);
 
     const libPath = document.createElement("div");
     libPath.className = "koolook-settings-folder-path";
-    libRow.appendChild(libPath);
+    libRowInfo.appendChild(libPath);
+    libRow.appendChild(libRowInfo);
 
     body.appendChild(libRow);
 
@@ -1448,6 +1452,9 @@ export function showLoadSnapshotDialog({
     const libRow = document.createElement("div");
     libRow.className = "koolook-snap-lib-row";
 
+    const libRowInfo = document.createElement("div");
+    libRowInfo.className = "koolook-snap-lib-row-info";
+
     const libRowTop = document.createElement("div");
     libRowTop.className = "koolook-snap-lib-row-top";
     const libLabel = document.createElement("span");
@@ -1472,33 +1479,48 @@ export function showLoadSnapshotDialog({
         }
     });
     libRowTop.appendChild(openFolderLink);
-    libRow.appendChild(libRowTop);
+    libRowInfo.appendChild(libRowTop);
 
     const libName = document.createElement("div");
     libName.className = "koolook-settings-folder-name";
     libName.textContent = "Library folder: (loading…)";
-    libRow.appendChild(libName);
+    libRowInfo.appendChild(libName);
 
     const libPath = document.createElement("div");
     libPath.className = "koolook-settings-folder-path";
-    libRow.appendChild(libPath);
+    libRowInfo.appendChild(libPath);
+    libRow.appendChild(libRowInfo);
 
     body.appendChild(libRow);
 
     const listWrap = document.createElement("div");
     body.appendChild(listWrap);
 
+    const recoverySection = document.createElement("div");
+    recoverySection.className = "koolook-recovery-section";
+    const recoverySummary = document.createElement("div");
+    recoverySummary.className = "koolook-recovery-summary";
+    recoverySummary.textContent = "▸ Recovery auto-saves";
+    recoverySection.appendChild(recoverySummary);
+    const recoveryContent = document.createElement("div");
+    recoveryContent.className = "koolook-recovery-list";
+    recoveryContent.hidden = true;
+    recoverySection.appendChild(recoveryContent);
+    recoverySummary.addEventListener("click", () => {
+        if (scopedRecovery) clearScopedRecovery();
+    });
+    body.appendChild(recoverySection);
+
     let overlay;
     const close = () => overlay.remove();
 
-    // Per-dialog state. ``pendingDelete`` holds the preview whose × was
-    // clicked and the row element currently outlined red; the Close
-    // button's label flips to "Yes (delete)" until the user confirms or
-    // Escape cancels. ``scopedRecoveryRow`` holds the inline single-row
-    // recovery widget that opens beneath a preset row that has a newer
-    // autosave — exactly one is shown at a time (mockup section 3).
+    // Per-dialog state. ``pendingDelete`` holds the target whose × was
+    // clicked and the row element currently outlined red; the command
+    // bar swaps to a "Confirm delete?" prompt until the user confirms or
+    // Escape cancels. ``scopedRecovery`` holds the bottom recovery
+    // section state for one preset at a time (mockup section 3).
     let pendingDelete = null;
-    let scopedRecoveryRow = null;
+    let scopedRecovery = null;
 
     function renderEmpty(text) {
         const el = document.createElement("div");
@@ -1681,19 +1703,21 @@ export function showLoadSnapshotDialog({
 
     // ---- Click routing ----
     // Mockup section 3: clicking a preset that has a newer autosave does
-    // NOT load it; it expands a single scoped recovery row beneath the
-    // clicked preset. The user then re-clicks the named row (to load
-    // named) or clicks the recovery row (to load the autosave). Presets
-    // with no newer autosave skip the choice entirely — direct load.
+    // NOT load it; it opens the bottom Recovery auto-saves section,
+    // scoped to that preset alone. The user then re-clicks the named row
+    // (to load named) or clicks the recovery row (to load the autosave).
+    // Presets with no newer autosave skip the choice entirely — direct
+    // load.
     function onPresetClick(preview, rowEl) {
         // Cancel any pending delete-confirm on a different row.
         if (pendingDelete && pendingDelete.preview.fileName !== preview.fileName) {
             cancelDelete();
+            return;
         }
         // A second click on the SAME preset that already has its scoped
-        // recovery row open commits the named load — the user has seen
-        // both options and is choosing the named version.
-        if (scopedRecoveryRow && scopedRecoveryRow.parentPreview.fileName === preview.fileName) {
+        // recovery section open commits the named load — the user has
+        // seen both options and is choosing the named version.
+        if (scopedRecovery && scopedRecovery.parentPreview.fileName === preview.fileName) {
             doNamedLoad(preview);
             return;
         }
@@ -1701,7 +1725,7 @@ export function showLoadSnapshotDialog({
         if (typeof preview.latestAutosaveMtime === "number" &&
             typeof preview.mtime === "number" &&
             preview.latestAutosaveMtime > preview.mtime) {
-            insertScopedRecovery(preview, rowEl);
+            openScopedRecovery(preview);
             return;
         }
         // No newer autosave — direct load. The dialog already says
@@ -1710,17 +1734,13 @@ export function showLoadSnapshotDialog({
         doNamedLoad(preview);
     }
 
-    // Build a single inline row representing the newest recovery file
-    // for the clicked preset, slotted in the DOM directly after the
-    // preset row. Loading state shows briefly while listAutosaves()
-    // resolves; error/empty states render in place so the user knows
-    // the affordance opened but yielded nothing.
-    async function insertScopedRecovery(preview, anchorRow) {
-        const slot = document.createElement("div");
-        slot.className = "koolook-snapshot-scoped-recovery";
-        slot.appendChild(renderEmpty("Loading recovery…"));
-        anchorRow.insertAdjacentElement("afterend", slot);
-        scopedRecoveryRow = { el: slot, parentPreview: preview };
+    async function openScopedRecovery(preview) {
+        recoverySection.classList.add("koolook-recovery-open");
+        recoverySummary.textContent = "▾ Recovery auto-saves";
+        recoveryContent.hidden = false;
+        recoveryContent.innerHTML = "";
+        recoveryContent.appendChild(renderEmpty("Loading recovery…"));
+        scopedRecovery = { parentPreview: preview };
 
         let items = [];
         if (typeof listAutosaves === "function") {
@@ -1735,59 +1755,103 @@ export function showLoadSnapshotDialog({
         const scoped = items
             .filter((item) => item.dir === subdir)
             .sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-        slot.innerHTML = "";
+        recoveryContent.innerHTML = "";
         if (scoped.length === 0) {
-            slot.appendChild(renderEmpty("No recovery auto-save for this preset."));
+            recoveryContent.appendChild(renderEmpty("No recovery auto-save for this preset."));
             return;
         }
         const newest = scoped[0];
-        const list = document.createElement("div");
-        list.className = "koolook-snapshot-list";
+
+        const group = document.createElement("div");
+        group.className = "koolook-recovery-group";
+
+        const groupHead = document.createElement("div");
+        groupHead.className = "koolook-recovery-group-head";
+        const groupTitle = document.createElement("div");
+        groupTitle.className = "koolook-recovery-group-title";
+        groupTitle.textContent = subdir;
+        groupHead.appendChild(groupTitle);
+
+        const groupOpen = document.createElement("a");
+        groupOpen.className = "koolook-snap-open-folder-link";
+        groupOpen.href = "#";
+        groupOpen.textContent = "Open folder ↗";
+        groupOpen.title = "Open this recovery folder in your file manager";
+        groupOpen.addEventListener("click", async (e) => {
+            e.preventDefault();
+            if (typeof revealPresetFolder !== "function") return;
+            try {
+                const r = await revealPresetFolder({ dir: subdir });
+                toast(`Opened: ${r.path}`);
+            } catch (err) {
+                console.error("[Koolook] reveal recovery folder failed:", err);
+                toast(`Could not open recovery folder: ${err.message}`);
+            }
+        });
+        groupHead.appendChild(groupOpen);
+        group.appendChild(groupHead);
+
+        const groupPath = document.createElement("div");
+        groupPath.className = "koolook-recovery-group-path";
+        const fullGroupPath = libraryPath ? `${libraryPath}/${subdir}/` : subdir;
+        groupPath.textContent = formatLibraryPathBreadcrumb(fullGroupPath, 56);
+        groupPath.title = fullGroupPath;
+        group.appendChild(groupPath);
+
         const row = document.createElement("div");
-        row.className = "koolook-snapshot-row koolook-snapshot-scoped-recovery-row";
+        row.className = "koolook-recovery-row";
 
         const info = document.createElement("div");
-        info.className = "koolook-snapshot-row-info";
+        info.className = "koolook-recovery-row-info";
         info.title = "Click to load this auto-save instead of the named preset.";
 
-        const name = document.createElement("div");
-        name.className = "koolook-snapshot-row-name";
         const kindBadge = document.createElement("span");
         kindBadge.className = "koolook-recovery-kind koolook-recovery-kind-" + newest.kind;
         kindBadge.textContent = newest.kind === "pre_load" ? "Pre-load" :
                                 newest.kind === "periodic" ? "Periodic" : "Other";
-        name.appendChild(kindBadge);
-        // Per locked-in decision: recovery rows show kind + timestamp +
-        // meta, no filenames. Timestamp comes from formatPreviewMeta
-        // (which already prefers mtime → "saved <local-stamp>").
-        info.appendChild(name);
+        info.appendChild(kindBadge);
 
         const meta = document.createElement("div");
-        meta.className = "koolook-snapshot-row-meta";
+        meta.className = "koolook-recovery-row-meta";
         meta.textContent = formatPreviewMeta(newest);
         info.appendChild(meta);
 
         info.addEventListener("click", () => doAutosaveRestore(newest));
         row.appendChild(info);
-        list.appendChild(row);
-        slot.appendChild(list);
+
+        const actions = document.createElement("div");
+        actions.className = "koolook-snapshot-row-actions";
+        const delBtn = document.createElement("button");
+        delBtn.className = "koolook-snapshot-row-btn koolook-snapshot-row-btn-danger";
+        delBtn.textContent = "×";
+        delBtn.title = "Delete this recovery auto-save";
+        delBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            armDelete(newest, row, { dir: newest.dir });
+        });
+        actions.appendChild(delBtn);
+        row.appendChild(actions);
+
+        group.appendChild(row);
+        recoveryContent.appendChild(group);
     }
 
     function clearScopedRecovery() {
-        if (scopedRecoveryRow && scopedRecoveryRow.el && scopedRecoveryRow.el.parentNode) {
-            scopedRecoveryRow.el.remove();
-        }
-        scopedRecoveryRow = null;
+        recoverySection.classList.remove("koolook-recovery-open");
+        recoverySummary.textContent = "▸ Recovery auto-saves";
+        recoveryContent.hidden = true;
+        recoveryContent.innerHTML = "";
+        scopedRecovery = null;
     }
 
     // ---- Inline delete confirm ----
     // Mockup-locked: × outlines the row red, Close transforms to
     // "Yes (delete)". A second confirm click commits; Escape cancels.
-    function armDelete(preview, rowEl) {
+    function armDelete(preview, rowEl, { dir = "" } = {}) {
         if (pendingDelete) cancelDelete();
-        clearScopedRecovery();
+        if (!dir) clearScopedRecovery();
         rowEl.classList.add("koolook-snapshot-row-pending-delete");
-        pendingDelete = { preview, rowEl };
+        pendingDelete = { preview, rowEl, dir };
         applyCloseButtonState();
     }
 
@@ -1802,8 +1866,9 @@ export function showLoadSnapshotDialog({
         const target = pendingDelete;
         if (!target) return;
         try {
-            await deletePreset(target.preview.fileName);
+            await deletePreset(target.preview.fileName, { dir: target.dir });
             if (typeof getCurrentPresetName === "function" &&
+                !target.dir &&
                 getCurrentPresetName() === target.preview.fileName) {
                 setCurrentPresetName(null);
             }
@@ -1824,6 +1889,10 @@ export function showLoadSnapshotDialog({
         onClick: () => openLoadFrom(),
     });
 
+    const confirmText = document.createElement("span");
+    confirmText.className = "koolook-delete-confirm-text";
+    confirmText.hidden = true;
+
     const closeBtn = makeModalButton({
         label: "Close",
         onClick: () => {
@@ -1837,10 +1906,16 @@ export function showLoadSnapshotDialog({
 
     function applyCloseButtonState() {
         if (pendingDelete) {
-            closeBtn.textContent = `Yes — delete "${pendingDelete.preview.displayName}"`;
+            loadFromBtn.hidden = true;
+            confirmText.hidden = false;
+            confirmText.textContent = `Confirm delete "${pendingDelete.preview.displayName}"?`;
+            closeBtn.textContent = "Yes";
             closeBtn.classList.add("koolook-modal-btn-danger");
             closeBtn.title = "Confirm deletion. Press Esc to cancel.";
         } else {
+            loadFromBtn.hidden = false;
+            confirmText.hidden = true;
+            confirmText.textContent = "";
             closeBtn.textContent = "Close";
             closeBtn.classList.remove("koolook-modal-btn-danger");
             closeBtn.title = "";
@@ -1890,7 +1965,7 @@ export function showLoadSnapshotDialog({
         title: "Load snapshot",
         titleTooltip: "Restore the sidebar state from a preset file.",
         body,
-        actions: [loadFromBtn, spacer, closeBtn],
+        actions: [loadFromBtn, confirmText, spacer, closeBtn],
     }));
 
     // Escape-to-cancel for inline delete. The modal shell already wires
