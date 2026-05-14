@@ -123,6 +123,31 @@ existing picks (legacy curated_defaults.json users), so changing the
 shipped starter doesn't disturb anyone's existing state — the new
 starter only reaches fresh installs and users who clear browser data.
 
+## Visual verification for design-driven implementation
+
+When implementing a UI change that has a corresponding mockup in
+[`docs/designs/`](docs/designs/) (e.g. `snapshot-dialogs.html`,
+`sidebar-icon-proposals.html`), **the design file is the spec**. Before
+asking the maintainer to review the implementation:
+
+1. Render the implementation in a real browser — `dev-sync` against the
+   live ComfyUI install for runtime UI, or a local static server
+   (`python3 -m http.server`) for standalone HTML mockups.
+2. Screenshot the implemented UI at the same states the mockup shows
+   (default, hover, expanded, selected, error, etc.).
+3. Diff each screenshot against the corresponding card/section in the
+   mockup. Either fix any deviation, or call it out explicitly with
+   rationale.
+4. Only then bring the work to the maintainer for review.
+
+The maintainer should never be the first set of eyes on the rendered
+result. Type checks and tests verify code correctness, not visual
+fidelity to the design — if a mockup exists for the change you are
+implementing, visual verification is a hard gate, not an optional polish
+step. Same rule applies when iterating on the mockup itself: confirm the
+edit renders as intended (Launch preview panel, `python3 -m http.server`,
+or other static server) before asking for feedback.
+
 ## Releasing
 
 - The canonical release procedure is `docs/maintainers/releasing.md`. Follow it for every

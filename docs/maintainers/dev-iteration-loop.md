@@ -35,7 +35,13 @@ inside a `ComfyUI` parent).
 2. `python scripts/sync_to_dev.py` — copies runtime files into your live
    ComfyUI `custom_nodes/<koolook>/`. Reads `KOLOOK_COMFYUI_DEV_PATH` from `.env`.
 3. Restart ComfyUI; verify visually.
-4. Iterate.
+4. **If a design mockup exists** for what you just implemented (look
+   under [`docs/designs/`](../designs/)), screenshot the running result
+   and diff against the mockup. Don't request review until visual parity
+   is reached or each deviation is documented. See the [project
+   CLAUDE.md](../../CLAUDE.md) *"Visual verification for design-driven
+   implementation"* section for the full rule.
+5. Iterate.
 
 End-to-end: ~10–30 seconds. No tag/publish round-trip.
 

@@ -1,0 +1,1187 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snapshot Dialogs — Redesign Mockup</title>
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --panel: #151515;
+      --panel-soft: #1a1a1f;
+      --border: #302f2f;
+      --border-strong: #4f4f54;
+      --text: #f9fafb;
+      --muted: #8f959c;
+      --dim: #555b62;
+      --sky: #6db4ff;
+      --sky-bg: #052f4a;
+      --green: #7bcf80;
+      --amber: #ffb84d;
+      --red: #ff8a8a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #090909;
+      color: var(--text);
+      font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+    h2 { margin: 28px 0 10px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #c9ccd1; }
+
+    .intro {
+      margin: 0 0 24px;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #121212;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(255,255,255,.06);
+      color: #c9ccd1;
+    }
+
+    .card-tag.proposed {
+      background: rgba(123,207,128,.18);
+      color: #cbeed0;
+      border: 1px solid rgba(123,207,128,.35);
+    }
+
+    .card-title { font-weight: 600; font-size: 14px; color: #e6e8ec; }
+
+    .card-body {
+      padding: 18px;
+      background: #0c0c0c;
+    }
+
+    /* ============ sidebar toolbar row ============ */
+
+    .toolbar {
+      width: 100%;
+      max-width: 360px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 4px;
+    }
+
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+    }
+
+    .name { font-weight: 600; }
+    .state { color: var(--muted); font-size: 12px; }
+
+    .tb-btn {
+      width: 36px;
+      height: 28px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--panel-soft);
+      color: #d8dadd;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      flex: 0 0 auto;
+    }
+
+    .tb-btn.removed {
+      opacity: .25;
+      position: relative;
+      cursor: not-allowed;
+    }
+
+    .tb-btn.removed::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(45deg, transparent 47%, var(--red) 47%, var(--red) 53%, transparent 53%);
+      pointer-events: none;
+    }
+
+    /* ============ modal mockups ============ */
+
+    .modal {
+      width: 100%;
+      max-width: 460px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+
+    .modal-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: #181818;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .modal-body {
+      padding: 14px 18px;
+    }
+
+    .modal-actions {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      background: #131313;
+    }
+
+    /* Split command bar: utility on the left, primary/dismiss on the right.
+       The .spacer sits between them and absorbs the free space. */
+    .modal-actions.split { justify-content: flex-start; }
+    .modal-actions .spacer { flex: 1; }
+
+    /* State-demo grid (section 5 — button state pattern) */
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin: 4px 0 0;
+    }
+    .state-cell {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: rgba(255,255,255,.02);
+    }
+    .state-cell .state-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+    .state-cell .state-note {
+      font-size: 11px;
+      color: var(--muted);
+      margin: 8px 0 0;
+      line-height: 1.4;
+    }
+    .modal-btn[disabled] {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+    .modal-btn.in-progress {
+      background: linear-gradient(180deg, rgba(5,47,74,.95), rgba(8,58,92,.82));
+      border-color: rgba(109,180,255,.45);
+      color: #dceaff;
+    }
+
+    /* Inline text link for navigation-only affordances (Open in Explorer / Finder).
+       Visually quieter than a button — readable as "this just opens something
+       outside the app, it does not change app state." */
+    .text-link {
+      color: var(--sky);
+      text-decoration: none;
+      font-size: 11px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+    }
+    .text-link:hover { text-decoration: underline; }
+
+    /* Disclosure (ⓘ) inside dialog bodies — used to hide secondary explanation
+       behind a tap so the default view stays sparse. */
+    details.info-disclosure {
+      margin: 8px 0 4px;
+    }
+    details.info-disclosure > summary {
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    details.info-disclosure > summary::-webkit-details-marker { display: none; }
+    details.info-disclosure > summary::before {
+      content: "ⓘ";
+      font-size: 13px;
+      color: var(--sky);
+    }
+    details.info-disclosure[open] > summary::before { content: "ⓘ"; }
+    details.info-disclosure[open] > summary { color: #d8dadd; }
+    .disclosure-body {
+      margin: 8px 0 0;
+      padding: 8px 10px;
+      background: rgba(255,255,255,.02);
+      border-left: 2px solid var(--border-strong);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Folder-picker mockup styles (Section 6) */
+    .picker {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .picker-head, .picker-toolbar, .picker-foot {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .picker-head { padding: 14px 18px; background: #181818; }
+    .picker-foot { border-bottom: 0; border-top: 1px solid var(--border); background: #131313; display: flex; gap: 8px; }
+    .picker-foot .spacer { flex: 1; }
+    .picker-title { font-weight: 700; font-size: 15px; margin: 0; }
+    .picker-body { background: #0a0a0a; }
+    .picker-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      cursor: pointer;
+    }
+    .picker-row:hover { background: rgba(109,180,255,.07); }
+    .picker-row .folder-icon { color: var(--amber); }
+    .picker-row .folder-name { flex: 1; }
+    /* Files shown for context only — visible but not selectable. The picker
+       only commits folders, so file rows are dimmed and inert. */
+    .picker-row.file {
+      cursor: default;
+      color: var(--dim);
+    }
+    .picker-row.file:hover { background: transparent; }
+    .picker-row.file .file-icon { color: var(--dim); }
+    .picker-path-input {
+      flex: 1;
+      min-width: 0;
+      height: 28px;
+      padding: 0 10px;
+      background: #0a0a0a;
+      border: 1px solid var(--border-strong);
+      border-radius: 3px;
+      color: var(--text);
+      font: 12px ui-monospace, "Cascadia Mono", Menlo, monospace;
+      /* Keep the END of the path visible when it overflows. direction:rtl
+         flips the overflow anchor; text-align:left keeps the rendered text
+         visually LTR. Result: long paths show their last folder, not the
+         /Users/… prefix. */
+      direction: rtl;
+      text-align: left;
+    }
+    .picker-breadcrumb {
+      font: 12px ui-monospace, "Cascadia Mono", Menlo, monospace;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .picker-up {
+      padding: 2px 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 3px;
+      background: var(--panel-soft);
+      color: #d8dadd;
+      font-size: 11px;
+    }
+    /* Top row inside a lib-row info area: label on left, Open folder ↗ on right.
+       Keeps the link safely above the path so a long path can't visually cover it. */
+    .lib-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    /* Inline delete-confirm state: command bar shows the question + transformed
+       Close-to-Yes. The targeted row gets a red outline so the user can see what's
+       about to go away. */
+    .preset-row.confirm-delete {
+      background: rgba(255,138,138,.08);
+      box-shadow: inset 0 0 0 1px rgba(255,138,138,.55);
+    }
+
+    .confirm-text {
+      color: #ffd9d9;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    /* Subtitle for the autosave's on-disk location — shows the user the
+       containing folder without exposing the implementation-detail filename. */
+    .autosave-location {
+      font-size: 11px;
+      color: var(--sky);
+      opacity: .75;
+      font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* Recovery-expanded layout */
+    .recovery.open {
+      padding: 0;
+      background: rgba(255,255,255,.02);
+    }
+    .recovery-summary {
+      padding: 10px 12px;
+      color: #d8dadd;
+      cursor: pointer;
+    }
+    .recovery-group {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255,255,255,.04);
+    }
+    .recovery-group-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .recovery-group-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #e6e8ec;
+    }
+    .recovery-group-path {
+      font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .recovery-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      background: #0a0a0a;
+      border-radius: 3px;
+      margin-bottom: 4px;
+    }
+    .recovery-kind {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 700;
+      flex: 0 0 auto;
+      position: relative;
+      top: -1px;
+    }
+    .recovery-kind-preload {
+      background: rgba(255,184,77,.16);
+      color: #f5d3a0;
+      border: 1px solid rgba(255,184,77,.35);
+    }
+    .recovery-kind-periodic {
+      background: rgba(109,180,255,.16);
+      color: #b3d4f5;
+      border: 1px solid rgba(109,180,255,.35);
+    }
+    .recovery-row-info { flex: 1; min-width: 0; font-size: 12px; }
+    .recovery-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Step-flow visualization for the picker sequence */
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px;
+      margin: 12px 0 0;
+    }
+    .flow-step {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+      border-radius: 4px;
+    }
+    .flow-step-num {
+      font-size: 11px;
+      color: var(--sky);
+      font-weight: 700;
+      letter-spacing: .06em;
+      margin: 0 0 4px;
+    }
+    .flow-step-text {
+      font-size: 12px;
+      color: #d8dadd;
+      line-height: 1.45;
+    }
+
+    .modal-message {
+      margin: 0 0 12px;
+      color: #d8dadd;
+      font-size: 13px;
+    }
+
+    .modal-label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .modal-input {
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      background: #0a0a0a;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text);
+      font: inherit;
+      margin-bottom: 12px;
+    }
+
+    .modal-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--panel-soft);
+      color: #e6e8ec;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .modal-btn.primary {
+      background: linear-gradient(180deg, rgba(3,46,21,.95), rgba(6,58,27,.82));
+      border-color: rgba(123,207,128,.55);
+      color: #dff4df;
+    }
+
+    .modal-btn.danger {
+      background: linear-gradient(180deg, rgba(74,5,5,.95), rgba(58,6,6,.82));
+      border-color: rgba(255,138,138,.45);
+      color: #ffd9d9;
+    }
+
+    .modal-btn.subtle {
+      border-color: var(--border);
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .modal-btn.small {
+      padding: 3px 9px;
+      font-size: 12px;
+    }
+
+    /* the inline library row in the dialogs */
+
+    .lib-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 12px;
+      margin: -2px 0 14px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .lib-row-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lib-row-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .lib-row-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e6e8ec;
+      margin-top: 2px;
+    }
+
+    .lib-row-path {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+      word-break: break-all;
+      margin-top: 2px;
+    }
+
+    .lib-row-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 0 0 auto;
+    }
+
+    /* old subtitle (current Save dialog uses this style) */
+
+    .old-subtitle {
+      padding: 8px 12px;
+      margin: -4px 0 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-left: 2px solid var(--border-strong);
+      background: rgba(255,255,255,.02);
+    }
+
+    .old-subtitle .lib-row-name { color: #cfd2d6; }
+    .old-subtitle .lib-row-path { margin-top: 1px; }
+
+    /* preset list inside Load dialog */
+
+    .preset-list {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0a0a0a;
+    }
+
+    .preset-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .preset-row:last-child { border-bottom: 0; }
+
+    .preset-row-info { flex: 1; min-width: 0; }
+
+    .preset-row-name { font-weight: 600; font-size: 13px; }
+    .preset-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .preset-row-del {
+      width: 26px;
+      height: 22px;
+      border: 1px solid rgba(255,138,138,.35);
+      background: rgba(74,5,5,.4);
+      color: #ffd9d9;
+      border-radius: 3px;
+      font-weight: 700;
+    }
+
+    .recovery {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* annotation badges */
+
+    .anno {
+      margin: 12px 0 0;
+      padding: 8px 12px;
+      background: rgba(109,180,255,.08);
+      border-left: 2px solid var(--sky);
+      font-size: 12px;
+      color: #d6e6f5;
+    }
+
+    .anno.removed {
+      background: rgba(255,138,138,.07);
+      border-left-color: var(--red);
+      color: #f5dada;
+    }
+
+    .anno.fix {
+      background: rgba(123,207,128,.08);
+      border-left-color: var(--green);
+      color: #d6f0d8;
+    }
+
+    /* hint chip */
+
+    .compare-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .grid, .compare-pair { grid-template-columns: 1fr; }
+    }
+
+    .stamp {
+      font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+      font-size: 11px;
+      color: #d8dadd;
+    }
+
+
+    .legend {
+      margin-top: 22px;
+      padding: 14px 16px;
+      border: 1px dashed var(--border);
+      border-radius: 4px;
+      background: rgba(255,255,255,.02);
+      font-size: 12px;
+      color: var(--muted);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px 16px;
+    }
+
+    .legend strong { color: var(--text); }
+    .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+    .swatch.removed { background: var(--red); }
+    .swatch.added { background: var(--green); }
+    .swatch.fix { background: var(--sky); }
+
+  </style>
+</head>
+<body>
+<main>
+  <h1>Snapshot Dialogs — Redesign Mockup</h1>
+  <p class="intro">Side-by-side comparison: current Snapshot toolbar, Save dialog, Load dialog, and the autosave-newer choice modal — and the proposed post-redesign state. Discussion-only; not implemented yet. Flow doc: <a href="snapshot-dialogs-redesign.md" style="color: var(--sky);">snapshot-dialogs-redesign.md</a>.</p>
+
+  <div class="legend" aria-label="Legend">
+    <span><span class="swatch removed"></span><strong>Removed</strong> — surface goes away</span>
+    <span><span class="swatch added"></span><strong>Added / moved</strong> — new inline control</span>
+    <span><span class="swatch fix"></span><strong>Server fix</strong> — backend logic change</span>
+  </div>
+
+  <!-- =========================================================
+       1. Snapshot toolbar
+       ========================================================= -->
+  <h2>1. Snapshot toolbar (sidebar row)</h2>
+  <div class="grid">
+    <section class="card">
+      <header class="card-head"><span class="card-tag">Current</span><span class="card-title">Settings cog occupies the 4th slot</span></header>
+      <div class="card-body">
+        <div class="toolbar">
+          <div class="toolbar-row">
+            <div class="status"><span class="dot"></span><span class="name">Koolook_v03</span><span class="state">· saved</span></div>
+            <button class="tb-btn" title="Load snapshot">L</button>
+            <button class="tb-btn" title="Quick save">💾</button>
+            <button class="tb-btn" title="Save snapshot">S</button>
+            <button class="tb-btn" title="Settings — library path">⚙</button>
+          </div>
+        </div>
+        <div class="anno">The cog opens a dedicated Settings dialog whose only job is to set the library path — a setting users only think about while saving or loading. Two-step path: open cog → change path → close → reopen Save/Load.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Cog removed; library path moves inline</span></header>
+      <div class="card-body">
+        <div class="toolbar">
+          <div class="toolbar-row">
+            <div class="status"><span class="dot"></span><span class="name">Koolook_v03</span><span class="state">· saved</span></div>
+            <button class="tb-btn" title="Load snapshot">L</button>
+            <button class="tb-btn" title="Quick save">💾</button>
+            <button class="tb-btn" title="Save snapshot">S</button>
+            <button class="tb-btn removed" title="Removed in this redesign" aria-hidden="true">⚙</button>
+          </div>
+        </div>
+        <div class="anno removed">Library-path control moves to the Save and Load dialogs (sections 2 & 3 below). Users see and change the path in the same place they pick where to save / load from.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================
+       2. Save dialog
+       ========================================================= -->
+  <h2>2. Save dialog — preset already tracked</h2>
+  <div class="grid">
+    <section class="card">
+      <header class="card-head"><span class="card-tag">Current</span><span class="card-title">Library path is a small read-only subtitle</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Save snapshot</h3></div>
+          <div class="modal-body">
+            <p class="modal-message">Save current state over "Koolook_v03"?</p>
+            <div class="old-subtitle">
+              <div class="lib-row-label">Library folder</div>
+              <div class="lib-row-name">koolook-presets</div>
+              <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn subtle">Cancel</button>
+            <button class="modal-btn">Save as new…</button>
+            <button class="modal-btn primary">Save</button>
+          </div>
+        </div>
+        <div class="anno">To save somewhere else, the user has to close this, open Settings, change the path, then re-open Save. Three round-trips for one action.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Info at top is non-interactive; every action lives in the bottom command bar</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Save snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Saved to</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <p class="modal-message">Save current state over "Koolook_v03"?</p>
+          </div>
+          <div class="modal-actions split">
+            <button class="modal-btn">Save to…</button>
+            <span class="spacer"></span>
+            <button class="modal-btn subtle">Cancel</button>
+            <button class="modal-btn">Save as new…</button>
+            <button class="modal-btn primary">Save</button>
+          </div>
+        </div>
+        <div class="anno fix">Library row is purely informational (no attached buttons). Every action moves to a single command bar at the bottom: utility action <strong>Save to…</strong> on the left, dismiss + alternatives + primary on the right. "Save to…" replaces "Change…" so the verb makes it unambiguous against "Open folder" in the Load dialog.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================
+       3. Load dialog
+       ========================================================= -->
+  <h2>3. Load dialog</h2>
+  <div class="grid">
+    <section class="card">
+      <header class="card-head"><span class="card-tag">Current</span><span class="card-title">Library row at top with 📂 Open button</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-label">Library folder</div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+              <div class="lib-row-actions">
+                <button class="modal-btn small">📂 Open</button>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">Koolook_v03</div>
+                  <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 14:32</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">3 picks · 2 workflows · saved May 8 09:11</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+            </div>
+            <div class="recovery">▸ Recovery auto-saves</div>
+          </div>
+          <div class="modal-actions">
+            <button class="modal-btn subtle">Close</button>
+          </div>
+        </div>
+        <div class="anno">No way to switch library from here. User has to close, open Settings cog, change path, reopen Load.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><span class="card-tag proposed">Proposed — default state</span><span class="card-title">"Open folder ↗" pinned to the top of the path box so a long path can't cover it</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Loaded from</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">Koolook_v03</div>
+                  <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 14:32</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">3 picks · 2 workflows · saved May 8 09:11</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+            </div>
+            <div class="recovery">▸ Recovery auto-saves</div>
+          </div>
+          <div class="modal-actions split">
+            <button class="modal-btn">Load from…</button>
+            <span class="spacer"></span>
+            <button class="modal-btn subtle">Close</button>
+          </div>
+        </div>
+        <div class="anno fix">Top-row layout: <strong>label on the left, Open folder ↗ link on the right</strong>. The link sits above the path so a long absolute path can't overlap the link area. <strong>Load from…</strong> stays the only proper button — text link vs. button is the visual distinction between "change app state" and "just open something outside the app."</div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <header class="card-head"><span class="card-tag proposed">Proposed — recovery expanded</span><span class="card-title">What clicking ▸ Recovery auto-saves reveals</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Loaded from</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">Koolook_v03</div>
+                  <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 14:32</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">3 picks · 2 workflows · saved May 8 09:11</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+            </div>
+            <div class="recovery open">
+              <div class="recovery-summary">▾ Recovery auto-saves</div>
+              <div class="recovery-group">
+                <div class="recovery-group-head">
+                  <div class="recovery-group-title">Koolook_v03_autosave</div>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="recovery-group-path">/Users/m/.../koolook-presets/Koolook_v03_autosave/</div>
+                <div class="recovery-row">
+                  <div class="recovery-row-info">
+                    <span class="recovery-kind recovery-kind-preload">Pre-load</span>
+                    <div class="recovery-row-meta">11 picks · 6 workflows · May 12 14:47</div>
+                  </div>
+                  <button class="preset-row-del">×</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions split">
+            <button class="modal-btn">Load from…</button>
+            <span class="spacer"></span>
+            <button class="modal-btn subtle">Close</button>
+          </div>
+        </div>
+        <div class="anno fix">Recovery section is <strong>hidden by default</strong>. Clicking a preset row (e.g. <code>Koolook_v03</code> or <code>starter</code>) opens the recovery dropdown and reveals <strong>only that preset's <code>&lt;preset&gt;_autosave/</code> folder</strong> — other presets' autosaves are not shown here. Inside the folder, exactly <strong>one row</strong> is rendered: whichever of <em>Pre-load</em> or <em>Periodic</em> is the newest (the system picks). Row shows kind badge + timestamp + small picks/workflows meta; the on-disk filename is implementation detail and stays hidden. The group header keeps its <strong>Open folder ↗</strong> link for manual inspection/backup.</div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <header class="card-head"><span class="card-tag proposed">Proposed — delete confirm</span><span class="card-title">Click × on a row → command bar transforms into the confirm question; Close becomes Yes</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Loaded from</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row confirm-delete">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">Koolook_v03</div>
+                  <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 14:32</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">3 picks · 2 workflows · saved May 8 09:11</div>
+                </div>
+                <button class="preset-row-del">×</button>
+              </div>
+            </div>
+            <div class="recovery">▸ Recovery auto-saves</div>
+          </div>
+          <div class="modal-actions split">
+            <span class="confirm-text">Confirm delete "Koolook_v03"?</span>
+            <span class="spacer"></span>
+            <button class="modal-btn danger">Yes</button>
+          </div>
+        </div>
+        <div class="anno fix">No new modal — same Load dialog stays open. The targeted row gets a red outline so the user can see exactly what they're about to delete. The bottom bar transforms: <strong>Load from…</strong> hides, <strong>Confirm delete "&lt;name&gt;"?</strong> appears on the left, <strong>Close</strong> becomes <strong>Yes</strong> (red) on the right. Esc or clicking another row cancels. Same pattern can extend to autosave row deletes in the Recovery section.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================
+       4. Autosave-newer choice modal — proposed only
+       ========================================================= -->
+  <h2>4. Autosave-newer YES / NO modal — strip to essentials</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Default view shows only what the user needs to decide; details hide behind ⓘ</span></header>
+    <div class="card-body">
+      <div class="modal" style="max-width: 460px;">
+        <div class="modal-head"><h3 class="modal-title">Auto-save is newer than the saved version</h3></div>
+        <div class="modal-body">
+          <div class="preset-list">
+            <div class="preset-row">
+              <div class="preset-row-info">
+                <div class="preset-row-name">Koolook_v03.json</div>
+                <div class="preset-row-meta">11 picks · 6 workflows · saved May 12 09:00</div>
+              </div>
+            </div>
+            <div class="preset-row">
+              <div class="preset-row-info">
+                <div class="preset-row-name">pre_load_2026-05-12T14-47-22.json</div>
+                <div class="preset-row-meta">14 picks · 7 workflows · autosaved May 12 14:47</div>
+                <span class="autosave-location">in Koolook_v03_autosave/</span>
+              </div>
+            </div>
+          </div>
+          <details class="info-disclosure" style="margin-top: 12px;">
+            <summary>What gets saved / loaded</summary>
+            <div class="disclosure-body">
+              Loading replaces your current picks and workflows. A recovery copy of your current state is written first into the same autosave folder, so this choice is reversible. Press Esc to cancel.
+            </div>
+          </details>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn subtle">NO</button>
+          <button class="modal-btn primary">YES — load latest</button>
+        </div>
+      </div>
+      <div class="anno fix">Each option is rendered as a normal <code>preset-row</code> — same shape the user already reads in the Load dialog (bold name + <em>picks · workflows · saved-date</em> meta line), so there's nothing new to parse. NO loads <code>Koolook_v03.json</code>, YES loads the newest file inside <code>Koolook_v03_autosave/</code>. The two rows make the diff obvious without spelling it out: the autosave row carries a later timestamp and (typically) higher picks/workflow counts because it captured WIP added after the morning save. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> so they sit on one row and read as a binary.</div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       5. Button state pattern
+       ========================================================= -->
+  <h2>5. Button state pattern (consistent across every dialog)</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Pattern</span><span class="card-title">The primary button's label, color, and disabled-ness reflect what the user is about to do</span></header>
+    <div class="card-body">
+      <p class="modal-message" style="margin-bottom: 14px;">The post-PR-130 Settings dialog already does this for "Save folder" → "Saved" (<code>modals.js:1916</code>). Apply the same idea everywhere a primary action button exists, so the user always sees what the system thinks is happening.</p>
+      <div class="state-grid">
+        <div class="state-cell">
+          <div class="state-label">Default</div>
+          <button class="modal-btn primary">Save</button>
+          <div class="state-note">Clean state. Save writes over the currently tracked preset; nothing about the destination has changed.</div>
+        </div>
+        <div class="state-cell">
+          <div class="state-label">Dirty — folder changed</div>
+          <button class="modal-btn primary">Save to new folder</button>
+          <div class="state-note">User picked a different destination via "Save to…". Label spells out the consequence so the click isn't a surprise.</div>
+        </div>
+        <div class="state-cell">
+          <div class="state-label">In progress</div>
+          <button class="modal-btn primary in-progress" disabled>Saving…</button>
+          <div class="state-note">Write in flight. Button disables to prevent double-submit; color shifts to neutral-blue so it doesn't read "danger".</div>
+        </div>
+        <div class="state-cell">
+          <div class="state-label">Done</div>
+          <button class="modal-btn subtle" disabled>Saved</button>
+          <div class="state-note">After a successful write, briefly. Same pattern as the Settings dialog's idle "Saved" state.</div>
+        </div>
+      </div>
+      <div class="anno">Same four-state cycle applies to "Load from…", "Save to…", and any future primary action. Doesn't require new infrastructure — just discipline: every place a button is wired, write the four label/state branches up front.</div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       6. Folder-browse picker (the "Save to… / Load from…" target)
+       ========================================================= -->
+  <h2>6. Folder-browse picker — what opens when you click Save to… / Load from…</h2>
+  <section class="card" style="margin-bottom: 18px;">
+    <header class="card-head"><span class="card-tag">Constraint</span><span class="card-title">Why this isn't the OS-native picker</span></header>
+    <div class="card-body">
+      <p class="modal-message" style="margin: 0;">ComfyUI runs in a browser tab. Browsers don't expose the OS folder picker to JavaScript — <code>&lt;input type="file"&gt;</code> only picks files, and <code>showDirectoryPicker()</code> is Chromium-only with an aggressive permission prompt that grants ongoing read access. A server-side directory-listing route + in-app picker is the standard pattern when a web-served tool needs a folder path. <strong>PR <a class="text-link" href="https://github.com/malkuthro/ComfyUI-Koolook/pull/132">#132</a></strong> is already adding the practical mitigation: a path input where users can paste a path copied from Explorer's address bar / Finder's Cmd+Opt+C.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Same bottom-command-bar pattern; paste-path input at top (per PR #132)</span></header>
+    <div class="card-body">
+      <div class="picker">
+        <div class="picker-head">
+          <div class="picker-title">Choose snapshot library folder</div>
+        </div>
+        <div class="picker-toolbar">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="picker-up">↑ Up</button>
+            <input class="picker-path-input" value="/Users/maintainer/Documents/Programming/Projects/ComfyUI/user/default/koolook-presets" />
+          </div>
+        </div>
+        <div class="picker-body">
+          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">Koolook_v03_autosave</span></div>
+          <div class="picker-row"><span class="folder-icon">📁</span><span class="folder-name">default_autosave</span></div>
+          <div class="picker-row file"><span class="file-icon">📄</span><span class="folder-name">Koolook_v03.json</span></div>
+          <div class="picker-row file"><span class="file-icon">📄</span><span class="folder-name">starter.json</span></div>
+        </div>
+        <div class="picker-foot">
+          <button class="modal-btn">New folder…</button>
+          <span class="spacer"></span>
+          <button class="modal-btn subtle">Cancel</button>
+          <button class="modal-btn primary">Use this folder</button>
+        </div>
+      </div>
+      <div class="anno fix"><strong>Navigate-into model</strong> — standard folder-picker behaviour. The path input shows where you currently <em>are</em>, not what you've selected from a sibling list. Clicking a subfolder drills into it; <strong>↑ Up</strong> climbs one level. The body lists that folder's <em>contents</em>: subfolders (clickable, amber 📁) and files (greyed-out 📄, inert — shown only so the user can confirm "yes, this is the folder I expected"). <strong>Use this folder</strong> commits whatever path is currently shown in the input. Three ways to set the path: (1) paste a path → Enter, (2) click subfolders to drill down + ↑ Up to climb, (3) <strong>New folder…</strong> creates one in place. The input always shows the <strong>end</strong> of the path when it overflows (leading <code>/Users/…</code> clips off the left, never the trailing folder name) and is copy-paste-editable for clipboard paths (per PR #132).</div>
+
+      <h3 style="margin: 22px 0 10px; font-size: 14px; color: #d8dadd;">Step-flow — clicking "Save to…" or "Load from…"</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-num">1</div>
+          <div class="flow-step-text">User clicks <strong>Save to…</strong> in Save dialog (or <strong>Load from…</strong> in Load dialog).</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-step-num">2</div>
+          <div class="flow-step-text">Picker opens at the current library location. Path input pre-filled.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-step-num">3</div>
+          <div class="flow-step-text">User navigates: type/paste a path, click subfolders, or hit New folder…</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-step-num">4</div>
+          <div class="flow-step-text">Selected-folder bar updates as the user navigates — always shows what "Use this folder" will commit.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-step-num">5</div>
+          <div class="flow-step-text">Click <strong>Use this folder</strong> → server persists <code>libraryPath</code>, picker closes.</div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-step-num">6</div>
+          <div class="flow-step-text">Parent dialog's library row reflects the new path. Load: list refreshes. Save: primary button label flips to "Save to new folder" (per Section 5 dirty state).</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       Open questions
+       ========================================================= -->
+  <h2>Locked-in decisions</h2>
+  <ul style="margin: 0 0 18px; padding: 0 0 0 18px; color: #cbeed0; font-size: 13px; line-height: 1.6;">
+    <li>Library row labels: <strong>"Saved to"</strong> (Save dialog) / <strong>"Loaded from"</strong> (Load dialog).</li>
+    <li>"Open folder ↗" text link sits in the top-right of the path box, above the path itself.</li>
+    <li>Generic <strong>"Open folder"</strong> wording (no platform-specific Finder/Explorer split).</li>
+    <li>Autosave modal: head is the only message (<em>"Auto-save is newer than the saved version"</em>) — no second "Replace current state?" question, since the user just clicked Load. The two options are rendered as standard <code>preset-row</code>s (same shape as the Load dialog list — bold filename + <em>picks · workflows · saved-date</em>) so nothing about the layout is new. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> on one row.</li>
+    <li>Reset-to-default — <strong>dropped</strong>. Empty path inside the Save to… / Load from… picker clears the override if needed.</li>
+    <li>Recovery section: kind badge (Pre-load / Periodic) + timestamp + meta. No filenames exposed in rows.</li>
+    <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to Yes.</li>
+    <li>Folder picker top has a short subtitle describing what the picker is for, matching every other dialog.</li>
+  </ul>
+
+  <h2>Still open for review</h2>
+  <ul style="margin: 0 0 24px; padding: 0 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.6;">
+    <li><strong>Folder-picker action-bar order</strong> — current draft is <code>[New folder…] [spacer] [Cancel] [Use this folder]</code>. You mentioned shuffling — any specific reorder? Options: move New folder… next to Use this folder; or swap Cancel and New folder… so all primary/secondary actions cluster on the right.</li>
+    <li><strong>Save dialog also gets "Open folder ↗"</strong>? Current draft adds it for parity with Load. Useful for "peek at what's already in the destination" before saving. Keep or drop in Save?</li>
+    <li><strong>Inline delete confirm also applies to Recovery row deletes</strong>? Same pattern (red row outline + command-bar transform) extends cleanly. Confirm to lock in.</li>
+    <li><strong>Cancel during delete-confirm</strong> — Esc-only, or also click-outside-the-row, or an explicit Cancel button in the command bar? Current draft is Esc-only (per your direction: Close becomes Yes, no Cancel mentioned).</li>
+  </ul>
+</main>
+</body>
+</html>
