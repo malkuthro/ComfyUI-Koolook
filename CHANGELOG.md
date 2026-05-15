@@ -47,7 +47,7 @@ The format is inspired by Keep a Changelog and SemVer.
   exposed. A new optional `source_batch` (IMAGE) input accepts a pre-batched
   image stack (e.g. straight from Load Video). When `source_batch` is
   connected and a slot's individual `imageN` is *not* connected, the node
-  pulls frame `imageN_frame - start_frame` from `source_batch` — so
+  pulls VFX frame `imageN_frame` from `source_batch[imageN_frame - 1]` — so
   `imageN_frame` controls both *which source frame to pick* and *where to
   place it on the output timeline*. This collapses the typical
   "Load Video → Get Images From Batch In Range × N → Easy Image Batch"
@@ -61,19 +61,19 @@ The format is inspired by Keep a Changelog and SemVer.
   accepts a list of VFX-numbered frames separated by commas, newlines,
   spaces, or any mix (e.g. `"1, 27, 41, 63, 85, 120"` or one number per
   line) — for sequences needing more than 4 keyframes from a
-  `source_batch`. Each number both picks `source_batch[N - start_frame]`
-  and places it at the same timeline position (same convention as the
-  per-slot `imageN_frame` fields). Bad tokens warn and are skipped;
+  `source_batch`. Each number both picks `source_batch[N - 1]` and places it
+  at output index `N - cut_start_frame` (same convention as the per-slot
+  `imageN_frame` fields). Bad tokens warn and are skipped;
   out-of-range values warn and are skipped.
 
   **List-vs-slot interaction rule:** when `source_frames` is non-empty,
   the 4 manual slots contribute ONLY where `imageN` is explicitly
-  connected — the `imageN_frame` defaults (0, 4, 8, 12) do NOT pick from
+  connected — the `imageN_frame` defaults (5, 9, 13, 17) do NOT pick from
   `source_batch` in this mode. So the list fully controls the selection,
   with explicit `imageN` connections used solely to override individual
   positions. When `source_frames` is empty, the original 4-keyframe
   behaviour is preserved (unconnected slots fall back to
-  `source_batch[imageN_frame]`).
+  `source_batch[imageN_frame - 1]`).
 
   Priority order (later wins): `source_frames` list → 4 manual slots.
   Output dedup is automatic (set-based tracking).
