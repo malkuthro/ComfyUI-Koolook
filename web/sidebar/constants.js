@@ -175,24 +175,24 @@ export function ensureStyle() {
 .koolook-toast-btn { padding: 4px 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; color: #fff; cursor: pointer; font-size: 11px; font-family: inherit; }
 .koolook-toast-btn:hover { background: rgba(0,0,0,0.4); }
 .koolook-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9998; display: flex; align-items: center; justify-content: center; }
-.koolook-modal { background: #151515; border: 1px solid #4f4f54; border-radius: 8px; padding: 16px 18px; min-width: 320px; max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); color: var(--input-text, #f9fafb); overflow: hidden; }
-.koolook-modal-title { font-size: 15px; font-weight: 700; margin: -16px -18px 14px; padding: 14px 18px; border-bottom: 1px solid #302f2f; background: #181818; }
+.koolook-modal { background: var(--comfy-menu-bg, #151515); border: 1px solid var(--border-color, #4f4f54); border-radius: 8px; padding: 16px 18px; min-width: 320px; max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); color: var(--input-text, #f9fafb); overflow: hidden; }
+.koolook-modal-title { font-size: 15px; font-weight: 700; margin: -16px -18px 14px; padding: 14px 18px; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-menu-bg, #181818); }
 .koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
-.koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: #111111; border: 1px solid #302f2f; border-radius: 4px; color: #e6e8ec; font-size: 13px; box-sizing: border-box; outline: none; }
+.koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, #111111); border: 1px solid var(--border-color, #302f2f); border-radius: 4px; color: var(--input-text, #e6e8ec); font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
 /* Library-folder name + path pair used by the redesigned Save and Load
    dialogs to render the inline 'Saved to' / 'Loaded from' info row.
    Naming kept from the (deleted) Settings dialog for git-blame continuity;
    the two classes have always rendered the same shape (leaf folder name
    on the first line, full absolute path on the second). */
-.koolook-settings-folder-name { opacity: 1; font-size: 13px; font-weight: 700; color: #e6e8ec; margin-top: 2px; }
-.koolook-settings-folder-path { color: #8f959c; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin: 16px -18px -16px; padding: 12px 18px; border-top: 1px solid #302f2f; background: #131313; }
+.koolook-settings-folder-name { opacity: 1; font-size: 13px; font-weight: 700; color: var(--input-text, #e6e8ec); margin-top: 2px; }
+.koolook-settings-folder-path { color: var(--input-text, #8f959c); opacity: 0.68; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin: 16px -18px -16px; padding: 12px 18px; border-top: 1px solid var(--border-color, #302f2f); background: var(--comfy-menu-bg, #131313); }
 .koolook-modal-checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; opacity: 0.85; cursor: pointer; user-select: none; }
 .koolook-modal-checkbox-row input[type="checkbox"] { cursor: pointer; }
-.koolook-modal-btn { padding: 6px 14px; background: #1a1a1f; border: 1px solid #4f4f54; border-radius: 4px; color: #e6e8ec; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.koolook-modal-btn { padding: 6px 14px; background: var(--comfy-input-bg, #1a1a1f); border: 1px solid var(--border-color, #4f4f54); border-radius: 4px; color: var(--input-text, #e6e8ec); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .koolook-modal-btn:hover { background: rgba(255,255,255,0.1); }
 .koolook-modal-btn-primary { background: rgba(80,140,235,0.35); border-color: rgba(80,140,235,0.55); }
 .koolook-modal-btn-primary:hover { background: rgba(80,140,235,0.5); }
@@ -222,12 +222,12 @@ export function ensureStyle() {
 .koolook-install-unresolved-summary { cursor: pointer; font-size: 11px; opacity: 0.75; margin-top: 4px; }
 .koolook-install-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 10px 0 4px; overflow: hidden; }
 .koolook-install-progress-bar { height: 100%; background: rgba(80,140,235,0.6); width: 0%; transition: width 200ms ease; }
-.koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid #302f2f; border-radius: 4px; background: #111111; overflow: hidden auto; }
+.koolook-snapshot-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: var(--comfy-input-bg, #111111); overflow: hidden auto; }
 /* Recovery auto-saves section in the Load dialog. The collapsed summary is
    always visible at the bottom of the body; clicking a preset with a newer
    autosave opens one scoped group inside this container. */
-.koolook-recovery-section { margin-top: 14px; border: 1px solid #302f2f; border-radius: 4px; background: rgba(255,255,255,0.02); overflow: hidden; }
-.koolook-recovery-summary { cursor: pointer; font-size: 12px; color: #d8dadd; padding: 10px 12px; user-select: none; outline: none; }
+.koolook-recovery-section { margin-top: 14px; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: color-mix(in srgb, var(--comfy-menu-bg, #151515) 92%, var(--comfy-input-bg, #111111)); overflow: hidden; }
+.koolook-recovery-summary { cursor: pointer; font-size: 12px; color: var(--input-text, #d8dadd); padding: 10px 12px; user-select: none; outline: none; }
 .koolook-recovery-summary:hover { opacity: 1; }
 /* No outer border on the recovery list — each group carries its own
    bordered rows-list, mirroring the library section's structure. We
@@ -241,26 +241,26 @@ export function ensureStyle() {
 .koolook-recovery-list { margin-top: 0; max-height: 240px; overflow-y: auto; border-top: 1px solid rgba(255,255,255,0.04); }
 .koolook-recovery-group { padding: 10px 12px; }
 .koolook-recovery-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.koolook-recovery-group-title { color: #e6e8ec; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-recovery-group-path { color: #8f959c; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-recovery-group-title { color: var(--input-text, #e6e8ec); font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-recovery-group-path { color: var(--input-text, #8f959c); opacity: 0.68; font: 11px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-recovery-group + .koolook-recovery-group { margin-top: 10px; }
 .koolook-recovery-kind { display: inline-flex; align-items: center; width: fit-content; font-size: 10px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 3px; font-weight: 700; margin-bottom: 6px; }
 .koolook-recovery-kind-pre_load { background: rgba(255,184,77,0.16); color: #f5d3a0; border: 1px solid rgba(255,184,77,0.35); }
 .koolook-recovery-kind-periodic { background: rgba(109,180,255,0.16); color: #b3d4f5; border: 1px solid rgba(109,180,255,0.35); }
-.koolook-recovery-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #302f2f; border-radius: 3px; background: #111111; }
-.koolook-recovery-row-selected { background: #111722; }
+.koolook-recovery-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-color, #302f2f); border-radius: 3px; background: var(--comfy-input-bg, #111111); }
+.koolook-recovery-row-selected { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
 .koolook-recovery-row-info { flex: 1; min-width: 0; cursor: pointer; font-size: 12px; }
 .koolook-recovery-row-info:hover .koolook-recovery-row-meta { color: var(--p-primary-color, rgba(120,170,255,1)); }
-.koolook-recovery-row-meta { color: #8f959c; font-size: 11px; line-height: 1.35; }
-.koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #302f2f; background: #111111; }
-.koolook-snapshot-row-selected { background: #111722; }
+.koolook-recovery-row-meta { color: var(--input-text, #8f959c); opacity: 0.68; font-size: 11px; line-height: 1.35; }
+.koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-input-bg, #111111); }
+.koolook-snapshot-row-selected { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
 .koolook-snapshot-row:last-child { border-bottom: none; }
 .koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }
 .koolook-snapshot-row-info:hover .koolook-snapshot-row-name { color: var(--p-primary-color, rgba(120,170,255,1)); }
-.koolook-snapshot-row-name { color: #e6e8ec; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-snapshot-row-meta { color: #8f959c; font-size: 11px; margin-top: 2px; }
+.koolook-snapshot-row-name { color: var(--input-text, #e6e8ec); font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-snapshot-row-meta { color: var(--input-text, #8f959c); opacity: 0.68; font-size: 11px; margin-top: 2px; }
 .koolook-snapshot-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.koolook-snapshot-row-btn { min-width: 26px; height: 24px; padding: 0 8px; background: #1a1a1f; border: 1px solid #4f4f54; border-radius: 4px; cursor: pointer; color: #e6e8ec; font-size: 16px; font-weight: 800; line-height: 1; }
+.koolook-snapshot-row-btn { min-width: 26px; height: 24px; padding: 0 8px; background: var(--comfy-input-bg, #1a1a1f); border: 1px solid var(--border-color, #4f4f54); border-radius: 4px; cursor: pointer; color: var(--input-text, #e6e8ec); font-size: 16px; font-weight: 800; line-height: 1; }
 .koolook-snapshot-row-btn:hover { background: rgba(255,255,255,0.08); }
 .koolook-snapshot-row-btn-danger:hover { background: rgba(74,5,5,0.45); border-color: rgba(255,138,138,0.45); color: #ffd9d9; }
 .koolook-snapshot-empty { padding: 20px; opacity: 0.5; font-size: 12px; text-align: center; }
@@ -314,29 +314,29 @@ export function ensureStyle() {
    long paths clip the LEFT (leading /Users/...) and always show the
    trailing folder name on the right. Per mockup section 6. */
 .koolook-folder-picker-path { flex: 1; min-width: 0; direction: rtl; text-align: left; unicode-bidi: plaintext; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 12px; }
-.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid #302f2f; border-radius: 4px; background: #111111; overflow: hidden auto; }
-.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid #302f2f; background: #111111; color: #e6e8ec; cursor: pointer; font: inherit; font-size: 12px; }
+.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: var(--comfy-input-bg, #111111); overflow: hidden auto; }
+.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-input-bg, #111111); color: var(--input-text, #e6e8ec); cursor: pointer; font: inherit; font-size: 12px; }
 .koolook-folder-picker-row:last-child { border-bottom: none; }
-.koolook-folder-picker-row:hover { background: #111722; }
-.koolook-folder-picker-row-file { cursor: default; color: #8f959c; }
-.koolook-folder-picker-row-file:hover { background: #111111; }
+.koolook-folder-picker-row:hover { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
+.koolook-folder-picker-row-file { cursor: default; color: var(--input-text, #8f959c); opacity: 0.68; }
+.koolook-folder-picker-row-file:hover { background: var(--comfy-input-bg, #111111); }
 .koolook-folder-picker-icon { font-size: 13px; line-height: 1; flex-shrink: 0; }
 .koolook-folder-picker-row:not(.koolook-folder-picker-row-file) .koolook-folder-picker-icon { filter: hue-rotate(-30deg) saturate(1.4); }
 .koolook-folder-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-folder-picker-empty { padding: 20px; color: #8f959c; font-size: 12px; font-style: italic; text-align: center; }
+.koolook-folder-picker-empty { padding: 20px; color: var(--input-text, #8f959c); opacity: 0.68; font-size: 12px; font-style: italic; text-align: center; }
 .koolook-folder-picker-error { color: #ffae9a; font-style: normal; opacity: 0.9; }
 .koolook-folder-picker-spacer { flex: 1; }
-.koolook-folder-picker-newfolder-label { color: #8f959c; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
+.koolook-folder-picker-newfolder-label { color: var(--input-text, #8f959c); opacity: 0.68; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
 .koolook-folder-picker-newfolder-input { flex: 1; min-width: 0; }
 /* Save dialog redesign (issue #137, mockup section 2). The library row
    at the top is purely informational — label + Open folder link sit on
    the top edge so a long absolute path can't overlap the link. Every
    action lives in the bottom command bar (Save to... | Cancel | Save
    as new... | Save). */
-.koolook-snap-lib-row { padding: 10px 12px; border: 1px solid #302f2f; border-radius: 4px; background: #181818; margin-bottom: 14px; }
+.koolook-snap-lib-row { padding: 10px 12px; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: var(--comfy-input-bg, #181818); margin-bottom: 14px; }
 .koolook-snap-lib-row-info { min-width: 0; }
 .koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
-.koolook-snap-lib-label { color: #8f959c; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.koolook-snap-lib-label { color: var(--input-text, #8f959c); opacity: 0.68; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 .koolook-snap-open-folder-link { font-size: 11px; opacity: 1; color: #6db4ff; text-decoration: none; white-space: nowrap; }
 .koolook-snap-open-folder-link:hover { opacity: 1; text-decoration: underline; }
 .koolook-snap-save-message { margin: 6px 0 0; }
