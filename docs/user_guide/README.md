@@ -17,6 +17,7 @@ attribution is visible without needing a fork-shaped directory tree.
 | `Koolook/Camera` | 🚧 page TBD | `KoolookLoadCameraPosesAbsolute` |
 | `Koolook/Wan_Video` | 🚧 page TBD | `EasyWan22Prompt` |
 | `Koolook/VAE` | ✅ [`nodes/radiance_koolook_v2_3_3/`](nodes/radiance_koolook_v2_3_3/) | `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode` |
+| `Koolook/Testing` | 🚧 page TBD | `Easy_Pattern` |
 
 ## Cross-cutting concepts
 

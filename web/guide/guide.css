@@ -483,6 +483,10 @@ figcaption {
   font-weight: 700;
 }
 
+.workflow-update-callout {
+  color: #6db4ff;
+}
+
 .section-ref-note {
   display: block;
   width: fit-content;

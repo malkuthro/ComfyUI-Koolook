@@ -38,7 +38,7 @@ SPDX-License-Identifier: GPL-3.0-only
           <div class="overview-callouts" aria-label="Sidebar sections">
             <article class="overview-callout snapshot">
               <h3>Snapshot row</h3>
-              <p>Load, Quick Save, Save, Settings.</p>
+              <p>Status, Load, Quick Save, Save.</p>
             </article>
             <article class="overview-callout tools">
               <h3>Tools row</h3>
@@ -82,7 +82,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <p class="eyebrow">Two-layer save</p>
         <h2>Save when you mean it. Auto-save catches the rest.</h2>
       </div>
-      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy <span class="save-kind save-kind-periodic">PERIODIC</span> under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose auto-save is newer than the saved version, Kforge Labs asks YES (load auto-save) or NO (load saved version). At load time, Kforge Labs also creates a timestamped recovery copy of the kit being replaced <span class="save-kind save-kind-preload">PRE-LOAD_*</span> in that same <code>&lt;snapshot&gt;_autosave/</code> folder, so you can restore it later from <code>Snapshot row → &lt;project name&gt; → L (Load) → Recovery auto-saves</code>. See <a href="#showcase-auto-save-options">Showcase 2</a> below.</p>
+      <p>Your named snapshot only changes when you click <strong>Save</strong> or <strong>Quick Save</strong>. Auto-save runs every 5 minutes in the background — but only when something has actually changed — and writes a separate recovery copy <span class="save-kind save-kind-periodic">PERIODIC</span> under <code>&lt;snapshot&gt;_autosave/</code>. If you load a snapshot whose recovery copy is newer than the saved version, the Load dialog keeps both choices in view: <strong>NO - load saved</strong> or <strong>YES - load latest</strong>. At load time, Kforge Labs also creates a timestamped recovery copy of the kit being replaced <span class="save-kind save-kind-preload">PRE-LOAD_*</span> in that same <code>&lt;snapshot&gt;_autosave/</code> folder, so you can restore it later from <code>Snapshot row → L (Load) → Recovery auto-saves</code>. See <a href="#showcase-auto-save-options">Showcase 2</a> below.</p>
     </section>
 
     <section class="section">
@@ -112,7 +112,7 @@ SPDX-License-Identifier: GPL-3.0-only
           <li>Load</li>
           <li>Quick Save</li>
           <li>Save</li>
-          <li>Settings</li>
+          <li>Save to... / Load from...</li>
         </ul>
       </article>
       <article>
@@ -176,7 +176,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <div class="showcase-copy">
           <p class="eyebrow">Snapshot library · Auto-save options</p>
           <h3>Save when you mean it. Auto-save catches the rest.</h3>
-          <p>The Load dialog also shows <strong>Recovery auto-saves</strong> for each kit. <strong>Periodic</strong> is the latest background auto-save. <strong>Pre-load</strong> entries are timestamped copies made when another kit replaced this one. <span class="section-ref-note">See also: <a class="section-ref" href="#two-layer-save">TWO-LAYER SAVE</a></span></p>
+          <p>The Load dialog shows <strong>Recovery auto-saves</strong> for the selected kit. <strong>Periodic</strong> is the latest background auto-save. <strong>Pre-load</strong> entries are timestamped copies made when another kit replaced this one. When the newest recovery copy is newer than the named save, choose <strong>NO - load saved</strong> or <strong>YES - load latest</strong>. <span class="section-ref-note">See also: <a class="section-ref" href="#two-layer-save">TWO-LAYER SAVE</a></span></p>
         </div>
         <figure class="showcase-media">
           <img src="./img/screenshots/auto-save-pre-load.png" alt="Recovery auto-saves section showing periodic and pre-load recovery entries">
@@ -186,7 +186,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <div class="showcase-copy">
           <p class="eyebrow">Reusable modules</p>
           <h3>Save selected nodes as a module.</h3>
-          <p><strong>Save</strong> saves the entire canvas under the workflows tree. <strong>Save selection</strong> stores only the selected canvas nodes. Tag it with <code>Module</code> to insert it back into another canvas later.</p>
+          <p><strong>Save</strong> saves the entire canvas under the workflows tree. <strong>Save selection</strong> stores only the selected canvas nodes. Use <strong>Save as module</strong> to insert it back into another canvas later.</p>
         </div>
         <figure class="showcase-media module-shot">
           <img src="./img/screenshots/all-icons-new.png" alt="Sidebar toolbar screenshot with workflow save-selection highlighted">
@@ -218,7 +218,7 @@ SPDX-License-Identifier: GPL-3.0-only
         <div class="showcase-copy">
           <p class="eyebrow">Context actions</p>
           <h3>Manage saved workflows from the sidebar.</h3>
-          <p><strong>Right-click</strong> any saved workflow or module for a full action menu. <strong>Load</strong>, rename, retag, move between folders, or archive — all without leaving the sidebar.</p>
+          <p><strong>Right-click</strong> any saved workflow or module for a full action menu. Use <strong class="workflow-update-callout">Update from selection or canvas</strong> to refresh an existing saved workflow without recreating it. You can also load, insert, rename, retag, move, duplicate, archive, and delete — all without leaving the sidebar.</p>
         </div>
         <figure class="showcase-media portrait-shot">
           <img src="./img/screenshots/right-click-functions.png" alt="Right-click context menu on a saved workflow showing available actions">

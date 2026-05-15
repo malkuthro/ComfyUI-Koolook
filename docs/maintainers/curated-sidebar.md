@@ -29,7 +29,7 @@ Nothing seeds into `localStorage` directly anymore — replaced the legacy `cura
 | `localStorage["koolook.snapshot.currentPresetName.v1"]` | Last preset the user loaded/saved |
 
 The library directory is configured by (in priority order):
-1. The `libraryPath` field in `<comfyui-userdata>/koolook-settings.json` (set via Snapshot → Settings dialog),
+1. The `libraryPath` field in `<comfyui-userdata>/koolook-settings.json` (set via Snapshot → Save to... / Load from...),
 2. The `KFORGELABS_PRESETS` env var (deployment / facility config),
 3. Default fallback `<comfyui-userdata>/koolook-presets/`.
 
