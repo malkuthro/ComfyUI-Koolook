@@ -4,7 +4,7 @@ All notable changes to this project should be documented in this file.
 
 The format is inspired by Keep a Changelog and SemVer.
 
-## [Unreleased]
+## [0.3.2] - 2026-05-16
 
 ### Added
 - **Snapshot dialogs redesign (issue #137).** The Save and Load dialogs
@@ -156,6 +156,12 @@ The format is inspired by Keep a Changelog and SemVer.
   dropped — without this entry the modified `__init__.py` would import
   a module the live install doesn't have, aborting the whole pack's
   registration.
+- **Release preflight no longer blocks on ComfyUI-Manager metadata drift.**
+  `tools/preflight_release.py` still verifies local node registration,
+  VAE dispatch, and workflow fixtures by default, while the upstream
+  `extension-node-map.json` comparison remains available as
+  `--check manager-meta` for advisory checks. Releases should not depend
+  on third-party metadata updates landing on ComfyUI-Manager's schedule.
 
 ### Fixed
 - **Snapshot Settings folder save no longer writes a snapshot.** Saving the
