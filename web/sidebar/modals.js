@@ -1756,7 +1756,6 @@ export function showLoadSnapshotDialog({
         const requestId = ++recoveryRequestId;
         const expectedFileName = preview.fileName;
         scopedRecovery = { parentPreview: preview, item: null, rowEl: null, loading: true };
-        recoverySection.classList.add("koolook-recovery-open");
         recoverySummary.textContent = "▾ Recovery auto-saves";
         recoverySummary.classList.remove("koolook-recovery-summary-passive");
         recoveryContent.hidden = false;
@@ -1765,7 +1764,12 @@ export function showLoadSnapshotDialog({
 
         let items = [];
         if (typeof listAutosaves === "function") {
-            try { items = await listAutosaves(); } catch (e) { items = []; }
+            try {
+                items = await listAutosaves();
+            } catch (e) {
+                items = [];
+                toast("Could not load recovery list; saved snapshot is still available.");
+            }
         }
         if (requestId !== recoveryRequestId ||
             selectedNamed?.preview.fileName !== expectedFileName) {
@@ -1884,7 +1888,6 @@ export function showLoadSnapshotDialog({
 
     function clearScopedRecovery() {
         recoveryRequestId += 1;
-        recoverySection.classList.remove("koolook-recovery-open");
         recoverySummary.textContent = "▸ Recovery auto-saves";
         recoverySummary.classList.add("koolook-recovery-summary-passive");
         recoveryContent.hidden = true;

@@ -226,7 +226,7 @@ export function ensureStyle() {
 /* Recovery auto-saves section in the Load dialog. The collapsed summary is
    always visible at the bottom of the body; clicking a preset with a newer
    autosave opens one scoped group inside this container. */
-.koolook-recovery-section { margin-top: 14px; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: color-mix(in srgb, var(--comfy-menu-bg, #151515) 92%, var(--comfy-input-bg, #111111)); overflow: hidden; }
+.koolook-recovery-section { margin-top: 14px; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: rgba(255,255,255,0.02); background: color-mix(in srgb, var(--comfy-menu-bg, #151515) 92%, var(--comfy-input-bg, #111111)); overflow: hidden; }
 .koolook-recovery-summary { cursor: pointer; font-size: 12px; color: var(--input-text, #d8dadd); padding: 10px 12px; user-select: none; outline: none; }
 .koolook-recovery-summary-passive { cursor: default; }
 .koolook-recovery-summary:hover { opacity: 1; }
@@ -249,12 +249,12 @@ export function ensureStyle() {
 .koolook-recovery-kind-pre_load { background: rgba(255,184,77,0.16); color: #f5d3a0; border: 1px solid rgba(255,184,77,0.35); }
 .koolook-recovery-kind-periodic { background: rgba(109,180,255,0.16); color: #b3d4f5; border: 1px solid rgba(109,180,255,0.35); }
 .koolook-recovery-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-color, #302f2f); border-radius: 3px; background: var(--comfy-input-bg, #111111); }
-.koolook-recovery-row-selected { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
+.koolook-recovery-row-selected { background: rgba(80,140,235,0.16); background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
 .koolook-recovery-row-info { flex: 1; min-width: 0; cursor: pointer; font-size: 12px; }
 .koolook-recovery-row-info:hover .koolook-recovery-row-meta { color: var(--p-primary-color, rgba(120,170,255,1)); }
 .koolook-recovery-row-meta { color: var(--input-text, #8f959c); opacity: 0.68; font-size: 11px; line-height: 1.35; }
 .koolook-snapshot-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-input-bg, #111111); }
-.koolook-snapshot-row-selected { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
+.koolook-snapshot-row-selected { background: rgba(80,140,235,0.16); background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
 .koolook-snapshot-row:last-child { border-bottom: none; }
 .koolook-snapshot-row-info { flex: 1; min-width: 0; cursor: pointer; }
 .koolook-snapshot-row-info:hover .koolook-snapshot-row-name { color: var(--p-primary-color, rgba(120,170,255,1)); }
@@ -318,7 +318,7 @@ export function ensureStyle() {
 .koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: var(--comfy-input-bg, #111111); overflow: hidden auto; }
 .koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-input-bg, #111111); color: var(--input-text, #e6e8ec); cursor: pointer; font: inherit; font-size: 12px; }
 .koolook-folder-picker-row:last-child { border-bottom: none; }
-.koolook-folder-picker-row:hover { background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
+.koolook-folder-picker-row:hover { background: rgba(80,140,235,0.16); background: color-mix(in srgb, var(--comfy-input-bg, #111111) 88%, var(--p-primary-color, #6db4ff)); }
 .koolook-folder-picker-row-file { cursor: default; color: var(--input-text, #8f959c); opacity: 0.68; }
 .koolook-folder-picker-row-file:hover { background: var(--comfy-input-bg, #111111); }
 .koolook-folder-picker-icon { font-size: 13px; line-height: 1; flex-shrink: 0; }
