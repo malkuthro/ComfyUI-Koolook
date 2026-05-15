@@ -1055,6 +1055,7 @@ export function showSaveSnapshotDialog({
     // → Dirty state → primary label becomes "Save to new folder".
     let originalLibraryPath = "";
     let currentLibraryPath = "";
+    let libraryRevealInFlight = false;
 
     const body = document.createElement("div");
 
@@ -1085,12 +1086,16 @@ export function showSaveSnapshotDialog({
     openFolderLink.addEventListener("click", async (e) => {
         e.preventDefault();
         if (typeof revealPresetFolder !== "function") return;
+        if (libraryRevealInFlight) return;
+        libraryRevealInFlight = true;
         try {
             const r = await revealPresetFolder();
             toast(`Opened: ${r.path}`);
         } catch (err) {
             console.error("[Koolook] reveal failed:", err);
             toast(`Could not open library folder: ${err.message}`);
+        } finally {
+            libraryRevealInFlight = false;
         }
     });
     libRowTop.appendChild(openFolderLink);
@@ -1266,6 +1271,9 @@ export function showSaveSnapshotDialog({
             toast("Folder picker unavailable in this session.");
             return;
         }
+        if (saveToBtn.disabled) return;
+        saveToBtn.disabled = true;
+        setTimeout(() => { saveToBtn.disabled = false; }, 0);
         showFolderPicker({
             title: "Save snapshots to",
             titleTooltip: "Pick the library folder this Save will write into.",
@@ -1470,12 +1478,16 @@ export function showLoadSnapshotDialog({
     openFolderLink.addEventListener("click", async (e) => {
         e.preventDefault();
         if (typeof revealPresetFolder !== "function") return;
+        if (libraryRevealInFlight) return;
+        libraryRevealInFlight = true;
         try {
             const r = await revealPresetFolder();
             toast(`Opened: ${r.path}`);
         } catch (err) {
             console.error("[Koolook] reveal failed:", err);
             toast(`Could not open library folder: ${err.message}`);
+        } finally {
+            libraryRevealInFlight = false;
         }
     });
     libRowTop.appendChild(openFolderLink);
@@ -1530,6 +1542,7 @@ export function showLoadSnapshotDialog({
     let selectedNamed = null;
     let selectedRecovery = null;
     let recoveryRequestId = 0;
+    let libraryRevealInFlight = false;
 
     function renderEmpty(text) {
         const el = document.createElement("div");
@@ -1791,15 +1804,20 @@ export function showLoadSnapshotDialog({
         groupOpen.href = "#";
         groupOpen.textContent = "Open folder ↗";
         groupOpen.title = "Open this recovery folder in your file manager";
+        let groupRevealInFlight = false;
         groupOpen.addEventListener("click", async (e) => {
             e.preventDefault();
             if (typeof revealPresetFolder !== "function") return;
+            if (groupRevealInFlight) return;
+            groupRevealInFlight = true;
             try {
                 const r = await revealPresetFolder({ dir: subdir });
                 toast(`Opened: ${r.path}`);
             } catch (err) {
                 console.error("[Koolook] reveal recovery folder failed:", err);
                 toast(`Could not open recovery folder: ${err.message}`);
+            } finally {
+                groupRevealInFlight = false;
             }
         });
         groupHead.appendChild(groupOpen);
@@ -2033,6 +2051,9 @@ export function showLoadSnapshotDialog({
             toast("Folder picker unavailable in this session.");
             return;
         }
+        if (loadFromBtn.disabled) return;
+        loadFromBtn.disabled = true;
+        setTimeout(() => { loadFromBtn.disabled = false; }, 0);
         showFolderPicker({
             title: "Load snapshots from",
             titleTooltip: "Switch the snapshot library this Load is reading from.",
