@@ -1501,6 +1501,7 @@ export function showLoadSnapshotDialog({
     const recoverySummary = document.createElement("div");
     recoverySummary.className = "koolook-recovery-summary";
     recoverySummary.textContent = "▸ Recovery auto-saves";
+    recoverySummary.classList.add("koolook-recovery-summary-passive");
     recoverySection.appendChild(recoverySummary);
     const recoveryContent = document.createElement("div");
     recoveryContent.className = "koolook-recovery-list";
@@ -1528,6 +1529,7 @@ export function showLoadSnapshotDialog({
     let scopedRecovery = null;
     let selectedNamed = null;
     let selectedRecovery = null;
+    let recoveryRequestId = 0;
 
     function renderEmpty(text) {
         const el = document.createElement("div");
@@ -1537,6 +1539,7 @@ export function showLoadSnapshotDialog({
     }
 
     async function refresh() {
+        cancelDelete();
         listWrap.innerHTML = "";
         listWrap.appendChild(renderEmpty("Loading…"));
         let previews;
@@ -1717,8 +1720,8 @@ export function showLoadSnapshotDialog({
         // Cancel any pending delete-confirm on a different row.
         if (pendingDelete && pendingDelete.preview.fileName !== preview.fileName) {
             cancelDelete();
-            return;
         }
+        if (selectedNamed?.preview.fileName === preview.fileName && !pendingDelete) return;
         clearLoadSelection();
         selectedNamed = { preview, rowEl };
         rowEl.classList.add("koolook-snapshot-row-selected");
@@ -1737,8 +1740,12 @@ export function showLoadSnapshotDialog({
     }
 
     async function openScopedRecovery(preview) {
+        const requestId = ++recoveryRequestId;
+        const expectedFileName = preview.fileName;
+        scopedRecovery = { parentPreview: preview, item: null, rowEl: null, loading: true };
         recoverySection.classList.add("koolook-recovery-open");
         recoverySummary.textContent = "▾ Recovery auto-saves";
+        recoverySummary.classList.remove("koolook-recovery-summary-passive");
         recoveryContent.hidden = false;
         recoveryContent.innerHTML = "";
         recoveryContent.appendChild(renderEmpty("Loading recovery…"));
@@ -1746,6 +1753,10 @@ export function showLoadSnapshotDialog({
         let items = [];
         if (typeof listAutosaves === "function") {
             try { items = await listAutosaves(); } catch (e) { items = []; }
+        }
+        if (requestId !== recoveryRequestId ||
+            selectedNamed?.preview.fileName !== expectedFileName) {
+            return;
         }
         // Filter to this preset's autosave subdir AND pick the single
         // freshest entry by mtime. ``periodic.json`` and the rotated
@@ -1758,7 +1769,9 @@ export function showLoadSnapshotDialog({
             .sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
         recoveryContent.innerHTML = "";
         if (scoped.length === 0) {
-            recoveryContent.appendChild(renderEmpty("No recovery auto-save for this preset."));
+            clearScopedRecovery();
+            setDialogTitle("Load snapshot");
+            applyCloseButtonState();
             return;
         }
         const newest = scoped[0];
@@ -1820,7 +1833,6 @@ export function showLoadSnapshotDialog({
         info.addEventListener("click", () => {
             if (pendingDelete) {
                 cancelDelete();
-                return;
             }
             if (selectedNamed) {
                 selectedNamed.rowEl.classList.remove("koolook-snapshot-row-selected");
@@ -1853,8 +1865,10 @@ export function showLoadSnapshotDialog({
     }
 
     function clearScopedRecovery() {
+        recoveryRequestId += 1;
         recoverySection.classList.remove("koolook-recovery-open");
         recoverySummary.textContent = "▸ Recovery auto-saves";
+        recoverySummary.classList.add("koolook-recovery-summary-passive");
         recoveryContent.hidden = true;
         recoveryContent.innerHTML = "";
         scopedRecovery = null;
@@ -1940,7 +1954,7 @@ export function showLoadSnapshotDialog({
         primary: true,
         onClick: () => {
             if (!scopedRecovery || !scopedRecovery.item) return;
-            doAutosaveRestore(scopedRecovery.item);
+            doAutosaveRestore(selectedRecovery?.item || scopedRecovery.item);
         },
     });
     loadLatestBtn.hidden = true;
@@ -1980,6 +1994,16 @@ export function showLoadSnapshotDialog({
             loadLatestBtn.hidden = false;
             closeBtn.hidden = true;
             closeBtn.classList.remove("koolook-modal-btn-danger", "koolook-modal-btn-primary");
+        } else if (scopedRecovery && scopedRecovery.loading) {
+            loadFromBtn.hidden = true;
+            confirmText.hidden = true;
+            confirmText.textContent = "";
+            loadSavedBtn.hidden = true;
+            loadLatestBtn.hidden = true;
+            closeBtn.hidden = false;
+            closeBtn.textContent = "Close";
+            closeBtn.classList.remove("koolook-modal-btn-danger", "koolook-modal-btn-primary");
+            closeBtn.title = "";
         } else if (selectedNamed) {
             loadFromBtn.hidden = false;
             confirmText.hidden = true;

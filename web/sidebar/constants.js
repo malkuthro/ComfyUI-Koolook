@@ -228,6 +228,7 @@ export function ensureStyle() {
    autosave opens one scoped group inside this container. */
 .koolook-recovery-section { margin-top: 14px; border: 1px solid var(--border-color, #302f2f); border-radius: 4px; background: color-mix(in srgb, var(--comfy-menu-bg, #151515) 92%, var(--comfy-input-bg, #111111)); overflow: hidden; }
 .koolook-recovery-summary { cursor: pointer; font-size: 12px; color: var(--input-text, #d8dadd); padding: 10px 12px; user-select: none; outline: none; }
+.koolook-recovery-summary-passive { cursor: default; }
 .koolook-recovery-summary:hover { opacity: 1; }
 /* No outer border on the recovery list — each group carries its own
    bordered rows-list, mirroring the library section's structure. We
