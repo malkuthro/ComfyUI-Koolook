@@ -180,7 +180,7 @@ export function ensureStyle() {
 .koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
-.koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, rgba(0,0,0,0.3)); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 4px; color: inherit; font-size: 13px; box-sizing: border-box; outline: none; }
+.koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: #111111; border: 1px solid #302f2f; border-radius: 4px; color: #e6e8ec; font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
 /* Library-folder name + path pair used by the redesigned Save and Load
    dialogs to render the inline 'Saved to' / 'Loaded from' info row.
@@ -306,34 +306,34 @@ export function ensureStyle() {
    backticks in comments here — they prematurely close the template
    literal and break the entire sidebar at load. */
 .koolook-folder-picker { min-width: 480px; max-width: 600px; }
-.koolook-folder-picker-toolbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.koolook-folder-picker-toolbar { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; }
 .koolook-folder-picker-up { flex-shrink: 0; }
 /* End-visible path overflow: 'direction: rtl' makes the input's
    overflow-axis right-to-left, 'unicode-bidi: plaintext' keeps the
    Latin path characters in natural left-to-right order. Net effect:
    long paths clip the LEFT (leading /Users/...) and always show the
    trailing folder name on the right. Per mockup section 6. */
-.koolook-folder-picker-path { flex: 1; min-width: 0; direction: rtl; text-align: left; unicode-bidi: plaintext; font-family: var(--font-family-mono, ui-monospace, monospace); font-size: 12px; }
-.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; background: rgba(0,0,0,0.18); }
-.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,0.05); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
+.koolook-folder-picker-path { flex: 1; min-width: 0; direction: rtl; text-align: left; unicode-bidi: plaintext; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 12px; }
+.koolook-folder-picker-list { max-height: 320px; min-height: 120px; overflow-y: auto; border: 1px solid #302f2f; border-radius: 4px; background: #111111; overflow: hidden auto; }
+.koolook-folder-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-bottom: 1px solid #302f2f; background: #111111; color: #e6e8ec; cursor: pointer; font: inherit; font-size: 12px; }
 .koolook-folder-picker-row:last-child { border-bottom: none; }
-.koolook-folder-picker-row:hover { background: rgba(255,255,255,0.08); }
-.koolook-folder-picker-row-file { cursor: default; opacity: 0.45; }
-.koolook-folder-picker-row-file:hover { background: transparent; }
+.koolook-folder-picker-row:hover { background: #111722; }
+.koolook-folder-picker-row-file { cursor: default; color: #8f959c; }
+.koolook-folder-picker-row-file:hover { background: #111111; }
 .koolook-folder-picker-icon { font-size: 13px; line-height: 1; flex-shrink: 0; }
 .koolook-folder-picker-row:not(.koolook-folder-picker-row-file) .koolook-folder-picker-icon { filter: hue-rotate(-30deg) saturate(1.4); }
 .koolook-folder-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.koolook-folder-picker-empty { padding: 18px 14px; opacity: 0.6; font-size: 12px; font-style: italic; text-align: center; }
+.koolook-folder-picker-empty { padding: 20px; color: #8f959c; font-size: 12px; font-style: italic; text-align: center; }
 .koolook-folder-picker-error { color: #ffae9a; font-style: normal; opacity: 0.9; }
 .koolook-folder-picker-spacer { flex: 1; }
-.koolook-folder-picker-newfolder-label { font-size: 11px; opacity: 0.6; flex-shrink: 0; }
+.koolook-folder-picker-newfolder-label { color: #8f959c; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
 .koolook-folder-picker-newfolder-input { flex: 1; min-width: 0; }
 /* Save dialog redesign (issue #137, mockup section 2). The library row
    at the top is purely informational — label + Open folder link sit on
    the top edge so a long absolute path can't overlap the link. Every
    action lives in the bottom command bar (Save to... | Cancel | Save
    as new... | Save). */
-.koolook-snap-lib-row { padding: 10px 12px; border: 1px solid #302f2f; border-radius: 4px; background: rgba(255,255,255,0.025); margin-bottom: 14px; }
+.koolook-snap-lib-row { padding: 10px 12px; border: 1px solid #302f2f; border-radius: 4px; background: #181818; margin-bottom: 14px; }
 .koolook-snap-lib-row-info { min-width: 0; }
 .koolook-snap-lib-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
 .koolook-snap-lib-label { color: #8f959c; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }

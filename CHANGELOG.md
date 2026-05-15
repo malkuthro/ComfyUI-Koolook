@@ -23,16 +23,17 @@ The format is inspired by Keep a Changelog and SemVer.
   a different library via `Save to…` relabels Save to *"Save to new
   folder"* before the click commits.
 
-  The Load dialog's auto-save discovery is now inline: when a preset
-  has a newer recovery file (server row-augment now considers
-  `max(periodic.json, pre_load_*.json)` instead of just
-  `periodic.json`), clicking the preset expands a single scoped
-  recovery row directly beneath it. The user picks by clicking the
-  named row (load named) or the scoped row (load the autosave). The
-  YES/NO modal that used to interrupt the flow is gone. Preset
-  deletion is now inline too — clicking × outlines the row red and
-  the bottom Close button transforms to *"Yes — delete '<name>'"*;
-  Escape cancels.
+  The Load dialog's auto-save discovery is now handled in one window:
+  when a preset has a newer recovery file (server row-augment now
+  considers `max(periodic.json, pre_load_*.json)` instead of just
+  `periodic.json`), selecting that preset changes the title to
+  *"Auto-save is newer than the saved version"*, opens the scoped
+  Recovery auto-saves section, and offers explicit *"NO - load saved"*
+  / *"YES - load latest"* buttons. Presets without a newer recovery file
+  simply select the row and change the footer action to *"Load"*. Preset
+  deletion is now inline too — clicking × outlines the row red and the
+  bottom Close button transforms to *"Yes"*; Escape cancels. The delete
+  buttons stay visually neutral until hover.
 
   The Settings cog is removed from the Snapshot toolbar (row is now
   status indicator · Load · Quick Save · Save); library-path
