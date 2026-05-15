@@ -2,26 +2,30 @@
 """
 Pre-flight release validation for ComfyUI-Koolook.
 
-Runs four checks and exits non-zero on any failure:
+Runs the release-gate checks and exits non-zero on any failure:
 
   1. static       AST extraction of NODE_CLASS_MAPPINGS keys; verifies all
                   *.py files parse and that we can produce a definitive list
                   of registered node IDs without importing torch.
   2. dispatch     Stub-VAE round through the v2_3_3 wrapper; verifies all
                   five rank/VAE dispatch branches still wire correctly.
-  3. manager-meta Fetches ComfyUI-Manager's extension-node-map.json upstream
-                  and diffs the entry for our repo against the AST-extracted
-                  NODE_CLASS_MAPPINGS. Catches phantom-nodes / missing-nodes
-                  drift (the issue #44 class of bug).
-  4. workflows    Walks tests/workflows/*.json, extracts node IDs that look
+  3. workflows    Walks tests/workflows/*.json, extracts node IDs that look
                   like Koolook-pack IDs, verifies each one is currently
                   registered (i.e. wouldn't break a saved workflow).
 
+Optional advisory check:
+
+  manager-meta    Fetches ComfyUI-Manager's extension-node-map.json upstream
+                  and diffs the entry for our repo against the AST-extracted
+                  NODE_CLASS_MAPPINGS. This catches phantom-nodes /
+                  missing-nodes drift, but does not block releases because
+                  upstream Manager metadata is maintained independently.
+
 Usage:
-    python tools/preflight_release.py                # run all checks
+    python tools/preflight_release.py                # run release gates
     python tools/preflight_release.py --check static
     python tools/preflight_release.py --check workflows --verbose
-    python tools/preflight_release.py --skip manager-meta  # offline mode
+    python tools/preflight_release.py --check manager-meta  # advisory only
 
 Exit codes:
     0  all run checks passed
@@ -138,7 +142,7 @@ def check_static(verbose: bool = False) -> tuple[bool, set[str]]:
     by reporting the suffixed live ID as "missing" — at that point this
     function should grow SKIP_VERSION_SUFFIX extraction.
     """
-    print(_cyan("[1/4] static — AST extraction of NODE_CLASS_MAPPINGS"))
+    print(_cyan("static — AST extraction of NODE_CLASS_MAPPINGS"))
     parse_errors: list[str] = []
     all_node_ids: set[str] = set()
     files_seen = 0
@@ -200,7 +204,7 @@ def check_dispatch(verbose: bool = False) -> bool:
     Implementation lives in `tools/_preflight_dispatch.py` (extracted to keep
     this orchestrator under the project's ~400-line file-size guideline).
     """
-    print(_cyan("[2/4] dispatch — VAE rank/VAE-type branches"))
+    print(_cyan("dispatch — VAE rank/VAE-type branches"))
 
     # Lazy import: the sibling module shares the same directory as this file
     # but isn't importable as `tools._preflight_dispatch` unless tools/ is on
@@ -235,7 +239,7 @@ def check_manager_meta(actual_ids: set[str], verbose: bool = False) -> bool:
     against the AST-extracted node IDs. Reports phantom IDs (in upstream but
     not in our code) and missing IDs (in our code but not in upstream).
     """
-    print(_cyan("[3/4] manager-meta — extension-node-map.json drift"))
+    print(_cyan("manager-meta — extension-node-map.json drift"))
     if not MANAGER_EXT_MAP_URL.startswith("https://"):
         # Hardcoded URL above is https; this guard ensures any future edit
         # can't accidentally introduce a non-https scheme.
@@ -349,7 +353,7 @@ def _extract_workflow_node_types(data: Any) -> set[str]:
 
 
 def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
-    print(_cyan("[4/4] workflows — fixture node-ID stability"))
+    print(_cyan("workflows — fixture node-ID stability"))
     fixtures_dir = REPO_ROOT / "tests" / "workflows"
     if not fixtures_dir.is_dir():
         print(_yellow("  SKIP — no tests/workflows/ folder yet"))
@@ -435,6 +439,7 @@ def check_workflows(actual_ids: set[str], verbose: bool = False) -> bool:
 
 
 CHECKS = ("static", "dispatch", "manager-meta", "workflows")
+DEFAULT_CHECKS = ("static", "dispatch", "workflows")
 
 
 def main() -> int:
@@ -444,7 +449,10 @@ def main() -> int:
     )
     parser.add_argument(
         "--check", choices=CHECKS, action="append",
-        help="Run only the named check (repeatable). Default: run all.",
+        help=(
+            "Run only the named check (repeatable). Default: run release gates "
+            "(static, dispatch, workflows)."
+        ),
     )
     parser.add_argument(
         "--skip", choices=CHECKS, action="append",
@@ -456,7 +464,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    selected = set(args.check or CHECKS)
+    selected = set(args.check or DEFAULT_CHECKS)
     skipped = set(args.skip or ())
     to_run = [c for c in CHECKS if c in selected and c not in skipped]
     if not to_run:
