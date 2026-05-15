@@ -967,7 +967,7 @@
             <button class="modal-btn subtle">Close</button>
           </div>
         </div>
-        <div class="anno fix">Recovery section is <strong>hidden by default</strong>. Clicking a preset row (e.g. <code>Koolook_v03</code> or <code>starter</code>) opens the recovery dropdown and reveals <strong>only that preset's <code>&lt;preset&gt;_autosave/</code> folder</strong> — other presets' autosaves are not shown here. Inside the folder, exactly <strong>one row</strong> is rendered: whichever of <em>Pre-load</em> or <em>Periodic</em> is the newest (the system picks). Row shows kind badge + timestamp + small picks/workflows meta; the on-disk filename is implementation detail and stays hidden. The group header keeps its <strong>Open folder ↗</strong> link for manual inspection/backup.</div>
+        <div class="anno fix">Recovery section is <strong>hidden by default</strong>. Clicking a preset row (e.g. <code>Koolook_v03</code> or <code>starter</code>) opens the recovery dropdown and reveals <strong>only that preset's <code>&lt;preset&gt;_autosave/</code> folder</strong> — other presets' autosaves are not shown here. Inside the folder, exactly <strong>one row</strong> is rendered: whichever of <em>Pre-load</em> or <em>Periodic</em> is the newest (the system picks). Row shows kind badge + timestamp + small picks/workflows meta; the on-disk filename is implementation detail and stays hidden. The group header keeps its <strong>Open folder ↗</strong> link for manual inspection/backup. <strong>Final decision:</strong> row clicks select only. When this section opens because the selected snapshot has newer recovery, the Load dialog header changes to <em>Auto-save is newer than the saved version</em> and the footer presents <strong>NO - load saved</strong> / <strong>YES - load latest</strong>.</div>
       </div>
     </section>
 
@@ -1017,9 +1017,9 @@
   </div>
 
   <!-- =========================================================
-       4. Autosave-newer choice modal — proposed only
+       4. Autosave-newer choice modal — superseded reference
        ========================================================= -->
-  <h2>4. Autosave-newer YES / NO modal — strip to essentials</h2>
+  <h2>4. Autosave-newer YES / NO modal — superseded reference</h2>
   <section class="card">
     <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Default view shows only what the user needs to decide; details hide behind ⓘ</span></header>
     <div class="card-body">
@@ -1053,7 +1053,7 @@
           <button class="modal-btn primary">YES — load latest</button>
         </div>
       </div>
-      <div class="anno fix">Each option is rendered as a normal <code>preset-row</code> — same shape the user already reads in the Load dialog (bold name + <em>picks · workflows · saved-date</em> meta line), so there's nothing new to parse. NO loads <code>Koolook_v03.json</code>, YES loads the newest file inside <code>Koolook_v03_autosave/</code>. The two rows make the diff obvious without spelling it out: the autosave row carries a later timestamp and (typically) higher picks/workflow counts because it captured WIP added after the morning save. Buttons collapse to <strong>NO</strong> / <strong>YES — load latest</strong> so they sit on one row and read as a binary.</div>
+      <div class="anno fix"><strong>Superseded final decision:</strong> this separate modal is no longer the target UX. Keep the decision inside the Load dialog instead: selecting a snapshot with newer recovery opens the bottom Recovery auto-saves section, changes the header to <em>Auto-save is newer than the saved version</em>, and exposes footer buttons <strong>NO - load saved</strong> / <strong>YES - load latest</strong>. The row shapes above remain useful visual references for the named-vs-latest comparison, but the extra modal layer is intentionally dropped.</div>
     </div>
   </section>
 
@@ -1087,7 +1087,7 @@
           <div class="state-note">After a successful write, briefly. Same pattern as the Settings dialog's idle "Saved" state.</div>
         </div>
       </div>
-      <div class="anno">Same four-state cycle applies to "Load from…", "Save to…", and any future primary action. Doesn't require new infrastructure — just discipline: every place a button is wired, write the four label/state branches up front.</div>
+      <div class="anno"><strong>Final decision:</strong> the four-state cycle applies to true committing primary actions, such as the Save button that writes snapshot data. <strong>Save to…</strong> and <strong>Load from…</strong> are utility navigation buttons that open the folder picker; they stay stable rather than cycling through write-state labels.</div>
     </div>
   </section>
 
@@ -1168,10 +1168,10 @@
     <li>Library row labels: <strong>"Saved to"</strong> (Save dialog) / <strong>"Loaded from"</strong> (Load dialog).</li>
     <li>"Open folder ↗" text link sits in the top-right of the path box, above the path itself.</li>
     <li>Generic <strong>"Open folder"</strong> wording (no platform-specific Finder/Explorer split).</li>
-    <li><strong>Autosave-newer YES/NO modal — dropped.</strong> When a preset has a newer autosave (server row-augment reports <code>latestAutosaveMtime &gt; mtime</code>), clicking the preset in the Load dialog expands a single <em>scoped recovery row</em> directly beneath the clicked preset, showing the freshest entry (newest of <code>periodic.json</code> or any <code>pre_load_*.json</code> in the corresponding <code>&lt;preset&gt;_autosave/</code> subdir). The user chooses by clicking: re-click the named row to load named, click the scoped recovery row to restore the autosave. No extra modal layer; both options are visible alongside the preset list.</li>
+    <li><strong>Autosave-newer YES/NO modal — dropped.</strong> The intermediate scoped-row click design is also superseded. When a preset has newer recovery (server row-augment reports <code>latestAutosaveMtime &gt; mtime</code>), selecting the preset keeps the user in the Load dialog, changes the header to <em>"Auto-save is newer than the saved version"</em>, opens the bottom Recovery auto-saves section for that preset only, and shows explicit footer buttons: <strong>NO - load saved</strong> and <strong>YES - load latest</strong>. Row clicks select; footer buttons commit.</li>
     <li>Reset-to-default — <strong>dropped</strong>. Empty path inside the Save to… / Load from… picker clears the override if needed.</li>
     <li>Recovery row chrome: kind badge (Pre-load / Periodic) + timestamp + meta. No filenames exposed in rows.</li>
-    <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to <em>"Yes — delete '\<name\>'"</em>. Escape cancels.</li>
+    <li>Delete confirmation is <strong>inline in the command bar</strong>, not a separate modal. Target row gets a red outline; Close transforms to <em>"Yes"</em>. Escape or clicking another row cancels. Delete buttons stay visually neutral until hover.</li>
     <li>Folder picker: <strong>title only, no descriptive subtitle.</strong> Any explanatory gloss goes on the title's hover tooltip — same convention as every other dialog (<a class="text-link" href="../maintainers/conventions.md">conventions.md § Modal headers</a>).</li>
     <li><strong>Visual harness</strong> in <code>docs/designs/_harness/</code> mounts each redesigned dialog against the live <code>web/sidebar/</code> modules so agents and maintainers can diff implementations against this mockup without dev-syncing. Workflow: <a class="text-link" href="../maintainers/visual-harness.md">visual-harness.md</a>.</li>
   </ul>
