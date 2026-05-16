@@ -144,3 +144,56 @@ The cheapest win, if it's an option, is **2K direct, no two-stage**. The two-sta
 4. **Run 2K direct at full quality and compare to the 2-stage 4K.** If 2K direct delivers an acceptable result for the delivery target, retire the two-stage path. Cheapest fix is "don't do it."
 5. **If 4K delivery is non-negotiable,** consider replacing stage 2's KSampler with a *pixel-space* upscaler (SUPIR, ESRGAN, or a tiled sampler at very low denoise with the Director re-wired). Pixel-space upscale preserves the temporal structure stage 1 built — at the cost of not inventing new motion detail. If stage 2 isn't generating new motion anyway, this is likely a net win.
 6. **Diff against Kijai's port.** Plug `kijai/ComfyUI-PromptRelay` into a stage-2-style workflow and see whether audio attention behaves differently. If Kijai's port preserves audio better, the difference points at where the WhatDreamsCost wrapper drops the ball — cheaper than reading Gordon Chen's paper-reference impl line-by-line.
+
+---
+
+## Round 3 — both stages do run through LTX Director; new hypotheses from auditing stock LTX nodes
+
+**Date:** 2026-05-16 (same session)
+
+### Workflow audit (from the maintainer's screenshot)
+
+Both stages run through the LTX Director node — verified visually and confirmed by the maintainer. **Round 2's "missing patch on stage 2" hypothesis is therefore ruled out.** Prompt Relay's attention penalty and `audio_attn2` patches are applied on both stages.
+
+The actual pipeline:
+
+- **Stage 1** (half resolution, full denoise): `LTXVConditioning` → `LTX Director Guide` (scale_by = 0.50) → `LTXVConcatAVLatent` → `SamplerCustomAdvanced` (BasicScheduler `steps=8`, **`denoise=1.00`**, RandomNoise seed 12) → `LTXVSeparateAVLatent`.
+- **Stage 2** (full resolution, partial denoise): `LTXVCropGuides` → `LTXVLatentUpsampler` [BETA] (via `ltx-2.3-spatial-upscaler-x…`) → `LTX Director Guide` (scale_by = 1.00) → `LTXVConcatAVLatent` → `SamplerCustomAdvanced` (BasicScheduler `steps=8`, **`denoise=0.80`**) → `LTXVSeparateAVLatent` → `LTXVCropGuides`.
+
+### What the stock LTX nodes actually do
+
+Verified against `ComfyUI/comfy_extras/nodes_lt.py` and `nodes_lt_upsampler.py`:
+
+| Node | Behaviour that matters here |
+|---|---|
+| `LTXVLatentUpsampler` (`nodes_lt_upsampler.py:69`) | **`return_dict.pop("noise_mask", None)`** — explicitly *drops* the noise_mask on output. Internally: un-normalise → run a *learned* spatial upscaler model → re-normalise. Class is declared `EXPERIMENTAL = True`. |
+| `LTXVCropGuides` (`nodes_lt.py:373`) | Removes the K keyframe slots from the end of the latent, sets `keyframe_idxs=None` and `guide_attention_entries=None` on positive/negative conditioning. Preserves noise_mask shape on what remains. |
+| `LTXVConcatAVLatent` (`nodes_lt.py:620`) | Packs `(video_samples, audio_samples)` and `(video_mask, audio_mask)` into a `NestedTensor`. **If only one side has a noise_mask, fills the missing side with `torch.ones_like` (= "denoise fully").** `output.update(audio_latent)` runs after `output.update(video_latent)`, so non-mask keys like `type` end up coming from the audio side. |
+| `LTXVSeparateAVLatent` (`nodes_lt.py:655`) | Splits the NestedTensor back. Noise masks are unbound and reattached to each output. |
+
+### Tracing the audio path end-to-end
+
+- LTX Director (stage 1 input): produces `audio_latent` with `noise_mask = 0.0` everywhere (the "preserve this audio" instruction).
+- Stage 1 sampler: respects `noise_mask = 0`, so the audio latent samples emerge identical.
+- `LTXVSeparateAVLatent` (end of stage 1): audio_latent still carries `noise_mask = 0`.
+- Stage 2 `LTXVConcatAVLatent`: audio side has mask 0; video side has no mask (the upsampler popped it). The concat node fills the missing video mask with `ones_like` → **video non-keyframe frames go into stage 2's sampler at `noise_mask = 1.0` (denoise fully) while audio + video keyframe frames go in at `noise_mask = 0.0`**.
+
+**Net effect at stage 2:**
+
+- Audio waveform → preserved (it's what comes out of the speakers).
+- Video keyframe slots → preserved (pinned by Director Guide).
+- **Every video frame *between* keyframes → fully regenerated** at sigma corresponding to `denoise = 0.80`. This is where stage 1's audio-aligned mouth shapes live, and this is what gets thrown away and re-synthesised.
+
+### Refined hypotheses, ranked
+
+1. **`denoise = 0.80` is the loudest signal in the workflow.** Stage 2 is regenerating ~80% of every non-keyframe video frame from upsampled noise. The audio doesn't change, but the *mouth shapes that visually correspond to it* are exactly what's being re-synthesised — and the model now has to do it at full resolution, from a starting point produced by a learned upscaler, *without* any "match stage 1's mouth shape" constraint (only the audio cross-attention pulling it back into sync). Most LTX two-stage reference workflows run stage 2 at `denoise ≈ 0.30–0.40`. Cheapest possible test.
+2. **`LTXVLatentUpsampler` is a learned model, marked beta.** Not bicubic — a neural net that *can* hallucinate detail in spatially-dense regions like faces and mouths. It may introduce mouth content in the upscaled latent that's inconsistent with the audio *before stage 2 even starts denoising*. Stage 2 then refines that inconsistent starting point. The `EXPERIMENTAL = True` flag is the author flagging this themselves.
+3. **High-res LTX competence drops** (same root cause as the dissolve issue in Rounds 1–2). Even with low denoise and a clean upscale, LTX 2.3 may genuinely be worse at audio-aligned mouth synthesis at 2K/4K than at HD. This is the model-trained-at-lower-res limit the maintainer floated at kickoff.
+4. **Audio cross-attention dilution at high token-grid density.** Stage 2's `audio_attn2` reads video tokens at 4× the spatial density of stage 1. Prompt Relay's penalty matrix rebuilds for the new `(Lq, Lk)` (cache miss for the new dimensions), but the *attention itself* now has many more video query positions per audio key. If the audio attention's gating wasn't trained against this density, the audio's pull on each video token may be diluted. Instrumentable but not cheap.
+
+### Cheapest experiments, in order
+
+1. **Drop stage 2's `denoise` to 0.30 and re-render the same 2K scene.** If lip sync recovers, hypothesis 1 is confirmed and the fix is a workflow knob, not a code change.
+2. If 0.30 helps but doesn't fully fix it, sweep `0.20 / 0.25 / 0.30 / 0.40` and find the sweet spot.
+3. If denoise tuning alone isn't enough, **bypass `LTXVLatentUpsampler`** — replace it with a stock latent upscale (bicubic / area / bislerp) at the same target dimensions and resample at low denoise. This isolates hypothesis 2 from 1.
+4. If neither (1) nor (3) helps meaningfully, run **2K direct (single stage, `denoise = 1.0`)** with the same prompts/keyframes — comparable total compute, no upscale step. If 2K direct beats 2-stage, the two-stage pattern is the actual cost; if 2K direct is worse, we've hit hypothesis 3 (model competence ceiling) and should look at *pixel-space* upscalers (SUPIR / ESRGAN / topaz) applied to a single-stage render instead.
