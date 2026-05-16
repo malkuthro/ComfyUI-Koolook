@@ -109,6 +109,9 @@ def _resolve_abs_target(
     return abs_dir, abs_base
 
 
+_SENTINEL_STRINGS = ("undefined", "null", "none")
+
+
 def _normalize_text_input(value) -> str:
     """Coerce a ComfyUI STRING widget value to a clean Python string.
 
@@ -118,15 +121,58 @@ def _normalize_text_input(value) -> str:
     / ``"None"``) instead of ``""``. Treating those as valid input
     causes nonsensical ``undefined/`` subdirectories on disk.
 
-    Any of those sentinel strings (case-insensitive) become ``""``;
-    everything else is returned ``.strip()``-ed.
+    Also defends against:
+    - Surrounding quotes (users paste paths from Explorer with quotes).
+    - Trailing whitespace including newlines (WAS Text Multiline can
+      leave a trailing newline when the user pressed Enter at the end).
+    - Embedded sentinel components separated by a newline (a multi-line
+      Text Multiline node with a second sentinel-looking line).
+
+    Any sentinel string (case-insensitive, post-strip) becomes ``""``;
+    everything else is the cleaned value.
     """
     if value is None:
         return ""
-    s = str(value).strip()
-    if s.lower() in ("undefined", "null", "none"):
+    s = str(value).strip().strip('"').strip("'").strip()
+    # If a newline split the value across lines, take the first
+    # non-empty non-sentinel line.
+    if "\n" in s or "\r" in s:
+        for line in s.replace("\r", "\n").split("\n"):
+            line = line.strip()
+            if line and line.lower() not in _SENTINEL_STRINGS:
+                s = line
+                break
+        else:
+            s = ""
+    if s.lower() in _SENTINEL_STRINGS:
         return ""
     return s
+
+
+def _strip_sentinel_components(path: str) -> str:
+    """Remove any path component that's exactly a sentinel string.
+
+    Belt-and-suspenders defense: if anything upstream of us managed
+    to inject ``undefined`` / ``null`` / ``None`` as a path component
+    (despite the per-field normalization above), drop it before the
+    path reaches the filesystem. Preserves the rest of the path,
+    including the drive root on Windows.
+
+    Returns the path unchanged if no sentinels found, so this is a
+    cheap pass for the common case.
+    """
+    if not path:
+        return path
+    # Split on whichever separator is present, defaulting to os.sep.
+    sep = "\\" if "\\" in path else "/"
+    parts = path.split(sep)
+    cleaned = [
+        p for p in parts
+        if p == "" or p.lower() not in _SENTINEL_STRINGS
+    ]
+    if len(cleaned) == len(parts):
+        return path
+    return sep.join(cleaned)
 
 
 def _compose_prefix(filename_prefix: str, output_directory: str) -> str:
@@ -231,22 +277,30 @@ if _VHS_AVAILABLE:
             # the literal string "undefined" for STRING widgets with
             # empty defaults. Coerce those to "" before any path
             # composition so we never create an `undefined/` subdir.
-            filename_prefix = _normalize_text_input(
-                kwargs.get("filename_prefix", "AnimateDiff")
-            ) or "AnimateDiff"
-            kwargs["filename_prefix"] = filename_prefix
-            output_directory = _normalize_text_input(
-                kwargs.pop("output_directory", "")
-            )
+            fp_raw = kwargs.get("filename_prefix", "AnimateDiff")
+            od_raw = kwargs.pop("output_directory", "")
             create_path_if_missing = kwargs.pop("create_path_if_missing", False)
+            filename_prefix = _normalize_text_input(fp_raw) or "AnimateDiff"
+            kwargs["filename_prefix"] = filename_prefix
+            output_directory = _normalize_text_input(od_raw)
 
             # Split-mode: directory + name combined into one effective
             # prefix that the existing isabs discrimination handles
             # uniformly. When output_directory is empty this is a no-op.
             effective_prefix = _compose_prefix(filename_prefix, output_directory)
+            # Belt-and-suspenders: drop any sentinel components that
+            # slipped past per-field normalization (e.g. a path that
+            # already carried `\undefined\` as a literal segment).
+            effective_prefix = _strip_sentinel_components(effective_prefix)
             if effective_prefix != filename_prefix:
                 kwargs["filename_prefix"] = effective_prefix
                 filename_prefix = effective_prefix
+
+            print(
+                f"[Easy_VideoCombine] fp_raw={fp_raw!r} od_raw={od_raw!r} "
+                f"fp={filename_prefix!r} od={output_directory!r} "
+                f"effective={effective_prefix!r}"
+            )
 
             target = _resolve_abs_target(filename_prefix, create_path_if_missing)
             if target is None:
