@@ -2,13 +2,20 @@
   "kind": "koolook-snapshot",
   "version": 1,
   "name": "starter",
-  "exportedAt": "2026-05-16T18:00:00.000Z",
+  "exportedAt": "2026-05-16T19:00:00.000Z",
   "picks": [
+    "EasyAIPipeline",
+    "EasyResize_Koolook",
+    "EasyWan22Prompt",
+    "Easy_Pattern",
     "Easy_VideoCombine",
+    "Easy_hdr_VAE_decode",
+    "Easy_hdr_VAE_encode",
     "Frames Slice",
     "GetImageSizeAndCount",
     "GetNode",
     "ImageScaleBy",
+    "KoolookLoadCameraPosesAbsolute",
     "LoadEXR",
     "NukeConstant",
     "NukeOCIOColorSpace",
@@ -16,7 +23,8 @@
     "ReplaceImagesInBatch",
     "SaveEXRFrames",
     "Text Multiline",
-    "easy showAnything"
+    "easy showAnything",
+    "easy_ImageBatch"
   ],
   "workflows": {
     "directories": {}
