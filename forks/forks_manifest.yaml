@@ -54,6 +54,25 @@ entries:
       - "EasyResize"                   # deprecated alias for workflow back-compat
     notes: "Idea-level inspiration from KJ Nodes' Resize Image V2 (GPL-3.0 — same as our pack, so no relicense pressure). Implementation is a fresh write that substantially extends the surface (aspect-ratio parser, keep_proportion modes, mask + composed outputs, device selection, etc). Renamed in v0.1.6 from bare 'EasyResize' to 'EasyResize_Koolook' to resolve a node-ID collision with ComfyUI-EasyFilePaths."
 
+  - id: "video_combine_path_aware_subclass"
+    name: "Easy Video Combine (Koolook subclass of VHS VideoCombine)"
+    source_repo: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    source_ref: "main (runtime composition; no upstream code copied)"
+    local_paths:
+      - "k_video_combine.py"
+    status: "subclass_runtime_dep"
+    sync_state: "no-upstream-tracking-needed"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-16"
+    exposed_node_ids:
+      - "Easy_VideoCombine"
+    pattern_inspiration:
+      source_repo: "https://github.com/spacepxl/ComfyUI-HQ-Image-Save"
+      license: "MIT"
+      license_verified_at: "2026-05-16"
+      notes: "os.path.isabs(filename_prefix) discrimination pattern from SaveEXR — overload the existing field for relative vs absolute paths rather than adding a new input pin. No source code copied; pattern only."
+    notes: "Thin subclass of videohelpersuite.nodes.VideoCombine (~60 LoC). Scoped-patches folder_paths.get_save_image_path for the duration of one combine_video() call so upstream's encoder/audio/batch-manager pipeline runs unchanged but writes to an absolute path when filename_prefix is absolute. Relative prefixes pass through to upstream verbatim. VHS is a runtime dependency only — if it isn't installed, k_video_combine.py logs a one-line skip and the node is omitted from NODE_CLASS_MAPPINGS."
+
   - id: "promptjson_integration_reference"
     name: "PromptJSON interoperability reference"
     source_repo: "https://github.com/NeuralSamurAI/ComfyUI-PromptJSON"

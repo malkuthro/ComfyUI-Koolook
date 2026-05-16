@@ -65,6 +65,53 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   still load. The KJ Nodes attribution stays in the file header and here.
 - **Last reviewed:** 2026-05-03
 
+### Kosinkadink/ComfyUI-VideoHelperSuite — VideoCombine subclass (runtime composition)
+
+- **Name:** ComfyUI-VideoHelperSuite (Kosinkadink)
+- **Upstream repo URL:** https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
+- **License:** GPL-3.0 (verified 2026-05-16 via raw `LICENSE` fetch)
+- **Local path(s):** [`k_video_combine.py`](../k_video_combine.py)
+  — exposed as the `Easy_VideoCombine` ComfyUI node ID (display name
+  *"Easy Video Combine (Koolook)"*, category `Koolook/Video`).
+- **What was incorporated (not copied):** A ~60-line subclass of
+  `videohelpersuite.nodes.VideoCombine`. No VHS source code is copied
+  into MAIN — the relationship is purely a Python runtime subclass that
+  imports VHS at module load and delegates almost the entire body of
+  `combine_video()` back to the parent class via `super()`. The only
+  Koolook-side logic is:
+  - An additional `create_path_if_missing` BOOLEAN input (optional,
+    default `False`).
+  - An `os.path.isabs(filename_prefix)` discriminator that bypasses
+    ComfyUI's output-directory sandbox when the user types an absolute
+    path.
+  - A scoped monkey-patch of `folder_paths.get_save_image_path` for the
+    duration of one `combine_video()` call so upstream's encoder /
+    audio mux / batch manager run unchanged but write into the
+    absolute target directory.
+- **Pattern inspiration (separate from the runtime dependency on VHS):**
+  The `os.path.isabs(filename_prefix)` overload-the-existing-field
+  pattern is borrowed from
+  [`spacepxl/ComfyUI-HQ-Image-Save`](https://github.com/spacepxl/ComfyUI-HQ-Image-Save)'s
+  `SaveEXR` node (MIT, copyright 2023 spacepxl). MIT is GPL-3.0
+  compatible. No spacepxl source code is copied — only the pattern.
+  License verified 2026-05-16 via raw `LICENSE` fetch.
+- **Why a subclass rather than a fork:** Patching the upstream VHS
+  install on every workstation is fragile (ComfyUI-Manager auto-updates
+  blow patches away); a global monkey-patch at Koolook import time
+  changes behavior for every VHS node whether the user asked for it or
+  not. A separate node opted into by placing it on the canvas is the
+  additive, neighborly approach.
+- **Runtime dependency:** Requires
+  `Kosinkadink/ComfyUI-VideoHelperSuite` to be installed alongside
+  Koolook. If VHS isn't importable at module load, `k_video_combine.py`
+  prints a one-line `[Koolook] Easy_VideoCombine skipped: …` notice
+  and returns empty NODE_CLASS_MAPPINGS — the rest of Koolook is
+  unaffected.
+- **Upstream PR plan:** the same `isabs` discrimination is a candidate
+  to upstream into VHS proper. If/when accepted, `Easy_VideoCombine`
+  can be deprecated in favour of `VHS_VideoCombine` directly.
+- **Last reviewed:** 2026-05-16
+
 ### fxtdstudios/radiance — v2.3.3 VAE subset (Koolook fork)
 
 - **Name:** Radiance (FXTD Studios)

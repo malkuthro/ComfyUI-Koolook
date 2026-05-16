@@ -33,6 +33,8 @@ ComfyUI-Koolook is a custom-node pack for ComfyUI. Two shipped surfaces:
      with front-end widgets in [`web/ai_pipeline.js`](../web/ai_pipeline.js)).
    - [`k_easy_image_batch.py`](../k_easy_image_batch.py) → `easy_ImageBatch`.
    - [`k_easy_track.py`](../k_easy_track.py) → `KoolookLoadCameraPosesAbsolute`.
+   - [`k_video_combine.py`](../k_video_combine.py) → `Easy_VideoCombine`
+     (runtime subclass of VHS `VideoCombine`; self-skips if VHS not installed).
    - Radiance VAE wrappers under
      [`forks/radiance_koolook/versions/v2_3_3/`](../forks/radiance_koolook/versions/v2_3_3/)
      → `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode`.
