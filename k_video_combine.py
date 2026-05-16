@@ -231,7 +231,7 @@ if _VHS_AVAILABLE:
             types["optional"]["save_metadata_png"] = (
                 "BOOLEAN",
                 {
-                    "default": False,
+                    "default": True,
                     "tooltip": "Save the first-frame PNG with embedded workflow metadata.",
                 },
             )
@@ -257,7 +257,7 @@ if _VHS_AVAILABLE:
                 kwargs.pop("output_directory", "")
             )
             create_path_if_missing = kwargs.pop("create_path_if_missing", False)
-            save_metadata_png = kwargs.pop("save_metadata_png", False)
+            save_metadata_png = kwargs.pop("save_metadata_png", True)
             keep_silent_intermediate = kwargs.pop("keep_silent_intermediate", False)
 
             # Inject VHS's hidden extra_options flags so upstream skips
@@ -286,6 +286,41 @@ if _VHS_AVAILABLE:
             if effective_prefix != filename_prefix:
                 kwargs["filename_prefix"] = effective_prefix
                 filename_prefix = effective_prefix
+
+            # One-shot diagnostic — pin down whether a doubled-length
+            # output is the image stream being fed already-doubled
+            # (workflow issue, e.g. ImageConcatMulti in batch mode or a
+            # pingpong upstream) vs combine doing it. Logs once per
+            # render; remove after the report is no longer needed.
+            try:
+                images_in = kwargs.get("images")
+                latents_in = kwargs.get("latents")
+                if images_in is not None and hasattr(images_in, "shape"):
+                    img_n, img_shape = images_in.shape[0], tuple(images_in.shape)
+                elif latents_in is not None:
+                    samples = latents_in.get("samples") if isinstance(latents_in, dict) else latents_in
+                    img_n = getattr(samples, "shape", [0])[0]
+                    img_shape = tuple(getattr(samples, "shape", ()))
+                else:
+                    img_n, img_shape = 0, ()
+                audio_in = kwargs.get("audio")
+                if audio_in is not None and isinstance(audio_in, dict):
+                    wf = audio_in.get("waveform")
+                    sr = audio_in.get("sample_rate", 0)
+                    a_samples = wf.shape[-1] if wf is not None and hasattr(wf, "shape") else 0
+                    a_secs = a_samples / sr if sr else 0
+                else:
+                    a_samples, a_secs, sr = 0, 0, 0
+                fr = kwargs.get("frame_rate", 0)
+                expected_secs = (img_n / fr) if fr else 0
+                print(
+                    f"[Easy_VideoCombine] frames={img_n} shape={img_shape} "
+                    f"frame_rate={fr} -> {expected_secs:.2f}s video; "
+                    f"audio samples={a_samples} sr={sr} -> {a_secs:.2f}s; "
+                    f"pingpong={kwargs.get('pingpong')} loop_count={kwargs.get('loop_count')}"
+                )
+            except Exception as _diag_exc:
+                print(f"[Easy_VideoCombine] diagnostic skipped: {_diag_exc!r}")
 
             target = _resolve_abs_target(filename_prefix, create_path_if_missing)
             if target is None:
