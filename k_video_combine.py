@@ -109,6 +109,26 @@ def _resolve_abs_target(
     return abs_dir, abs_base
 
 
+def _normalize_text_input(value) -> str:
+    """Coerce a ComfyUI STRING widget value to a clean Python string.
+
+    ComfyUI's frontend has a long-running quirk: when a STRING input
+    with an empty default sits untouched, the value sometimes arrives
+    at the backend as the literal string ``"undefined"`` (or ``"null"``
+    / ``"None"``) instead of ``""``. Treating those as valid input
+    causes nonsensical ``undefined/`` subdirectories on disk.
+
+    Any of those sentinel strings (case-insensitive) become ``""``;
+    everything else is returned ``.strip()``-ed.
+    """
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if s.lower() in ("undefined", "null", "none"):
+        return ""
+    return s
+
+
 def _compose_prefix(filename_prefix: str, output_directory: str) -> str:
     """Combine ``output_directory`` + ``filename_prefix`` into one path-prefix.
 
@@ -207,8 +227,17 @@ if _VHS_AVAILABLE:
             return types
 
         def combine_video(self, *args, **kwargs):
-            filename_prefix = kwargs.get("filename_prefix", "AnimateDiff")
-            output_directory = (kwargs.pop("output_directory", "") or "").strip()
+            # Defensive normalization — the frontend occasionally sends
+            # the literal string "undefined" for STRING widgets with
+            # empty defaults. Coerce those to "" before any path
+            # composition so we never create an `undefined/` subdir.
+            filename_prefix = _normalize_text_input(
+                kwargs.get("filename_prefix", "AnimateDiff")
+            ) or "AnimateDiff"
+            kwargs["filename_prefix"] = filename_prefix
+            output_directory = _normalize_text_input(
+                kwargs.pop("output_directory", "")
+            )
             create_path_if_missing = kwargs.pop("create_path_if_missing", False)
 
             # Split-mode: directory + name combined into one effective

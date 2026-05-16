@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from k_video_combine import _compose_prefix, _resolve_abs_target
+from k_video_combine import _compose_prefix, _normalize_text_input, _resolve_abs_target
 
 
 def test_relative_prefix_returns_none() -> None:
@@ -148,3 +148,46 @@ def test_compose_empty_name_falls_back_to_default() -> None:
     just a separator."""
     composed = _compose_prefix("/", "E:/renders/shot01")
     assert composed == "E:/renders/shot01" + os.sep + "AnimateDiff"
+
+
+# =============================================================================
+# _normalize_text_input: guard against the ComfyUI frontend "undefined" quirk.
+# A STRING widget left untouched can arrive at the backend as the literal
+# string "undefined" (or "null" / "None") instead of an empty value.
+# Without normalization that would slip into _compose_prefix and produce a
+# nonsensical `undefined/` subdirectory on disk.
+# =============================================================================
+
+def test_normalize_empty_inputs() -> None:
+    assert _normalize_text_input("") == ""
+    assert _normalize_text_input("   ") == ""
+    assert _normalize_text_input(None) == ""
+
+
+def test_normalize_undefined_sentinel_strings() -> None:
+    """All case variants of the frontend-quirk strings become empty."""
+    assert _normalize_text_input("undefined") == ""
+    assert _normalize_text_input("Undefined") == ""
+    assert _normalize_text_input("UNDEFINED") == ""
+    assert _normalize_text_input("null") == ""
+    assert _normalize_text_input("None") == ""
+    assert _normalize_text_input("  undefined  ") == ""
+
+
+def test_normalize_passes_through_real_values() -> None:
+    assert _normalize_text_input("E:/renders/shot01") == "E:/renders/shot01"
+    assert _normalize_text_input("clip_v003") == "clip_v003"
+    # Substring matches don't trigger — only exact match (post-strip).
+    assert _normalize_text_input("undefined_path") == "undefined_path"
+    assert _normalize_text_input("my_null_clip") == "my_null_clip"
+
+
+def test_normalize_prevents_undefined_subdir_in_compose() -> None:
+    """Regression test for the bug: output_directory='undefined' was
+    being treated as a real directory, producing an `undefined/`
+    subfolder when the user typed an absolute path in filename_prefix."""
+    normalized_dir = _normalize_text_input("undefined")
+    composed = _compose_prefix("E:/renders/clip_v003", normalized_dir)
+    # With normalization, no output_directory -> filename_prefix passes through.
+    assert composed == "E:/renders/clip_v003"
+    assert "undefined" not in composed
