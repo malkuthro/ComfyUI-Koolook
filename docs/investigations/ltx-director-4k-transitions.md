@@ -197,3 +197,37 @@ Verified against `ComfyUI/comfy_extras/nodes_lt.py` and `nodes_lt_upsampler.py`:
 2. If 0.30 helps but doesn't fully fix it, sweep `0.20 / 0.25 / 0.30 / 0.40` and find the sweet spot.
 3. If denoise tuning alone isn't enough, **bypass `LTXVLatentUpsampler`** — replace it with a stock latent upscale (bicubic / area / bislerp) at the same target dimensions and resample at low denoise. This isolates hypothesis 2 from 1.
 4. If neither (1) nor (3) helps meaningfully, run **2K direct (single stage, `denoise = 1.0`)** with the same prompts/keyframes — comparable total compute, no upscale step. If 2K direct beats 2-stage, the two-stage pattern is the actual cost; if 2K direct is worse, we've hit hypothesis 3 (model competence ceiling) and should look at *pixel-space* upscalers (SUPIR / ESRGAN / topaz) applied to a single-stage render instead.
+
+---
+
+## Round 4 — scheduler finding + tracking-system plan
+
+**Date:** 2026-05-16 (same session)
+
+### Validated finding — `linear_quadratic` with 8 steps is locked in
+
+Empirically confirmed by the maintainer across multiple renders: the sigma curve shape produced by `linear_quadratic` at 8 steps — a **flat plateau near σ ≈ 1.0 for the first ~5 steps, then the bulk of denoising compressed into steps 5→8** — produces the best inter-keyframe motion and fast-transition quality. **Any other scheduler shape degrades both.** Promote from experimental to locked-in baseline; do not change without re-validating against this finding.
+
+Both stages preserve the same curve shape; Phase 2 just starts slightly lower on σ because `denoise = 0.80` shifts the entry point down the curve (≈ 0.990 instead of ≈ 1.000 — verified from the `VisualizeSigmasKJ` graphs in the maintainer's screenshot).
+
+### The remaining live trade-off
+
+**Phase 2 denoise ↔ audio sync preservation.** Higher Phase-2 denoise buys spatial sharpness from the learned LTX upscaler at the cost of stage 1's audio-aligned mouth detail; lower Phase-2 denoise preserves sync at the cost of refinement. Finding the inflection point is the next experimental goal.
+
+### Tracking system (agreed plan; not yet scaffolded)
+
+Two-layer split, designed to minimise per-run screenshot effort:
+
+- **`experiments/BASELINE.md`** — frozen base. Architecture, scene/keyframes/prompts/audio, models (LTX checkpoint, VAE, CLIP, Audio VAE), and all locked-in knobs (sampler `euler`, scheduler `linear_quadratic`, steps 8, seed 12 fixed, CFG 1.0, Phase-1 denoise 1.00, scale_by per phase, upscaler model, LTX Director's not-being-swept knobs including `epsilon`). Updated only when a finding moves a setting in or out of "locked."
+- **`experiments/log.md`** — running table, one row per run: `Run · Date · Δ from baseline · Motion 1–5 · Audio sync 1–5 · Phase-2 sharpness 1–5 · Notes`. Three score axes chosen to match the trade-off space — higher denoise typically buys sharpness at the cost of sync, and the table will surface the inflection within a handful of runs.
+- **`experiments/runs/<date>-<NNN>/screenshot.png`** — one screenshot per run, framed around the WAS Text Multiline summary node + the BasicScheduler + the `VisualizeSigmasKJ` (Sigma Visual) graphs for both phases. Multiline format includes `Run:` and `Δ from baseline:` lines so the screenshot is self-identifying without the surrounding log.
+
+### Per-run loop
+
+1. Maintainer updates the in-workflow Text Multiline node (run id + Δ + the changed value) → renders → screenshots the *(multiline + scheduler + sigma visual)* region.
+2. Maintainer pastes the screenshot to chat with a one-sentence subjective observation.
+3. Agent verifies the multiline's stated values against the actual node values in the same screenshot (built-in consistency check), saves the screenshot under `runs/<id>/`, appends a row to `log.md` with the three 1–5 scores drawn from the observation + visible cues, adds 1–2 lines of interpretation.
+
+### Next step when picking this work up
+
+Scaffold the three artifacts above. Pre-fill `BASELINE.md` from the screenshots captured this session, and `log.md` Run 001 as the current `Phase 2 denoise = 0.80` baseline. Then run experiment 002 at `Phase 2 denoise = 0.30` per the Round 3 cheapest-first plan.
