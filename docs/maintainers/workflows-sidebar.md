@@ -69,7 +69,7 @@ the tag editor keeps the first-class `module` flag in sync.
 
 ## Right-click menus
 
-- **Workflow row**: Load / **Insert into canvas** / Rename / `→ <other path>` (lists every other directory in the tree) / Move to archive (or Restore from archive if already archived) / Delete.
+- **Workflow row**: Load / **Insert into canvas** / Update from selection or canvas / Rename / Duplicate / Tags / Move to archive (or Restore from archive if already archived) / + New directory / + New subdirectory / Delete. Existing-folder moves are handled by drag-and-drop so the menu stays short in large libraries.
 - **Directory row** (any depth): **Create subdirectory…** / Rename / Delete (with confirm if non-empty — the message names workflow + subdirectory counts).
 - **Archive folder** (synthetic — appears only when a directory has archived workflows): **Delete archive (N)** — removes every archived workflow in this directory in one go (active workflows in the same directory are untouched).
 
@@ -96,7 +96,7 @@ further subdirectories.
 
 - **Create**: right-click a directory → "Create subdirectory…"
 - **Save into**: pick the nested path from the save modal's directory dropdown (`UP-scale / Type-A`)
-- **Move across**: right-click a workflow → choose any other path in the move submenu
+- **Move across**: drag a workflow row onto the target directory row
 - **Reserved name**: subdirectory names cannot be `Archive` (case-insensitive) — that string is reserved for the synthetic Archive folder rendered for archived workflows. Top-level directories named `Archive` are allowed (no collision at root).
 
 ## Storage
