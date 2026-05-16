@@ -199,75 +199,33 @@ def _compose_prefix(filename_prefix: str, output_directory: str) -> str:
 
 if _VHS_AVAILABLE:
     class Easy_VideoCombine(_VHS_VideoCombine):
-        """Path-aware variant of VHS's Video Combine.
-
-        Behavior matrix:
-
-        - ``filename_prefix`` is relative (e.g. ``"AnimateDiff"``,
-          ``"shots/clip01"``) — pure passthrough to
-          :meth:`videohelpersuite.nodes.VideoCombine.combine_video`. The
-          ComfyUI output-directory sandbox stays in force.
-        - ``filename_prefix`` is absolute (e.g.
-          ``"E:/renders/shot01/v003"``) — the parent directory is
-          resolved (and optionally created), then upstream's combine
-          runs against that location. Counter (``_00001``), extension
-          (``.mp4`` / ``.gif`` / …), metadata PNG, and audio mux all
-          land alongside the video in ``abs_dir``.
-
-        The UI preview tile in the workflow shows the standard "video
-        written" pill, but Comfy's ``/view`` endpoint can only serve
-        files under its own output directory — so absolute-path renders
-        don't surface a clickable thumbnail. The file is still written,
-        and the absolute path appears in the saved-files list.
-        """
+        """Video Combine variant with absolute-path output."""
 
         CATEGORY = "Koolook/Video"
+        DESCRIPTION = "Video Combine variant with absolute-path output."
 
         @classmethod
         def INPUT_TYPES(cls):
             types = _VHS_VideoCombine.INPUT_TYPES()
-            # Override upstream's bare filename_prefix entry with a
-            # tooltip that documents the split-with-output_directory
-            # and overloaded-absolute-path modes.
             types["required"]["filename_prefix"] = (
                 "STRING",
                 {
                     "default": "AnimateDiff",
-                    "tooltip": (
-                        "Filename root — counter (_00001) and extension "
-                        "are appended automatically. When `output_directory` "
-                        "is set, only the basename is used (path components "
-                        "stripped) so you can change the name without "
-                        "retyping the directory. With no `output_directory`: "
-                        "relative -> ComfyUI's output/ sandbox; absolute -> "
-                        "writes directly there."
-                    ),
+                    "tooltip": "Filename root. Counter and extension are appended.",
                 },
             )
             types["optional"]["output_directory"] = (
                 "STRING",
                 {
                     "default": "",
-                    "tooltip": (
-                        "Optional output directory. Absolute "
-                        "(e.g. 'E:/renders/shot01') writes there directly; "
-                        "relative (e.g. 'shots/v003') joins under "
-                        "ComfyUI's output/. When set, `filename_prefix` is "
-                        "treated as just the name root. Leave empty to "
-                        "let `filename_prefix` carry the whole path."
-                    ),
+                    "tooltip": "Absolute or relative output directory.",
                 },
             )
             types["optional"]["create_path_if_missing"] = (
                 "BOOLEAN",
                 {
                     "default": False,
-                    "tooltip": (
-                        "When the resolved output directory does not "
-                        "exist, auto-create it (recursively). Off by "
-                        "default so typos surface as errors instead of "
-                        "spawning stray directories."
-                    ),
+                    "tooltip": "Auto-create the output directory if missing.",
                 },
             )
             return types
@@ -277,12 +235,14 @@ if _VHS_AVAILABLE:
             # the literal string "undefined" for STRING widgets with
             # empty defaults. Coerce those to "" before any path
             # composition so we never create an `undefined/` subdir.
-            fp_raw = kwargs.get("filename_prefix", "AnimateDiff")
-            od_raw = kwargs.pop("output_directory", "")
-            create_path_if_missing = kwargs.pop("create_path_if_missing", False)
-            filename_prefix = _normalize_text_input(fp_raw) or "AnimateDiff"
+            filename_prefix = _normalize_text_input(
+                kwargs.get("filename_prefix", "AnimateDiff")
+            ) or "AnimateDiff"
             kwargs["filename_prefix"] = filename_prefix
-            output_directory = _normalize_text_input(od_raw)
+            output_directory = _normalize_text_input(
+                kwargs.pop("output_directory", "")
+            )
+            create_path_if_missing = kwargs.pop("create_path_if_missing", False)
 
             # Split-mode: directory + name combined into one effective
             # prefix that the existing isabs discrimination handles
@@ -295,12 +255,6 @@ if _VHS_AVAILABLE:
             if effective_prefix != filename_prefix:
                 kwargs["filename_prefix"] = effective_prefix
                 filename_prefix = effective_prefix
-
-            print(
-                f"[Easy_VideoCombine] fp_raw={fp_raw!r} od_raw={od_raw!r} "
-                f"fp={filename_prefix!r} od={output_directory!r} "
-                f"effective={effective_prefix!r}"
-            )
 
             target = _resolve_abs_target(filename_prefix, create_path_if_missing)
             if target is None:
