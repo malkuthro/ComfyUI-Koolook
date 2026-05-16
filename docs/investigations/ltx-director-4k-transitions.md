@@ -89,3 +89,58 @@ The author's comment claims this matches the paper, but the paper's stated formu
 ```
 
 — i.e. σ scales with segment length `L` so that the penalty reaches threshold `ε` exactly at the segment boundary. The WhatDreamsCost code uses a length-independent σ instead. Whether this matters at 4K, and how Kijai's port handles it, is worth checking when we start instrumenting.
+
+---
+
+## Round 2 — 2K vs 4K, and the two-stage upscale problem
+
+**Date:** 2026-05-16 (same session)
+
+### New observations (maintainer's framing, preserved)
+
+> 2K works **much better** than 4K. The same three segments don't seem to have nearly as much dissolve — instead they're morphing properly. So the model is better at transitioning from one keyframe to the next without going to a dissolve, which is what we want.
+>
+> The new problem is the **two-stage workflow**: the second stage (the upscale stage) is not holding the audio instruction that well. It's kind of overwriting stage 1, which is done at half resolution. Stage 1's output is good — I could see this by rendering out that section on its own. But when stage 2 runs, the animation is a bit lost and the lip sync isn't as good.
+
+### Why this could happen
+
+**Why 2K behaves much better than 4K**
+
+Two effects compound:
+
+1. **Model prior, not node code.** LTX 2.3 was trained on a distribution centred well below 4K. Synthesising motion *between* two pinned keyframes is a learned task — the model has to invent latent states that plausibly bridge them. At 4K the model is extrapolating outside its training distribution, and the cheapest extrapolant is a linear blend between the two pinned latents (which looks like a dissolve). At 2K the model is at or near its training distribution, so it can synthesise real motion. The original observation that 4K *single-keyframe* works perfectly is consistent with this — single-keyframe doesn't ask the model to interpolate anything.
+
+2. **Token-grid scaling.** Tokens-per-frame = `(latent_h / patch) × (latent_w / patch)`. From HD → 2K → 4K, this grows roughly 4× and 16×. The Prompt Relay penalty matrix has to span that whole token grid per frame, but its σ is length-independent in this implementation, so the per-frame attention concentration behaves slightly differently as the grid grows. This is a secondary effect — not the dominant cause of the dissolve — but it's a second reason the same workflow gets worse with resolution rather than just being neutrally rescaled.
+
+**Why stage 2 overwrites stage 1 (audio + animation drift)**
+
+I don't have the workflow JSON, so this is hypothesis-shaped, but the standard failure mode of a "low-res generate → upscale + resample" LTX workflow is the combination of three things:
+
+1. **Stage 2 is a fresh KSampler pass with non-trivial denoise.** Anything denoised above ~zero is partially regenerated from noise, and during that regeneration the model's conditioning is re-applied. If the LTX Director node (i.e. the patched model with Prompt Relay + audio_attn2 patches) isn't wired into stage 2, the model defaults to vanilla cross-attention — every video frame attends to every prompt token equally, and the segment-wise routing that stage 1 carefully constructed gets washed out. Symptom: animation "loses register."
+
+2. **Audio conditioning is denoise-fragile.** Lip sync requires sub-frame audio-to-mouth correspondence, encoded in fine-grained latent detail that the `audio_attn2` cross-attention shaped during stage 1. A stage-2 denoise even at 0.2–0.3 partially overwrites those fine details. Unless the audio VAE latent *and* the audio_attn2 patch are re-applied identically on stage 2, the audio prior is diluted relative to the now-stronger spatial prior at high resolution. Symptom: lip sync degrades.
+
+3. **Latent shape changes between stages.** The Prompt Relay penalty matrix is dimensioned to `(latent_frames × tokens_per_frame)`. Stage 2's spatially upscaled latent has 4× the tokens per frame (for a 2× upscale). The penalty matrix has to be rebuilt with the new dimensions. If the rebuild isn't happening — or happens with un-rescaled σ — the temporal binding between segments weakens, which presents as exactly the symptom described.
+
+"Kind of overwriting stage 1" is precisely what high-denoise + missing-PromptRelay-patch + diluted audio conditioning would look like.
+
+### Pros and cons
+
+|  | 4K direct | 2K direct | 2-stage (½-res → upscale) |
+|---|---|---|---|
+| Inter-keyframe motion | **dissolve** (model out of distribution) | morphs properly | stage 1 good, stage 2 weakens it |
+| Audio / lip sync | n/a — motion already broken | holds well in a single pass | **degrades in stage 2** |
+| Single-keyframe quality | excellent (no interpolation needed) | excellent | excellent through stage 1 |
+| Compute cost | very high | moderate | moderate stage 1 + high stage 2 |
+| Within LTX's training distribution? | no | borderline / yes | stage 1 yes, stage 2 no |
+
+The cheapest win, if it's an option, is **2K direct, no two-stage**. The two-stage pattern earns its keep when you need 4K delivery *and* 2K→upscale actually beats 4K-direct — but the stage-2 path has to *preserve* stage 1's conditioning rather than redo it from scratch.
+
+### Directions to investigate (cheapest first)
+
+1. **Inspect the stage-2 wiring.** Find out: what is stage 2 actually doing? Latent upscale + KSampler with what denoise? Is the LTX Director node feeding the patched model into stage 2, or does stage 2 use a stock (unpatched) LTX model? This single question probably explains 80% of the symptom.
+2. **Drop stage 2's denoise.** If stage 2 is at 0.3+, try 0.15 or 0.10. Lower denoise preserves more of stage 1's audio-aligned detail at the cost of refinement.
+3. **Re-apply the LTX Director on stage 2** with the same `timeline_data` JSON, so the Prompt Relay penalty and audio cross-attention patch are present on stage 2's model clone too. If the dissolve / audio drift still reappears at the upscaled resolution, that confirms it's an LTX-model-side prior limit at high res, not a missing-patch issue.
+4. **Run 2K direct at full quality and compare to the 2-stage 4K.** If 2K direct delivers an acceptable result for the delivery target, retire the two-stage path. Cheapest fix is "don't do it."
+5. **If 4K delivery is non-negotiable,** consider replacing stage 2's KSampler with a *pixel-space* upscaler (SUPIR, ESRGAN, or a tiled sampler at very low denoise with the Director re-wired). Pixel-space upscale preserves the temporal structure stage 1 built — at the cost of not inventing new motion detail. If stage 2 isn't generating new motion anyway, this is likely a net win.
+6. **Diff against Kijai's port.** Plug `kijai/ComfyUI-PromptRelay` into a stage-2-style workflow and see whether audio attention behaves differently. If Kijai's port preserves audio better, the difference points at where the WhatDreamsCost wrapper drops the ball — cheaper than reading Gordon Chen's paper-reference impl line-by-line.
