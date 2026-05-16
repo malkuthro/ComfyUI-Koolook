@@ -228,6 +228,20 @@ if _VHS_AVAILABLE:
                     "tooltip": "Auto-create the output directory if missing.",
                 },
             )
+            types["optional"]["save_metadata_png"] = (
+                "BOOLEAN",
+                {
+                    "default": False,
+                    "tooltip": "Save the first-frame PNG with embedded workflow metadata.",
+                },
+            )
+            types["optional"]["keep_silent_intermediate"] = (
+                "BOOLEAN",
+                {
+                    "default": False,
+                    "tooltip": "Keep the audio-less intermediate video when audio is muxed in.",
+                },
+            )
             return types
 
         def combine_video(self, *args, **kwargs):
@@ -243,6 +257,23 @@ if _VHS_AVAILABLE:
                 kwargs.pop("output_directory", "")
             )
             create_path_if_missing = kwargs.pop("create_path_if_missing", False)
+            save_metadata_png = kwargs.pop("save_metadata_png", False)
+            keep_silent_intermediate = kwargs.pop("keep_silent_intermediate", False)
+
+            # Inject VHS's hidden extra_options flags so upstream skips
+            # the metadata PNG and deletes the silent intermediate after
+            # audio mux. Defaults are False on Koolook (one clean file
+            # per render); flip the toggles to re-enable upstream's
+            # default-on behavior. Copy extra_pnginfo before mutating so
+            # other nodes referencing the same dict aren't affected.
+            extra_pnginfo = dict(kwargs.get("extra_pnginfo") or {})
+            workflow = dict(extra_pnginfo.get("workflow") or {})
+            extra = dict(workflow.get("extra") or {})
+            extra["VHS_MetadataImage"] = bool(save_metadata_png)
+            extra["VHS_KeepIntermediate"] = bool(keep_silent_intermediate)
+            workflow["extra"] = extra
+            extra_pnginfo["workflow"] = workflow
+            kwargs["extra_pnginfo"] = extra_pnginfo
 
             # Split-mode: directory + name combined into one effective
             # prefix that the existing isabs discrimination handles
