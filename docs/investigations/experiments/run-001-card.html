@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LTX Director — Run 001</title>
+<style>
+  html, body { margin:0; padding:24px; background:#0b0c0e; color:#e8e8e8;
+    font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .card { width:300px; padding:18px 22px; box-sizing:border-box;
+    background:#15171a; border:1px solid #2a2d33; border-radius:10px; }
+  h1 { font-size:14px; margin:0 0 12px; color:#7aa7d6; font-weight:600;
+    letter-spacing:.06em; }
+  table { width:100%; border-collapse:collapse;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
+    margin-bottom:10px; }
+  td { padding:3px 0; vertical-align:top; }
+  td.k { color:#888; width:42%; }
+  td.v { color:#e8e8e8; }
+  .note { font-size:11px; color:#bbb; font-style:italic;
+    padding:8px 10px; background:#0e1012; border-left:2px solid #d6a87a;
+    border-radius:2px; margin:10px 0 12px; }
+  .note b { color:#d6a87a; font-style:normal; font-weight:600;
+    letter-spacing:.06em; }
+  .outcome { padding-top:10px; border-top:1px solid #2a2d33; }
+  .scores { display:flex; gap:14px; flex-wrap:wrap;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; }
+  .score { color:#888; }
+  .score b { color:#e8e8e8; font-weight:500; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Phase 1</h1>
+  <table>
+    <tr><td class="k">Format</td>    <td class="v">2K</td></tr>
+    <tr><td class="k">Mult</td>      <td class="v">1</td></tr>
+    <tr><td class="k">Scheduler</td> <td class="v">linear_quadratic</td></tr>
+    <tr><td class="k">Steps</td>     <td class="v">8</td></tr>
+    <tr><td class="k">Denoise</td>   <td class="v">1</td></tr>
+  </table>
+
+  <div class="note"><b>BASE (notes):</b><br>Changed audio for each segment to match the duration.</div>
+
+  <div class="outcome">
+    <div class="scores">
+      <div class="score">Motion <b>?/5</b></div>
+      <div class="score">Sync <b>?/5</b></div>
+      <div class="score">Sharp <b>?/5</b></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LTX Director — Baseline (Jeep_Animals / bear)</title>
+<style>
+  html, body { margin:0; padding:24px; background:#0b0c0e; color:#e8e8e8;
+    font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .card { width:540px; padding:20px 24px; box-sizing:border-box;
+    background:#15171a; border:1px solid #2a2d33; border-radius:10px; }
+  h1 { font-size:16px; margin:0 0 2px; color:#fff; font-weight:600; }
+  .sub { font-size:11px; color:#8a8e95; margin-bottom:14px; }
+  h2 { font-size:10px; letter-spacing:.14em; color:#7aa7d6; margin:14px 0 6px;
+    text-transform:uppercase; font-weight:600; }
+  h2:first-of-type { margin-top:0; }
+  table { width:100%; border-collapse:collapse;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+  td { padding:2px 0; vertical-align:top; }
+  td.k { color:#888; width:38%; }
+  td.v { color:#e8e8e8; }
+  .seg { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
+    color:#e8e8e8; padding:3px 0; }
+  .seg .idx { color:#d6a87a; display:inline-block; width:22px; }
+  .seg .dur { color:#bbb; display:inline-block; width:64px; }
+  .seg .chk { color:#9ad17a; }
+  .seg .miss { color:#666; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Baseline — Jeep_Animals / bear</h1>
+  <div class="sub">frozen scene + model context · update only when a finding promotes/demotes a setting</div>
+
+  <h2>Model stack</h2>
+  <table>
+    <tr><td class="k">Checkpoint</td><td class="v">LTX 2.3 22B dev fp8</td></tr>
+    <tr><td class="k">LoRA</td><td class="v">distilled-384-1.1 @ 0.5</td></tr>
+    <tr><td class="k">CLIP</td><td class="v">Gemma 3 12B (fp4)</td></tr>
+    <tr><td class="k">Video VAE</td><td class="v">ltx-2.3-22b-distilled_video_vae</td></tr>
+    <tr><td class="k">Audio VAE</td><td class="v">ltx-2.3-22b-distilled_audio_vae</td></tr>
+  </table>
+
+  <h2>Locked sampling</h2>
+  <table>
+    <tr><td class="k">Sampler</td><td class="v">euler</td></tr>
+    <tr><td class="k">CFG</td><td class="v">1.0</td></tr>
+    <tr><td class="k">Seed</td><td class="v">12 (fixed)</td></tr>
+    <tr><td class="k">ε (epsilon)</td><td class="v">0.001</td></tr>
+    <tr><td class="k">Custom audio</td><td class="v">off · model-generated</td></tr>
+  </table>
+
+  <h2>Scene</h2>
+  <table>
+    <tr><td class="k">Duration</td><td class="v">144 frames · 6 s @ 24 fps</td></tr>
+    <tr><td class="k">Segments</td><td class="v">3 × 48 frames (2 s each)</td></tr>
+  </table>
+  <div class="seg"><span class="idx">①</span><span class="dur">0–2 s</span><span class="chk">✓ prompt &nbsp; ✓ audio &nbsp; ✓ keyframe</span></div>
+  <div class="seg"><span class="idx">②</span><span class="dur">2–4 s</span><span class="chk">✓ prompt &nbsp; ✓ audio &nbsp; ✓ keyframe</span></div>
+  <div class="seg"><span class="idx">③</span><span class="dur">4–6 s</span><span class="chk">✓ prompt &nbsp; ✓ audio &nbsp; ✓ keyframe</span></div>
+</div>
+</body>
+</html>
