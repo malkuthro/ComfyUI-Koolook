@@ -40,7 +40,6 @@ import {
 import {
     persistMutation,
     listDirectoryNames,
-    listAllDirectoryPaths,
     dirOf,
     addDirectory,
     renameDirectory,
@@ -1488,19 +1487,6 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
 // Context-menu wiring for workflow rows
 // =============================================================================
 function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
-    // The "Move to…" submenu lists every other directory path in the tree
-    // so a workflow can be relocated across nesting levels in one click.
-    const moveItems = listAllDirectoryPaths()
-        .filter(p => !pathsEqual(p, dirPath))
-        .map(p => ({
-            label: `→ ${p.join(" / ")}`,
-            action: () => persistMutation({
-                mutate: () => moveWorkflow(dirPath, wfName, p),
-                onSuccess: () => toast(`Moved "${wfName}" to ${p.join(" / ")}.`),
-                onNoOp: () => toast(`Could not move (name conflict?).`),
-            }),
-        }));
-
     // "+ New directory…" / "+ New subdirectory under …" both create a fresh
     // directory and move the workflow into it as one atomic mutation. If
     // the move couldn't land we manually undo the dir add so we don't leak
@@ -1731,14 +1717,10 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         duplicateItem,
         tagsItem,
         archiveItem,
-        // Move section — separator first; existing-path entries (when any),
-        // then a separator, then the always-available new-dir / new-subdir
-        // entries. Skipping the inner separator when there are no existing
-        // paths keeps the menu visually clean for a fresh store with one
-        // directory.
+        // New-folder shortcuts — existing-folder moves stay on drag-and-drop
+        // so large libraries don't make this context menu taller than the
+        // viewport.
         null,
-        ...moveItems,
-        ...(moveItems.length > 0 ? [null] : []),
         newDirItem,
         newSubdirItem,
         null,
