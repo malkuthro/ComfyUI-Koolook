@@ -34,12 +34,34 @@ from typing import Optional, Tuple
 
 try:
     import folder_paths  # ComfyUI core; always present at runtime.
-    from videohelpersuite.nodes import VideoCombine as _VHS_VideoCombine
+    # Reach the VHS VideoCombine class through ComfyUI's global node
+    # registry rather than `from videohelpersuite.nodes import ...`.
+    # VHS uses relative imports internally (`from .logger import ...`,
+    # `from .utils import ...`) which only resolve correctly when VHS
+    # is loaded through ComfyUI's custom-node loader, not through a
+    # plain absolute import. The global registry is the documented
+    # cross-pack interface — ComfyUI populates it as each pack loads,
+    # and Koolook loads after VHS in every install we've seen because
+    # `comfyui-videohelpersuite` sorts before `koolook` (and even an
+    # uppercase `ComfyUI-VideoHelperSuite` sorts before
+    # `ComfyUI-Koolook` if both are present). If for some reason VHS
+    # isn't loaded yet, the lookup returns None and we self-skip with
+    # a clear message.
+    import nodes as _comfy_nodes_module
+    _VHS_VideoCombine = _comfy_nodes_module.NODE_CLASS_MAPPINGS.get("VHS_VideoCombine")
+    if _VHS_VideoCombine is None:
+        raise RuntimeError(
+            "VHS_VideoCombine not present in ComfyUI's NODE_CLASS_MAPPINGS "
+            "at Koolook load time. Either ComfyUI-VideoHelperSuite isn't "
+            "installed, or it loaded after Koolook (unexpected — check "
+            "custom_nodes folder names)."
+        )
     _VHS_AVAILABLE = True
     _VHS_IMPORT_ERROR: Optional[BaseException] = None
-except ImportError as _exc:
+except (ImportError, RuntimeError) as _exc:
     _VHS_AVAILABLE = False
     _VHS_IMPORT_ERROR = _exc
+    _VHS_VideoCombine = None  # type: ignore[assignment]
 
 
 def _resolve_abs_target(
