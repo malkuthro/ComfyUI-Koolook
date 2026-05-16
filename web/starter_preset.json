@@ -2,8 +2,9 @@
   "kind": "koolook-snapshot",
   "version": 1,
   "name": "starter",
-  "exportedAt": "2026-05-05T14:30:00.000Z",
+  "exportedAt": "2026-05-16T18:00:00.000Z",
   "picks": [
+    "Easy_VideoCombine",
     "Frames Slice",
     "GetImageSizeAndCount",
     "GetNode",
