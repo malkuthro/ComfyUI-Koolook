@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from k_video_combine import _resolve_abs_target
+from k_video_combine import _compose_prefix, _resolve_abs_target
 
 
 def test_relative_prefix_returns_none() -> None:
@@ -96,3 +96,55 @@ def test_absolute_prefix_with_no_filename_component_raises(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="no filename component"):
         _resolve_abs_target(root, create_path_if_missing=False)
+
+
+# =============================================================================
+# _compose_prefix: split-mode output_directory + filename_prefix.
+# =============================================================================
+
+def test_compose_empty_output_directory_passes_through() -> None:
+    """No output_directory -> filename_prefix returned unchanged."""
+    assert _compose_prefix("AnimateDiff", "") == "AnimateDiff"
+    assert _compose_prefix("E:/renders/clip", "") == "E:/renders/clip"
+
+
+def test_compose_absolute_directory_with_name() -> None:
+    """Absolute output_directory + name -> joined absolute prefix."""
+    composed = _compose_prefix("clip_v003", "E:/renders/shot01")
+    assert composed == "E:/renders/shot01" + os.sep + "clip_v003"
+    assert os.path.isabs(composed)
+
+
+def test_compose_relative_directory_with_name() -> None:
+    """Relative output_directory + name -> joined relative prefix.
+
+    Stays relative so the downstream isabs discrimination passes it
+    through to upstream's sandbox.
+    """
+    composed = _compose_prefix("clip", "shots/v003")
+    assert composed == "shots/v003" + os.sep + "clip"
+    assert not os.path.isabs(composed)
+
+
+def test_compose_strips_path_components_from_filename_prefix() -> None:
+    """When output_directory is set, only the basename of filename_prefix
+    becomes the file root — users can change the name without retyping
+    the directory."""
+    composed = _compose_prefix("subdir/clip_v003", "E:/renders/shot01")
+    assert composed == "E:/renders/shot01" + os.sep + "clip_v003"
+
+
+def test_compose_trims_trailing_separator_from_directory() -> None:
+    """Trailing slashes on output_directory don't double-up in the join."""
+    composed_unix = _compose_prefix("clip", "E:/renders/shot01/")
+    composed_win = _compose_prefix("clip", "E:\\renders\\shot01\\")
+    assert composed_unix == "E:/renders/shot01" + os.sep + "clip"
+    assert composed_win == "E:\\renders\\shot01" + os.sep + "clip"
+
+
+def test_compose_empty_name_falls_back_to_default() -> None:
+    """If filename_prefix's basename is empty (e.g. user typed just '/'),
+    fall back to AnimateDiff rather than producing a path ending in
+    just a separator."""
+    composed = _compose_prefix("/", "E:/renders/shot01")
+    assert composed == "E:/renders/shot01" + os.sep + "AnimateDiff"

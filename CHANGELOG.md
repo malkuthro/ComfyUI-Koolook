@@ -36,6 +36,15 @@ The format is inspired by Keep a Changelog and SemVer.
   and [`docs/user_guide/nodes/koolook_video/easy_video_combine.md`](docs/user_guide/nodes/koolook_video/easy_video_combine.md)
   for the user-facing guide.
 
+  Also adds an optional **`output_directory`** STRING input (default
+  empty). When set, `filename_prefix` is treated as just the
+  filename root and `output_directory` carries the path — so you
+  can change the name without retyping the directory across many
+  renders. Absolute `output_directory` writes there directly;
+  relative `output_directory` joins under ComfyUI's `output/`. The
+  overloaded-absolute-`filename_prefix` mode is preserved
+  unchanged for users who prefer a single field.
+
 ## [0.3.2] - 2026-05-16
 
 ### Added

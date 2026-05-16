@@ -23,20 +23,38 @@ local sandbox.
 
 ## How it picks where to save
 
-The decision is driven entirely by **the shape of the value** you type
-into `filename_prefix` — no toggle, no extra pin:
+Two ergonomic modes — pick the one you prefer:
 
-| `filename_prefix` value | Where the file lands |
+### Mode A — Split (recommended): `output_directory` + `filename_prefix`
+
+| `output_directory` | `filename_prefix` | Where the file lands |
+|---|---|---|
+| `E:/renders/shot01` | `clip_v003` | `E:/renders/shot01/clip_v003_<counter>.<ext>` |
+| `/mnt/projects/shot01` | `clip_v003` | `/mnt/projects/shot01/clip_v003_<counter>.<ext>` |
+| `shots/v003` | `clip` | `<ComfyUI>/output/shots/v003/clip_<counter>.<ext>` (relative dir = sandboxed) |
+| `E:/renders/shot01/` (trailing slash) | `clip` | `E:/renders/shot01/clip_<counter>.<ext>` (trailing slash trimmed) |
+
+When `output_directory` is set, only the basename of `filename_prefix`
+is used as the file root — any path components you accidentally typed
+there are stripped. This is the field layout to use when you do many
+renders into the same directory with different names: type the
+directory once, then just change the name per render.
+
+### Mode B — Combined (overload): `filename_prefix` only
+
+Leave `output_directory` empty and put everything in `filename_prefix`:
+
+| `filename_prefix` | Where the file lands |
 |---|---|
 | `AnimateDiff`, `clip01`, `shots/v003` | `<ComfyUI>/output/<prefix>_<counter>.<ext>` (upstream behavior, sandboxed) |
 | `E:/renders/shot01/v003` (Windows) | `E:/renders/shot01/v003_<counter>.<ext>` |
 | `/mnt/projects/shot01/v003` (Linux/Mac) | `/mnt/projects/shot01/v003_<counter>.<ext>` |
 | `E:/renders/shot01/v003/` (trailing slash) | `E:/renders/shot01/v003_<counter>.<ext>` (`v003` becomes the file root) |
-| `E:/renders/shot01/` (only a dir) | `E:/renders/shot01_<counter>.<ext>` — *probably not what you want; append a file root* |
 
-The basename of the absolute path is treated as the **filename root**
-(not as a subdirectory). VHS's existing counter (`_00001`, `_00002`, …)
-and extension are appended exactly as in upstream.
+Both modes use the same `create_path_if_missing` toggle and produce
+identical files — pick by ergonomics, not behavior. VHS's existing
+counter (`_00001`, `_00002`, …) and extension are appended exactly as
+in upstream.
 
 ## Inputs
 
@@ -61,7 +79,8 @@ Same as VHS `Video Combine` plus one Koolook-specific toggle.
 | `audio` | `AUDIO` | Same as upstream. |
 | `meta_batch` | `VHS_BatchManager` | Same as upstream. |
 | `vae` | `VAE` | Same as upstream — required when `images` is a `LATENT`. |
-| `create_path_if_missing` | `BOOLEAN` (default `false`) | **Koolook-only.** When `filename_prefix` is absolute and the parent directory does not exist, auto-create it (recursively). Off by default so typos surface as errors instead of silently spawning directory trees. |
+| `output_directory` | `STRING` (default empty) | **Koolook-only.** Optional output directory. Absolute (e.g. `E:/renders/shot01`) writes there directly; relative (e.g. `shots/v003`) joins under ComfyUI's `output/`. When set, `filename_prefix` is treated as just the filename root (path components stripped) — use this when you want to keep the directory fixed across many renders and only vary the name. Leave empty to let `filename_prefix` carry the whole path. |
+| `create_path_if_missing` | `BOOLEAN` (default `false`) | **Koolook-only.** When the resolved output directory does not exist, auto-create it (recursively). Off by default so typos surface as errors instead of silently spawning directory trees. |
 
 ## Outputs
 
