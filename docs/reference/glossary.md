@@ -59,3 +59,16 @@ Short, plain-English definitions for this repo workflow.
 - `.env.example` (committed) — public template listing the env var names with safe placeholder values.
 - `.env` (gitignored) — each user's local file with real machine-specific paths.
 - Pattern matches the existing `KOLOOK_FORKS_DIR` convention.
+
+## EasyUse GET/SET Virtual Tunnel
+- A pair of frontend-only EasyUse utility nodes: `easy setNode` stores a
+  named value source and `easy getNode` exposes that value elsewhere in the
+  graph by key.
+- Render-time ComfyUI execution resolves the tunnel, but a browser-side
+  preview button that simply reads the GET node widget will see only the key
+  name (for example `OUT-folder`) rather than the actual upstream value.
+- Preview code must follow `easy getNode` -> matching `easy setNode` -> set
+  input link -> source widget value to match render-time behavior.
+- Debug by reading the installed EasyUse frontend source
+  (`comfyui-easy-use/web_version/v1/js/getset.js`) and simulating the relevant
+  LiteGraph shape locally when the live `app.graph` object is not exposed.

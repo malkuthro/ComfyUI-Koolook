@@ -84,6 +84,44 @@ deleting `/userdata/koolook_workflows.json`, or wiping browser data does.
   multiple property paths inside try/catch so older frontends still work.
 - **Persist folder expansion state across re-renders** so saving doesn't
   collapse the user's view (the `pathStates` Map in `web/sidebar/tree.js`).
+- **For frontend preview buttons, inspect the virtual-node implementation
+  before guessing.** ComfyUI custom nodes such as EasyUse GET/SET can be
+  frontend-only tunnels: render-time Python receives the resolved value, but
+  a JS preview button may only see the visible GET key unless it follows the
+  tunnel itself. Read the installed custom node JS, then simulate the relevant
+  LiteGraph shape locally before asking the maintainer to test.
+
+## Debugging frontend preview buttons
+
+Frontend preview buttons, such as Easy AI Pipeline's `Get output file path`,
+are not the same execution path as the node's Python outputs. The button code
+runs in browser JS and often peeks at connected widgets; the real render path
+runs through ComfyUI execution and may resolve virtual or dynamic nodes that
+the preview cannot see by default.
+
+When a preview disagrees with render-time output:
+
+1. Confirm whether the fix is Python, JS, or both. Python changes need a
+   ComfyUI restart; JS changes need the browser tab to reload the extension
+   module. Restarting ComfyUI alone does not guarantee an already-open tab has
+   re-imported `web/*.js`.
+2. Verify the served extension file directly, e.g.
+   `http://127.0.0.1:8188/extensions/koolook/ai_pipeline.js`, and add a
+   short temporary marker when needed so the loaded frontend version is
+   provable.
+3. Inspect the connected custom node's frontend source in the live
+   `custom_nodes/` install. EasyUse GET/SET nodes live in
+   `comfyui-easy-use/web_version/v1/js/getset.js`.
+4. If the connected node is a virtual tunnel, follow its graph semantics
+   manually. EasyUse `easy getNode` stores the visible key in its `Constant`
+   widget; the actual value lives upstream of the matching `easy setNode`
+   input link.
+5. Build a small local JS simulation of the LiteGraph shape
+   (`GET -> SET -> source`) before dev-syncing another guess.
+
+Do not assume the in-browser automation can always read `app.graph` from the
+modern ComfyUI frontend. If the graph object is not exposed, use source
+inspection, served-file checks, and small simulations instead.
 
 ## Files this loop touches most
 

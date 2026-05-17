@@ -44,6 +44,18 @@ The format is inspired by Keep a Changelog and SemVer.
   relative `output_directory` joins under ComfyUI's `output/`. The
   overloaded-absolute-`filename_prefix` mode is preserved
   unchanged for users who prefer a single field.
+- **Easy AI Pipeline (`EasyAIPipeline`): `no_subfolders` toggle.** When on,
+  the node writes directly into `base_directory_path` instead of appending
+  `shot_name/ai_method[/vNNN]` subfolders underneath. The base folder is
+  still created on the fly if missing, so you can point it at a not-yet-
+  existing directory. Default is off, so saved workflows render the same
+  path as before.
+- **Easy AI Pipeline: tooltips on every input.** Hovering any field in the
+  node now explains what it controls and how it interacts with the other
+  fields/toggles (e.g. that `ai_method` becomes both a filename segment
+  and a subfolder, that `disable_versioning` drops the `vNNN` segment
+  everywhere, that `enable_overwrite` only blocks an existing *file* —
+  not an existing directory).
 
 ### Changed
 - **Workflow right-click menu shortened for large libraries.** The menu no
@@ -52,6 +64,117 @@ The format is inspired by Keep a Changelog and SemVer.
   workflow into an existing folder is now handled by drag-and-drop; the
   right-click menu still supports creating a new directory/subdirectory and
   moving the workflow there in one step.
+- **Easy AI Pipeline: no more dangling underscores in filenames.** The
+  filename builder now joins only the non-empty pieces of
+  `shot_name` / `ai_method` / `vNNN` with `_`, so leaving `ai_method`
+  blank yields `RTX-upscale.%04d.exr` instead of the previous
+  `RTX-upscale_.%04d.exr`. Same rule applies to the subfolder build, so
+  an empty `ai_method` no longer produces a phantom directory level. The
+  preview shown by the `Get output file path` button now matches.
+
+### Fixed
+- **Easy AI Pipeline: trailing-slash on base path no longer creates a
+  phantom `undefined/` folder.** Typing `n:\foo\bar\` (trailing
+  backslash) into `base_directory_path` used to leak a trailing `/` onto
+  the `output_directory` output. Downstream save nodes split on `/`,
+  stringified the resulting empty tail as `"undefined"`, and wrote into
+  `…/bar/undefined/<shot_name>/…` on disk. The node now strips any
+  trailing separator from `output_directory` (with a guard so drive
+  roots like `n:/` survive intact), so `n:\foo\bar\` and `n:\foo\bar`
+  resolve identically. The `Get output directory path` preview already
+  showed the clean form — Python now matches. The same cleanup also treats
+  literal frontend sentinels like `"undefined"` / `"null"` / `"None"` as
+  empty text in path fields and strips those sentinel words when they arrive
+  as whole path components from connected upstream values, matching
+  `Easy_VideoCombine`'s defensive normalization.
+- **Easy AI Pipeline: broader paste-input hardening on
+  `base_directory_path`.** A new `_normalize_base_path` helper strips
+  surrounding whitespace, one matched pair of surrounding quotes
+  (`"..."` or `'...'` — `Shift+Right-click → Copy as path` in Windows
+  Explorer wraps paths in double quotes), and any number of trailing
+  separators (mixed `/` and `\` accepted). Drive roots like `C:\` and
+  `n:/` are preserved. A new test suite at
+  [`tests/nodes/test_easy_ai_pipeline.py`](tests/nodes/test_easy_ai_pipeline.py)
+  pins both the helper and the end-to-end `generate_pipeline` behavior
+  with parametrised paste-variant cases (49 tests covering 11 realistic
+  paste shapes the maintainer has actually seen), so the `undefined/`
+  phantom-folder bug can't regress.
+- **Easy AI Pipeline: absolute `shot_name` / `ai_method` can no longer
+  escape `base_directory_path`.** `os.path.join`'s "last absolute path
+  wins" rule meant a stray leading `/` (typo) or a pasted full path
+  (`C:/Windows/junk`) in either field would replace the user's intended
+  base entirely — `n:/safe` + `shot_name="/oops"` was writing to
+  `C:/oops` instead of `n:/safe/oops`. A new `_sanitize_segment` helper
+  (lstrip → splitdrive → lstrip) strips drive prefix and leading
+  separators so segments can only be joined onto the base, never replace
+  it. Applied symmetrically to both directory build and filename build.
+  Raw `shot_name` is preserved in the return tuple for downstream nodes
+  that use it as a label. 16 new tests cover the helper and the escape
+  vectors (`/oops`, `\oops`, `///oops`, `C:/Windows/junk`, `/etc/passwd`
+  in both `shot_name` and `ai_method`). The JS preview's filename
+  builder picked up the same sanitization plus an empty-base /
+  `no_subfolders=true` corner-case fix (`/name.exr` → `name.exr`).
+- **Easy AI Pipeline: JS preview and Python runtime now agree on
+  drive-prefixed `shot_name` / `ai_method` segments on every host.**
+  Segment sanitization now strips Windows-style drive prefixes with
+  Windows path semantics even when ComfyUI is running on POSIX, so
+  `C:/Windows` previews and executes as `Windows` consistently. Base
+  directory drive roots such as `C:/` and `n:/` remain preserved.
+- **Easy AI Pipeline: `no_subfolders=true` now truly produces flat
+  output, even when `shot_name` contains embedded separators.** An
+  upstream node feeding `shot_name="job/shot"` used to silently
+  re-create subfolders via the filename concat — output was
+  `base/job/shot.ext` instead of the flat `base/job_shot.ext` the
+  toggle promises. The filename build now flattens any `/` or `\` in
+  `shot_name` and `ai_method` to `_` (filesystems can't have separators
+  in filenames anyway). Directory build with `no_subfolders=false`
+  still uses the separators so users organizing into nested project
+  hierarchies aren't affected.
+- **Easy AI Pipeline: `no_subfolders=true` keeps the version folder.**
+  Previously the toggle stripped *everything* under `base` —
+  `shot_name`, `ai_method`, AND the `v###` version subfolder — which
+  meant versioned outputs all collided in the same flat directory.
+  New behavior: `no_subfolders` only drops `shot_name` and `ai_method`
+  from the directory (they still appear in the filename). The version
+  folder is added when `disable_versioning` is off, so versioned
+  outputs stay organised under `base/v###/`. Truly flat output (no
+  version folder either) requires `disable_versioning=true` AND
+  `no_subfolders=true`, matching VFX convention. Tooltip on
+  `no_subfolders` and `base_directory_path` rewritten to describe
+  this. All `vNNN` references in tooltips updated to `v###` per
+  Nuke-style convention.
+- **Easy AI Pipeline: newlines / tabs from upstream Text Multiline
+  widgets no longer leak into the path.** A new `_strip_control_chars`
+  helper runs first in both `_normalize_base_path` and
+  `_sanitize_segment`, plus explicitly on `extension` in
+  `generate_pipeline`. Removes `\n`, `\r`, `\t` defensively — these
+  can't legally appear in any filesystem path, but an upstream WAS
+  `Text Multiline` node (or anything with a stray paragraph break)
+  used to ship them through, silently breaking the save downstream
+  while rendering the preview as visually broken multi-line output.
+  Mirrored in the JS preview's `normalizeBasePath` / `sanitizeSegment`
+  / extension handling.
+- **Easy AI Pipeline: extension widget now strips ALL whitespace.**
+  A single trailing space on `.%04d.exr` (easy to acquire via paste)
+  made downstream save nodes that validate the suffix via
+  `os.path.splitext(filepath)[1].lower() != ".exr"` (e.g. spacepxl's
+  ComfyUI-HQ-Image-Save) fail with *"Filepath needs to end in .exr"* —
+  because splitext returns `.exr ` with the trailing space, which
+  doesn't equal `.exr`. The previous control-char strip only handled
+  `\r\n\t`. Now `extension` runs through `"".join(extension.split())`
+  which removes all whitespace (internal + surrounding, including
+  unicode whitespace and non-breaking spaces). Mirrored in the JS
+  preview's `cleanExtension`.
+- **Easy AI Pipeline: `shot_name` / `ai_method` strip surrounding
+  whitespace too.** `_sanitize_segment` now calls `.strip()` after the
+  control-char strip, so an upstream feed with stray leading/trailing
+  spaces (e.g. `"  shot_v1  "`) resolves to the same path as the
+  clean form.
+- **Easy AI Pipeline: preview buttons resolve EasyUse GET/SET tunnels.**
+  `Get output directory path` and `Get output file path` now follow
+  `easy getNode` back to its matching `easy setNode` input before reading
+  the source widget value, so global path/name settings preview the same
+  value that render-time execution receives instead of the GET key name.
 
 ## [0.3.2] - 2026-05-16
 

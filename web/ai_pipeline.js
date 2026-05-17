@@ -4,6 +4,8 @@
 import { app } from "../../../scripts/app.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 
+globalThis.__KOLOOK_AI_PIPELINE_PREVIEW_RESOLVER__ = "easyuse-getset-v2";
+
 app.registerExtension({
     name: "koolook.ai_pipeline",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -21,10 +23,106 @@ app.registerExtension({
                     instructionWidget.inputEl.style.opacity = 0.6;
                 }
 
-                // Add multiline display widget using ComfyWidgets.STRING
+                // Standard ComfyUI multi-line STRING widget. Word-wrap is the default
+                // and intentional — long paths visually wrap to multiple rows so the user
+                // can mouse-drag-select the whole string and copy it. The wrap is purely
+                // visual; the underlying string is one logical line because cleanLine
+                // strips any actual newlines from upstream inputs before the path build.
                 const displayWidget = ComfyWidgets["STRING"](this, "Output Preview", ["STRING", { multiline: true }], app).widget;
                 displayWidget.inputEl.readOnly = true;
                 displayWidget.inputEl.style.height = "100px";
+
+                // Defensive strip: an upstream node might feed shot_name / ai_method with
+                // embedded newlines, tabs, or carriage returns (e.g. a Text Multiline node
+                // with a stray paragraph break). Those would silently break filesystem
+                // writes — the path string can't legally contain them. Strip before display
+                // so the preview matches what the Python node will actually write.
+                const cleanLine = (s) => String(s ?? "").replace(/[\r\n\t]+/g, "");
+
+                const SENTINEL_STRINGS = new Set(["undefined", "null", "none"]);
+
+                // Mirror of _normalize_text_input in k_ai_pipeline.py.
+                const normalizeTextInput = (raw) => {
+                    let s = cleanLine(raw).trim();
+                    if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === '"' || s[0] === "'")) {
+                        s = s.slice(1, -1).trim();
+                    }
+                    if (SENTINEL_STRINGS.has(s.toLowerCase())) {
+                        return "";
+                    }
+                    return s;
+                };
+
+                // Strict: extension must never contain whitespace at all. Even a single
+                // trailing space (easy to acquire from a paste) makes downstream save
+                // nodes that check via os.path.splitext fail with "filepath doesn't end
+                // in .exr" — splitext returns ".exr " with the space, which doesn't match.
+                const cleanExtension = (s) => String(s ?? "").replace(/\s/g, "");
+
+                const getNodeWidgetValue = (node, slot) => {
+                    const output = node.outputs?.[slot];
+                    const candidateWidgets = [
+                        node.widgets?.[slot],
+                        output?.name ? node.widgets?.find(w => w.name === output.name) : null,
+                        node.widgets?.find(w => w.name === "value"),
+                        node.widgets?.find(w => w.name === "text"),
+                        node.widgets?.find(w => w.name === "string"),
+                    ].filter(Boolean);
+                    for (const widget of candidateWidgets) {
+                        if (widget && "value" in widget) {
+                            return widget.value;
+                        }
+                    }
+                    if (Array.isArray(node.widgets_values) && node.widgets_values.length > 0) {
+                        return node.widgets_values[slot] ?? node.widgets_values[0];
+                    }
+                    return null;
+                };
+
+                const isEasyUseGetNode = (node) => {
+                    return node?.type === "easy getNode"
+                        || node?.comfyClass === "easy getNode"
+                        || (String(node?.title ?? "").startsWith("Get_") && node?.widgets?.[0]?.name === "Constant");
+                };
+
+                const findEasyUseSetter = (getNode) => {
+                    if (typeof getNode.findSetter === "function") {
+                        const setter = getNode.findSetter(getNode.graph || app.graph);
+                        if (setter) return setter;
+                    }
+                    const key = getNode.widgets?.[0]?.value;
+                    if (!key) return null;
+                    return (getNode.graph || app.graph)?._nodes?.find(otherNode => {
+                        return (otherNode.type === "easy setNode"
+                                || otherNode.comfyClass === "easy setNode"
+                                || String(otherNode.title ?? "").startsWith("Set_"))
+                            && otherNode.widgets?.[0]?.value === key;
+                    }) ?? null;
+                };
+
+                const resolveLinkValue = (linkId, fallback, seen = new Set()) => {
+                    if (linkId === null || linkId === undefined || seen.has(linkId)) {
+                        return fallback;
+                    }
+                    seen.add(linkId);
+                    const link = app.graph.links[linkId];
+                    if (!link) return fallback;
+                    const originNode = app.graph.getNodeById(link.origin_id);
+                    if (!originNode) return fallback;
+
+                    // EasyUse GET nodes are virtual tunnels. The visible widget is the
+                    // key name ("OUT-folder"), not the value. Follow GET -> matching SET
+                    // -> SET input link so preview buttons mirror render-time execution.
+                    if (isEasyUseGetNode(originNode)) {
+                        const setter = findEasyUseSetter(originNode);
+                        const setterLink = setter?.inputs?.[0]?.link;
+                        if (setterLink !== null && setterLink !== undefined) {
+                            return resolveLinkValue(setterLink, fallback, seen);
+                        }
+                    }
+
+                    return getNodeWidgetValue(originNode, link.origin_slot);
+                };
 
                 // Helper function to get effective value (from widget or upstream if connected and simple)
                 const getEffectiveValue = (node, name) => {
@@ -33,18 +131,71 @@ app.registerExtension({
                     if (!input || input.link === null) {
                         return widget?.value;
                     }
-                    const linkId = input.link;
-                    const link = app.graph.links[linkId];
-                    if (!link) return widget?.value;
-                    const originNode = app.graph.getNodeById(link.origin_id);
-                    const originWidget = originNode.widgets ? originNode.widgets[link.origin_slot] : null;
-                    if (originWidget && 'value' in originWidget) {
-                        return originWidget.value;
-                    }
-                    return null; // Cannot resolve
+                    return resolveLinkValue(input.link, widget?.value);
                 };
 
-                // Button to get and display output_directory (with cleaning for duplicate '/')
+                // Mirror of _normalize_base_path in k_ai_pipeline.py — must stay in sync.
+                // Strips control chars (newlines/tabs from upstream text widgets), then
+                // surrounding whitespace, one pair of surrounding quotes, and trailing
+                // path separators. Drive roots (C:\, n:/) are preserved.
+                const normalizeBasePath = (raw) => {
+                    let s = normalizeTextInput(raw);
+                    while (s.length > 3 && (s[s.length - 1] === "/" || s[s.length - 1] === "\\")) {
+                        s = s.slice(0, -1);
+                    }
+                    return stripSentinelComponents(s);
+                };
+
+                const stripSentinelComponents = (path) => {
+                    if (!path) return path;
+                    const sep = path.includes("\\") ? "\\" : "/";
+                    const cleaned = path
+                        .split(sep)
+                        .filter(part => part === "" || !SENTINEL_STRINGS.has(part.toLowerCase()));
+                    return cleaned.join(sep);
+                };
+
+                // Mirror of _sanitize_segment in k_ai_pipeline.py — strips control chars
+                // and surrounding whitespace first, then drive prefix and leading
+                // separators so a segment can only be joined onto base_directory_path,
+                // never replace it via os.path.join's "last absolute path wins" semantics.
+                // Leading seps are stripped BEFORE splitdrive so multi-slash input
+                // doesn't get parsed as a UNC prefix (matches Python's flow).
+                const sanitizeSegment = (raw) => {
+                    let s = normalizeTextInput(raw);
+                    s = s.replace(/^[\/\\]+/, "");
+                    if (/^[a-zA-Z]:/.test(s)) s = s.slice(2);
+                    return s.replace(/^[\/\\]+/, "");
+                };
+
+                // Mirror of the Python directory build in k_ai_pipeline.py — must stay in sync.
+                // With no_subfolders=true: only [base, version_str] go into the directory;
+                // shot_name and ai_method drop out (they're only in the filename below).
+                // The version folder still applies when versioning is enabled. With
+                // no_subfolders=false: full [base, shot, ai, version] chain.
+                const buildOutputDirectory = (values, version_str) => {
+                    const base = normalizeBasePath(values.base_directory_path);
+                    const shotSeg = sanitizeSegment(values.shot_name);
+                    const aiSeg = sanitizeSegment(values.ai_method);
+                    let dir;
+                    if (values.no_subfolders) {
+                        dir = [base, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("/");
+                    } else {
+                        dir = [base, shotSeg, aiSeg, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("/");
+                    }
+                    dir = dir.replace(/\\/g, "/").replace(/\/+/g, '/');
+                    dir = stripSentinelComponents(dir);
+                    // Strip trailing slash unless we'd be left with a bare drive root like 'n:/'.
+                    if (dir.length > 3) {
+                        dir = dir.replace(/\/+$/, '');
+                    }
+                    return dir;
+                };
+
                 this.addWidget("button", "Get output directory path", null, () => {
                     const values = {
                         base_directory_path: getEffectiveValue(this, "base_directory_path"),
@@ -52,24 +203,18 @@ app.registerExtension({
                         ai_method: getEffectiveValue(this, "ai_method"),
                         version: getEffectiveValue(this, "version"),
                         disable_versioning: getEffectiveValue(this, "disable_versioning"),
-                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite"),
+                        no_subfolders: getEffectiveValue(this, "no_subfolders"),
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
-                        if (!values.disable_versioning) {
-                            const version_str = `v${values.version.toString().padStart(3, '0')}`;
-                            parts.push(version_str);
-                        }
-                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
-                        output_directory = output_directory.replace(/\/+/g, '/');
-                        displayWidget.value = output_directory;
+                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        displayWidget.value = buildOutputDirectory(values, version_str);
                     }
                     this.setDirtyCanvas(true, true);
                 }, { serialize: false });
 
-                // New button to get and display full file_path (with cleaning for duplicate '/')
                 this.addWidget("button", "Get output file path", null, () => {
                     const values = {
                         base_directory_path: getEffectiveValue(this, "base_directory_path"),
@@ -78,23 +223,32 @@ app.registerExtension({
                         extension: getEffectiveValue(this, "extension"),
                         version: getEffectiveValue(this, "version"),
                         disable_versioning: getEffectiveValue(this, "disable_versioning"),
-                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite"),
+                        no_subfolders: getEffectiveValue(this, "no_subfolders"),
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
-                        let version_str = "";
-                        if (!values.disable_versioning) {
-                            version_str = `v${values.version.toString().padStart(3, '0')}`;
-                            parts.push(version_str);
-                        }
-                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
-                        output_directory = output_directory.replace(/\/+/g, '/');
-                        const name = !values.disable_versioning ? `${values.shot_name}_${values.ai_method}_${version_str}${values.extension}` : `${values.shot_name}_${values.ai_method}${values.extension}`;
-                        let file_path = `${output_directory}/${name}`.replace(/\\/g, "/");
-                        file_path = file_path.replace(/\/+/g, '/');
-                        displayWidget.value = file_path;
+                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const output_directory = buildOutputDirectory(values, version_str);
+                        // Filenames can't contain / or \ on any OS, so flatten any internal
+                        // separators in shot_name / ai_method to `_`. Mirror of the Python
+                        // filename build — directory build above keeps the separators so
+                        // slash-delimited shot_name still becomes nested subfolders when
+                        // no_subfolders=false.
+                        const shotSegFlat = sanitizeSegment(values.shot_name).replace(/[\/\\]/g, "_");
+                        const aiSegFlat = sanitizeSegment(values.ai_method).replace(/[\/\\]/g, "_");
+                        const name = [shotSegFlat, aiSegFlat, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("_") + cleanExtension(values.extension);
+                        // Filter empties before joining so an empty output_directory (empty base
+                        // + no_subfolders=true) doesn't leak a spurious leading "/" into file_path.
+                        const file_path = [output_directory, name]
+                            .filter(p => p)
+                            .join("/")
+                            .replace(/\\/g, "/")
+                            .replace(/\/+/g, '/');
+                        displayWidget.value = stripSentinelComponents(file_path);
                     }
                     this.setDirtyCanvas(true, true);
                 }, { serialize: false });
