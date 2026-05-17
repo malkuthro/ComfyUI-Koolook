@@ -187,6 +187,11 @@ function mergeNewerFallbackStore(serverStore, fallbackStore) {
 // Server I/O
 // =============================================================================
 
+function noStoreUrl(path) {
+    const sep = path.includes("?") ? "&" : "?";
+    return `${path}${sep}_=${Date.now()}`;
+}
+
 // Sentinel for "server reachable but file content is unparseable".
 // Distinct from `undefined` (server unreachable) and `null` (file missing)
 // so callers can refuse to auto-seed on top of a corrupt-but-existing file.
@@ -195,7 +200,9 @@ const SERVER_FILE_CORRUPT = Symbol("workflows-server-corrupt");
 async function fetchWorkflowsFromServer() {
     let resp;
     try {
-        resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}`);
+        resp = await fetch(noStoreUrl(`/userdata/${WORKFLOWS_USERDATA_PATH}`), {
+            cache: "no-store",
+        });
     } catch (e) {
         console.warn("[Koolook] /userdata read failed (network):", e);
         return undefined;

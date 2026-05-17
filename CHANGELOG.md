@@ -90,6 +90,15 @@ The format is inspired by Keep a Changelog and SemVer.
   preview shown by the `Get output file path` button now matches.
 
 ### Fixed
+- **Kforge Labs snapshot/workflow restore no longer hydrates from stale browser cache.**
+  The sidebar's startup read of `/userdata/koolook_workflows.json` now uses
+  a cache-busted `no-store` request, and snapshot-library reads do the same
+  for mutable preset/list/settings endpoints. This fixes the severe case
+  where the browser returned an older 5-workflow `/userdata` response even
+  though the on-disk file and a cache-busted fetch contained the correct
+  59-workflow snapshot state; the status pill could appear to track the
+  right snapshot while the workflow tree rendered stale data and periodic
+  autosave captured that bad state.
 - **Easy AI Pipeline: trailing-slash on base path no longer creates a
   phantom `undefined/` folder.** Typing `n:\foo\bar\` (trailing
   backslash) into `base_directory_path` used to leak a trailing `/` onto
