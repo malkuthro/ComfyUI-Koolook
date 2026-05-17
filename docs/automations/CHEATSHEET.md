@@ -4,6 +4,31 @@ For someone who already knows the loop. Full docs: [`README.md`](README.md), [`C
 
 ---
 
+## Bootstrap
+
+Bare-bones — what's needed to get the loop running on a fresh machine. Model-specific setup (checkpoints, LoRAs, custom nodes for a particular model) lives in each model's handoff checklist, e.g. [`LTX-2.3/handoff-checklist.md`](LTX-2.3/handoff-checklist.md).
+
+**Repo side**
+- [ ] Python 3.11+ with `pip install Pillow`. On Windows, the absolute path `C:/Python313/python.exe` sidesteps the Microsoft Store stub.
+- [ ] Clone the repo.
+- [ ] `cp .env.example .env`. Set `KOLOOK_AUTOMATIONS_WORK_DIR=<absolute path>` to a per-project folder. Create the folder if it doesn't exist.
+
+**ComfyUI side**
+- [ ] `was-node-suite-comfyui` custom-node pack installed (for the `Text Multiline` node).
+- [ ] Three `Text Multiline` nodes in your workflow, titled exactly:
+  - `Working_Folder_PATH` — body: one absolute path matching `KOLOOK_AUTOMATIONS_WORK_DIR`.
+  - `OVERLAY - INFO` — body: free-form, with a `BASE (notes):` section for Δ-from-baseline notes.
+  - `OVERLAY - FEEDBACK` — body: observations + optional score lines (see syntax below).
+- [ ] `Workflow → Save (API Format)` writes the JSON into the working folder.
+
+**First card**
+- [ ] In Claude Code: `/make-card`.
+- [ ] Expect `_AI/card.png` + `_AI/iterations.md` in the working folder; PNG appears inline.
+
+If that works, you're set. Everything else in this cheat sheet is reminders for the daily loop.
+
+---
+
 ## ComfyUI
 
 Three Text Multiline nodes drive everything. Match by title (case-insensitive).
