@@ -59,6 +59,24 @@ function normalizeWorkflowsStore(data) {
     return { directories: out };
 }
 
+function latestWorkflowSavedAtMs(store) {
+    let latest = 0;
+    const visitDir = (dir) => {
+        if (!dir || typeof dir !== "object") return;
+        const wfs = dir.workflows && typeof dir.workflows === "object" ? dir.workflows : {};
+        for (const wf of Object.values(wfs)) {
+            if (!wf || typeof wf !== "object" || typeof wf.savedAt !== "string") continue;
+            const ms = Date.parse(wf.savedAt);
+            if (Number.isFinite(ms) && ms > latest) latest = ms;
+        }
+        const subs = dir.directories && typeof dir.directories === "object" ? dir.directories : {};
+        for (const sub of Object.values(subs)) visitDir(sub);
+    };
+    const dirs = store && store.directories && typeof store.directories === "object" ? store.directories : {};
+    for (const dir of Object.values(dirs)) visitDir(dir);
+    return latest;
+}
+
 function normalizeDirNode(node, stats) {
     if (!node || typeof node !== "object") return null;
     const wfs = node.workflows && typeof node.workflows === "object" ? node.workflows : {};
@@ -213,7 +231,11 @@ export async function loadWorkflowsStore() {
     }
     workflowsCache = normalizeWorkflowsStore(fromServer);
     // Reconciliation surface: /userdata loaded fine but a stale localStorage
-    // fallback from an earlier outage may still exist. We don't auto-merge
+    // fallback from an earlier outage may still exist. Newer fallbacks are
+    // promoted below, then persisted back to /userdata when possible.
+    // Older/ambiguous fallback data still uses the manual recovery surface
+    // described here.
+    // We don't auto-merge
     // (clobbering risk — no per-field versioning to settle the conflict),
     // and we don't fire the recovery toast from here either. The toast is
     // wired by the entry point (`koolook_sidebar.js`) where the
@@ -222,6 +244,29 @@ export async function loadWorkflowsStore() {
     // a circular import. We just return the blob so the caller can decide.
     const fallbackBlob = localStorage.getItem(WORKFLOWS_FALLBACK_KEY);
     if (fallbackBlob) {
+        let fallbackStore = null;
+        try {
+            fallbackStore = normalizeWorkflowsStore(JSON.parse(fallbackBlob));
+        } catch (e) {
+            console.warn("[Koolook] failed to parse localStorage workflows fallback for reconciliation:", e);
+        }
+        if (fallbackStore && latestWorkflowSavedAtMs(fallbackStore) > latestWorkflowSavedAtMs(workflowsCache)) {
+            workflowsCache = fallbackStore;
+            const reconcileResult = await persistWorkflowsToServer(workflowsCache);
+            if (reconcileResult === "server") {
+                localStorage.removeItem(WORKFLOWS_FALLBACK_KEY);
+                notifyWorkflowsChanged();
+                console.warn(
+                    "[Koolook] recovered newer browser-local workflow fallback and wrote it back to /userdata."
+                );
+                return { corrupt: false, fallbackRecovered: true };
+            }
+            console.warn(
+                `[Koolook] newer browser-local workflow fallback is live, but re-persist landed in ` +
+                `${reconcileResult || "neither"}; keeping recovery banner available.`
+            );
+            return { corrupt: false, fallbackBlob };
+        }
         console.warn(
             `[Koolook] /userdata loaded, but a stale localStorage fallback exists ` +
             `at "${WORKFLOWS_FALLBACK_KEY}". If workflows you saved during a previous ` +

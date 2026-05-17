@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import subprocess
+import textwrap
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def run_node_scenario(source: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["node", "--input-type=module"],
+        input=source,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_workflow_save_survives_reload_when_server_write_succeeds() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          loadWorkflowsStore,
+          persistMutation,
+          saveWorkflowEntry,
+          getAllWorkflowsForExport,
+        } from "./web/sidebar/workflows_store.js";
+
+        setupBrowserStubs();
+
+        let serverStore = {
+          directories: {
+            "_WIP": {
+              workflows: {},
+              directories: {
+                "TEST_setups": {
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      savedAt: "2026-05-17T10:00:00.000Z",
+                      graph: { nodes: [{ id: 1, mode: "4K" }] },
+                    },
+                  },
+                  directories: {},
+                },
+              },
+            },
+          },
+        };
+
+        globalThis.fetch = async (url, init = {}) => {
+          const textUrl = String(url);
+          if (init.method === "POST") {
+            serverStore = JSON.parse(init.body);
+            return okResponse("");
+          }
+          if (textUrl.startsWith("/userdata/koolook_workflows.json")) {
+            return okResponse(JSON.stringify(serverStore));
+          }
+          return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
+        };
+
+        await loadWorkflowsStore();
+        const saved = await persistMutation({
+          mutate: () => saveWorkflowEntry(
+            ["_WIP", "TEST_setups"],
+            "LTX-2.3_Director_2K_v01",
+            { nodes: [{ id: 1, mode: "2K" }] },
+          ),
+        });
+        assert.equal(saved, true);
+
+        await loadWorkflowsStore();
+        const exported = getAllWorkflowsForExport();
+        const workflows = exported.directories._WIP.directories.TEST_setups.workflows;
+        assert.ok(workflows["LTX-2.3_Director_2K_v01"]);
+        assert.ok(workflows["LTX-2.3_Director_4K_v01"]);
+        assert.equal(workflows["LTX-2.3_Director_2K_v01"].graph.nodes[0].mode, "2K");
+
+        function okResponse(body) {
+          return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body || "{}") };
+        }
+
+        function setupBrowserStubs() {
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem: (key) => storage.has(key) ? storage.get(key) : null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key),
+          };
+          globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+          globalThis.window = { dispatchEvent() {} };
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+          });
+          const makeEl = () => ({
+            className: "",
+            textContent: "",
+            style: {},
+            classList: { add() {}, remove() {} },
+            appendChild() {},
+            remove() {},
+            addEventListener() {},
+            setAttribute() {},
+          });
+          globalThis.document = {
+            createElement: makeEl,
+            body: { appendChild() {} },
+            head: { appendChild() {} },
+            querySelectorAll: () => [],
+            getElementById: () => null,
+          };
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_fallback_only_workflow_save_becomes_live_again_after_reload() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          loadWorkflowsStore,
+          persistMutation,
+          saveWorkflowEntry,
+          getAllWorkflowsForExport,
+        } from "./web/sidebar/workflows_store.js";
+
+        setupBrowserStubs();
+
+        const staleServerStore = {
+          directories: {
+            "_WIP": {
+              workflows: {},
+              directories: {
+                "TEST_setups": {
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      savedAt: "2026-05-17T10:00:00.000Z",
+                      graph: { nodes: [{ id: 1, mode: "4K" }] },
+                    },
+                  },
+                  directories: {},
+                },
+              },
+            },
+          },
+        };
+
+        let rejectPosts = true;
+        globalThis.fetch = async (url, init = {}) => {
+          const textUrl = String(url);
+          if (init.method === "POST") {
+            if (rejectPosts) return { ok: false, status: 500, text: async () => "" };
+            return okResponse("");
+          }
+          if (textUrl.startsWith("/userdata/koolook_workflows.json")) {
+            return okResponse(JSON.stringify(staleServerStore));
+          }
+          return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
+        };
+
+        await loadWorkflowsStore();
+        const saved = await persistMutation({
+          mutate: () => saveWorkflowEntry(
+            ["_WIP", "TEST_setups"],
+            "LTX-2.3_Director_2K_v01",
+            { nodes: [{ id: 1, mode: "2K" }] },
+          ),
+        });
+        assert.equal(saved, true);
+        assert.ok(getAllWorkflowsForExport().directories._WIP.directories.TEST_setups.workflows[
+          "LTX-2.3_Director_2K_v01"
+        ]);
+
+        rejectPosts = false;
+        await loadWorkflowsStore();
+        const afterReload = getAllWorkflowsForExport();
+        const workflows = afterReload.directories._WIP.directories.TEST_setups.workflows;
+        assert.ok(
+          workflows["LTX-2.3_Director_2K_v01"],
+          "new fallback-only workflow should be recovered as live state on reload",
+        );
+        assert.equal(workflows["LTX-2.3_Director_2K_v01"].graph.nodes[0].mode, "2K");
+
+        function okResponse(body) {
+          return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body || "{}") };
+        }
+
+        function setupBrowserStubs() {
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem: (key) => storage.has(key) ? storage.get(key) : null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key),
+          };
+          globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+          globalThis.window = { dispatchEvent() {} };
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+          });
+          const makeEl = () => ({
+            className: "",
+            textContent: "",
+            style: {},
+            classList: { add() {}, remove() {} },
+            appendChild() {},
+            remove() {},
+            addEventListener() {},
+            setAttribute() {},
+          });
+          globalThis.document = {
+            createElement: makeEl,
+            body: { appendChild() {} },
+            head: { appendChild() {} },
+            querySelectorAll: () => [],
+            getElementById: () => null,
+          };
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr

@@ -13,6 +13,7 @@ import { app } from "../../../../scripts/app.js";
 import { toast } from "./constants.js";
 import { getWorkflowGraph } from "./workflows_store.js";
 import { showConfirmModal } from "./modals.js";
+import { cloneWorkflowForTemporaryLoad } from "./workflow_payload.js";
 
 export function serializeFullCanvas() {
     try {
@@ -224,11 +225,12 @@ export function canvasIsNonEmpty() {
 }
 
 export async function loadWorkflowOntoCanvas(dirPath, wfName) {
-    const graph = getWorkflowGraph(dirPath, wfName);
-    if (!graph) {
+    const sourceGraph = getWorkflowGraph(dirPath, wfName);
+    if (!sourceGraph) {
         toast(`Workflow not found: ${wfName}`);
         return;
     }
+    const graph = cloneWorkflowForTemporaryLoad(sourceGraph);
     const apply = async () => {
         // Snapshot the current canvas before loading. If loadGraphData throws
         // partway (missing node type, malformed payload), we restore the
