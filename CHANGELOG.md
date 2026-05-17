@@ -110,6 +110,16 @@ The format is inspired by Keep a Changelog and SemVer.
   in both `shot_name` and `ai_method`). The JS preview's filename
   builder picked up the same sanitization plus an empty-base /
   `no_subfolders=true` corner-case fix (`/name.exr` → `name.exr`).
+- **Easy AI Pipeline: `no_subfolders=true` now truly produces flat
+  output, even when `shot_name` contains embedded separators.** An
+  upstream node feeding `shot_name="job/shot"` used to silently
+  re-create subfolders via the filename concat — output was
+  `base/job/shot.ext` instead of the flat `base/job_shot.ext` the
+  toggle promises. The filename build now flattens any `/` or `\` in
+  `shot_name` and `ai_method` to `_` (filesystems can't have separators
+  in filenames anyway). Directory build with `no_subfolders=false`
+  still uses the separators so users organizing into nested project
+  hierarchies aren't affected.
 
 ## [0.3.2] - 2026-05-16
 

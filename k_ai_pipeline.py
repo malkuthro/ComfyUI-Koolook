@@ -181,10 +181,16 @@ class EasyAIPipeline:
             except Exception:
                 pass
 
-        # Filename: join only the non-empty pieces with '_', then append extension. Empty ai_method
-        # or disabled versioning naturally drop out — no trailing/dangling underscores. Use the
-        # sanitized segments so a stray leading separator can't leak into the filename either.
-        name_parts = [p for p in (shot_name_seg, ai_method_seg, version_str) if p]
+        # Filename: also flatten any internal path separators in shot_name / ai_method,
+        # because filenames can't contain `/` or `\` on any OS. Without this, an upstream
+        # node feeding e.g. `shot_name="job/shot"` would re-create subfolders via the
+        # filename concat — defeating no_subfolders=true and producing invalid filenames
+        # when no_subfolders is off. Directory build above keeps the separators (so users
+        # who want nested subfolders via slash-delimited shot_name still get them when
+        # no_subfolders=false).
+        shot_name_flat = shot_name_seg.replace('/', '_').replace('\\', '_')
+        ai_method_flat = ai_method_seg.replace('/', '_').replace('\\', '_')
+        name_parts = [p for p in (shot_name_flat, ai_method_flat, version_str) if p]
         name = "_".join(name_parts) + extension
 
         file_path = os.path.join(output_directory, name).replace('\\', '/')

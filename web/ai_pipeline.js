@@ -126,9 +126,14 @@ app.registerExtension({
                     } else {
                         const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
                         const output_directory = buildOutputDirectory(values, version_str);
-                        const shotSeg = sanitizeSegment(values.shot_name);
-                        const aiSeg = sanitizeSegment(values.ai_method);
-                        const name = [shotSeg, aiSeg, version_str]
+                        // Filenames can't contain / or \ on any OS, so flatten any internal
+                        // separators in shot_name / ai_method to `_`. Mirror of the Python
+                        // filename build — directory build above keeps the separators so
+                        // slash-delimited shot_name still becomes nested subfolders when
+                        // no_subfolders=false.
+                        const shotSegFlat = sanitizeSegment(values.shot_name).replace(/[\/\\]/g, "_");
+                        const aiSegFlat = sanitizeSegment(values.ai_method).replace(/[\/\\]/g, "_");
+                        const name = [shotSegFlat, aiSegFlat, version_str]
                             .filter(part => part.toString().trim() !== "")
                             .join("_") + values.extension;
                         // Filter empties before joining so an empty output_directory (empty base

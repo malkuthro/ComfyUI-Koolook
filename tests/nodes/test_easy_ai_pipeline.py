@@ -327,3 +327,67 @@ def test_absolute_shot_name_does_not_leak_into_filename(tmp_path: Path):
 
     assert not name.startswith(("/", "\\")), f"filename leaked separator: {name!r}"
     assert "/oops" not in name, f"filename retained absolute prefix: {name!r}"
+
+
+def test_no_subfolders_flattens_embedded_separators_in_shot_name(tmp_path: Path):
+    """Real-world maintainer report: chained EasyAIPipeline workflow where the
+    upstream node feeds ``shot_name = "job/shot"``. With ``no_subfolders=true``,
+    embedded separators used to silently re-create subfolders via the filename
+    concat — output was ``base/job/shot.ext`` instead of the flat ``base/<flat>.ext``
+    the toggle promises. After fix: separators in shot_name flatten to ``_`` in
+    the filename, while the directory stays at ``base`` (toggle honored)."""
+    base = tmp_path / "bear"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    file_path, name, _, output_directory = _run(
+        str(base),
+        shot_name="ComfyUI-working-folder/LTX-Director-2K",
+        no_subfolders=True,
+    )
+
+    assert output_directory == canonical, f"no_subfolders=True should keep dir=base; got {output_directory!r}"
+    assert name == "ComfyUI-working-folder_LTX-Director-2K.%04d.exr", f"unexpected name: {name!r}"
+    assert "/" not in name and "\\" not in name, f"separator in filename: {name!r}"
+    assert file_path == f"{canonical}/ComfyUI-working-folder_LTX-Director-2K.%04d.exr"
+
+
+def test_filename_never_contains_path_separators(tmp_path: Path):
+    """Belt-and-suspenders: regardless of toggle state or input, the filename
+    portion of WRITE_file_path must never contain `/` or `\\` — those are
+    invalid in filenames on every OS. Subfolder semantics live in the
+    directory portion, not the filename."""
+    base = tmp_path / "safe"
+    base.mkdir()
+
+    for cfg in [
+        dict(shot_name="Project/v1", ai_method="", no_subfolders=True),
+        dict(shot_name="Project/v1", ai_method="", no_subfolders=False),
+        dict(shot_name="a/b/c", ai_method="d/e", no_subfolders=True),
+        dict(shot_name="a/b/c", ai_method="d/e", no_subfolders=False),
+        dict(shot_name="back\\slash", ai_method="", no_subfolders=True),
+    ]:
+        file_path, name, _, _ = _run(str(base), **cfg)
+        assert "/" not in name and "\\" not in name, (
+            f"separator leaked into filename for cfg={cfg!r}: name={name!r}"
+        )
+
+
+def test_no_subfolders_false_still_uses_slashes_as_subfolders(tmp_path: Path):
+    """With ``no_subfolders=False`` (default), embedded slashes in shot_name
+    intentionally become nested subfolders — this is how users organize
+    output into project/shot hierarchies. The filename stays flat regardless."""
+    base = tmp_path / "bear"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    _, name, _, output_directory = _run(
+        str(base),
+        shot_name="Project/v1",
+        ai_method="upscale",
+        version=3, disable_versioning=False,
+        no_subfolders=False,
+    )
+
+    assert output_directory == f"{canonical}/Project/v1/upscale/v003"
+    assert name == "Project_v1_upscale_v003.%04d.exr"
