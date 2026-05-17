@@ -58,14 +58,28 @@ app.registerExtension({
                     return s;
                 };
 
+                // Mirror of _sanitize_segment in k_ai_pipeline.py — strips drive prefix and
+                // leading separators so a segment can only be joined onto base_directory_path,
+                // never replace it via os.path.join's "last absolute path wins" semantics.
+                // Leading seps are stripped FIRST so multi-slash input doesn't get parsed as
+                // a UNC prefix (matches Python's lstrip → splitdrive → lstrip flow).
+                const sanitizeSegment = (raw) => {
+                    let s = String(raw ?? "");
+                    s = s.replace(/^[\/\\]+/, "");
+                    if (/^[a-zA-Z]:/.test(s)) s = s.slice(2);
+                    return s.replace(/^[\/\\]+/, "");
+                };
+
                 // Mirror of the Python directory build in k_ai_pipeline.py — must stay in sync.
                 const buildOutputDirectory = (values, version_str) => {
                     const base = normalizeBasePath(values.base_directory_path);
+                    const shotSeg = sanitizeSegment(values.shot_name);
+                    const aiSeg = sanitizeSegment(values.ai_method);
                     let dir;
                     if (values.no_subfolders) {
                         dir = base;
                     } else {
-                        dir = [base, values.shot_name, values.ai_method, version_str]
+                        dir = [base, shotSeg, aiSeg, version_str]
                             .filter(part => part.toString().trim() !== "")
                             .join("/");
                     }
@@ -112,10 +126,18 @@ app.registerExtension({
                     } else {
                         const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
                         const output_directory = buildOutputDirectory(values, version_str);
-                        const name = [values.shot_name, values.ai_method, version_str]
+                        const shotSeg = sanitizeSegment(values.shot_name);
+                        const aiSeg = sanitizeSegment(values.ai_method);
+                        const name = [shotSeg, aiSeg, version_str]
                             .filter(part => part.toString().trim() !== "")
                             .join("_") + values.extension;
-                        const file_path = `${output_directory}/${name}`.replace(/\\/g, "/").replace(/\/+/g, '/');
+                        // Filter empties before joining so an empty output_directory (empty base
+                        // + no_subfolders=true) doesn't leak a spurious leading "/" into file_path.
+                        const file_path = [output_directory, name]
+                            .filter(p => p)
+                            .join("/")
+                            .replace(/\\/g, "/")
+                            .replace(/\/+/g, '/');
                         displayWidget.value = file_path;
                     }
                     this.setDirtyCanvas(true, true);

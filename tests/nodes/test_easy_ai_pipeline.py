@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from k_ai_pipeline import EasyAIPipeline, _normalize_base_path
+from k_ai_pipeline import EasyAIPipeline, _normalize_base_path, _sanitize_segment
 
 
 # ---------------------------------------------------------------------------
@@ -223,3 +223,107 @@ def test_blank_ai_method_does_not_create_phantom_subfolder(tmp_path: Path):
     _, _, _, out = _run(str(base), shot_name="shot", ai_method="")
 
     assert out == f"{canonical}/shot"
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_segment — path-escape regression coverage
+# ---------------------------------------------------------------------------
+#
+# os.path.join('n:/safe', '/oops') returns '/oops' (or 'C:/oops' on Windows) —
+# its 'last absolute path wins' rule means an absolute-looking shot_name or
+# ai_method could escape the user's intended base_directory_path entirely.
+# A reviewer caught this regression in PR #156 (the original lstrip('/') was
+# dropped during the refactor). These tests pin the sanitizer so it can't
+# come back.
+
+
+class TestSanitizeSegment:
+    def test_clean_input_unchanged(self):
+        assert _sanitize_segment("shot_v1") == "shot_v1"
+        assert _sanitize_segment("RTX-upscale") == "RTX-upscale"
+
+    def test_leading_forward_slash_stripped(self):
+        assert _sanitize_segment("/oops") == "oops"
+
+    def test_leading_backslash_stripped(self):
+        assert _sanitize_segment("\\oops") == "oops"
+
+    def test_multiple_leading_separators_stripped(self):
+        assert _sanitize_segment("///oops") == "oops"
+        assert _sanitize_segment("\\\\\\oops") == "oops"
+        assert _sanitize_segment("/\\/oops") == "oops"
+
+    def test_drive_prefix_handled(self):
+        """On Windows ``os.path.splitdrive`` peels ``C:`` off; on POSIX it's a
+        no-op (no drive concept), so the colon survives — that's fine because
+        ``os.path.join`` on POSIX has no special handling for ``C:`` and
+        treats it as a regular folder name, which can't escape the base."""
+        import os as _os
+        result = _sanitize_segment("C:/Windows")
+        if _os.name == "nt":
+            assert result == "Windows"
+        else:
+            # POSIX: drive not recognised, but no escape risk either.
+            assert result == "C:/Windows"
+
+    def test_empty_string_passes_through(self):
+        assert _sanitize_segment("") == ""
+
+    def test_only_separators_collapses_to_empty(self):
+        assert _sanitize_segment("///") == ""
+        assert _sanitize_segment("\\") == ""
+
+
+@pytest.mark.parametrize("malicious", [
+    "/oops",
+    "\\oops",
+    "C:/Windows/junk",
+    "/etc/passwd",
+])
+def test_absolute_shot_name_cannot_escape_base(tmp_path: Path, malicious: str):
+    """The reviewer-flagged blocker in PR #156: absolute ``shot_name`` values
+    used to leak through ``os.path.join`` and replace the base path entirely.
+    After ``_sanitize_segment`` they get stripped down to relative form, so
+    ``output_directory`` stays under the user's intended base."""
+    base = tmp_path / "safe"
+    base.mkdir()
+    canonical_base = str(base).replace("\\", "/")
+
+    _, _, _, out = _run(str(base), shot_name=malicious)
+
+    assert out.startswith(canonical_base), (
+        f"shot_name={malicious!r} escaped base — out={out!r}, base={canonical_base!r}"
+    )
+
+
+@pytest.mark.parametrize("malicious", [
+    "/oops",
+    "\\oops",
+    "C:/Windows/junk",
+    "/etc/passwd",
+])
+def test_absolute_ai_method_cannot_escape_base(tmp_path: Path, malicious: str):
+    """Same escape vector through ``ai_method`` (the middle segment). The
+    sanitizer applies symmetrically."""
+    base = tmp_path / "safe"
+    base.mkdir()
+    canonical_base = str(base).replace("\\", "/")
+
+    _, _, _, out = _run(str(base), shot_name="shot", ai_method=malicious)
+
+    assert out.startswith(canonical_base), (
+        f"ai_method={malicious!r} escaped base — out={out!r}, base={canonical_base!r}"
+    )
+
+
+def test_absolute_shot_name_does_not_leak_into_filename(tmp_path: Path):
+    """The filename builder uses the sanitized segments too, so a leading
+    separator can't produce ``/shot_v001.exr`` (which on some platforms is
+    interpreted as a path, on others is just an invalid filename)."""
+    base = tmp_path / "safe"
+    base.mkdir()
+
+    file_path, name, _, _ = _run(str(base), shot_name="/oops")
+
+    assert not name.startswith(("/", "\\")), f"filename leaked separator: {name!r}"
+    assert "/oops" not in name, f"filename retained absolute prefix: {name!r}"

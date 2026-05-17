@@ -33,6 +33,33 @@ def _normalize_base_path(raw: str) -> str:
     return s
 
 
+def _sanitize_segment(s: str) -> str:
+    """Strip drive prefix and any leading path separators from a path segment.
+
+    Path segments like ``shot_name`` and ``ai_method`` are joined ONTO
+    ``base_directory_path`` to build the output location — never meant to
+    replace it. But ``os.path.join`` has a "last absolute path wins" rule:
+    ``os.path.join('n:/safe', '/oops')`` returns ``'/oops'`` (or
+    ``'C:/oops'`` on Windows), letting a user with a typo escape their
+    own intended base. This helper strips:
+
+    - Drive prefix (``os.path.splitdrive`` handles ``C:/foo`` → ``/foo``
+      on Windows; on POSIX the drive is empty and this is a no-op).
+    - Leading path separators (any mix of ``/`` and ``\\``).
+
+    Examples:
+    - ``"shot_v1"``         → ``"shot_v1"`` (unchanged)
+    - ``"/oops_typo"``      → ``"oops_typo"``
+    - ``"\\oops"``          → ``"oops"``
+    - ``"C:/Windows/junk"`` → ``"Windows/junk"`` (drive + leading sep stripped)
+    - ``"///oops"``         → ``"oops"`` (leading seps stripped before splitdrive
+      so multi-slash input doesn't get swallowed as a UNC prefix on Windows)
+    """
+    s = s.lstrip("/\\")
+    _, s = os.path.splitdrive(s)
+    return s.lstrip("/\\")
+
+
 class EasyAIPipeline:
     """
     A custom ComfyUI node for VFX pipelines that aggregates parameters like shot duration, seed, job path,
@@ -121,13 +148,20 @@ class EasyAIPipeline:
         base_directory_path = _normalize_base_path(base_directory_path)
         version_str = "" if disable_versioning else f"v{version:03d}"
 
+        # Sanitize the segments that get joined onto base_directory_path. Without this an
+        # absolute-looking shot_name like "/oops" or "C:/Windows" would escape the base via
+        # os.path.join's 'last absolute path wins' rule. The raw values are preserved for
+        # the return tuple (downstream nodes that use shot_name as a label, not a path).
+        shot_name_seg = _sanitize_segment(shot_name)
+        ai_method_seg = _sanitize_segment(ai_method)
+
         # Build output directory. When no_subfolders is on, write straight into base_directory_path;
         # otherwise append shot_name/ai_method[/vNNN]. os.path.join drops empty segments, so a blank
         # ai_method or disabled versioning doesn't leave a phantom slash in the path.
         if no_subfolders:
             output_directory = base_directory_path
         else:
-            output_directory = os.path.join(base_directory_path, shot_name, ai_method, version_str)
+            output_directory = os.path.join(base_directory_path, shot_name_seg, ai_method_seg, version_str)
         output_directory = output_directory.replace('\\', '/')
         while '//' in output_directory:
             output_directory = output_directory.replace('//', '/')
@@ -148,8 +182,9 @@ class EasyAIPipeline:
                 pass
 
         # Filename: join only the non-empty pieces with '_', then append extension. Empty ai_method
-        # or disabled versioning naturally drop out — no trailing/dangling underscores.
-        name_parts = [p for p in (shot_name, ai_method, version_str) if p]
+        # or disabled versioning naturally drop out — no trailing/dangling underscores. Use the
+        # sanitized segments so a stray leading separator can't leak into the filename either.
+        name_parts = [p for p in (shot_name_seg, ai_method_seg, version_str) if p]
         name = "_".join(name_parts) + extension
 
         file_path = os.path.join(output_directory, name).replace('\\', '/')

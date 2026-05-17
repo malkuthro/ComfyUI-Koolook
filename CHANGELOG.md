@@ -95,6 +95,21 @@ The format is inspired by Keep a Changelog and SemVer.
   with parametrised paste-variant cases (49 tests covering 11 realistic
   paste shapes the maintainer has actually seen), so the `undefined/`
   phantom-folder bug can't regress.
+- **Easy AI Pipeline: absolute `shot_name` / `ai_method` can no longer
+  escape `base_directory_path`.** `os.path.join`'s "last absolute path
+  wins" rule meant a stray leading `/` (typo) or a pasted full path
+  (`C:/Windows/junk`) in either field would replace the user's intended
+  base entirely — `n:/safe` + `shot_name="/oops"` was writing to
+  `C:/oops` instead of `n:/safe/oops`. A new `_sanitize_segment` helper
+  (lstrip → splitdrive → lstrip) strips drive prefix and leading
+  separators so segments can only be joined onto the base, never replace
+  it. Applied symmetrically to both directory build and filename build.
+  Raw `shot_name` is preserved in the return tuple for downstream nodes
+  that use it as a label. 16 new tests cover the helper and the escape
+  vectors (`/oops`, `\oops`, `///oops`, `C:/Windows/junk`, `/etc/passwd`
+  in both `shot_name` and `ai_method`). The JS preview's filename
+  builder picked up the same sanitization plus an empty-base /
+  `no_subfolders=true` corner-case fix (`/name.exr` → `name.exr`).
 
 ## [0.3.2] - 2026-05-16
 
