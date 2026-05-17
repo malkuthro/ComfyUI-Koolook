@@ -19,10 +19,15 @@ from pathlib import Path
 import pytest
 
 from k_video_combine import (
+    _add_metadata_json_sidecar,
     _compose_prefix,
+    _display_format_name,
+    _metadata_sidecar_path,
     _normalize_bool_input,
     _normalize_text_input,
+    _remove_audio_suffix_from_result,
     _resolve_abs_target,
+    _runtime_format_name,
 )
 
 
@@ -89,6 +94,19 @@ def test_absolute_prefix_with_trailing_separator(tmp_path: Path) -> None:
     assert result is not None
     abs_dir, abs_base = result
     assert Path(abs_dir) == tmp_path
+    assert abs_base == "renders"
+
+
+def test_absolute_existing_directory_without_trailing_separator(tmp_path: Path) -> None:
+    """Pasted directory paths work with or without a final slash."""
+    renders_dir = tmp_path / "renders"
+    renders_dir.mkdir()
+
+    result = _resolve_abs_target(str(renders_dir), create_path_if_missing=False)
+
+    assert result is not None
+    abs_dir, abs_base = result
+    assert Path(abs_dir) == renders_dir
     assert abs_base == "renders"
 
 
@@ -220,3 +238,62 @@ def test_normalize_bool_input_known_values() -> None:
 def test_normalize_bool_input_unknown_string_uses_default() -> None:
     assert _normalize_bool_input("hq", default=False) is False
     assert _normalize_bool_input("hq", default=True) is True
+
+
+def test_metadata_sidecar_path_replaces_vhs_png_sidecar(tmp_path: Path) -> None:
+    png = tmp_path / "clip_00001.png"
+    assert _metadata_sidecar_path([str(png)], save_metadata_png=False) == str(
+        tmp_path / "clip_00001.json"
+    )
+
+
+def test_add_metadata_json_sidecar_replaces_disabled_png_entry(tmp_path: Path) -> None:
+    png = tmp_path / "clip_00001.png"
+    mp4 = tmp_path / "clip_00001.mp4"
+    result = {
+        "ui": {"gifs": [{"workflow": png.name}]},
+        "result": ((True, [str(png), str(mp4)]),),
+    }
+
+    out = _add_metadata_json_sidecar(
+        result,
+        {"prompt": {"1": {"class_type": "Example"}}},
+        save_metadata_json=True,
+        save_metadata_png=False,
+    )
+
+    json_path = tmp_path / "clip_00001.json"
+    assert json_path.exists()
+    assert out["result"][0][1] == [str(json_path), str(mp4)]
+    assert out["ui"]["gifs"][0]["workflow"] == json_path.name
+
+
+def test_remove_audio_suffix_renames_final_and_drops_missing_intermediate(tmp_path: Path) -> None:
+    png = tmp_path / "clip_00001.png"
+    silent = tmp_path / "clip_00001.mp4"
+    audio = tmp_path / "clip_00001-audio.mp4"
+    png.write_text("png")
+    audio.write_text("video")
+    result = {
+        "ui": {"gifs": [{"filename": audio.name, "fullpath": str(audio)}]},
+        "result": ((True, [str(png), str(silent), str(audio)]),),
+    }
+
+    out = _remove_audio_suffix_from_result(result, keep_silent_intermediate=False)
+
+    clean = tmp_path / "clip_00001.mp4"
+    assert clean.exists()
+    assert not audio.exists()
+    assert out["result"][0][1] == [str(png), str(clean)]
+    assert out["ui"]["gifs"][0]["filename"] == clean.name
+    assert out["ui"]["gifs"][0]["fullpath"] == str(clean)
+
+
+def test_koolook_format_display_hides_json_suffix() -> None:
+    assert _display_format_name("video/koolook-ASTRA-h264.json") == "video/koolook-ASTRA-h264"
+    assert _display_format_name("video/ProRes") == "video/ProRes"
+
+
+def test_koolook_format_runtime_restores_json_suffix() -> None:
+    assert _runtime_format_name("video/koolook-ASTRA-h264") == "video/koolook-ASTRA-h264.json"
+    assert _runtime_format_name("video/ProRes") == "video/ProRes"

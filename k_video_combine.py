@@ -29,11 +29,27 @@ toggle controls whether the parent directory is auto-created.
 """
 from __future__ import annotations
 
+import datetime
+import json
 import os
+from pathlib import Path
 from typing import Optional, Tuple
 
 try:
     import folder_paths  # ComfyUI core; always present at runtime.
+    _KOLOOK_VIDEO_FORMATS_DIR = Path(__file__).resolve().parent / "video_formats"
+    if _KOLOOK_VIDEO_FORMATS_DIR.exists():
+        _paths, _exts = folder_paths.folder_names_and_paths.get(
+            "VHS_video_formats",
+            ((), {".json"}),
+        )
+        _format_path = str(_KOLOOK_VIDEO_FORMATS_DIR)
+        if _format_path not in _paths:
+            folder_paths.folder_names_and_paths["VHS_video_formats"] = (
+                tuple(_paths) + (_format_path,),
+                set(_exts) | {".json"},
+            )
+
     # Reach the VHS VideoCombine class through ComfyUI's global node
     # registry rather than `from videohelpersuite.nodes import ...`.
     # VHS uses relative imports internally (`from .logger import ...`,
@@ -86,6 +102,16 @@ def _resolve_abs_target(
         return None
 
     normed = os.path.normpath(filename_prefix)
+    if os.path.isdir(normed):
+        abs_dir = normed
+        abs_base = os.path.basename(normed.rstrip("/\\"))
+        if abs_base == "":
+            raise ValueError(
+                f"filename_prefix '{filename_prefix}' is an absolute directory "
+                f"but has no usable folder name for the filename root."
+            )
+        return abs_dir, abs_base
+
     abs_dir = os.path.dirname(normed)
     abs_base = os.path.basename(normed)
 
@@ -219,6 +245,93 @@ def _compose_prefix(filename_prefix: str, output_directory: str) -> str:
     return clean_dir + os.sep + name_root
 
 
+def _display_format_name(format_name: str) -> str:
+    """Hide the JSON suffix VHS exposes for external Koolook presets."""
+    if format_name.startswith("video/koolook-") and format_name.endswith(".json"):
+        return format_name[:-5]
+    return format_name
+
+
+def _runtime_format_name(format_name: str) -> str:
+    """Map cleaned Koolook display names back to VHS's external file names."""
+    if format_name.startswith("video/koolook-") and not format_name.endswith(".json"):
+        return format_name + ".json"
+    return format_name
+
+
+def _metadata_sidecar_path(output_files: list[str], save_metadata_png: bool) -> Optional[str]:
+    """Pick the JSON sidecar path from VHS's output file list."""
+    if not output_files:
+        return None
+    first_path = output_files[0]
+    if first_path.lower().endswith(".png"):
+        return os.path.splitext(first_path)[0] + ".json"
+    return os.path.splitext(first_path)[0] + ".json"
+
+
+def _add_metadata_json_sidecar(
+    result,
+    metadata_payload: dict,
+    save_metadata_json: bool,
+    save_metadata_png: bool,
+):
+    """Write a workflow metadata JSON next to VHS's output and return result."""
+    if not save_metadata_json or not isinstance(result, dict):
+        return result
+    try:
+        output_files = result.get("result", ((None, []),))[0][1]
+        if not isinstance(output_files, list):
+            return result
+        json_path = _metadata_sidecar_path(output_files, save_metadata_png)
+        if not json_path:
+            return result
+        Path(json_path).write_text(
+            json.dumps(metadata_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        if save_metadata_png:
+            output_files.append(json_path)
+        elif output_files and output_files[0].lower().endswith(".png"):
+            output_files[0] = json_path
+        else:
+            output_files.insert(0, json_path)
+        ui = result.get("ui", {})
+        gifs = ui.get("gifs", [])
+        if gifs and isinstance(gifs[0], dict) and gifs[0].get("workflow", "").endswith(".png"):
+            gifs[0]["workflow"] = os.path.basename(json_path)
+    except Exception as exc:
+        print(f"[Easy_VideoCombine] metadata JSON sidecar skipped: {exc!r}")
+    return result
+
+
+def _remove_audio_suffix_from_result(result, keep_silent_intermediate: bool):
+    """Rename VHS's final ``-audio`` mux output to the clean base name."""
+    if keep_silent_intermediate or not isinstance(result, dict):
+        return result
+    try:
+        output_files = result.get("result", ((None, []),))[0][1]
+        if not isinstance(output_files, list) or not output_files:
+            return result
+        final_path = Path(output_files[-1])
+        if final_path.stem.endswith("-audio"):
+            clean_path = final_path.with_name(final_path.stem[:-6] + final_path.suffix)
+            if not clean_path.exists():
+                final_path.replace(clean_path)
+                output_files[-1] = str(clean_path)
+                ui = result.get("ui", {})
+                gifs = ui.get("gifs", [])
+                if gifs and isinstance(gifs[0], dict):
+                    gifs[0]["filename"] = clean_path.name
+                    gifs[0]["fullpath"] = str(clean_path)
+        output_files[:] = [
+            path for path in output_files
+            if not isinstance(path, str) or os.path.exists(path)
+        ]
+    except Exception as exc:
+        print(f"[Easy_VideoCombine] audio suffix cleanup skipped: {exc!r}")
+    return result
+
+
 if _VHS_AVAILABLE:
     class Easy_VideoCombine(_VHS_VideoCombine):
         """Video Combine variant with absolute-path output."""
@@ -229,6 +342,24 @@ if _VHS_AVAILABLE:
         @classmethod
         def INPUT_TYPES(cls):
             types = _VHS_VideoCombine.INPUT_TYPES()
+            format_options, format_config = types["required"]["format"]
+            cleaned_format_options = []
+            cleaned_format_widgets = {}
+            format_widgets = dict(format_config.get("formats", {}))
+            for option in format_options:
+                cleaned = _display_format_name(option)
+                cleaned_format_options.append(cleaned)
+                if option in format_widgets:
+                    cleaned_format_widgets[cleaned] = format_widgets[option]
+            for option, widgets in format_widgets.items():
+                cleaned_format_widgets.setdefault(_display_format_name(option), widgets)
+            format_options = cleaned_format_options
+            format_config = {**format_config, "formats": cleaned_format_widgets}
+            if "video/ProRes" in format_options:
+                types["required"]["format"] = (
+                    format_options,
+                    {**format_config, "default": "video/ProRes"},
+                )
             types["required"]["filename_prefix"] = (
                 "STRING",
                 {
@@ -236,6 +367,11 @@ if _VHS_AVAILABLE:
                     "tooltip": "Filename root. Counter and extension are appended.",
                 },
             )
+            # Upstream VHS uses save_output to choose ComfyUI output/ vs temp/.
+            # Easy_VideoCombine is an explicit file-writer, and absolute-path
+            # mode ignores that distinction, so hiding it avoids a misleading
+            # toggle while preserving the persistent-output behavior.
+            types["required"].pop("save_output", None)
             types["optional"]["output_directory"] = (
                 "STRING",
                 {
@@ -253,8 +389,15 @@ if _VHS_AVAILABLE:
             types["optional"]["save_metadata_png"] = (
                 "BOOLEAN",
                 {
-                    "default": True,
+                    "default": False,
                     "tooltip": "Save the first-frame PNG with embedded workflow metadata.",
+                },
+            )
+            types["optional"]["save_metadata_json"] = (
+                "BOOLEAN",
+                {
+                    "default": True,
+                    "tooltip": "Save workflow metadata as a JSON sidecar.",
                 },
             )
             types["optional"]["keep_silent_intermediate"] = (
@@ -282,18 +425,32 @@ if _VHS_AVAILABLE:
                 kwargs.get("pingpong", False),
                 default=False,
             )
+            if "format" in kwargs:
+                kwargs["format"] = _runtime_format_name(kwargs["format"])
+            kwargs["save_output"] = True
             create_path_if_missing = _normalize_bool_input(
                 kwargs.pop("create_path_if_missing", False),
                 default=False,
             )
             save_metadata_png = _normalize_bool_input(
-                kwargs.pop("save_metadata_png", True),
+                kwargs.pop("save_metadata_png", False),
+                default=False,
+            )
+            save_metadata_json = _normalize_bool_input(
+                kwargs.pop("save_metadata_json", True),
                 default=True,
             )
             keep_silent_intermediate = _normalize_bool_input(
                 kwargs.pop("keep_silent_intermediate", False),
                 default=False,
             )
+            metadata_payload = {
+                "CreationTime": datetime.datetime.now().isoformat(" ")[:19],
+            }
+            if kwargs.get("prompt") is not None:
+                metadata_payload["prompt"] = kwargs.get("prompt")
+            if kwargs.get("extra_pnginfo") is not None:
+                metadata_payload.update(kwargs.get("extra_pnginfo") or {})
 
             # Inject VHS's hidden extra_options flags so upstream handles
             # metadata PNG and silent-intermediate cleanup according to
@@ -322,7 +479,17 @@ if _VHS_AVAILABLE:
 
             target = _resolve_abs_target(filename_prefix, create_path_if_missing)
             if target is None:
-                return super().combine_video(*args, **kwargs)
+                result = super().combine_video(*args, **kwargs)
+                result = _remove_audio_suffix_from_result(
+                    result,
+                    keep_silent_intermediate,
+                )
+                return _add_metadata_json_sidecar(
+                    result,
+                    metadata_payload,
+                    save_metadata_json,
+                    save_metadata_png,
+                )
 
             abs_dir, abs_base = target
 
@@ -349,7 +516,17 @@ if _VHS_AVAILABLE:
 
             try:
                 folder_paths.get_save_image_path = patched_get_save_path
-                return super().combine_video(*args, **kwargs)
+                result = super().combine_video(*args, **kwargs)
+                result = _remove_audio_suffix_from_result(
+                    result,
+                    keep_silent_intermediate,
+                )
+                return _add_metadata_json_sidecar(
+                    result,
+                    metadata_payload,
+                    save_metadata_json,
+                    save_metadata_png,
+                )
             finally:
                 folder_paths.get_save_image_path = original_get_save_path
 

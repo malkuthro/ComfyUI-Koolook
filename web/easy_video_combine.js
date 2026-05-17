@@ -61,9 +61,9 @@ function coerceBoolValue(value, fallback) {
 
 const BOOLEAN_WIDGETS = new Set([
     "pingpong",
-    "save_output",
     "create_path_if_missing",
     "save_metadata_png",
+    "save_metadata_json",
     "keep_silent_intermediate",
 ]);
 
@@ -97,44 +97,6 @@ function useNamedWidgetState(nodeType) {
                 for (const [name, value] of Object.entries(saved)) {
                     setSavedWidgetValue(this, name, value);
                 }
-                return;
-            }
-
-            if (!Array.isArray(saved)) return;
-
-            // Legacy array restore is dangerous with dynamic format widgets:
-            // a ProRes profile like "hq" can shift into pingpong and become
-            // truthy. Restore by known names and computed format-widget count.
-            const baseNames = ["frame_rate", "loop_count", "filename_prefix", "format"];
-            for (let i = 0; i < baseNames.length && i < saved.length; i++) {
-                setSavedWidgetValue(this, baseNames[i], saved[i]);
-            }
-
-            const formatWidget = this.widgets.find((w) => w.name === "format");
-            const formats = LiteGraph.registered_node_types[this.type]
-                ?.nodeData?.input?.required?.format?.[1]?.formats;
-            const formatWidgetDefs = formats?.[formatWidget?.value] ?? [];
-            const formatWidgetCount = formatWidgetDefs.length;
-
-            for (let i = 0; i < formatWidgetCount; i++) {
-                const savedIndex = baseNames.length + i;
-                const widgetName = formatWidgetDefs[i]?.[0];
-                if (widgetName && savedIndex < saved.length) {
-                    setSavedWidgetValue(this, widgetName, saved[savedIndex]);
-                }
-            }
-
-            const tailNames = [
-                "pingpong",
-                "save_output",
-                "output_directory",
-                "create_path_if_missing",
-                "save_metadata_png",
-                "keep_silent_intermediate",
-            ];
-            const tailStart = baseNames.length + formatWidgetCount;
-            for (let i = 0; i < tailNames.length && tailStart + i < saved.length; i++) {
-                setSavedWidgetValue(this, tailNames[i], saved[tailStart + i]);
             }
         });
 
