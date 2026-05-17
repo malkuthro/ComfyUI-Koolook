@@ -120,6 +120,23 @@ The format is inspired by Keep a Changelog and SemVer.
   in filenames anyway). Directory build with `no_subfolders=false`
   still uses the separators so users organizing into nested project
   hierarchies aren't affected.
+- **Easy AI Pipeline: newlines / tabs from upstream Text Multiline
+  widgets no longer leak into the path.** A new `_strip_control_chars`
+  helper runs first in both `_normalize_base_path` and
+  `_sanitize_segment`, plus explicitly on `extension` in
+  `generate_pipeline`. Removes `\n`, `\r`, `\t` defensively — these
+  can't legally appear in any filesystem path, but an upstream WAS
+  `Text Multiline` node (or anything with a stray paragraph break)
+  used to ship them through, silently breaking the save downstream
+  while rendering the preview as visually broken multi-line output.
+  Mirrored in the JS preview's `normalizeBasePath` / `sanitizeSegment`
+  / extension handling.
+- **Easy AI Pipeline: Output Preview widget no longer word-wraps.**
+  Long paths used to wrap to two visual lines in the multi-line
+  textarea — confusingly making the preview look like the file_path
+  contained a literal newline. The widget now uses `wrap="off"` +
+  horizontal scroll, so paths always render on a single visual line
+  regardless of length.
 
 ## [0.3.2] - 2026-05-16
 

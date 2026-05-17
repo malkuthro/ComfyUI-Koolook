@@ -21,10 +21,24 @@ app.registerExtension({
                     instructionWidget.inputEl.style.opacity = 0.6;
                 }
 
-                // Add multiline display widget using ComfyWidgets.STRING
+                // Output preview: one logical string per line, never word-wrapped. A path
+                // / filename should always render on a single visual line — wrap=off on the
+                // textarea gives horizontal scroll instead of breaking long paths mid-string,
+                // which previously made the output look like it contained newlines.
                 const displayWidget = ComfyWidgets["STRING"](this, "Output Preview", ["STRING", { multiline: true }], app).widget;
                 displayWidget.inputEl.readOnly = true;
-                displayWidget.inputEl.style.height = "100px";
+                displayWidget.inputEl.style.height = "40px";
+                displayWidget.inputEl.setAttribute("wrap", "off");
+                displayWidget.inputEl.style.whiteSpace = "pre";
+                displayWidget.inputEl.style.overflowX = "auto";
+                displayWidget.inputEl.style.overflowY = "hidden";
+
+                // Defensive strip: an upstream node might feed shot_name / ai_method with
+                // embedded newlines, tabs, or carriage returns (e.g. a Text Multiline node
+                // with a stray paragraph break). Those would silently break filesystem
+                // writes — the path string can't legally contain them. Strip before display
+                // so the preview matches what the Python node will actually write.
+                const cleanLine = (s) => String(s ?? "").replace(/[\r\n\t]+/g, "");
 
                 // Helper function to get effective value (from widget or upstream if connected and simple)
                 const getEffectiveValue = (node, name) => {
@@ -45,10 +59,11 @@ app.registerExtension({
                 };
 
                 // Mirror of _normalize_base_path in k_ai_pipeline.py — must stay in sync.
-                // Strips surrounding whitespace, one pair of surrounding quotes, and
-                // trailing path separators. Drive roots (C:\, n:/) are preserved.
+                // Strips control chars (newlines/tabs from upstream text widgets), then
+                // surrounding whitespace, one pair of surrounding quotes, and trailing
+                // path separators. Drive roots (C:\, n:/) are preserved.
                 const normalizeBasePath = (raw) => {
-                    let s = String(raw ?? "").trim();
+                    let s = cleanLine(raw).trim();
                     if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === '"' || s[0] === "'")) {
                         s = s.slice(1, -1).trim();
                     }
@@ -58,13 +73,14 @@ app.registerExtension({
                     return s;
                 };
 
-                // Mirror of _sanitize_segment in k_ai_pipeline.py — strips drive prefix and
-                // leading separators so a segment can only be joined onto base_directory_path,
-                // never replace it via os.path.join's "last absolute path wins" semantics.
-                // Leading seps are stripped FIRST so multi-slash input doesn't get parsed as
-                // a UNC prefix (matches Python's lstrip → splitdrive → lstrip flow).
+                // Mirror of _sanitize_segment in k_ai_pipeline.py — strips control chars
+                // first, then drive prefix and leading separators so a segment can only be
+                // joined onto base_directory_path, never replace it via os.path.join's
+                // "last absolute path wins" semantics. Leading seps are stripped BEFORE
+                // splitdrive so multi-slash input doesn't get parsed as a UNC prefix
+                // (matches Python's lstrip → splitdrive → lstrip flow).
                 const sanitizeSegment = (raw) => {
-                    let s = String(raw ?? "");
+                    let s = cleanLine(raw);
                     s = s.replace(/^[\/\\]+/, "");
                     if (/^[a-zA-Z]:/.test(s)) s = s.slice(2);
                     return s.replace(/^[\/\\]+/, "");
@@ -135,7 +151,7 @@ app.registerExtension({
                         const aiSegFlat = sanitizeSegment(values.ai_method).replace(/[\/\\]/g, "_");
                         const name = [shotSegFlat, aiSegFlat, version_str]
                             .filter(part => part.toString().trim() !== "")
-                            .join("_") + values.extension;
+                            .join("_") + cleanLine(values.extension);
                         // Filter empties before joining so an empty output_directory (empty base
                         // + no_subfolders=true) doesn't leak a spurious leading "/" into file_path.
                         const file_path = [output_directory, name]

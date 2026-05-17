@@ -19,7 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from k_ai_pipeline import EasyAIPipeline, _normalize_base_path, _sanitize_segment
+from k_ai_pipeline import (
+    EasyAIPipeline,
+    _normalize_base_path,
+    _sanitize_segment,
+    _strip_control_chars,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -391,3 +396,88 @@ def test_no_subfolders_false_still_uses_slashes_as_subfolders(tmp_path: Path):
 
     assert output_directory == f"{canonical}/Project/v1/upscale/v003"
     assert name == "Project_v1_upscale_v003.%04d.exr"
+
+
+# ---------------------------------------------------------------------------
+# Control-char stripping — newlines from upstream Text Multiline widgets
+# ---------------------------------------------------------------------------
+#
+# An upstream node (e.g. WAS's `Text Multiline`) can feed strings that contain
+# embedded newlines / tabs / carriage returns. Those can't legally appear in
+# any filesystem path — they'd silently break the actual file save, and the
+# preview widget rendered them as visually broken multi-line output. Strip
+# at the helper level so they never reach the path build.
+
+
+class TestStripControlChars:
+    def test_strips_newline(self):
+        assert _strip_control_chars("foo\nbar") == "foobar"
+
+    def test_strips_carriage_return(self):
+        assert _strip_control_chars("foo\rbar") == "foobar"
+
+    def test_strips_tab(self):
+        assert _strip_control_chars("foo\tbar") == "foobar"
+
+    def test_strips_all_mixed(self):
+        assert _strip_control_chars("foo\r\n\tbar\nbaz") == "foobarbaz"
+
+    def test_preserves_spaces(self):
+        """Spaces are valid in path segments; only newline/CR/tab get stripped."""
+        assert _strip_control_chars("foo bar") == "foo bar"
+
+    def test_empty_passes_through(self):
+        assert _strip_control_chars("") == ""
+
+
+def test_shot_name_with_embedded_newline_does_not_break_path(tmp_path: Path):
+    """The maintainer-reported case: upstream feeds shot_name with a stray
+    newline (e.g. paragraph break in a Text Multiline). Pre-fix, this leaked
+    through to the preview AND would have broken the save with a literal
+    line-break in the path. Fix: _sanitize_segment strips control chars at
+    the source."""
+    base = tmp_path / "bear"
+    base.mkdir()
+
+    file_path, name, _, output_directory = _run(
+        str(base),
+        shot_name="ComfyUI-working-folder/LTX-Director-2K\n_0",
+        no_subfolders=True,
+    )
+
+    assert "\n" not in file_path, f"newline leaked into file_path: {file_path!r}"
+    assert "\n" not in name, f"newline leaked into name: {name!r}"
+    assert "\n" not in output_directory, f"newline leaked into output_directory: {output_directory!r}"
+
+
+def test_base_path_with_embedded_newline_normalised(tmp_path: Path):
+    """Same defense at the base_directory_path layer — Text Multiline
+    sometimes appends a trailing \\n that survived the previous fix."""
+    base = tmp_path / "bear"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    _, _, _, output_directory = _run(
+        f"{base}\n",
+        shot_name="shot",
+        no_subfolders=True,
+    )
+
+    assert "\n" not in output_directory
+    assert output_directory == canonical
+
+
+def test_extension_with_embedded_newline_stripped(tmp_path: Path):
+    """Extension is the third path-bound string input; stray newlines there
+    were also leaking into the filename."""
+    base = tmp_path / "bear"
+    base.mkdir()
+
+    _, name, _, _ = _run(
+        str(base),
+        shot_name="shot",
+        extension=".exr\n",
+    )
+
+    assert "\n" not in name
+    assert name == "shot.exr"

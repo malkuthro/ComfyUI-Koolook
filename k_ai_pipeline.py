@@ -1,6 +1,17 @@
 import os
 
 
+def _strip_control_chars(s: str) -> str:
+    """Strip newlines, carriage returns, and tabs from a string.
+
+    These can't legally appear in any filesystem path. They typically leak
+    in when an upstream node (e.g. a multi-line text widget) feeds a value
+    with a stray paragraph break — the path then visually rendered as two
+    lines in the preview AND silently broke the save downstream.
+    """
+    return s.replace("\r", "").replace("\n", "").replace("\t", "")
+
+
 def _normalize_base_path(raw: str) -> str:
     """Sanitize a user-pasted base directory string.
 
@@ -25,7 +36,7 @@ def _normalize_base_path(raw: str) -> str:
     separator there would yield an invalid bare-drive reference like ``C:``
     that Windows interprets as "current directory on C: drive".
     """
-    s = raw.strip()
+    s = _strip_control_chars(raw).strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
         s = s[1:-1].strip()
     while len(s) > 3 and s[-1] in ('/', '\\'):
@@ -54,7 +65,9 @@ def _sanitize_segment(s: str) -> str:
     - ``"C:/Windows/junk"`` → ``"Windows/junk"`` (drive + leading sep stripped)
     - ``"///oops"``         → ``"oops"`` (leading seps stripped before splitdrive
       so multi-slash input doesn't get swallowed as a UNC prefix on Windows)
+    - ``"shot\\n_v1"``      → ``"shot_v1"`` (control chars from upstream stripped)
     """
+    s = _strip_control_chars(s)
     s = s.lstrip("/\\")
     _, s = os.path.splitdrive(s)
     return s.lstrip("/\\")
@@ -146,6 +159,10 @@ class EasyAIPipeline:
 
     def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite, no_subfolders):
         base_directory_path = _normalize_base_path(base_directory_path)
+        # _sanitize_segment strips control chars for shot_name / ai_method; do the same
+        # for extension here so an upstream Text Multiline with a stray newline can't
+        # leak a line-break into the filename.
+        extension = _strip_control_chars(extension)
         version_str = "" if disable_versioning else f"v{version:03d}"
 
         # Sanitize the segments that get joined onto base_directory_path. Without this an
