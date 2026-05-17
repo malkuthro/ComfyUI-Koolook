@@ -242,23 +242,13 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
             previousGraph = null;
         }
         try {
-            // Passing `wfName` as the 4th arg makes loadGraphData create a
-            // temporary workflow tab titled with that name (instead of
-            // "Unsaved Workflow (N)"). Frontend reference: ComfyUI_frontend
-            // src/scripts/app.ts (loadGraphData) →
-            // workflowService.afterLoadNewGraph → createNewTemporary, which
-            // builds path `workflows/<wfName>.json` and binds it to the tab.
-            await app.loadGraphData(graph, true, true, wfName, {});
-
-            // Defensive fallback for frontends that didn't honor the 4th arg.
-            try {
-                const wf = app.extensionManager?.workflow?.activeWorkflow;
-                if (wf && wf.isTemporary && typeof wf.rename === "function" && wf.filename !== wfName) {
-                    await wf.rename(`workflows/${wfName}.json`);
-                }
-            } catch (e) {
-                console.warn("[Koolook] workflow rename fallback failed:", e);
-            }
+            // Keep sidebar workflow loads as Comfy-owned temporary drafts.
+            // Passing `wfName` here, or renaming the active Comfy workflow to
+            // `workflows/<wfName>.json`, binds the tab to Comfy's native
+            // workflow-file namespace. If that file already exists, Comfy's
+            // autosave/draft writer can hit a 409 Conflict even though the
+            // Koolook sidebar workflow with the same display name is valid.
+            await app.loadGraphData(graph, true, true);
 
             toast(`Loaded "${wfName}".`);
         } catch (e) {
