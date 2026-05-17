@@ -6,6 +6,45 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Easy Video Combine (`Easy_VideoCombine`).** A path-aware sibling
+  of Kosinkadink/ComfyUI-VideoHelperSuite's `Video Combine` node.
+  When the `filename_prefix` field carries an absolute path
+  (e.g. `E:/renders/shot01/v003`), the node bypasses ComfyUI's
+  output-directory sandbox and writes the video, metadata PNG, and
+  any audio mux directly to that location. Relative prefixes behave
+  identically to upstream (sandboxed under ComfyUI's `output/`).
+  Adds an optional `create_path_if_missing` BOOLEAN (default
+  `False`) — when on, the parent directory is auto-created; when
+  off, a missing parent surfaces as a clear error so typos don't
+  silently spawn directories.
+
+  Implemented as a thin subclass of VHS's `VideoCombine` (~60 lines
+  of Python, no upstream code copied — see
+  [`k_video_combine.py`](k_video_combine.py)) that scoped-patches
+  `folder_paths.get_save_image_path` for the duration of one
+  `combine_video()` call. All encoding, format widgets, audio mux,
+  batch-manager, and progress-bar behavior comes from VHS unchanged.
+  If VHS isn't installed the node simply doesn't register, with a
+  one-line stderr notice at module load.
+
+  The `os.path.isabs(filename_prefix)` discrimination pattern is
+  borrowed from spacepxl/ComfyUI-HQ-Image-Save's `SaveEXR` (MIT) —
+  overload the existing field for both modes rather than adding a
+  new input pin. See
+  [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md) for attribution
+  and [`docs/user_guide/nodes/koolook_video/easy_video_combine.md`](docs/user_guide/nodes/koolook_video/easy_video_combine.md)
+  for the user-facing guide.
+
+  Also adds an optional **`output_directory`** STRING input (default
+  empty). When set, `filename_prefix` is treated as just the
+  filename root and `output_directory` carries the path — so you
+  can change the name without retyping the directory across many
+  renders. Absolute `output_directory` writes there directly;
+  relative `output_directory` joins under ComfyUI's `output/`. The
+  overloaded-absolute-`filename_prefix` mode is preserved
+  unchanged for users who prefer a single field.
+
 ### Changed
 - **Workflow right-click menu shortened for large libraries.** The menu no
   longer lists every existing folder as a move destination, which could push

@@ -10,6 +10,14 @@
 ## Hard rules
 
 - Do not vendor/copy full third-party repositories into MAIN.
+- Install Python dev/test dependencies into a repo-local `.venv` whenever
+  possible. Do not install into system Python or user-site packages as a
+  shortcut. From a fresh checkout/worktree use:
+  `python -m venv .venv`, then
+  `.venv\Scripts\python -m pip install -e ".[test]"` on Windows (or
+  `.venv/bin/python -m pip install -e '.[test]'` on POSIX), and run tests
+  through that interpreter. If `.venv` cannot be used, stop and explain the
+  blocker before installing anywhere broader.
 - Keep MAIN limited to:
   - custom Koolook nodes
   - wrapper loaders under `forks/`
