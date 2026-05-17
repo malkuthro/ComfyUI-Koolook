@@ -212,9 +212,11 @@ def find_newest_video(folder: Path):
 
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
-    if s < 60: return f"{s}s"
+    if s < 60:
+        return f"{s}s"
     m, s = divmod(s, 60)
-    if m < 60: return f"{m}m {s:02d}s"
+    if m < 60:
+        return f"{m}m {s:02d}s"
     h, m = divmod(m, 60)
     return f"{h}h {m:02d}m"
 
@@ -225,28 +227,30 @@ def widgets(n): return n.get("widgets_values", []) or []
 
 def resolve_input(wf, node, name):
     """Return the upstream node feeding a named input, or None."""
-    links = {l[0]: l for l in wf["links"]}
+    links = {link[0]: link for link in wf["links"]}
     by_id = {n["id"]: n for n in wf["nodes"]}
     for inp in node.get("inputs", []) or []:
         if inp.get("name") == name and inp.get("link") is not None:
-            l = links.get(inp["link"])
-            if l: return by_id.get(l[1])
+            link = links.get(inp["link"])
+            if link:
+                return by_id.get(link[1])
     return None
 
 def follow_setnode(wf, getnode):
     """GetNode -> the value-producing source via SetNode of the same variable."""
     var = widgets(getnode)[0] if widgets(getnode) else None
-    if not var: return None
+    if not var:
+        return None
     for n in wf["nodes"]:
         if n.get("type") == "SetNode" and widgets(n)[:1] == [var]:
             # SetNode's incoming link is the actual value source
-            links = {l[0]: l for l in wf["links"]}
+            links = {link[0]: link for link in wf["links"]}
             by_id = {n["id"]: n for n in wf["nodes"]}
             for inp in n.get("inputs", []) or []:
                 if inp.get("link") is not None:
-                    l = links.get(inp["link"])
-                    if l:
-                        src = by_id.get(l[1])
+                    link = links.get(inp["link"])
+                    if link:
+                        src = by_id.get(link[1])
                         # If it's a switch, resolve the selected value
                         if src and src.get("type") == "easy anythingIndexSwitch":
                             idx_node = resolve_input(wf, src, "index")
@@ -279,8 +283,10 @@ def extract(wf):
     # custom_width / height may be widget value OR fed by GetNode chain
     cw = resolve_input(wf, d, "custom_width")
     ch = resolve_input(wf, d, "custom_height")
-    if cw and cw.get("type") == "GetNode": cw = follow_setnode(wf, cw)
-    if ch and ch.get("type") == "GetNode": ch = follow_setnode(wf, ch)
+    if cw and cw.get("type") == "GetNode":
+        cw = follow_setnode(wf, cw)
+    if ch and ch.get("type") == "GetNode":
+        ch = follow_setnode(wf, ch)
     width  = widgets(cw)[0] if cw and widgets(cw) else dw[11]
     height = widgets(ch)[0] if ch and widgets(ch) else dw[12]
 
@@ -305,7 +311,8 @@ def extract(wf):
         if latent_src and latent_src.get("type") == "LTXDirector":
             p1_guide = g
             break
-    if p1_guide is None and guides: p1_guide = guides[0]
+    if p1_guide is None and guides:
+        p1_guide = guides[0]
     mult = widgets(p1_guide)[0] if p1_guide else "?"
 
     # Pull three named Text Multiline nodes from the workflow:
@@ -343,7 +350,8 @@ def extract(wf):
         m = score_re.match(line)
         if m:
             key = m.group(1).lower()
-            if key.startswith("sharp"): key = "sharp"
+            if key.startswith("sharp"):
+                key = "sharp"
             scores[key] = int(m.group(2))
         elif line.strip():
             feedback_lines.append(line.rstrip())
@@ -367,8 +375,10 @@ def extract(wf):
     video_vae = audio_vae = ""
     for v in vaes:
         n = widgets(v)[0].replace(".safetensors", "")
-        if "video" in n: video_vae = n
-        elif "audio" in n: audio_vae = n
+        if "video" in n:
+            video_vae = n
+        elif "audio" in n:
+            audio_vae = n
 
     # seed
     rn = find(wf, "RandomNoise")
@@ -422,9 +432,11 @@ def wrap_text(text, max_chars):
             if len(cur) + len(w) + 1 <= max_chars:
                 cur = (cur + " " + w).strip()
             else:
-                if cur: out.append(cur)
+                if cur:
+                    out.append(cur)
                 cur = w
-        if cur: out.append(cur)
+        if cur:
+            out.append(cur)
     return out
 
 def draw_text_box(draw, x, y, width, label, content, accent, max_lines=3):

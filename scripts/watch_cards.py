@@ -14,7 +14,6 @@ seconds. Skips JSONs whose card is already up to date.
 Stop with Ctrl+C.
 """
 from __future__ import annotations
-import os
 import sys
 import time
 import subprocess
