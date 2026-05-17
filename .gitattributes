@@ -1,0 +1,5 @@
+# Cross-platform line endings for shell scripts.
+# Bash scripts need LF (CRLF artifacts break `#!/usr/bin/env bash`).
+# PowerShell scripts use CRLF by Windows convention.
+*.sh   text eol=lf
+*.ps1  text eol=crlf
