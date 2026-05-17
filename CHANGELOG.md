@@ -44,6 +44,18 @@ The format is inspired by Keep a Changelog and SemVer.
   relative `output_directory` joins under ComfyUI's `output/`. The
   overloaded-absolute-`filename_prefix` mode is preserved
   unchanged for users who prefer a single field.
+- **Easy AI Pipeline (`EasyAIPipeline`): `no_subfolders` toggle.** When on,
+  the node writes directly into `base_directory_path` instead of appending
+  `shot_name/ai_method[/vNNN]` subfolders underneath. The base folder is
+  still created on the fly if missing, so you can point it at a not-yet-
+  existing directory. Default is off, so saved workflows render the same
+  path as before.
+- **Easy AI Pipeline: tooltips on every input.** Hovering any field in the
+  node now explains what it controls and how it interacts with the other
+  fields/toggles (e.g. that `ai_method` becomes both a filename segment
+  and a subfolder, that `disable_versioning` drops the `vNNN` segment
+  everywhere, that `enable_overwrite` only blocks an existing *file* —
+  not an existing directory).
 
 ### Changed
 - **Workflow right-click menu shortened for large libraries.** The menu no
@@ -52,6 +64,37 @@ The format is inspired by Keep a Changelog and SemVer.
   workflow into an existing folder is now handled by drag-and-drop; the
   right-click menu still supports creating a new directory/subdirectory and
   moving the workflow there in one step.
+- **Easy AI Pipeline: no more dangling underscores in filenames.** The
+  filename builder now joins only the non-empty pieces of
+  `shot_name` / `ai_method` / `vNNN` with `_`, so leaving `ai_method`
+  blank yields `RTX-upscale.%04d.exr` instead of the previous
+  `RTX-upscale_.%04d.exr`. Same rule applies to the subfolder build, so
+  an empty `ai_method` no longer produces a phantom directory level. The
+  preview shown by the `Get output file path` button now matches.
+
+### Fixed
+- **Easy AI Pipeline: trailing-slash on base path no longer creates a
+  phantom `undefined/` folder.** Typing `n:\foo\bar\` (trailing
+  backslash) into `base_directory_path` used to leak a trailing `/` onto
+  the `output_directory` output. Downstream save nodes split on `/`,
+  stringified the resulting empty tail as `"undefined"`, and wrote into
+  `…/bar/undefined/<shot_name>/…` on disk. The node now strips any
+  trailing separator from `output_directory` (with a guard so drive
+  roots like `n:/` survive intact), so `n:\foo\bar\` and `n:\foo\bar`
+  resolve identically. The `Get output directory path` preview already
+  showed the clean form — Python now matches.
+- **Easy AI Pipeline: broader paste-input hardening on
+  `base_directory_path`.** A new `_normalize_base_path` helper strips
+  surrounding whitespace, one matched pair of surrounding quotes
+  (`"..."` or `'...'` — `Shift+Right-click → Copy as path` in Windows
+  Explorer wraps paths in double quotes), and any number of trailing
+  separators (mixed `/` and `\` accepted). Drive roots like `C:\` and
+  `n:/` are preserved. A new test suite at
+  [`tests/nodes/test_easy_ai_pipeline.py`](tests/nodes/test_easy_ai_pipeline.py)
+  pins both the helper and the end-to-end `generate_pipeline` behavior
+  with parametrised paste-variant cases (49 tests covering 11 realistic
+  paste shapes the maintainer has actually seen), so the `undefined/`
+  phantom-folder bug can't regress.
 
 ## [0.3.2] - 2026-05-16
 

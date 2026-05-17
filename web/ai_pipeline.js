@@ -44,7 +44,39 @@ app.registerExtension({
                     return null; // Cannot resolve
                 };
 
-                // Button to get and display output_directory (with cleaning for duplicate '/')
+                // Mirror of _normalize_base_path in k_ai_pipeline.py — must stay in sync.
+                // Strips surrounding whitespace, one pair of surrounding quotes, and
+                // trailing path separators. Drive roots (C:\, n:/) are preserved.
+                const normalizeBasePath = (raw) => {
+                    let s = String(raw ?? "").trim();
+                    if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === '"' || s[0] === "'")) {
+                        s = s.slice(1, -1).trim();
+                    }
+                    while (s.length > 3 && (s[s.length - 1] === "/" || s[s.length - 1] === "\\")) {
+                        s = s.slice(0, -1);
+                    }
+                    return s;
+                };
+
+                // Mirror of the Python directory build in k_ai_pipeline.py — must stay in sync.
+                const buildOutputDirectory = (values, version_str) => {
+                    const base = normalizeBasePath(values.base_directory_path);
+                    let dir;
+                    if (values.no_subfolders) {
+                        dir = base;
+                    } else {
+                        dir = [base, values.shot_name, values.ai_method, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("/");
+                    }
+                    dir = dir.replace(/\\/g, "/").replace(/\/+/g, '/');
+                    // Strip trailing slash unless we'd be left with a bare drive root like 'n:/'.
+                    if (dir.length > 3) {
+                        dir = dir.replace(/\/+$/, '');
+                    }
+                    return dir;
+                };
+
                 this.addWidget("button", "Get output directory path", null, () => {
                     const values = {
                         base_directory_path: getEffectiveValue(this, "base_directory_path"),
@@ -52,24 +84,18 @@ app.registerExtension({
                         ai_method: getEffectiveValue(this, "ai_method"),
                         version: getEffectiveValue(this, "version"),
                         disable_versioning: getEffectiveValue(this, "disable_versioning"),
-                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite"),
+                        no_subfolders: getEffectiveValue(this, "no_subfolders"),
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
-                        if (!values.disable_versioning) {
-                            const version_str = `v${values.version.toString().padStart(3, '0')}`;
-                            parts.push(version_str);
-                        }
-                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
-                        output_directory = output_directory.replace(/\/+/g, '/');
-                        displayWidget.value = output_directory;
+                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        displayWidget.value = buildOutputDirectory(values, version_str);
                     }
                     this.setDirtyCanvas(true, true);
                 }, { serialize: false });
 
-                // New button to get and display full file_path (with cleaning for duplicate '/')
                 this.addWidget("button", "Get output file path", null, () => {
                     const values = {
                         base_directory_path: getEffectiveValue(this, "base_directory_path"),
@@ -78,22 +104,18 @@ app.registerExtension({
                         extension: getEffectiveValue(this, "extension"),
                         version: getEffectiveValue(this, "version"),
                         disable_versioning: getEffectiveValue(this, "disable_versioning"),
-                        enable_overwrite: getEffectiveValue(this, "enable_overwrite")
+                        enable_overwrite: getEffectiveValue(this, "enable_overwrite"),
+                        no_subfolders: getEffectiveValue(this, "no_subfolders"),
                     };
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        let parts = [values.base_directory_path, values.shot_name, values.ai_method];
-                        let version_str = "";
-                        if (!values.disable_versioning) {
-                            version_str = `v${values.version.toString().padStart(3, '0')}`;
-                            parts.push(version_str);
-                        }
-                        let output_directory = parts.filter(part => part.toString().trim() !== "").join("/").replace(/\\/g, "/");
-                        output_directory = output_directory.replace(/\/+/g, '/');
-                        const name = !values.disable_versioning ? `${values.shot_name}_${values.ai_method}_${version_str}${values.extension}` : `${values.shot_name}_${values.ai_method}${values.extension}`;
-                        let file_path = `${output_directory}/${name}`.replace(/\\/g, "/");
-                        file_path = file_path.replace(/\/+/g, '/');
+                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const output_directory = buildOutputDirectory(values, version_str);
+                        const name = [values.shot_name, values.ai_method, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("_") + values.extension;
+                        const file_path = `${output_directory}/${name}`.replace(/\\/g, "/").replace(/\/+/g, '/');
                         displayWidget.value = file_path;
                     }
                     this.setDirtyCanvas(true, true);
