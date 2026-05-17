@@ -111,7 +111,7 @@ class EasyAIPipeline:
                 "base_directory_path": ("STRING", {
                     "default": "place your desired output dir here",
                     "multiline": True,
-                    "tooltip": "Root folder for outputs. By default the node appends shot_name/ai_method[/vNNN] underneath; toggle no_subfolders to write directly into this folder instead. Pasted paths are auto-cleaned: surrounding whitespace, surrounding quotes (\"...\" from Explorer's Copy as path), and trailing slashes / backslashes are all stripped — n:\\foo\\bar\\, \"n:/foo/bar\", and n:\\foo\\bar all resolve identically.",
+                    "tooltip": "Root folder for outputs. By default the node appends shot_name/ai_method/[v###] underneath; toggle no_subfolders to drop the shot_name/ai_method subfolders (the version folder [v###] still applies when versioning is on). Pasted paths are auto-cleaned: surrounding whitespace, surrounding quotes (\"...\" from Explorer's Copy as path), and trailing slashes / backslashes are all stripped — n:\\foo\\bar\\, \"n:/foo/bar\", and n:\\foo\\bar all resolve identically.",
                 }),
                 "extension": ("STRING", {
                     "default": ".%04d.exr",
@@ -127,7 +127,7 @@ class EasyAIPipeline:
                 "ai_method": ("STRING", {
                     "default": "v2v",
                     "multiline": False,
-                    "tooltip": "Free-form method tag (e.g. v2v, upscale, denoise). When set, joined into the filename with underscores and added as a subfolder. Leave blank to skip — no dangling _ in the filename, no empty subfolder.",
+                    "tooltip": "Free-form method tag (e.g. v2v, upscale, denoise). When set, joined into the filename with underscores. Also added as a subfolder unless no_subfolders is on. Leave blank to skip — no dangling _ in the filename, no empty subfolder.",
                 }),
                 "version": ("INT", {
                     "default": 1,
@@ -135,11 +135,11 @@ class EasyAIPipeline:
                     "max": 999,
                     "step": 1,
                     "display": "number",
-                    "tooltip": "Integer version, formatted as vNNN in the path/filename. Ignored when disable_versioning is on.",
+                    "tooltip": "Integer version, formatted as v### in the path/filename. Ignored when disable_versioning is on.",
                 }),
                 "disable_versioning": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "Drop the vNNN segment from both the output directory and the filename.",
+                    "tooltip": "Drop the v### segment from both the output directory and the filename.",
                 }),
                 "enable_overwrite": ("BOOLEAN", {
                     "default": False,
@@ -147,7 +147,7 @@ class EasyAIPipeline:
                 }),
                 "no_subfolders": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "Write directly into base_directory_path — do NOT append shot_name/ai_method[/vNNN] subfolders. The base folder itself is still created on the fly if missing.",
+                    "tooltip": "Don't add shot_name / ai_method as subfolders — both go into the filename only. The version folder (v###) is still added when disable_versioning is off, so versioned outputs stay organised under base/v###/. The base folder itself is created on the fly if missing.",
                 }),
             }
         }
@@ -175,11 +175,14 @@ class EasyAIPipeline:
         shot_name_seg = _sanitize_segment(shot_name)
         ai_method_seg = _sanitize_segment(ai_method)
 
-        # Build output directory. When no_subfolders is on, write straight into base_directory_path;
-        # otherwise append shot_name/ai_method[/vNNN]. os.path.join drops empty segments, so a blank
-        # ai_method or disabled versioning doesn't leave a phantom slash in the path.
+        # Build output directory. With no_subfolders on, shot_name and ai_method drop out
+        # of the path entirely (they only end up in the filename below); the version
+        # folder still applies so versioned outputs stay organised. With no_subfolders
+        # off, the full base/shot_name/ai_method/v### chain is used. os.path.join drops
+        # empty segments, so a blank ai_method or disabled versioning (version_str="")
+        # doesn't leave a phantom slash in the path.
         if no_subfolders:
-            output_directory = base_directory_path
+            output_directory = os.path.join(base_directory_path, version_str)
         else:
             output_directory = os.path.join(base_directory_path, shot_name_seg, ai_method_seg, version_str)
         output_directory = output_directory.replace('\\', '/')

@@ -90,13 +90,19 @@ app.registerExtension({
                 };
 
                 // Mirror of the Python directory build in k_ai_pipeline.py — must stay in sync.
+                // With no_subfolders=true: only [base, version_str] go into the directory;
+                // shot_name and ai_method drop out (they're only in the filename below).
+                // The version folder still applies when versioning is enabled. With
+                // no_subfolders=false: full [base, shot, ai, version] chain.
                 const buildOutputDirectory = (values, version_str) => {
                     const base = normalizeBasePath(values.base_directory_path);
                     const shotSeg = sanitizeSegment(values.shot_name);
                     const aiSeg = sanitizeSegment(values.ai_method);
                     let dir;
                     if (values.no_subfolders) {
-                        dir = base;
+                        dir = [base, version_str]
+                            .filter(part => part.toString().trim() !== "")
+                            .join("/");
                     } else {
                         dir = [base, shotSeg, aiSeg, version_str]
                             .filter(part => part.toString().trim() !== "")

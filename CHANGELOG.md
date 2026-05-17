@@ -120,6 +120,19 @@ The format is inspired by Keep a Changelog and SemVer.
   in filenames anyway). Directory build with `no_subfolders=false`
   still uses the separators so users organizing into nested project
   hierarchies aren't affected.
+- **Easy AI Pipeline: `no_subfolders=true` keeps the version folder.**
+  Previously the toggle stripped *everything* under `base` —
+  `shot_name`, `ai_method`, AND the `v###` version subfolder — which
+  meant versioned outputs all collided in the same flat directory.
+  New behavior: `no_subfolders` only drops `shot_name` and `ai_method`
+  from the directory (they still appear in the filename). The version
+  folder is added when `disable_versioning` is off, so versioned
+  outputs stay organised under `base/v###/`. Truly flat output (no
+  version folder either) requires `disable_versioning=true` AND
+  `no_subfolders=true`, matching VFX convention. Tooltip on
+  `no_subfolders` and `base_directory_path` rewritten to describe
+  this. All `vNNN` references in tooltips updated to `v###` per
+  Nuke-style convention.
 - **Easy AI Pipeline: newlines / tabs from upstream Text Multiline
   widgets no longer leak into the path.** A new `_strip_control_chars`
   helper runs first in both `_normalize_base_path` and

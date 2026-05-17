@@ -398,6 +398,51 @@ def test_no_subfolders_false_still_uses_slashes_as_subfolders(tmp_path: Path):
     assert name == "Project_v1_upscale_v003.%04d.exr"
 
 
+def test_no_subfolders_true_with_versioning_keeps_version_folder(tmp_path: Path):
+    """Maintainer-clarified behavior for ``no_subfolders=True``: shot_name and
+    ai_method drop out of the directory path entirely (they only appear in
+    the filename), but the version folder (``v###``) IS still added when
+    ``disable_versioning`` is off. Versioned outputs stay organised under
+    ``base/v###/`` even with the toggle on."""
+    base = tmp_path / "bear"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    file_path, name, _, output_directory = _run(
+        str(base),
+        shot_name="shot",
+        ai_method="upscale",
+        version=5, disable_versioning=False,
+        no_subfolders=True,
+    )
+
+    assert output_directory == f"{canonical}/v005", (
+        f"Expected base/v005 (only version folder); got {output_directory!r}"
+    )
+    # Filename still gets all the pieces joined with underscores
+    assert name == "shot_upscale_v005.%04d.exr"
+    assert file_path == f"{canonical}/v005/shot_upscale_v005.%04d.exr"
+
+
+def test_no_subfolders_true_without_versioning_is_flat_base(tmp_path: Path):
+    """Companion to the above: ``no_subfolders=True`` + ``disable_versioning=True``
+    means truly flat output — just ``base/<filename>``, no subfolders at all."""
+    base = tmp_path / "bear"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    _, name, _, output_directory = _run(
+        str(base),
+        shot_name="shot",
+        ai_method="upscale",
+        version=5, disable_versioning=True,
+        no_subfolders=True,
+    )
+
+    assert output_directory == canonical
+    assert name == "shot_upscale.%04d.exr"
+
+
 # ---------------------------------------------------------------------------
 # Control-char stripping — newlines from upstream Text Multiline widgets
 # ---------------------------------------------------------------------------
