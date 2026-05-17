@@ -1,5 +1,6 @@
 _safe*
 .venv/
+.tmp/
 Runpod_Comfy/
 PLAN.md
 
