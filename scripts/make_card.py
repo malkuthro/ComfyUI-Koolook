@@ -210,6 +210,77 @@ def find_newest_video(folder: Path):
     best = max(candidates, key=lambda p: p.stat().st_mtime)
     return best, best.stat().st_mtime
 
+
+def find_comfyui_log_path():
+    """Resolve the ComfyUI log path. Priority:
+      1. `KOLOOK_COMFYUI_LOG` env var (explicit override).
+      2. Inferred from `KOLOOK_COMFYUI_DEV_PATH` — the dev path points at
+         `<comfyui-root>/custom_nodes/<koolook>`, so the log sits at
+         `<comfyui-root>/user/comfyui.log`.
+    Returns Path or None."""
+    override = os.environ.get("KOLOOK_COMFYUI_LOG", "").strip()
+    if override:
+        p = Path(override)
+        return p if p.exists() else None
+    dev = os.environ.get("KOLOOK_COMFYUI_DEV_PATH", "").strip()
+    if not dev:
+        return None
+    candidate = Path(dev).parent.parent / "user" / "comfyui.log"
+    return candidate if candidate.exists() else None
+
+
+_LOG_DUR_PATTERNS = [
+    # "Prompt executed in 18.21 seconds"
+    (re.compile(r"Prompt executed in ([\d.]+) seconds"),
+     lambda m: float(m.group(1))),
+    # "Prompt executed in 00:10:33"
+    (re.compile(r"Prompt executed in (\d+):(\d+):(\d+)"),
+     lambda m: int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))),
+]
+
+
+def render_time_from_log(log_path: Path):
+    """Return the duration of the most recent render that actually wrote
+    frames. Locates the latest `saving images: 100%` line in the Comfy log
+    and pairs it with the next `Prompt executed in X` line — that's the
+    completed EXR-producing render. Skips trivial follow-up prompts that
+    happen between the render finishing and the user invoking /make-card.
+    Returns duration in seconds, or None."""
+    if not log_path or not log_path.exists():
+        return None
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    saves = list(re.finditer(r"saving images: 100%", text))
+    if not saves:
+        return None
+    after = saves[-1].end()
+    candidates = []
+    for pat, to_seconds in _LOG_DUR_PATTERNS:
+        m = pat.search(text, after)
+        if m:
+            candidates.append((m.start(), to_seconds(m)))
+    if not candidates:
+        return None
+    # Take the first 'Prompt executed in X' line after the save (smallest start).
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1]
+
+
+def exr_sequence_duration(folder: Path):
+    """Return (duration_seconds, version_dir_name) for the most recent EXR
+    sequence in the working folder. Treats render time as the wall-clock
+    span between the first and last frame in the version subdirectory of
+    the newest EXR — accurate even when the JSON is saved after rendering.
+    Returns (None, None) if no EXR sequence is found."""
+    all_exrs = list(folder.rglob("*.exr"))
+    if not all_exrs:
+        return None, None
+    newest = max(all_exrs, key=lambda p: p.stat().st_mtime)
+    seq_dir = newest.parent
+    seq_mtimes = sorted(p.stat().st_mtime for p in seq_dir.glob("*.exr"))
+    if len(seq_mtimes) < 2:
+        return None, seq_dir.name
+    return seq_mtimes[-1] - seq_mtimes[0], seq_dir.name
+
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
     if s < 60:
@@ -681,22 +752,38 @@ def main():
         ai_dir.mkdir(exist_ok=True)
         out_path = ai_dir / CARD_NAME
     video, vmtime = find_newest_video(folder)
-    if video is not None:
-        # Try same-basename match first; otherwise fall back to "newest video newer than JSON".
-        same_stem = video.stem.startswith(wf_path.stem) or wf_path.stem.startswith(video.stem)
-        delta = vmtime - wf_path.stat().st_mtime
-        if same_stem:
-            # ComfyUI saves both files at end-of-render, so timestamps don't bracket the duration.
-            # Show "—" — render time is unknowable from filesystem alone.
-            data["render_duration"] = "—"
-        elif delta >= 0:
-            data["render_duration"] = fmt_duration(delta)
+    # Render duration priority:
+    #   1. ComfyUI's own `Prompt executed in X` log line — authoritative
+    #      wall-time for the model run. Skips trivial follow-up prompts.
+    #   2. EXR sequence first-to-last-frame span.
+    #   3. JSON-vs-MP4 mtime delta (last resort).
+    # Disk mtimes alone are unreliable: ComfyUI writes JSON + MP4 together
+    # at end-of-render, and the maintainer often assembles MP4s separately.
+    json_mtime = wf_path.stat().st_mtime
+    log_path = find_comfyui_log_path()
+    log_duration = render_time_from_log(log_path) if log_path else None
+    if log_duration:
+        data["render_duration"] = fmt_duration(log_duration) + " (Comfy log)"
+        data["render_log_path"] = str(log_path)
+    else:
+        exr_span, exr_version = exr_sequence_duration(folder)
+        if exr_span is not None and exr_span > 0:
+            suffix = f" ({exr_version})" if exr_version else ""
+            data["render_duration"] = fmt_duration(exr_span) + suffix
+        elif video is not None:
+            # Fall back to MP4 mtime delta only if no EXRs are present.
+            same_stem = video.stem.startswith(wf_path.stem) or wf_path.stem.startswith(video.stem)
+            delta = vmtime - json_mtime
+            if same_stem:
+                data["render_duration"] = "—"
+            elif delta >= 0:
+                data["render_duration"] = fmt_duration(delta)
+            else:
+                data["render_duration"] = "pending"
         else:
             data["render_duration"] = "pending"
-        data["render_output"] = video.name
-    else:
-        data["render_duration"] = "pending"
-        data["render_output"] = "(no video yet)"
+
+    data["render_output"] = video.name if video is not None else "(no video yet)"
 
     # run_label: prefer v01/v04 style, else fall back to ComfyUI sequence number
     stem = wf_path.stem

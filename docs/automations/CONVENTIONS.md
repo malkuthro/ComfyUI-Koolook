@@ -69,7 +69,15 @@ Three named nodes drive the card. Naming is matched by *title containing* (case-
 
 Layout + extraction lives in `scripts/make_card.py`. Iterate on that file, not on per-model docs.
 
-## 4. The iterations log
+## 4. Render duration
+
+Sourced from ComfyUI's own log (`<comfyui-root>/user/comfyui.log`), not from disk timestamps. The script pairs the latest `saving images: 100%` line with the next `Prompt executed in X` and shows that duration — wall-time for the actual render that wrote frames. Disk-based fallbacks (EXR sequence span, MP4 mtime delta) are used only if the log is unavailable.
+
+Log path resolution:
+1. `KOLOOK_COMFYUI_LOG` env var if set (explicit override).
+2. Inferred from `KOLOOK_COMFYUI_DEV_PATH` → `<comfyui-root>/user/comfyui.log`.
+
+## 5. The iterations log
 
 - **File: `_AI/iterations.md`** inside the working folder.
 - Append-only Markdown table. Newest at bottom.
@@ -77,7 +85,7 @@ Layout + extraction lives in `scripts/make_card.py`. Iterate on that file, not o
 - Hidden HTML-comment fingerprint at end of each row enables the dedupe.
 - Columns: `# · When · Run · Format · Denoise · JSON · Video · Δ from base · Feedback`.
 
-## 5. The `/make-card` skill
+## 6. The `/make-card` skill
 
 - Trigger: `/make-card`, `card`, or `make card`.
 - Reads `KOLOOK_AUTOMATIONS_WORK_DIR` from `.env` (repo root) for the working folder.
@@ -85,14 +93,14 @@ Layout + extraction lives in `scripts/make_card.py`. Iterate on that file, not o
 - Writes `_AI/card.png` + appends `_AI/iterations.md` row.
 - Returns the absolute path of the PNG + shows it inline.
 
-## 6. The watcher (optional)
+## 7. The watcher (optional)
 
 - `scripts/watch_cards.py` — leave running in a terminal during a session.
 - Polls the working folder every 2 s.
 - Re-renders `_AI/card.png` automatically whenever the JSON in the folder is modified.
 - For hands-free operation alongside ComfyUI's "auto-save workflow on queue" setting (pythongosssss custom-scripts).
 
-## 7. The `loop` filename marker
+## 8. The `loop` filename marker
 
 Files whose basename contains `loop` (case-insensitive) are treated as **post-card outputs** — the composited card+video that ComfyUI writes back to the working folder *after* `/make-card` has produced the card. Auto-discovery and the watcher both skip these:
 
@@ -103,7 +111,7 @@ Reason: without the skip, the script's "newest JSON in the folder" picks up its 
 
 If you need to force-render a card for a `loop`-named JSON, invoke the script explicitly: `python scripts/make_card.py <wf_loop.json>`.
 
-## 8. Run identification
+## 9. Run identification
 
 The card title's "Run" label is auto-derived from the JSON stem:
 1. **`v01` / `v04` style** wins if present — gives `Run v04`.
@@ -112,7 +120,7 @@ The card title's "Run" label is auto-derived from the JSON stem:
 
 ComfyUI's metadata bundle JSONs (`<name>_<seq>.json`) work natively with #2.
 
-## 9. Tools — where they live (and don't move)
+## 10. Tools — where they live (and don't move)
 
 | Tool | Path | Why here |
 |---|---|---|

@@ -125,7 +125,7 @@ Wipe `_AI/` to reset the agent's tracking history without touching renders. Wipe
 | Card says… | Means… |
 |---|---|
 | `Run ?` | Filename has neither `v<N>` nor `_<NNNNN>`. Rename or accept the `?`. |
-| `Render time —` | JSON and MP4 mtimes are identical (ComfyUI bundle save). Expected — not a bug. |
+| `Render time —` | ComfyUI log not found (set `KOLOOK_COMFYUI_LOG` or `KOLOOK_COMFYUI_DEV_PATH` in `.env`) AND no EXR sequence in the working folder. |
 | `Outcome … ?/5` | `OVERLAY - FEEDBACK` has no `motion:` / `sync:` / `sharp:` lines yet. |
 | Card writes to wrong folder | `Working_Folder_PATH` and `.env` disagree — node wins; align them. |
 | `KOLOOK_AUTOMATIONS_WORK_DIR not set` | Copy `.env.example` to `.env`, fill the var. |
