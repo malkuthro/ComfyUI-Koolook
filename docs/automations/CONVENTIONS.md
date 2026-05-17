@@ -92,7 +92,18 @@ Layout + extraction lives in `scripts/make_card.py`. Iterate on that file, not o
 - Re-renders `_AI/card.png` automatically whenever the JSON in the folder is modified.
 - For hands-free operation alongside ComfyUI's "auto-save workflow on queue" setting (pythongosssss custom-scripts).
 
-## 7. Run identification
+## 7. The `loop` filename marker
+
+Files whose basename contains `loop` (case-insensitive) are treated as **post-card outputs** — the composited card+video that ComfyUI writes back to the working folder *after* `/make-card` has produced the card. Auto-discovery and the watcher both skip these:
+
+- `LTX-Director_loop_00001.mp4`, `LTX-Director_loop_00001.json` → ignored.
+- `LTX-Director_00002.mp4`, `LTX-Director_00002.json` → picked up normally.
+
+Reason: without the skip, the script's "newest JSON in the folder" picks up its own downstream output, generating a stale card pointing at the previous iteration. Naming the post-card pass with `loop` in the basename keeps the auto-discovery clean.
+
+If you need to force-render a card for a `loop`-named JSON, invoke the script explicitly: `python scripts/make_card.py <wf_loop.json>`.
+
+## 8. Run identification
 
 The card title's "Run" label is auto-derived from the JSON stem:
 1. **`v01` / `v04` style** wins if present — gives `Run v04`.
@@ -101,7 +112,7 @@ The card title's "Run" label is auto-derived from the JSON stem:
 
 ComfyUI's metadata bundle JSONs (`<name>_<seq>.json`) work natively with #2.
 
-## 8. Tools — where they live (and don't move)
+## 9. Tools — where they live (and don't move)
 
 | Tool | Path | Why here |
 |---|---|---|

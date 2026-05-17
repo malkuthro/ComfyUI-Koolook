@@ -110,6 +110,7 @@ Wipe `_AI/` to reset the agent's tracking history without touching renders. Wipe
 ## Conventions
 
 - **One JSON = one iteration.** Don't overwrite the same JSON across substantively different runs.
+- **`loop` in the filename = post-card output, skipped.** When ComfyUI saves the composited-with-card video back into the working folder, name it `<base>_loop_<seq>.mp4` (and pair JSON). Auto-discovery ignores anything with `loop` in the stem, so the script never feeds its own output back as input.
 - **Card filename is stable.** Wire your NLE to `_AI/card.png` once.
 - **Seed = 12 (fixed)** while sweeping any other knob. Vary seed only after a setting stabilises.
 - **Scheduler = `linear_quadratic` (8 steps)** — locked-in finding. See [`LTX-2.3/findings.md`](LTX-2.3/findings.md).

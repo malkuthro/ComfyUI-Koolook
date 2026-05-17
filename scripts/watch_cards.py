@@ -71,9 +71,15 @@ def main():
 
     print(f"watching {folder}  (every {interval}s, Ctrl+C to stop)", flush=True)
     seen_mtimes: dict[Path, float] = {}
+    # Skip post-loop outputs — the user's composited card+video saves a
+    # JSON with "loop" in its name; treating it as input would feed the
+    # script its own output.
+    SKIP_MARKER = "loop"
     try:
         while True:
             for json_path in folder.glob("*.json"):
+                if SKIP_MARKER in json_path.stem.lower():
+                    continue
                 mtime = json_path.stat().st_mtime
                 if seen_mtimes.get(json_path) == mtime:
                     continue
