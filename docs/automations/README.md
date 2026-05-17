@@ -4,6 +4,8 @@ AI-assisted iteration loops for evaluating generative models inside ComfyUI.
 
 Each subfolder is one model under study. The loop pattern is the same across all of them; the model-specific knobs, conventions, and findings live in the subfolder.
 
+> **Want the visual walkthrough?** → [`index.html`](index.html) presents the setup and loop as an HTML overview.
+>
 > **Already know the loop?** → [`CHEATSHEET.md`](CHEATSHEET.md) (one page, dense bullets).
 
 ## Where things live
