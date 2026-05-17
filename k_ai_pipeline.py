@@ -1,6 +1,9 @@
 import os
 
 
+_SENTINEL_STRINGS = ("undefined", "null", "none")
+
+
 def _strip_control_chars(s: str) -> str:
     """Strip newlines, carriage returns, and tabs from a string.
 
@@ -10,6 +13,23 @@ def _strip_control_chars(s: str) -> str:
     lines in the preview AND silently broke the save downstream.
     """
     return s.replace("\r", "").replace("\n", "").replace("\t", "")
+
+
+def _normalize_text_input(value) -> str:
+    """Coerce a ComfyUI STRING widget value to clean text.
+
+    The frontend can sometimes pass untouched or unresolved STRING widgets as
+    the literal strings "undefined", "null", or "None". Those are not useful
+    path components; treating them as real text creates phantom folders.
+    """
+    if value is None:
+        return ""
+    s = _strip_control_chars(str(value)).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        s = s[1:-1].strip()
+    if s.lower() in _SENTINEL_STRINGS:
+        return ""
+    return s
 
 
 def _normalize_base_path(raw: str) -> str:
@@ -36,12 +56,25 @@ def _normalize_base_path(raw: str) -> str:
     separator there would yield an invalid bare-drive reference like ``C:``
     that Windows interprets as "current directory on C: drive".
     """
-    s = _strip_control_chars(raw).strip()
-    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
-        s = s[1:-1].strip()
+    s = _normalize_text_input(raw)
     while len(s) > 3 and s[-1] in ('/', '\\'):
         s = s[:-1]
-    return s
+    return _strip_sentinel_components(s)
+
+
+def _strip_sentinel_components(path: str) -> str:
+    """Remove path components that are exactly frontend sentinel strings."""
+    if not path:
+        return path
+    sep = "\\" if "\\" in path else "/"
+    parts = path.split(sep)
+    cleaned = [
+        part for part in parts
+        if part == "" or part.lower() not in _SENTINEL_STRINGS
+    ]
+    if len(cleaned) == len(parts):
+        return path
+    return sep.join(cleaned)
 
 
 def _sanitize_segment(s: str) -> str:
@@ -68,7 +101,7 @@ def _sanitize_segment(s: str) -> str:
     - ``"shot\\n_v1"``      → ``"shot_v1"`` (control chars from upstream stripped)
     - ``"  shot_v1  "``     → ``"shot_v1"`` (surrounding whitespace stripped)
     """
-    s = _strip_control_chars(s).strip()
+    s = _normalize_text_input(s)
     s = s.lstrip("/\\")
     _, s = os.path.splitdrive(s)
     return s.lstrip("/\\")
@@ -188,6 +221,7 @@ class EasyAIPipeline:
         output_directory = output_directory.replace('\\', '/')
         while '//' in output_directory:
             output_directory = output_directory.replace('//', '/')
+        output_directory = _strip_sentinel_components(output_directory)
         # Strip trailing slash. Without this, a base path ending in '\' (e.g. 'n:\foo\bar\')
         # propagates through os.path.join as an empty trailing component → a trailing '/' on
         # the final output_directory. Downstream save nodes that split on '/' then see an
@@ -219,6 +253,7 @@ class EasyAIPipeline:
         file_path = os.path.join(output_directory, name).replace('\\', '/')
         while '//' in file_path:
             file_path = file_path.replace('//', '/')
+        file_path = _strip_sentinel_components(file_path)
 
         # Overwrite protection applies to the final file path only — an existing output directory
         # is fine (common when the node is wired into a recurring save loop).

@@ -82,7 +82,11 @@ The format is inspired by Keep a Changelog and SemVer.
   trailing separator from `output_directory` (with a guard so drive
   roots like `n:/` survive intact), so `n:\foo\bar\` and `n:\foo\bar`
   resolve identically. The `Get output directory path` preview already
-  showed the clean form — Python now matches.
+  showed the clean form — Python now matches. The same cleanup also treats
+  literal frontend sentinels like `"undefined"` / `"null"` / `"None"` as
+  empty text in path fields and strips those sentinel words when they arrive
+  as whole path components from connected upstream values, matching
+  `Easy_VideoCombine`'s defensive normalization.
 - **Easy AI Pipeline: broader paste-input hardening on
   `base_directory_path`.** A new `_normalize_base_path` helper strips
   surrounding whitespace, one matched pair of surrounding quotes

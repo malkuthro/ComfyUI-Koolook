@@ -22,7 +22,9 @@ import pytest
 from k_ai_pipeline import (
     EasyAIPipeline,
     _normalize_base_path,
+    _normalize_text_input,
     _sanitize_segment,
+    _strip_sentinel_components,
     _strip_control_chars,
 )
 
@@ -86,6 +88,45 @@ class TestNormalizeBasePath:
     def test_empty_string_passes_through(self):
         assert _normalize_base_path("") == ""
         assert _normalize_base_path("   ") == ""
+
+
+# ---------------------------------------------------------------------------
+# _normalize_text_input - sentinel strings from ComfyUI widgets
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeTextInput:
+    def test_empty_inputs(self):
+        assert _normalize_text_input("") == ""
+        assert _normalize_text_input("   ") == ""
+        assert _normalize_text_input(None) == ""
+
+    def test_frontend_sentinel_strings_become_empty(self):
+        assert _normalize_text_input("undefined") == ""
+        assert _normalize_text_input("Undefined") == ""
+        assert _normalize_text_input("UNDEFINED") == ""
+        assert _normalize_text_input("null") == ""
+        assert _normalize_text_input("None") == ""
+        assert _normalize_text_input("  undefined  ") == ""
+
+    def test_real_values_pass_through(self):
+        assert _normalize_text_input("LTX-Director-2K") == "LTX-Director-2K"
+        assert _normalize_text_input("undefined_path") == "undefined_path"
+        assert _normalize_text_input("my_null_clip") == "my_null_clip"
+
+
+class TestStripSentinelComponents:
+    def test_strips_exact_sentinel_path_component(self):
+        assert _strip_sentinel_components("n:/base/undefined/shot") == "n:/base/shot"
+        assert _strip_sentinel_components("n:\\base\\undefined\\shot") == "n:\\base\\shot"
+
+    def test_strips_other_frontend_sentinels(self):
+        assert _strip_sentinel_components("n:/base/null/shot") == "n:/base/shot"
+        assert _strip_sentinel_components("n:/base/None/shot") == "n:/base/shot"
+
+    def test_keeps_real_substring_values(self):
+        assert _strip_sentinel_components("n:/base/undefined_path/shot") == "n:/base/undefined_path/shot"
+        assert _strip_sentinel_components("n:/base/my_null_clip/shot") == "n:/base/my_null_clip/shot"
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +232,50 @@ def test_no_subfolders_also_canonicalises_trailing(tmp_path: Path):
     _, _, _, without_slash = _run(str(base), no_subfolders=True)
 
     assert with_slash == without_slash == canonical
+
+
+def test_trailing_base_with_undefined_shot_name_does_not_create_phantom_folder():
+    """Exact maintainer regression: trailing separator on the base path plus
+    a frontend sentinel in shot_name used to yield
+    base/undefined/LTX-Director-2K/... instead of base/LTX-Director-2K/....
+    """
+    base = r"n:\TRK_sync_BIG_N\JOBS\baconx\Jeep_Animals\bear\ComfyUI-working-folder"
+
+    file_path, name, _, output_directory = _run(
+        base + "\\",
+        shot_name="undefined",
+        ai_method="LTX-Director-2K",
+        disable_versioning=True,
+        no_subfolders=False,
+    )
+
+    expected_dir = "n:/TRK_sync_BIG_N/JOBS/baconx/Jeep_Animals/bear/ComfyUI-working-folder/LTX-Director-2K"
+    assert output_directory == expected_dir
+    assert name == "LTX-Director-2K.%04d.exr"
+    assert file_path == f"{expected_dir}/LTX-Director-2K.%04d.exr"
+    assert "/undefined/" not in file_path
+
+
+def test_undefined_component_in_backend_base_path_is_stripped():
+    """When base_directory_path is connected, the backend may receive the
+    executed upstream value rather than the visible widget value the preview
+    button can inspect. Strip sentinel components from the whole path too.
+    """
+    base = "n:/TRK_sync_BIG_N/JOBS/baconx/Jeep_Animals/bear/ComfyUI-working-folder/undefined"
+
+    file_path, name, _, output_directory = _run(
+        base,
+        shot_name="LTX-Director-2K",
+        ai_method="",
+        version=1,
+        disable_versioning=False,
+        no_subfolders=False,
+    )
+
+    expected_dir = "n:/TRK_sync_BIG_N/JOBS/baconx/Jeep_Animals/bear/ComfyUI-working-folder/LTX-Director-2K/v001"
+    assert output_directory == expected_dir
+    assert name == "LTX-Director-2K_v001.%04d.exr"
+    assert file_path == f"{expected_dir}/LTX-Director-2K_v001.%04d.exr"
 
 
 def test_blank_ai_method_yields_no_dangling_underscore(tmp_path: Path):

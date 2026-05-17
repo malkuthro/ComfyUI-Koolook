@@ -37,6 +37,20 @@ app.registerExtension({
                 // so the preview matches what the Python node will actually write.
                 const cleanLine = (s) => String(s ?? "").replace(/[\r\n\t]+/g, "");
 
+                const SENTINEL_STRINGS = new Set(["undefined", "null", "none"]);
+
+                // Mirror of _normalize_text_input in k_ai_pipeline.py.
+                const normalizeTextInput = (raw) => {
+                    let s = cleanLine(raw).trim();
+                    if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === '"' || s[0] === "'")) {
+                        s = s.slice(1, -1).trim();
+                    }
+                    if (SENTINEL_STRINGS.has(s.toLowerCase())) {
+                        return "";
+                    }
+                    return s;
+                };
+
                 // Strict: extension must never contain whitespace at all. Even a single
                 // trailing space (easy to acquire from a paste) makes downstream save
                 // nodes that check via os.path.splitext fail with "filepath doesn't end
@@ -66,14 +80,20 @@ app.registerExtension({
                 // surrounding whitespace, one pair of surrounding quotes, and trailing
                 // path separators. Drive roots (C:\, n:/) are preserved.
                 const normalizeBasePath = (raw) => {
-                    let s = cleanLine(raw).trim();
-                    if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === '"' || s[0] === "'")) {
-                        s = s.slice(1, -1).trim();
-                    }
+                    let s = normalizeTextInput(raw);
                     while (s.length > 3 && (s[s.length - 1] === "/" || s[s.length - 1] === "\\")) {
                         s = s.slice(0, -1);
                     }
-                    return s;
+                    return stripSentinelComponents(s);
+                };
+
+                const stripSentinelComponents = (path) => {
+                    if (!path) return path;
+                    const sep = path.includes("\\") ? "\\" : "/";
+                    const cleaned = path
+                        .split(sep)
+                        .filter(part => part === "" || !SENTINEL_STRINGS.has(part.toLowerCase()));
+                    return cleaned.join(sep);
                 };
 
                 // Mirror of _sanitize_segment in k_ai_pipeline.py — strips control chars
@@ -83,7 +103,7 @@ app.registerExtension({
                 // Leading seps are stripped BEFORE splitdrive so multi-slash input
                 // doesn't get parsed as a UNC prefix (matches Python's flow).
                 const sanitizeSegment = (raw) => {
-                    let s = cleanLine(raw).trim();
+                    let s = normalizeTextInput(raw);
                     s = s.replace(/^[\/\\]+/, "");
                     if (/^[a-zA-Z]:/.test(s)) s = s.slice(2);
                     return s.replace(/^[\/\\]+/, "");
@@ -109,6 +129,7 @@ app.registerExtension({
                             .join("/");
                     }
                     dir = dir.replace(/\\/g, "/").replace(/\/+/g, '/');
+                    dir = stripSentinelComponents(dir);
                     // Strip trailing slash unless we'd be left with a bare drive root like 'n:/'.
                     if (dir.length > 3) {
                         dir = dir.replace(/\/+$/, '');
@@ -168,7 +189,7 @@ app.registerExtension({
                             .join("/")
                             .replace(/\\/g, "/")
                             .replace(/\/+/g, '/');
-                        displayWidget.value = file_path;
+                        displayWidget.value = stripSentinelComponents(file_path);
                     }
                     this.setDirtyCanvas(true, true);
                 }, { serialize: false });
