@@ -112,6 +112,20 @@ function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+function sortJsonValue(value) {
+    if (Array.isArray(value)) return value.map(sortJsonValue);
+    if (!value || typeof value !== "object") return value;
+    const out = {};
+    for (const key of Object.keys(value).sort(compareNames)) {
+        out[key] = sortJsonValue(value[key]);
+    }
+    return out;
+}
+
+function normalizedStoresEqual(a, b) {
+    return JSON.stringify(sortJsonValue(a)) === JSON.stringify(sortJsonValue(b));
+}
+
 function workflowSavedAtMs(wf) {
     if (!wf || typeof wf !== "object" || typeof wf.savedAt !== "string") return 0;
     const ms = Date.parse(wf.savedAt);
@@ -310,6 +324,16 @@ export async function loadWorkflowsStore() {
                 `${reconcileResult || "neither"}; keeping recovery banner available.`
             );
             return { corrupt: false, fallbackBlob };
+        }
+        if (fallbackStore && normalizedStoresEqual(fallbackStore, workflowsCache)) {
+            try {
+                localStorage.removeItem(WORKFLOWS_FALLBACK_KEY);
+                console.warn("[Koolook] cleared redundant browser-local workflow fallback already present in /userdata.");
+            } catch (e) {
+                console.warn("[Koolook] failed to clear redundant localStorage workflows fallback:", e);
+                return { corrupt: false, fallbackBlob };
+            }
+            return { corrupt: false };
         }
         console.warn(
             `[Koolook] /userdata loaded, but a stale localStorage fallback exists ` +

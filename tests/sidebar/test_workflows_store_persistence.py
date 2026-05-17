@@ -355,3 +355,119 @@ def test_fallback_recovery_preserves_server_only_workflows() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_redundant_fallback_is_cleared_after_server_catches_up() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          loadWorkflowsStore,
+          getAllWorkflowsForExport,
+        } from "./web/sidebar/workflows_store.js";
+
+        setupBrowserStubs();
+
+        const serverStore = {
+          directories: {
+            "_WIP": {
+              directories: {
+                "TEST_setups": {
+                  directories: {},
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      graph: { nodes: [{ id: 1, mode: "4K" }] },
+                      savedAt: "2026-05-17T10:00:00.000Z",
+                    },
+                  },
+                },
+              },
+              workflows: {},
+            },
+          },
+        };
+        const fallbackStoreWithDifferentKeyOrder = {
+          directories: {
+            "_WIP": {
+              workflows: {},
+              directories: {
+                "TEST_setups": {
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      savedAt: "2026-05-17T10:00:00.000Z",
+                      graph: { nodes: [{ mode: "4K", id: 1 }] },
+                    },
+                  },
+                  directories: {},
+                },
+              },
+            },
+          },
+        };
+
+        localStorage.setItem(
+          "koolook.workflows.fallback.v1",
+          JSON.stringify(fallbackStoreWithDifferentKeyOrder),
+        );
+
+        let posts = 0;
+        globalThis.fetch = async (url, init = {}) => {
+          const textUrl = String(url);
+          if (init.method === "POST") {
+            posts += 1;
+            return okResponse("");
+          }
+          if (textUrl.startsWith("/userdata/koolook_workflows.json")) {
+            return okResponse(JSON.stringify(serverStore));
+          }
+          return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
+        };
+
+        const loadResult = await loadWorkflowsStore();
+
+        assert.equal(loadResult.fallbackBlob, undefined);
+        assert.equal(posts, 0);
+        assert.equal(localStorage.getItem("koolook.workflows.fallback.v1"), null);
+        const workflows = getAllWorkflowsForExport().directories._WIP.directories.TEST_setups.workflows;
+        assert.equal(workflows["LTX-2.3_Director_4K_v01"].graph.nodes[0].mode, "4K");
+
+        function okResponse(body) {
+          return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body || "{}") };
+        }
+
+        function setupBrowserStubs() {
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem: (key) => storage.has(key) ? storage.get(key) : null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key),
+          };
+          globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+          globalThis.window = { dispatchEvent() {} };
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+          });
+          const makeEl = () => ({
+            className: "",
+            textContent: "",
+            style: {},
+            classList: { add() {}, remove() {} },
+            appendChild() {},
+            remove() {},
+            addEventListener() {},
+            setAttribute() {},
+          });
+          globalThis.document = {
+            createElement: makeEl,
+            body: { appendChild() {} },
+            head: { appendChild() {} },
+            querySelectorAll: () => [],
+            getElementById: () => null,
+          };
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
