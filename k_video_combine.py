@@ -259,14 +259,11 @@ def _runtime_format_name(format_name: str) -> str:
     return format_name
 
 
-def _metadata_sidecar_path(output_files: list[str], save_metadata_png: bool) -> Optional[str]:
+def _metadata_sidecar_path(output_files: list[str]) -> Optional[str]:
     """Pick the JSON sidecar path from VHS's output file list."""
     if not output_files:
         return None
-    first_path = output_files[0]
-    if first_path.lower().endswith(".png"):
-        return os.path.splitext(first_path)[0] + ".json"
-    return os.path.splitext(first_path)[0] + ".json"
+    return os.path.splitext(output_files[0])[0] + ".json"
 
 
 def _add_metadata_json_sidecar(
@@ -282,7 +279,7 @@ def _add_metadata_json_sidecar(
         output_files = result.get("result", ((None, []),))[0][1]
         if not isinstance(output_files, list):
             return result
-        json_path = _metadata_sidecar_path(output_files, save_metadata_png)
+        json_path = _metadata_sidecar_path(output_files)
         if not json_path:
             return result
         Path(json_path).write_text(
@@ -315,14 +312,15 @@ def _remove_audio_suffix_from_result(result, keep_silent_intermediate: bool):
         final_path = Path(output_files[-1])
         if final_path.stem.endswith("-audio"):
             clean_path = final_path.with_name(final_path.stem[:-6] + final_path.suffix)
-            if not clean_path.exists():
-                final_path.replace(clean_path)
-                output_files[-1] = str(clean_path)
-                ui = result.get("ui", {})
-                gifs = ui.get("gifs", [])
-                if gifs and isinstance(gifs[0], dict):
-                    gifs[0]["filename"] = clean_path.name
-                    gifs[0]["fullpath"] = str(clean_path)
+            if clean_path.exists() and clean_path != final_path:
+                clean_path.unlink()
+            final_path.replace(clean_path)
+            output_files[-1] = str(clean_path)
+            ui = result.get("ui", {})
+            gifs = ui.get("gifs", [])
+            if gifs and isinstance(gifs[0], dict):
+                gifs[0]["filename"] = clean_path.name
+                gifs[0]["fullpath"] = str(clean_path)
         output_files[:] = [
             path for path in output_files
             if not isinstance(path, str) or os.path.exists(path)

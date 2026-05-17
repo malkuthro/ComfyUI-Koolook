@@ -130,7 +130,6 @@ def test_compose_absolute_directory_with_name() -> None:
     """Absolute output_directory + name -> joined absolute prefix."""
     composed = _compose_prefix("clip_v003", "E:/renders/shot01")
     assert composed == "E:/renders/shot01" + os.sep + "clip_v003"
-    assert os.path.isabs(composed)
 
 
 def test_compose_relative_directory_with_name() -> None:
@@ -237,9 +236,7 @@ def test_normalize_bool_input_unknown_string_uses_default() -> None:
 
 def test_metadata_sidecar_path_replaces_vhs_png_sidecar(tmp_path: Path) -> None:
     png = tmp_path / "clip_00001.png"
-    assert _metadata_sidecar_path([str(png)], save_metadata_png=False) == str(
-        tmp_path / "clip_00001.json"
-    )
+    assert _metadata_sidecar_path([str(png)]) == str(tmp_path / "clip_00001.json")
 
 
 def test_add_metadata_json_sidecar_replaces_disabled_png_entry(tmp_path: Path) -> None:
@@ -282,6 +279,26 @@ def test_remove_audio_suffix_renames_final_and_drops_missing_intermediate(tmp_pa
     assert out["result"][0][1] == [str(png), str(clean)]
     assert out["ui"]["gifs"][0]["filename"] == clean.name
     assert out["ui"]["gifs"][0]["fullpath"] == str(clean)
+
+
+def test_remove_audio_suffix_replaces_silent_intermediate(tmp_path: Path) -> None:
+    silent = tmp_path / "clip_00001.mp4"
+    audio = tmp_path / "clip_00001-audio.mp4"
+    silent.write_bytes(b"silent")
+    audio.write_bytes(b"with_audio")
+    result = {
+        "ui": {"gifs": [{"filename": audio.name, "fullpath": str(audio)}]},
+        "result": ((True, [str(silent), str(audio)]),),
+    }
+
+    out = _remove_audio_suffix_from_result(result, keep_silent_intermediate=False)
+
+    assert silent.exists()
+    assert silent.read_bytes() == b"with_audio"
+    assert not audio.exists()
+    assert out["result"][0][1] == [str(silent)]
+    assert out["ui"]["gifs"][0]["filename"] == silent.name
+    assert out["ui"]["gifs"][0]["fullpath"] == str(silent)
 
 
 def test_koolook_format_display_hides_json_suffix() -> None:

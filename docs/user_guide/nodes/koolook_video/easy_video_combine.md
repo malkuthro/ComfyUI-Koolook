@@ -47,14 +47,15 @@ Leave `output_directory` empty and put everything in `filename_prefix`:
 | `filename_prefix` | Where the file lands |
 |---|---|
 | `AnimateDiff`, `clip01`, `shots/v003` | `<ComfyUI>/output/<prefix>_<counter>.<ext>` (upstream behavior, sandboxed) |
-| `E:/renders/shot01/v003` (Windows) | `E:/renders/shot01/v003_<counter>.<ext>` |
-| `/mnt/projects/shot01/v003` (Linux/Mac) | `/mnt/projects/shot01/v003_<counter>.<ext>` |
-| `E:/renders/shot01/v003/` (trailing slash) | `E:/renders/shot01/v003_<counter>.<ext>` (`v003` becomes the file root) |
+| `E:/renders/shot01/v003` (Windows, `v003` does not already exist as a folder) | `E:/renders/shot01/v003_<counter>.<ext>` |
+| `/mnt/projects/shot01/v003` (Linux/Mac, `v003` does not already exist as a folder) | `/mnt/projects/shot01/v003_<counter>.<ext>` |
+| `E:/renders/shot01/v003/` or an existing `E:/renders/shot01/v003` folder | `E:/renders/shot01/v003/v003_<counter>.<ext>` (`v003` becomes the folder and file root) |
 
-Both modes use the same `create_path_if_missing` toggle and produce
-identical files — pick by ergonomics, not behavior. VHS's existing
-counter (`_00001`, `_00002`, …) and extension are appended exactly as
-in upstream.
+Both modes use the same `create_path_if_missing` toggle. Use Mode A
+when you want an unambiguous fixed directory and changing filename;
+Mode B keeps the old single-field workflow for quick pasted paths.
+VHS's existing counter (`_00001`, `_00002`, …) and extension are
+appended exactly as in upstream.
 
 ## Inputs
 
