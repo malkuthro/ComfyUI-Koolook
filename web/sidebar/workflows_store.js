@@ -30,6 +30,7 @@ import {
     WORKFLOWS_DEFAULTS_URL,
     MODULE_TAG,
     compareNames,
+    noStoreUrl,
     toast,
     criticalToast,
 } from "./constants.js";
@@ -186,11 +187,6 @@ function mergeNewerFallbackStore(serverStore, fallbackStore) {
 // =============================================================================
 // Server I/O
 // =============================================================================
-
-function noStoreUrl(path) {
-    const sep = path.includes("?") ? "&" : "?";
-    return `${path}${sep}_=${Date.now()}`;
-}
 
 // Sentinel for "server reachable but file content is unparseable".
 // Distinct from `undefined` (server unreachable) and `null` (file missing)

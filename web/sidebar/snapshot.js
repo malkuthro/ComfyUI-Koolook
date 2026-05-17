@@ -42,6 +42,7 @@ import {
     STARTER_URL,
     STARTER_PRESET_FILENAME,
     SNAPSHOT_STATUS_CHANGED_EVENT,
+    noStoreUrl,
     toast,
 } from "./constants.js";
 
@@ -626,11 +627,6 @@ const ROUTE_BROWSE = "/koolook/presets/browse";
 const ROUTE_BROWSE_NEW_FOLDER = "/koolook/presets/browse/new-folder";
 const ROUTE_AUTOSAVES_LIST = "/koolook/presets/autosaves/list";
 const ROUTE_REVEAL = "/koolook/presets/reveal";
-
-function noStoreUrl(url) {
-    const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}_=${Date.now()}`;
-}
 
 // Read a non-OK response's reason for a user-facing toast. Prefers the
 // response body (always available, carries aiohttp's `reason=` text),

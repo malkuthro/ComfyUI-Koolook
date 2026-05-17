@@ -6,7 +6,7 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-## [0.3.5] - 2026-05-17
+## [0.3.5] - 2026-05-18
 
 ### Added
 - **Easy Video Combine (`Easy_VideoCombine`).** A path-aware sibling
