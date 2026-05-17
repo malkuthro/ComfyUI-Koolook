@@ -6,6 +6,13 @@ Read `CLAUDE.md` before making substantive changes. It contains the
 project-specific workflow, dev-sync rules, release rules, and sidebar
 maintenance notes.
 
+## Test Environment Bootstrap
+
+Use `scripts\bootstrap_test_env.ps1` (Windows) or
+`bash scripts/bootstrap_test_env.sh` (POSIX) to create `.venv` and install
+test deps. Never install into system Python. Full rule in `CLAUDE.md` §
+Hard rules.
+
 ## External Repository Boundary
 
 If a user request appears to involve files, workflows, repositories, or
