@@ -481,3 +481,48 @@ def test_extension_with_embedded_newline_stripped(tmp_path: Path):
 
     assert "\n" not in name
     assert name == "shot.exr"
+
+
+@pytest.mark.parametrize("dirty,expected", [
+    (".%04d.exr ",   ".%04d.exr"),   # trailing space
+    (" .%04d.exr",   ".%04d.exr"),   # leading space
+    (" .%04d.exr ",  ".%04d.exr"),   # both
+    (".%04d .exr",   ".%04d.exr"),   # internal space
+    (".%04d.exr\t",  ".%04d.exr"),   # trailing tab
+    (".%04d.exr\xa0", ".%04d.exr"),  # non-breaking space (common copy-paste invisible char)
+])
+def test_extension_whitespace_stripped(tmp_path: Path, dirty: str, expected: str):
+    """Maintainer-reported: ComfyUI-HQ-Image-Save's ``save_images`` validates
+    via ``os.path.splitext(filepath)[1].lower() != '.exr'``. A single trailing
+    space on the extension widget made splitext return ``.exr `` (with space),
+    which failed the strict equality and aborted the save. Extension must have
+    NO whitespace at all (internal or surrounding) — it's a strict suffix
+    field, not a label."""
+    base = tmp_path / "bear"
+    base.mkdir()
+
+    _, name, _, _ = _run(str(base), shot_name="shot", extension=dirty)
+
+    assert name == f"shot{expected}", f"dirty={dirty!r}: got name={name!r}"
+    # And the HQ-Image-Save check would pass:
+    import os
+    assert os.path.splitext(name)[1].lower() == ".exr"
+
+
+@pytest.mark.parametrize("dirty,clean", [
+    ("  shot  ", "shot"),       # surrounding spaces
+    ("shot\t",   "shot"),       # trailing tab
+    ("\tshot",   "shot"),       # leading tab
+])
+def test_shot_name_surrounding_whitespace_stripped(tmp_path: Path, dirty: str, clean: str):
+    """Surrounding whitespace on shot_name (from sloppy upstream feeds) used
+    to leak into the path and filename. ``_sanitize_segment`` now strips
+    surrounding whitespace as well as control chars."""
+    base = tmp_path / "safe"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    _, name, _, output_directory = _run(str(base), shot_name=dirty, no_subfolders=False)
+
+    assert name == f"{clean}.%04d.exr"
+    assert output_directory == f"{canonical}/{clean}"

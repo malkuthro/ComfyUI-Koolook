@@ -66,8 +66,9 @@ def _sanitize_segment(s: str) -> str:
     - ``"///oops"``         → ``"oops"`` (leading seps stripped before splitdrive
       so multi-slash input doesn't get swallowed as a UNC prefix on Windows)
     - ``"shot\\n_v1"``      → ``"shot_v1"`` (control chars from upstream stripped)
+    - ``"  shot_v1  "``     → ``"shot_v1"`` (surrounding whitespace stripped)
     """
-    s = _strip_control_chars(s)
+    s = _strip_control_chars(s).strip()
     s = s.lstrip("/\\")
     _, s = os.path.splitdrive(s)
     return s.lstrip("/\\")
@@ -159,10 +160,12 @@ class EasyAIPipeline:
 
     def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite, no_subfolders):
         base_directory_path = _normalize_base_path(base_directory_path)
-        # _sanitize_segment strips control chars for shot_name / ai_method; do the same
-        # for extension here so an upstream Text Multiline with a stray newline can't
-        # leak a line-break into the filename.
-        extension = _strip_control_chars(extension)
+        # Extension must never contain ANY whitespace — even a single trailing space
+        # (easy to acquire from a paste) makes downstream save nodes that validate
+        # via os.path.splitext fail with "filepath doesn't end in .exr", because
+        # splitext returns ".exr " with the space, which doesn't match ".exr".
+        # Strip all whitespace (internal + surrounding), not just control chars.
+        extension = "".join(extension.split())
         version_str = "" if disable_versioning else f"v{version:03d}"
 
         # Sanitize the segments that get joined onto base_directory_path. Without this an

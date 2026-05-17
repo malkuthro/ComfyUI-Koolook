@@ -21,17 +21,14 @@ app.registerExtension({
                     instructionWidget.inputEl.style.opacity = 0.6;
                 }
 
-                // Output preview: one logical string per line, never word-wrapped. A path
-                // / filename should always render on a single visual line — wrap=off on the
-                // textarea gives horizontal scroll instead of breaking long paths mid-string,
-                // which previously made the output look like it contained newlines.
+                // Standard ComfyUI multi-line STRING widget. Word-wrap is the default
+                // and intentional — long paths visually wrap to multiple rows so the user
+                // can mouse-drag-select the whole string and copy it. The wrap is purely
+                // visual; the underlying string is one logical line because cleanLine
+                // strips any actual newlines from upstream inputs before the path build.
                 const displayWidget = ComfyWidgets["STRING"](this, "Output Preview", ["STRING", { multiline: true }], app).widget;
                 displayWidget.inputEl.readOnly = true;
-                displayWidget.inputEl.style.height = "40px";
-                displayWidget.inputEl.setAttribute("wrap", "off");
-                displayWidget.inputEl.style.whiteSpace = "pre";
-                displayWidget.inputEl.style.overflowX = "auto";
-                displayWidget.inputEl.style.overflowY = "hidden";
+                displayWidget.inputEl.style.height = "100px";
 
                 // Defensive strip: an upstream node might feed shot_name / ai_method with
                 // embedded newlines, tabs, or carriage returns (e.g. a Text Multiline node
@@ -39,6 +36,12 @@ app.registerExtension({
                 // writes — the path string can't legally contain them. Strip before display
                 // so the preview matches what the Python node will actually write.
                 const cleanLine = (s) => String(s ?? "").replace(/[\r\n\t]+/g, "");
+
+                // Strict: extension must never contain whitespace at all. Even a single
+                // trailing space (easy to acquire from a paste) makes downstream save
+                // nodes that check via os.path.splitext fail with "filepath doesn't end
+                // in .exr" — splitext returns ".exr " with the space, which doesn't match.
+                const cleanExtension = (s) => String(s ?? "").replace(/\s/g, "");
 
                 // Helper function to get effective value (from widget or upstream if connected and simple)
                 const getEffectiveValue = (node, name) => {
@@ -74,13 +77,13 @@ app.registerExtension({
                 };
 
                 // Mirror of _sanitize_segment in k_ai_pipeline.py — strips control chars
-                // first, then drive prefix and leading separators so a segment can only be
-                // joined onto base_directory_path, never replace it via os.path.join's
-                // "last absolute path wins" semantics. Leading seps are stripped BEFORE
-                // splitdrive so multi-slash input doesn't get parsed as a UNC prefix
-                // (matches Python's lstrip → splitdrive → lstrip flow).
+                // and surrounding whitespace first, then drive prefix and leading
+                // separators so a segment can only be joined onto base_directory_path,
+                // never replace it via os.path.join's "last absolute path wins" semantics.
+                // Leading seps are stripped BEFORE splitdrive so multi-slash input
+                // doesn't get parsed as a UNC prefix (matches Python's flow).
                 const sanitizeSegment = (raw) => {
-                    let s = cleanLine(raw);
+                    let s = cleanLine(raw).trim();
                     s = s.replace(/^[\/\\]+/, "");
                     if (/^[a-zA-Z]:/.test(s)) s = s.slice(2);
                     return s.replace(/^[\/\\]+/, "");
@@ -151,7 +154,7 @@ app.registerExtension({
                         const aiSegFlat = sanitizeSegment(values.ai_method).replace(/[\/\\]/g, "_");
                         const name = [shotSegFlat, aiSegFlat, version_str]
                             .filter(part => part.toString().trim() !== "")
-                            .join("_") + cleanLine(values.extension);
+                            .join("_") + cleanExtension(values.extension);
                         // Filter empties before joining so an empty output_directory (empty base
                         // + no_subfolders=true) doesn't leak a spurious leading "/" into file_path.
                         const file_path = [output_directory, name]

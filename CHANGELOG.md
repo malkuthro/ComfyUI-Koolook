@@ -131,12 +131,22 @@ The format is inspired by Keep a Changelog and SemVer.
   while rendering the preview as visually broken multi-line output.
   Mirrored in the JS preview's `normalizeBasePath` / `sanitizeSegment`
   / extension handling.
-- **Easy AI Pipeline: Output Preview widget no longer word-wraps.**
-  Long paths used to wrap to two visual lines in the multi-line
-  textarea — confusingly making the preview look like the file_path
-  contained a literal newline. The widget now uses `wrap="off"` +
-  horizontal scroll, so paths always render on a single visual line
-  regardless of length.
+- **Easy AI Pipeline: extension widget now strips ALL whitespace.**
+  A single trailing space on `.%04d.exr` (easy to acquire via paste)
+  made downstream save nodes that validate the suffix via
+  `os.path.splitext(filepath)[1].lower() != ".exr"` (e.g. spacepxl's
+  ComfyUI-HQ-Image-Save) fail with *"Filepath needs to end in .exr"* —
+  because splitext returns `.exr ` with the trailing space, which
+  doesn't equal `.exr`. The previous control-char strip only handled
+  `\r\n\t`. Now `extension` runs through `"".join(extension.split())`
+  which removes all whitespace (internal + surrounding, including
+  unicode whitespace and non-breaking spaces). Mirrored in the JS
+  preview's `cleanExtension`.
+- **Easy AI Pipeline: `shot_name` / `ai_method` strip surrounding
+  whitespace too.** `_sanitize_segment` now calls `.strip()` after the
+  control-char strip, so an upstream feed with stray leading/trailing
+  spaces (e.g. `"  shot_v1  "`) resolves to the same path as the
+  clean form.
 
 ## [0.3.2] - 2026-05-16
 
