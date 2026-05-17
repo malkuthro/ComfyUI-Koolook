@@ -59,24 +59,6 @@ function normalizeWorkflowsStore(data) {
     return { directories: out };
 }
 
-function latestWorkflowSavedAtMs(store) {
-    let latest = 0;
-    const visitDir = (dir) => {
-        if (!dir || typeof dir !== "object") return;
-        const wfs = dir.workflows && typeof dir.workflows === "object" ? dir.workflows : {};
-        for (const wf of Object.values(wfs)) {
-            if (!wf || typeof wf !== "object" || typeof wf.savedAt !== "string") continue;
-            const ms = Date.parse(wf.savedAt);
-            if (Number.isFinite(ms) && ms > latest) latest = ms;
-        }
-        const subs = dir.directories && typeof dir.directories === "object" ? dir.directories : {};
-        for (const sub of Object.values(subs)) visitDir(sub);
-    };
-    const dirs = store && store.directories && typeof store.directories === "object" ? store.directories : {};
-    for (const dir of Object.values(dirs)) visitDir(dir);
-    return latest;
-}
-
 function normalizeDirNode(node, stats) {
     if (!node || typeof node !== "object") return null;
     const wfs = node.workflows && typeof node.workflows === "object" ? node.workflows : {};
@@ -124,6 +106,67 @@ function normalizeDirNode(node, stats) {
         if (cleaned) cleanedSubs[subName] = cleaned;
     }
     return { workflows: cleanedWfs, directories: cleanedSubs };
+}
+
+function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function workflowSavedAtMs(wf) {
+    if (!wf || typeof wf !== "object" || typeof wf.savedAt !== "string") return 0;
+    const ms = Date.parse(wf.savedAt);
+    return Number.isFinite(ms) ? ms : 0;
+}
+
+function mergeNewerFallbackDir(serverDir, fallbackDir) {
+    let changed = false;
+    if (!serverDir.workflows || typeof serverDir.workflows !== "object") serverDir.workflows = {};
+    if (!serverDir.directories || typeof serverDir.directories !== "object") serverDir.directories = {};
+
+    const fallbackWorkflows =
+        fallbackDir && fallbackDir.workflows && typeof fallbackDir.workflows === "object"
+            ? fallbackDir.workflows
+            : {};
+    for (const [wfName, fallbackWorkflow] of Object.entries(fallbackWorkflows)) {
+        const serverWorkflow = serverDir.workflows[wfName];
+        if (!serverWorkflow || workflowSavedAtMs(fallbackWorkflow) > workflowSavedAtMs(serverWorkflow)) {
+            serverDir.workflows[wfName] = cloneJson(fallbackWorkflow);
+            changed = true;
+        }
+    }
+
+    const fallbackDirs =
+        fallbackDir && fallbackDir.directories && typeof fallbackDir.directories === "object"
+            ? fallbackDir.directories
+            : {};
+    for (const [dirName, fallbackSubdir] of Object.entries(fallbackDirs)) {
+        if (!serverDir.directories[dirName]) {
+            serverDir.directories[dirName] = cloneJson(fallbackSubdir);
+            changed = true;
+        } else if (mergeNewerFallbackDir(serverDir.directories[dirName], fallbackSubdir)) {
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function mergeNewerFallbackStore(serverStore, fallbackStore) {
+    const merged = cloneJson(serverStore || { directories: {} });
+    if (!merged.directories || typeof merged.directories !== "object") merged.directories = {};
+    const fallbackDirs =
+        fallbackStore && fallbackStore.directories && typeof fallbackStore.directories === "object"
+            ? fallbackStore.directories
+            : {};
+    let changed = false;
+    for (const [dirName, fallbackDir] of Object.entries(fallbackDirs)) {
+        if (!merged.directories[dirName]) {
+            merged.directories[dirName] = cloneJson(fallbackDir);
+            changed = true;
+        } else if (mergeNewerFallbackDir(merged.directories[dirName], fallbackDir)) {
+            changed = true;
+        }
+    }
+    return changed ? merged : null;
 }
 
 // =============================================================================
@@ -230,14 +273,14 @@ export async function loadWorkflowsStore() {
         return { corrupt: false };
     }
     workflowsCache = normalizeWorkflowsStore(fromServer);
-    // Reconciliation surface: /userdata loaded fine but a stale localStorage
-    // fallback from an earlier outage may still exist. Newer fallbacks are
-    // promoted below, then persisted back to /userdata when possible.
+    // Reconciliation surface: /userdata loaded fine but a localStorage
+    // fallback from an earlier outage may still exist. Missing or newer entries are
+    // merged below, then persisted back to /userdata when possible.
     // Older/ambiguous fallback data still uses the manual recovery surface
     // described here.
-    // We don't auto-merge
-    // (clobbering risk — no per-field versioning to settle the conflict),
-    // and we don't fire the recovery toast from here either. The toast is
+    // Server-only entries are preserved during automatic recovery.
+    // Same-name conflicts only auto-recover when the fallback timestamp wins.
+    // We don't fire the recovery toast from here either. The toast is
     // wired by the entry point (`koolook_sidebar.js`) where the
     // recovery handlers — Restore-as-snapshot and Discard — have access to
     // `writePreset` / `loadUserPicks` / `showConfirmModal` without creating
@@ -250,19 +293,20 @@ export async function loadWorkflowsStore() {
         } catch (e) {
             console.warn("[Koolook] failed to parse localStorage workflows fallback for reconciliation:", e);
         }
-        if (fallbackStore && latestWorkflowSavedAtMs(fallbackStore) > latestWorkflowSavedAtMs(workflowsCache)) {
-            workflowsCache = fallbackStore;
+        const mergedStore = fallbackStore ? mergeNewerFallbackStore(workflowsCache, fallbackStore) : null;
+        if (mergedStore) {
+            workflowsCache = mergedStore;
             const reconcileResult = await persistWorkflowsToServer(workflowsCache);
             if (reconcileResult === "server") {
                 localStorage.removeItem(WORKFLOWS_FALLBACK_KEY);
                 notifyWorkflowsChanged();
                 console.warn(
-                    "[Koolook] recovered newer browser-local workflow fallback and wrote it back to /userdata."
+                    "[Koolook] merged browser-local workflow fallback and wrote it back to /userdata."
                 );
                 return { corrupt: false, fallbackRecovered: true };
             }
             console.warn(
-                `[Koolook] newer browser-local workflow fallback is live, but re-persist landed in ` +
+                `[Koolook] merged browser-local workflow fallback is live, but re-persist landed in ` +
                 `${reconcileResult || "neither"}; keeping recovery banner available.`
             );
             return { corrupt: false, fallbackBlob };

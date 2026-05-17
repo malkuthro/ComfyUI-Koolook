@@ -230,3 +230,128 @@ def test_fallback_only_workflow_save_becomes_live_again_after_reload() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_fallback_recovery_preserves_server_only_workflows() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          loadWorkflowsStore,
+          getAllWorkflowsForExport,
+        } from "./web/sidebar/workflows_store.js";
+
+        setupBrowserStubs();
+
+        let serverStore = {
+          directories: {
+            "_WIP": {
+              workflows: {},
+              directories: {
+                "TEST_setups": {
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      savedAt: "2026-05-17T10:00:00.000Z",
+                      graph: { nodes: [{ id: 1, mode: "server-4K" }] },
+                    },
+                    "LTX-2.3_Director_8K_v01": {
+                      savedAt: "2026-05-17T10:05:00.000Z",
+                      graph: { nodes: [{ id: 2, mode: "server-only-8K" }] },
+                    },
+                  },
+                  directories: {},
+                },
+              },
+            },
+          },
+        };
+        const fallbackStore = {
+          directories: {
+            "_WIP": {
+              workflows: {},
+              directories: {
+                "TEST_setups": {
+                  workflows: {
+                    "LTX-2.3_Director_4K_v01": {
+                      savedAt: "2026-05-17T10:10:00.000Z",
+                      graph: { nodes: [{ id: 1, mode: "fallback-newer-4K" }] },
+                    },
+                  },
+                  directories: {},
+                },
+              },
+            },
+          },
+        };
+
+        localStorage.setItem("koolook.workflows.fallback.v1", JSON.stringify(fallbackStore));
+
+        let posts = 0;
+        globalThis.fetch = async (url, init = {}) => {
+          const textUrl = String(url);
+          if (init.method === "POST") {
+            posts += 1;
+            serverStore = JSON.parse(init.body);
+            return okResponse("");
+          }
+          if (textUrl.startsWith("/userdata/koolook_workflows.json")) {
+            return okResponse(JSON.stringify(serverStore));
+          }
+          return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
+        };
+
+        await loadWorkflowsStore();
+
+        assert.equal(posts, 1);
+        const exported = getAllWorkflowsForExport();
+        const workflows = exported.directories._WIP.directories.TEST_setups.workflows;
+        assert.equal(workflows["LTX-2.3_Director_4K_v01"].graph.nodes[0].mode, "fallback-newer-4K");
+        assert.equal(workflows["LTX-2.3_Director_8K_v01"].graph.nodes[0].mode, "server-only-8K");
+        assert.equal(
+          serverStore.directories._WIP.directories.TEST_setups.workflows[
+            "LTX-2.3_Director_8K_v01"
+          ].graph.nodes[0].mode,
+          "server-only-8K",
+        );
+        assert.equal(localStorage.getItem("koolook.workflows.fallback.v1"), null);
+
+        function okResponse(body) {
+          return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body || "{}") };
+        }
+
+        function setupBrowserStubs() {
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem: (key) => storage.has(key) ? storage.get(key) : null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key),
+          };
+          globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+          globalThis.window = { dispatchEvent() {} };
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+          });
+          const makeEl = () => ({
+            className: "",
+            textContent: "",
+            style: {},
+            classList: { add() {}, remove() {} },
+            appendChild() {},
+            remove() {},
+            addEventListener() {},
+            setAttribute() {},
+          });
+          globalThis.document = {
+            createElement: makeEl,
+            body: { appendChild() {} },
+            head: { appendChild() {} },
+            querySelectorAll: () => [],
+            getElementById: () => null,
+          };
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
