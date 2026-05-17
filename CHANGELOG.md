@@ -164,6 +164,11 @@ The format is inspired by Keep a Changelog and SemVer.
   control-char strip, so an upstream feed with stray leading/trailing
   spaces (e.g. `"  shot_v1  "`) resolves to the same path as the
   clean form.
+- **Easy AI Pipeline: preview buttons resolve EasyUse GET/SET tunnels.**
+  `Get output directory path` and `Get output file path` now follow
+  `easy getNode` back to its matching `easy setNode` input before reading
+  the source widget value, so global path/name settings preview the same
+  value that render-time execution receives instead of the GET key name.
 
 ## [0.3.2] - 2026-05-16
 

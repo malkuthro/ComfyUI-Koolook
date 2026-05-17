@@ -4,6 +4,8 @@
 import { app } from "../../../scripts/app.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 
+globalThis.__KOLOOK_AI_PIPELINE_PREVIEW_RESOLVER__ = "easyuse-getset-v2";
+
 app.registerExtension({
     name: "koolook.ai_pipeline",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -57,6 +59,71 @@ app.registerExtension({
                 // in .exr" — splitext returns ".exr " with the space, which doesn't match.
                 const cleanExtension = (s) => String(s ?? "").replace(/\s/g, "");
 
+                const getNodeWidgetValue = (node, slot) => {
+                    const output = node.outputs?.[slot];
+                    const candidateWidgets = [
+                        node.widgets?.[slot],
+                        output?.name ? node.widgets?.find(w => w.name === output.name) : null,
+                        node.widgets?.find(w => w.name === "value"),
+                        node.widgets?.find(w => w.name === "text"),
+                        node.widgets?.find(w => w.name === "string"),
+                    ].filter(Boolean);
+                    for (const widget of candidateWidgets) {
+                        if (widget && "value" in widget) {
+                            return widget.value;
+                        }
+                    }
+                    if (Array.isArray(node.widgets_values) && node.widgets_values.length > 0) {
+                        return node.widgets_values[slot] ?? node.widgets_values[0];
+                    }
+                    return null;
+                };
+
+                const isEasyUseGetNode = (node) => {
+                    return node?.type === "easy getNode"
+                        || node?.comfyClass === "easy getNode"
+                        || (String(node?.title ?? "").startsWith("Get_") && node?.widgets?.[0]?.name === "Constant");
+                };
+
+                const findEasyUseSetter = (getNode) => {
+                    if (typeof getNode.findSetter === "function") {
+                        const setter = getNode.findSetter(getNode.graph || app.graph);
+                        if (setter) return setter;
+                    }
+                    const key = getNode.widgets?.[0]?.value;
+                    if (!key) return null;
+                    return (getNode.graph || app.graph)?._nodes?.find(otherNode => {
+                        return (otherNode.type === "easy setNode"
+                                || otherNode.comfyClass === "easy setNode"
+                                || String(otherNode.title ?? "").startsWith("Set_"))
+                            && otherNode.widgets?.[0]?.value === key;
+                    }) ?? null;
+                };
+
+                const resolveLinkValue = (linkId, fallback, seen = new Set()) => {
+                    if (linkId === null || linkId === undefined || seen.has(linkId)) {
+                        return fallback;
+                    }
+                    seen.add(linkId);
+                    const link = app.graph.links[linkId];
+                    if (!link) return fallback;
+                    const originNode = app.graph.getNodeById(link.origin_id);
+                    if (!originNode) return fallback;
+
+                    // EasyUse GET nodes are virtual tunnels. The visible widget is the
+                    // key name ("OUT-folder"), not the value. Follow GET -> matching SET
+                    // -> SET input link so preview buttons mirror render-time execution.
+                    if (isEasyUseGetNode(originNode)) {
+                        const setter = findEasyUseSetter(originNode);
+                        const setterLink = setter?.inputs?.[0]?.link;
+                        if (setterLink !== null && setterLink !== undefined) {
+                            return resolveLinkValue(setterLink, fallback, seen);
+                        }
+                    }
+
+                    return getNodeWidgetValue(originNode, link.origin_slot);
+                };
+
                 // Helper function to get effective value (from widget or upstream if connected and simple)
                 const getEffectiveValue = (node, name) => {
                     const widget = node.widgets.find(w => w.name === name);
@@ -64,15 +131,7 @@ app.registerExtension({
                     if (!input || input.link === null) {
                         return widget?.value;
                     }
-                    const linkId = input.link;
-                    const link = app.graph.links[linkId];
-                    if (!link) return widget?.value;
-                    const originNode = app.graph.getNodeById(link.origin_id);
-                    const originWidget = originNode.widgets ? originNode.widgets[link.origin_slot] : null;
-                    if (originWidget && 'value' in originWidget) {
-                        return originWidget.value;
-                    }
-                    return null; // Cannot resolve
+                    return resolveLinkValue(input.link, widget?.value);
                 };
 
                 // Mirror of _normalize_base_path in k_ai_pipeline.py — must stay in sync.
