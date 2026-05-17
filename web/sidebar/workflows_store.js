@@ -447,21 +447,6 @@ export function listDirectoryNames(parentPath = []) {
     return Object.keys(node.directories).sort(compareNames);
 }
 
-// All directory paths in DFS, sorted A→Z at each level. Used by the save
-// modal to populate the directory dropdown as a flat path picker.
-export function listAllDirectoryPaths() {
-    const out = [];
-    const walk = (parentPath) => {
-        for (const name of listDirectoryNames(parentPath)) {
-            const next = [...parentPath, name];
-            out.push(next);
-            walk(next);
-        }
-    };
-    walk([]);
-    return out;
-}
-
 // Internal: walk to `parentPath` and create intermediate directories along
 // the way. Used only by `saveWorkflowEntry` so a save into a freshly-typed
 // new top-level directory always succeeds. Subdirectory creation is explicit

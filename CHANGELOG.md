@@ -45,6 +45,14 @@ The format is inspired by Keep a Changelog and SemVer.
   overloaded-absolute-`filename_prefix` mode is preserved
   unchanged for users who prefer a single field.
 
+### Changed
+- **Workflow right-click menu shortened for large libraries.** The menu no
+  longer lists every existing folder as a move destination, which could push
+  useful actions off-screen when many projects/modules existed. Moving a
+  workflow into an existing folder is now handled by drag-and-drop; the
+  right-click menu still supports creating a new directory/subdirectory and
+  moving the workflow there in one step.
+
 ## [0.3.2] - 2026-05-16
 
 ### Added
