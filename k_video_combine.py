@@ -327,6 +327,11 @@ def _remove_audio_suffix_from_result(result, keep_silent_intermediate: bool):
             path for path in output_files
             if not isinstance(path, str) or os.path.exists(path)
         ]
+        deduped = []
+        for path in output_files:
+            if path not in deduped:
+                deduped.append(path)
+        output_files[:] = deduped
     except Exception as exc:
         print(f"[Easy_VideoCombine] audio suffix cleanup skipped: {exc!r}")
     return result

@@ -79,12 +79,7 @@ def test_absolute_prefix_missing_dir_created_when_toggled(tmp_path: Path) -> Non
 
 
 def test_absolute_prefix_with_trailing_separator(tmp_path: Path) -> None:
-    """Trailing separator is normalized; dirname becomes the basename.
-
-    Matches spacepxl's SaveEXR convention — typing
-    ``"E:/renders/shot01/"`` is interpreted as "use 'shot01' as the
-    file root inside 'E:/renders/'."
-    """
+    """Existing directory paths work with a final slash."""
     renders_dir = tmp_path / "renders"
     renders_dir.mkdir()
     prefix = str(renders_dir) + os.sep
@@ -93,7 +88,7 @@ def test_absolute_prefix_with_trailing_separator(tmp_path: Path) -> None:
 
     assert result is not None
     abs_dir, abs_base = result
-    assert Path(abs_dir) == tmp_path
+    assert Path(abs_dir) == renders_dir
     assert abs_base == "renders"
 
 
@@ -117,7 +112,7 @@ def test_absolute_prefix_with_no_filename_component_raises(tmp_path: Path) -> No
     root = tmp_path.anchor  # "/" on POSIX, "C:\\" on Windows.
     assert os.path.isabs(root)
 
-    with pytest.raises(ValueError, match="no filename component"):
+    with pytest.raises(ValueError, match="no usable folder name"):
         _resolve_abs_target(root, create_path_if_missing=False)
 
 
