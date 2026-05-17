@@ -1,3 +1,4 @@
+import ntpath
 import os
 
 
@@ -87,8 +88,9 @@ def _sanitize_segment(s: str) -> str:
     ``'C:/oops'`` on Windows), letting a user with a typo escape their
     own intended base. This helper strips:
 
-    - Drive prefix (``os.path.splitdrive`` handles ``C:/foo`` → ``/foo``
-      on Windows; on POSIX the drive is empty and this is a no-op).
+    - Drive prefix (``ntpath.splitdrive`` handles ``C:/foo`` → ``/foo``
+      consistently on every host, keeping browser preview and backend
+      runtime paths in sync).
     - Leading path separators (any mix of ``/`` and ``\\``).
 
     Examples:
@@ -103,7 +105,7 @@ def _sanitize_segment(s: str) -> str:
     """
     s = _normalize_text_input(s)
     s = s.lstrip("/\\")
-    _, s = os.path.splitdrive(s)
+    _, s = ntpath.splitdrive(s)
     return s.lstrip("/\\")
 
 

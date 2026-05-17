@@ -114,6 +114,12 @@ The format is inspired by Keep a Changelog and SemVer.
   in both `shot_name` and `ai_method`). The JS preview's filename
   builder picked up the same sanitization plus an empty-base /
   `no_subfolders=true` corner-case fix (`/name.exr` → `name.exr`).
+- **Easy AI Pipeline: JS preview and Python runtime now agree on
+  drive-prefixed `shot_name` / `ai_method` segments on every host.**
+  Segment sanitization now strips Windows-style drive prefixes with
+  Windows path semantics even when ComfyUI is running on POSIX, so
+  `C:/Windows` previews and executes as `Windows` consistently. Base
+  directory drive roots such as `C:/` and `n:/` remain preserved.
 - **Easy AI Pipeline: `no_subfolders=true` now truly produces flat
   output, even when `shot_name` contains embedded separators.** An
   upstream node feeding `shot_name="job/shot"` used to silently

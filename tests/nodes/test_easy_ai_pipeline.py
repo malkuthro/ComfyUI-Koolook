@@ -344,17 +344,11 @@ class TestSanitizeSegment:
         assert _sanitize_segment("/\\/oops") == "oops"
 
     def test_drive_prefix_handled(self):
-        """On Windows ``os.path.splitdrive`` peels ``C:`` off; on POSIX it's a
-        no-op (no drive concept), so the colon survives — that's fine because
-        ``os.path.join`` on POSIX has no special handling for ``C:`` and
-        treats it as a regular folder name, which can't escape the base."""
-        import os as _os
-        result = _sanitize_segment("C:/Windows")
-        if _os.name == "nt":
-            assert result == "Windows"
-        else:
-            # POSIX: drive not recognised, but no escape risk either.
-            assert result == "C:/Windows"
+        """Drive-like prefixes are stripped on every host so browser preview
+        and backend runtime agree. ``base_directory_path`` still preserves
+        drive roots; this only applies to joined path segments."""
+        assert _sanitize_segment("C:/Windows") == "Windows"
+        assert _sanitize_segment("C:\\Windows") == "Windows"
 
     def test_empty_string_passes_through(self):
         assert _sanitize_segment("") == ""
@@ -417,6 +411,28 @@ def test_absolute_shot_name_does_not_leak_into_filename(tmp_path: Path):
 
     assert not name.startswith(("/", "\\")), f"filename leaked separator: {name!r}"
     assert "/oops" not in name, f"filename retained absolute prefix: {name!r}"
+
+
+def test_drive_prefixed_shot_name_matches_frontend_preview_on_all_hosts(tmp_path: Path):
+    """Regression for PR #156 review: JS preview always strips ``C:`` from
+    shot_name/ai_method segments. Python must do the same even on POSIX hosts
+    or the preview and runtime paths diverge for the same workflow."""
+    base = tmp_path / "safe"
+    base.mkdir()
+    canonical = str(base).replace("\\", "/")
+
+    file_path, name, _, output_directory = _run(
+        str(base),
+        shot_name="C:/Windows",
+        ai_method="v2v",
+        version=1,
+        disable_versioning=False,
+        extension=".exr",
+    )
+
+    assert output_directory == f"{canonical}/Windows/v2v/v001"
+    assert name == "Windows_v2v_v001.exr"
+    assert file_path == f"{canonical}/Windows/v2v/v001/Windows_v2v_v001.exr"
 
 
 def test_no_subfolders_flattens_embedded_separators_in_shot_name(tmp_path: Path):
