@@ -18,7 +18,12 @@ from pathlib import Path
 
 import pytest
 
-from k_video_combine import _compose_prefix, _normalize_text_input, _resolve_abs_target
+from k_video_combine import (
+    _compose_prefix,
+    _normalize_bool_input,
+    _normalize_text_input,
+    _resolve_abs_target,
+)
 
 
 def test_relative_prefix_returns_none() -> None:
@@ -191,3 +196,27 @@ def test_normalize_prevents_undefined_subdir_in_compose() -> None:
     # With normalization, no output_directory -> filename_prefix passes through.
     assert composed == "E:/renders/clip_v003"
     assert "undefined" not in composed
+
+
+# =============================================================================
+# _normalize_bool_input: guard against dynamic widget restore drift.
+# If format-specific widgets are restored by position instead of by name, a
+# value like "hq" can land in pingpong. Python truthiness would treat that as
+# True and VHS would double the video by ping-ponging the frame sequence.
+# =============================================================================
+
+def test_normalize_bool_input_known_values() -> None:
+    assert _normalize_bool_input(True) is True
+    assert _normalize_bool_input(False) is False
+    assert _normalize_bool_input("true") is True
+    assert _normalize_bool_input("1") is True
+    assert _normalize_bool_input("on") is True
+    assert _normalize_bool_input("false") is False
+    assert _normalize_bool_input("0") is False
+    assert _normalize_bool_input("off") is False
+    assert _normalize_bool_input("") is False
+
+
+def test_normalize_bool_input_unknown_string_uses_default() -> None:
+    assert _normalize_bool_input("hq", default=False) is False
+    assert _normalize_bool_input("hq", default=True) is True

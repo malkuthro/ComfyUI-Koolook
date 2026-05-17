@@ -149,6 +149,28 @@ def _normalize_text_input(value) -> str:
     return s
 
 
+def _normalize_bool_input(value, default: bool = False) -> bool:
+    """Coerce ComfyUI widget values to a real bool.
+
+    This is intentionally stricter than Python truthiness. A corrupted
+    saved workflow can shift a format-widget value such as ``"hq"`` into
+    the ``pingpong`` slot; ``bool("hq")`` would enable ping-pong and
+    double the video. Unknown strings fall back to ``default``.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in ("true", "1", "yes", "on"):
+        return True
+    if s in ("false", "0", "no", "off", ""):
+        return False
+    return default
+
+
 def _strip_sentinel_components(path: str) -> str:
     """Remove any path component that's exactly a sentinel string.
 
@@ -256,16 +278,27 @@ if _VHS_AVAILABLE:
             output_directory = _normalize_text_input(
                 kwargs.pop("output_directory", "")
             )
-            create_path_if_missing = kwargs.pop("create_path_if_missing", False)
-            save_metadata_png = kwargs.pop("save_metadata_png", True)
-            keep_silent_intermediate = kwargs.pop("keep_silent_intermediate", False)
+            kwargs["pingpong"] = _normalize_bool_input(
+                kwargs.get("pingpong", False),
+                default=False,
+            )
+            create_path_if_missing = _normalize_bool_input(
+                kwargs.pop("create_path_if_missing", False),
+                default=False,
+            )
+            save_metadata_png = _normalize_bool_input(
+                kwargs.pop("save_metadata_png", True),
+                default=True,
+            )
+            keep_silent_intermediate = _normalize_bool_input(
+                kwargs.pop("keep_silent_intermediate", False),
+                default=False,
+            )
 
-            # Inject VHS's hidden extra_options flags so upstream skips
-            # the metadata PNG and deletes the silent intermediate after
-            # audio mux. Defaults are False on Koolook (one clean file
-            # per render); flip the toggles to re-enable upstream's
-            # default-on behavior. Copy extra_pnginfo before mutating so
-            # other nodes referencing the same dict aren't affected.
+            # Inject VHS's hidden extra_options flags so upstream handles
+            # metadata PNG and silent-intermediate cleanup according to
+            # Koolook's explicit toggles. Copy extra_pnginfo before mutating
+            # so other nodes referencing the same dict aren't affected.
             extra_pnginfo = dict(kwargs.get("extra_pnginfo") or {})
             workflow = dict(extra_pnginfo.get("workflow") or {})
             extra = dict(workflow.get("extra") or {})
@@ -286,41 +319,6 @@ if _VHS_AVAILABLE:
             if effective_prefix != filename_prefix:
                 kwargs["filename_prefix"] = effective_prefix
                 filename_prefix = effective_prefix
-
-            # One-shot diagnostic — pin down whether a doubled-length
-            # output is the image stream being fed already-doubled
-            # (workflow issue, e.g. ImageConcatMulti in batch mode or a
-            # pingpong upstream) vs combine doing it. Logs once per
-            # render; remove after the report is no longer needed.
-            try:
-                images_in = kwargs.get("images")
-                latents_in = kwargs.get("latents")
-                if images_in is not None and hasattr(images_in, "shape"):
-                    img_n, img_shape = images_in.shape[0], tuple(images_in.shape)
-                elif latents_in is not None:
-                    samples = latents_in.get("samples") if isinstance(latents_in, dict) else latents_in
-                    img_n = getattr(samples, "shape", [0])[0]
-                    img_shape = tuple(getattr(samples, "shape", ()))
-                else:
-                    img_n, img_shape = 0, ()
-                audio_in = kwargs.get("audio")
-                if audio_in is not None and isinstance(audio_in, dict):
-                    wf = audio_in.get("waveform")
-                    sr = audio_in.get("sample_rate", 0)
-                    a_samples = wf.shape[-1] if wf is not None and hasattr(wf, "shape") else 0
-                    a_secs = a_samples / sr if sr else 0
-                else:
-                    a_samples, a_secs, sr = 0, 0, 0
-                fr = kwargs.get("frame_rate", 0)
-                expected_secs = (img_n / fr) if fr else 0
-                print(
-                    f"[Easy_VideoCombine] frames={img_n} shape={img_shape} "
-                    f"frame_rate={fr} -> {expected_secs:.2f}s video; "
-                    f"audio samples={a_samples} sr={sr} -> {a_secs:.2f}s; "
-                    f"pingpong={kwargs.get('pingpong')} loop_count={kwargs.get('loop_count')}"
-                )
-            except Exception as _diag_exc:
-                print(f"[Easy_VideoCombine] diagnostic skipped: {_diag_exc!r}")
 
             target = _resolve_abs_target(filename_prefix, create_path_if_missing)
             if target is None:

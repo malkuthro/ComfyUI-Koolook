@@ -44,6 +44,111 @@ function fitHeight(node) {
     node?.graph?.setDirtyCanvas(true);
 }
 
+function setWidgetValue(widget, value) {
+    widget.value = value;
+    widget.callback?.(widget.value);
+}
+
+function coerceBoolValue(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    if (value == null) return fallback;
+    const s = String(value).trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(s)) return true;
+    if (["false", "0", "no", "off", ""].includes(s)) return false;
+    return fallback;
+}
+
+const BOOLEAN_WIDGETS = new Set([
+    "pingpong",
+    "save_output",
+    "create_path_if_missing",
+    "save_metadata_png",
+    "keep_silent_intermediate",
+]);
+
+function setSavedWidgetValue(node, name, value) {
+    const widget = node.widgets?.find((w) => w.name === name);
+    if (!widget || widget.type === "button") return;
+    if (BOOLEAN_WIDGETS.has(name)) {
+        setWidgetValue(widget, coerceBoolValue(value, widget.value));
+    } else {
+        setWidgetValue(widget, value);
+    }
+    const input = node.inputs?.find((i) => i.name === name);
+    if (input && widget.config) setWidgetConfig(input, widget.config);
+}
+
+function useNamedWidgetState(nodeType) {
+    chainCallback(nodeType.prototype, "onNodeCreated", function () {
+        chainCallback(this, "onConfigure", function (info) {
+            if (!this.widgets || info?.widgets_values == null) return;
+
+            const saved = info.widgets_values;
+            if (!Array.isArray(saved) && typeof saved === "object") {
+                for (const name of ["frame_rate", "loop_count", "filename_prefix"]) {
+                    if (Object.hasOwn(saved, name)) setSavedWidgetValue(this, name, saved[name]);
+                }
+                // Restore format before the rest; its callback creates the
+                // format-specific widgets that also need named restoration.
+                if (Object.hasOwn(saved, "format")) {
+                    setSavedWidgetValue(this, "format", saved.format);
+                }
+                for (const [name, value] of Object.entries(saved)) {
+                    setSavedWidgetValue(this, name, value);
+                }
+                return;
+            }
+
+            if (!Array.isArray(saved)) return;
+
+            // Legacy array restore is dangerous with dynamic format widgets:
+            // a ProRes profile like "hq" can shift into pingpong and become
+            // truthy. Restore by known names and computed format-widget count.
+            const baseNames = ["frame_rate", "loop_count", "filename_prefix", "format"];
+            for (let i = 0; i < baseNames.length && i < saved.length; i++) {
+                setSavedWidgetValue(this, baseNames[i], saved[i]);
+            }
+
+            const formatWidget = this.widgets.find((w) => w.name === "format");
+            const formats = LiteGraph.registered_node_types[this.type]
+                ?.nodeData?.input?.required?.format?.[1]?.formats;
+            const formatWidgetDefs = formats?.[formatWidget?.value] ?? [];
+            const formatWidgetCount = formatWidgetDefs.length;
+
+            for (let i = 0; i < formatWidgetCount; i++) {
+                const savedIndex = baseNames.length + i;
+                const widgetName = formatWidgetDefs[i]?.[0];
+                if (widgetName && savedIndex < saved.length) {
+                    setSavedWidgetValue(this, widgetName, saved[savedIndex]);
+                }
+            }
+
+            const tailNames = [
+                "pingpong",
+                "save_output",
+                "output_directory",
+                "create_path_if_missing",
+                "save_metadata_png",
+                "keep_silent_intermediate",
+            ];
+            const tailStart = baseNames.length + formatWidgetCount;
+            for (let i = 0; i < tailNames.length && tailStart + i < saved.length; i++) {
+                setSavedWidgetValue(this, tailNames[i], saved[tailStart + i]);
+            }
+        });
+
+        chainCallback(this, "onSerialize", function (info) {
+            if (!this.widgets) return;
+            info.widgets_values = {};
+            for (const widget of this.widgets) {
+                if (widget.type === "button") continue;
+                info.widgets_values[widget.name] = widget.value;
+            }
+        });
+    });
+}
+
 function addFormatWidgets(nodeType) {
     chainCallback(nodeType.prototype, "onNodeCreated", function () {
         let formatWidget = null;
@@ -97,6 +202,7 @@ app.registerExtension({
     name: "Koolook.EasyVideoCombine",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData?.name === "Easy_VideoCombine") {
+            useNamedWidgetState(nodeType);
             addFormatWidgets(nodeType);
         }
     },
