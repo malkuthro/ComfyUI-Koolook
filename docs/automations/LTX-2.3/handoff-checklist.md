@@ -16,7 +16,7 @@ Use this when picking up the loop on a different machine, or handing over to som
 
 ## 3. ComfyUI install
 
-- [ ] LTX 2.3 model (`ltx-2.3-22b-dev-fp8` or equivalent), its CLIP (Gemma 3 12B), video VAE, audio VAE, distilled LoRA — see the **Base · model** section of any recent `card.png` for exact filenames.
+- [ ] LTX 2.3 model (`ltx-2.3-22b-dev-fp8` or equivalent), its CLIP (Gemma 3 12B), video VAE, audio VAE, distilled LoRA — see the **Base · model** section of any recent `_AI/card.png` for exact filenames.
 - [ ] Custom nodes installed:
   - `WhatDreamsCost-ComfyUI` (provides `LTXDirector`, `LTXDirectorGuide`).
   - `comfyui-kjnodes` (`VisualizeSigmasKJ`, `ImageConcatMulti`).
@@ -49,12 +49,12 @@ For each run:
 2. Update `OVERLAY - INFO` so the new state is captured.
 3. Save the workflow + queue the render.
 4. After watching the video, fill `OVERLAY - FEEDBACK` with notes + score lines (`motion: 4/5`).
-5. `/make-card`. Drop the `card.png` next to the video in your NLE.
+5. `/make-card`. Drop `_AI/card.png` next to the video in your NLE.
 6. Compare with the previous card. Repeat.
 
 ## 7. Promote findings
 
-When a knob's behaviour is stable across runs, promote it from `iterations.md` into [`findings.md`](findings.md). That keeps the locked-in stuff at the top of the file rather than buried in the log.
+When a knob's behaviour is stable across runs, promote it from `_AI/iterations.md` (inside the working folder) into [`findings.md`](findings.md) (this repo). That keeps the locked-in stuff in the repo where it belongs, rather than buried in the per-project log.
 
 ## Troubleshooting
 
@@ -69,6 +69,6 @@ When a knob's behaviour is stable across runs, promote it from `iterations.md` i
 
 ## Off-boarding (if you stop in the middle)
 
-- Commit + push your branch — `iterations.md`, `card.png`, the workflow JSON, and any new findings.
-- Note in a final commit message what the last knob being swept was and what the next obvious step is.
-- The next person reads this file, then `findings.md`, then the latest `iterations.md` row, then continues.
+- **In the repo** — commit + push any `findings.md` updates and investigation-doc edits. Note in the final commit message what the last knob being swept was and what the next obvious step is.
+- **In the working folder** — the JSON, MP4, and `_AI/` subfolder stay where they are (per-project, not in the repo). Make sure the path is in your `.env` so it's recoverable on the next machine.
+- The next person reads this file, then `findings.md`, then the latest row of `_AI/iterations.md` in the working folder, then continues.

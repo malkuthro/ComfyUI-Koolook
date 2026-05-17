@@ -17,8 +17,8 @@ The original investigation that produced this loop: [`../../investigations/ltx-d
 1. **In ComfyUI** — tweak one knob. Update the `OVERLAY - INFO` Text Multiline so the change is recorded in the JSON. After watching the rendered video, fill in the `OVERLAY - FEEDBACK` Text Multiline with observations + score lines (`motion: 4/5`, `sync: 5/5`, `sharp: 4/5`).
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder (path from `Working_Folder_PATH` node).
 3. **Render** — queue. MP4 lands in the same working folder, same basename.
-4. **`/make-card`** — agent reads the newest JSON, writes `card.png` next to the video, appends a row to `iterations.md`.
-5. **Composite** — drop `card.png` next to the video in your NLE (or wire `LoadImage` + `ImageConcatMulti` inside ComfyUI for a baked side-by-side).
+4. **`/make-card`** — agent reads the newest JSON, writes `_AI/card.png` inside the working folder, and appends a row to `_AI/iterations.md`.
+5. **Composite** — drop `_AI/card.png` next to the video in your NLE (or wire `LoadImage` + `ImageConcatMulti` inside ComfyUI for a baked side-by-side).
 
 Steps 1–3 are manual in ComfyUI. Step 4 is one command. Step 5 is one drag-and-drop per video.
 

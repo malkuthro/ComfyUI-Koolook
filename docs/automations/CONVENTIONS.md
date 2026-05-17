@@ -29,7 +29,7 @@ Three named nodes drive the card. Naming is matched by *title containing* (case-
 
 ### `Working_Folder_PATH`
 - Body: one line, the absolute working folder path (forward slashes preferred).
-- Read by: `scripts/make_card.py` to determine where to write `card.png` and `iterations.md`.
+- Read by: `scripts/make_card.py` to determine where to write `_AI/card.png` and `_AI/iterations.md`.
 
 ### `OVERLAY - INFO`
 - Body: a free-form summary of this run, plus a section marked `BASE (notes):` or `BASE:` whose content captures *Δ from baseline*.
@@ -82,14 +82,14 @@ Layout + extraction lives in `scripts/make_card.py`. Iterate on that file, not o
 - Trigger: `/make-card`, `card`, or `make card`.
 - Reads `KOLOOK_AUTOMATIONS_WORK_DIR` from `.env` (repo root) for the working folder.
 - Globs newest `*.json` in that folder; runs `scripts/make_card.py` against it.
-- Writes `card.png` + appends `iterations.md` row.
+- Writes `_AI/card.png` + appends `_AI/iterations.md` row.
 - Returns the absolute path of the PNG + shows it inline.
 
 ## 6. The watcher (optional)
 
 - `scripts/watch_cards.py` — leave running in a terminal during a session.
 - Polls the working folder every 2 s.
-- Re-renders `card.png` automatically whenever the JSON in the folder is modified.
+- Re-renders `_AI/card.png` automatically whenever the JSON in the folder is modified.
 - For hands-free operation alongside ComfyUI's "auto-save workflow on queue" setting (pythongosssss custom-scripts).
 
 ## 7. Run identification

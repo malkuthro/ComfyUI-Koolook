@@ -56,7 +56,7 @@ See [`../../investigations/ltx-director-4k-transitions.md`](../../investigations
 
 ## How to add a new finding
 
-1. Pattern is stable across ≥ 3 runs in `iterations.md`.
+1. Pattern is stable across ≥ 3 runs in `_AI/iterations.md` (per-project working folder).
 2. You can describe it as a single declarative sentence ("X causes Y" or "do X, don't do Y").
 3. Move it here under an appropriate heading, with a one-paragraph "why" and a link to the run(s) that confirmed it.
 4. Remove the corresponding hypothesis from the open list above so the file shrinks toward truth.

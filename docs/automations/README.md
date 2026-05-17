@@ -4,6 +4,45 @@ AI-assisted iteration loops for evaluating generative models inside ComfyUI.
 
 Each subfolder is one model under study. The loop pattern is the same across all of them; the model-specific knobs, conventions, and findings live in the subfolder.
 
+## Where things live
+
+### In the repo
+
+```
+ComfyUI-Koolook/
+├── .env                                     gitignored — your machine's config
+│                                            (KOLOOK_AUTOMATIONS_WORK_DIR=…)
+├── .env.example                             committed template — documents the var
+├── .claude/skills/make-card/
+│   └── SKILL.md                             the `/make-card` slash command
+├── scripts/
+│   ├── make_card.py                         renders a card PNG from workflow JSON
+│   └── watch_cards.py                       optional polling watcher
+└── docs/automations/
+    ├── README.md                            you are here
+    ├── CONVENTIONS.md                       cross-cutting rules
+    └── LTX-2.3/                             one folder per model under study
+        ├── README.md                        loop entry point for this model
+        ├── handoff-checklist.md             5-minute onboarding
+        └── findings.md                      locked-in conclusions
+```
+
+### Per-project working folder (lives outside the repo)
+
+Pointed at by `KOLOOK_AUTOMATIONS_WORK_DIR` in `.env`. One folder per project. Holds:
+
+```
+<working folder>/                            e.g. JOBS/<client>/<scene>/ComfyUI-working-folder
+├── <workflow>.json                          ← user content — ComfyUI workflow export
+├── <workflow>.mp4                           ← user content — rendered video
+├── …more JSONs/MP4s as you iterate
+└── _AI/                                     ← AI-managed — written by make_card.py
+    ├── card.png                             stable tracking card (overwritten each run)
+    └── iterations.md                        append-only log, one row per render
+```
+
+The `_AI/` split lets you wipe agent artifacts without touching user content (or vice-versa). You can delete `_AI/` to reset the history; you can delete the JSONs and MP4s without losing the iteration log.
+
 ## What lives here
 
 | Subfolder | Status | Scope |

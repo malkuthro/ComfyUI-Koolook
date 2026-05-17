@@ -36,8 +36,10 @@ def resolve_folder(argv: list[str]) -> Path:
 
 
 def needs_render(json_path: Path) -> Path | None:
-    """Return the target PNG path if it's missing or older than the JSON."""
-    png = json_path.with_name(json_path.stem + "_card.png")
+    """Return the target PNG path if it's missing or older than the JSON.
+    Target lives in <working folder>/_AI/card.png — matches make_card.py."""
+    ai_dir = json_path.parent / "_AI"
+    png = ai_dir / "card.png"
     if not png.exists() or png.stat().st_mtime < json_path.stat().st_mtime:
         return png
     return None
@@ -45,12 +47,14 @@ def needs_render(json_path: Path) -> Path | None:
 
 def render(json_path: Path, png_path: Path) -> bool:
     print(f"[{time.strftime('%H:%M:%S')}] rendering {json_path.name} ...", flush=True)
+    # Let make_card.py compute its own output path (writes to _AI/card.png).
+    # Passing only the JSON keeps the watcher and the script in lockstep.
     r = subprocess.run(
-        [PYTHON_EXE, str(MAKE_CARD), str(json_path), str(png_path)],
+        [PYTHON_EXE, str(MAKE_CARD), str(json_path)],
         capture_output=True, text=True,
     )
     if r.returncode == 0:
-        print(f"  -> {png_path.name}", flush=True)
+        print(f"  -> {png_path.relative_to(png_path.parent.parent)}", flush=True)
         return True
     print(f"  !! make_card.py failed (rc={r.returncode})\n{r.stderr}", flush=True)
     return False
