@@ -81,6 +81,11 @@ export const WORKFLOWS_CHANGED_EVENT = "koolook-workflows-changed";
 export const WORKFLOWS_DEFAULTS_URL = new URL("../workflow_defaults.json", import.meta.url).href;
 export const GUIDE_URL = new URL("../guide/index.html", import.meta.url).href;
 
+export function noStoreUrl(url) {
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}_=${Date.now()}`;
+}
+
 // Convention-driven "module" classification — a saved workflow tagged with
 // this literal string is treated as a reusable building block (insert into
 // the existing canvas) instead of a full session (replace the canvas).

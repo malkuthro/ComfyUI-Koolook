@@ -30,6 +30,7 @@ import {
     WORKFLOWS_DEFAULTS_URL,
     MODULE_TAG,
     compareNames,
+    noStoreUrl,
     toast,
     criticalToast,
 } from "./constants.js";
@@ -195,7 +196,9 @@ const SERVER_FILE_CORRUPT = Symbol("workflows-server-corrupt");
 async function fetchWorkflowsFromServer() {
     let resp;
     try {
-        resp = await fetch(`/userdata/${WORKFLOWS_USERDATA_PATH}`);
+        resp = await fetch(noStoreUrl(`/userdata/${WORKFLOWS_USERDATA_PATH}`), {
+            cache: "no-store",
+        });
     } catch (e) {
         console.warn("[Koolook] /userdata read failed (network):", e);
         return undefined;

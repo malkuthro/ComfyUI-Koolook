@@ -122,6 +122,72 @@ def test_workflow_save_survives_reload_when_server_write_succeeds() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_workflow_startup_read_bypasses_browser_cache() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { loadWorkflowsStore } from "./web/sidebar/workflows_store.js";
+
+        setupBrowserStubs();
+
+        const serverStore = { directories: {} };
+        const calls = [];
+        globalThis.fetch = async (url, init = {}) => {
+          calls.push({ url: String(url), cache: init.cache || null });
+          if (String(url).startsWith("/userdata/koolook_workflows.json")) {
+            return okResponse(JSON.stringify(serverStore));
+          }
+          return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
+        };
+
+        await loadWorkflowsStore();
+
+        assert.equal(calls.length, 1);
+        assert.match(calls[0].url, /^\\/userdata\\/koolook_workflows\\.json\\?_/);
+        assert.equal(calls[0].cache, "no-store");
+
+        function okResponse(body) {
+          return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body || "{}") };
+        }
+
+        function setupBrowserStubs() {
+          const storage = new Map();
+          globalThis.localStorage = {
+            getItem: (key) => storage.has(key) ? storage.get(key) : null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key),
+          };
+          globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+          globalThis.window = { dispatchEvent() {} };
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+          });
+          const makeEl = () => ({
+            className: "",
+            textContent: "",
+            style: {},
+            classList: { add() {}, remove() {} },
+            appendChild() {},
+            remove() {},
+            addEventListener() {},
+            setAttribute() {},
+          });
+          globalThis.document = {
+            createElement: makeEl,
+            body: { appendChild() {} },
+            head: { appendChild() {} },
+            querySelectorAll: () => [],
+            getElementById: () => null,
+          };
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_fallback_only_workflow_save_becomes_live_again_after_reload() -> None:
     script = textwrap.dedent(
         """

@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-05-18
+
 ### Added
 - **Easy Video Combine (`Easy_VideoCombine`).** A path-aware sibling
   of Kosinkadink/ComfyUI-VideoHelperSuite's `Video Combine` node.
@@ -56,6 +58,21 @@ The format is inspired by Keep a Changelog and SemVer.
   and a subfolder, that `disable_versioning` drops the `vNNN` segment
   everywhere, that `enable_overwrite` only blocks an existing *file* —
   not an existing directory).
+- **AI-assisted automation workflow framework.** Adds
+  [`docs/automations/`](docs/automations/) as the canonical home for
+  repeatable image/video iteration loops, with shared conventions,
+  a quick-reference cheatsheet, an LTX 2.3 model-specific workflow,
+  handoff checklist, promoted findings, and the companion
+  [`docs/investigations/ltx-director-4k-transitions.md`](docs/investigations/ltx-director-4k-transitions.md)
+  investigation. The new [`scripts/make_card.py`](scripts/make_card.py)
+  and [`scripts/watch_cards.py`](scripts/watch_cards.py) helpers generate
+  and monitor compact review cards from ComfyUI run metadata so experiment
+  results can be compared across runs without re-reading full workflow JSON.
+- **Project-local test bootstrap helpers.** Adds macOS/Linux and Windows
+  scripts for creating the local test environment, plus `pip-audit` in the
+  optional `test` dependency set and a repository line-ending policy. The
+  POSIX helper accepts `PYTHON=...` and falls back to `python3` when `python`
+  is not available on `PATH`.
 
 ### Changed
 - **Workflow right-click menu shortened for large libraries.** The menu no
@@ -73,6 +90,15 @@ The format is inspired by Keep a Changelog and SemVer.
   preview shown by the `Get output file path` button now matches.
 
 ### Fixed
+- **Kforge Labs snapshot/workflow restore no longer hydrates from stale browser cache.**
+  The sidebar's startup read of `/userdata/koolook_workflows.json` now uses
+  a cache-busted `no-store` request, and snapshot-library reads do the same
+  for mutable preset/list/settings endpoints. This fixes the severe case
+  where the browser returned an older 5-workflow `/userdata` response even
+  though the on-disk file and a cache-busted fetch contained the correct
+  59-workflow snapshot state; the status pill could appear to track the
+  right snapshot while the workflow tree rendered stale data and periodic
+  autosave captured that bad state.
 - **Easy AI Pipeline: trailing-slash on base path no longer creates a
   phantom `undefined/` folder.** Typing `n:\foo\bar\` (trailing
   backslash) into `base_directory_path` used to leak a trailing `/` onto
@@ -175,6 +201,14 @@ The format is inspired by Keep a Changelog and SemVer.
   `easy getNode` back to its matching `easy setNode` input before reading
   the source widget value, so global path/name settings preview the same
   value that render-time execution receives instead of the GET key name.
+- **Workflow sidebar persistence recovery.** Workflow library saves now
+  preserve the full workflow payload shape and recover existing user data
+  more defensively, with tests covering payload migration and store
+  persistence.
+- **Loaded workflows stay untitled in ComfyUI.** Loading from the Kforge
+  Labs workflow sidebar no longer forces a saved workflow name into Comfy's
+  tab/title state, keeping inserted or loaded workflow sessions aligned with
+  ComfyUI's native untitled-workflow behavior.
 
 ## [0.3.2] - 2026-05-16
 

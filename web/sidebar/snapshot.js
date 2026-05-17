@@ -42,6 +42,7 @@ import {
     STARTER_URL,
     STARTER_PRESET_FILENAME,
     SNAPSHOT_STATUS_CHANGED_EVENT,
+    noStoreUrl,
     toast,
 } from "./constants.js";
 
@@ -656,7 +657,10 @@ async function loadPreview(fullName, dir, rowMeta) {
     try {
         const bareName = fullName.replace(/\.json$/i, "");
         const dirParam = dir ? `&dir=${encodeURIComponent(dir)}` : "";
-        const resp = await fetch(`${ROUTE_FILE}?name=${encodeURIComponent(fullName)}${dirParam}`);
+        const resp = await fetch(
+            noStoreUrl(`${ROUTE_FILE}?name=${encodeURIComponent(fullName)}${dirParam}`),
+            { cache: "no-store" }
+        );
         if (!resp.ok) return null;
         const text = await resp.text();
         const obj = JSON.parse(text);
@@ -708,7 +712,7 @@ async function loadPreview(fullName, dir, rowMeta) {
 // reachable — caller falls back to a generic message.
 export async function getLibraryInfo() {
     try {
-        const resp = await fetch(ROUTE_INFO);
+        const resp = await fetch(noStoreUrl(ROUTE_INFO), { cache: "no-store" });
         if (!resp.ok) return null;
         return await resp.json();
     } catch (e) {
@@ -723,7 +727,7 @@ export async function getLibraryInfo() {
 // "currently in effect" readout, and `source` to label the chain.
 export async function getSettings() {
     try {
-        const resp = await fetch(ROUTE_SETTINGS);
+        const resp = await fetch(noStoreUrl(ROUTE_SETTINGS), { cache: "no-store" });
         if (!resp.ok) return null;
         return await resp.json();
     } catch (e) {
@@ -759,7 +763,9 @@ export async function browseDirectories(path, { files = false } = {}) {
     if (path) params.set("path", path);
     if (files) params.set("files", "1");
     const q = params.toString();
-    const resp = await fetch(`${ROUTE_BROWSE}${q ? `?${q}` : ""}`);
+    const resp = await fetch(noStoreUrl(`${ROUTE_BROWSE}${q ? `?${q}` : ""}`), {
+        cache: "no-store",
+    });
     if (!resp.ok) {
         throw new Error(`Could not browse directories: ${await readErrorReason(resp)}.`);
     }
@@ -790,7 +796,7 @@ export async function listPresets({ dir } = {}) {
     let resp;
     const url = dir ? `${ROUTE_LIST}?dir=${encodeURIComponent(dir)}` : ROUTE_LIST;
     try {
-        resp = await fetch(url);
+        resp = await fetch(noStoreUrl(url), { cache: "no-store" });
     } catch (e) {
         console.warn("[Koolook] preset listing failed (network):", e);
         return [];
@@ -820,7 +826,9 @@ export async function listPresets({ dir } = {}) {
 // scopes the read to an autosave subfolder. Returns the parsed +
 // validated snapshot, throws on read or parse failure.
 export async function readPreset(fileName, { dir } = {}) {
-    const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`);
+    const resp = await fetch(noStoreUrl(`${ROUTE_FILE}${fileQuery(fileName, dir)}`), {
+        cache: "no-store",
+    });
     if (!resp.ok) {
         throw new Error(`Could not read preset "${fileName}": ${await readErrorReason(resp)}.`);
     }
@@ -863,7 +871,10 @@ export async function writePreset(fileName, snapshot, { dir } = {}) {
 // so this is a cheap probe even on multi-MB snapshots over Dropbox/NFS.
 export async function presetExists(fileName, { dir } = {}) {
     try {
-        const resp = await fetch(`${ROUTE_FILE}${fileQuery(fileName, dir)}`, { method: "HEAD" });
+        const resp = await fetch(noStoreUrl(`${ROUTE_FILE}${fileQuery(fileName, dir)}`), {
+            method: "HEAD",
+            cache: "no-store",
+        });
         if (resp.ok) return true;
         if (resp.status === 404) return false;
         // 5xx, 4xx other than 404, opaque proxy errors → unreachable.
@@ -901,7 +912,7 @@ export async function deletePreset(fileName, { dir } = {}) {
 export async function listAutosaves() {
     let resp;
     try {
-        resp = await fetch(ROUTE_AUTOSAVES_LIST);
+        resp = await fetch(noStoreUrl(ROUTE_AUTOSAVES_LIST), { cache: "no-store" });
     } catch (e) {
         console.warn("[Koolook] autosave listing failed (network):", e);
         return [];
@@ -924,7 +935,8 @@ export async function listAutosaves() {
             const bareName = row.name.replace(/\.json$/i, "");
             const dirParam = `&dir=${encodeURIComponent(row.dir)}`;
             const r = await fetch(
-                `${ROUTE_FILE}?name=${encodeURIComponent(row.name)}${dirParam}`
+                noStoreUrl(`${ROUTE_FILE}?name=${encodeURIComponent(row.name)}${dirParam}`),
+                { cache: "no-store" }
             );
             if (!r.ok) return null;
             const obj = JSON.parse(await r.text());
