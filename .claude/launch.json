@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "design-server",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "C:\\Python313\\python.exe",
       "runtimeArgs": ["-m", "http.server", "8765"],
       "port": 8765
     }

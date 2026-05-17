@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LTX Director — Run 001 (combined card)</title>
+<style>
+  html, body { margin:0; padding:24px; background:#0b0c0e; color:#e8e8e8;
+    font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .card { width:380px; padding:18px 22px; box-sizing:border-box;
+    background:#15171a; border:1px solid #2a2d33; border-radius:10px; }
+  h1 { font-size:14px; margin:0 0 2px; color:#fff; font-weight:600; }
+  .sub { font-size:10px; color:#8a8e95; margin-bottom:14px; }
+  h2 { font-size:10px; letter-spacing:.14em; margin:14px 0 6px;
+    text-transform:uppercase; font-weight:600; }
+  h2.base { color:#7aa7d6; }
+  h2.run  { color:#d6a87a; }
+  h2.outcome { color:#9ad17a; }
+  table { width:100%; border-collapse:collapse;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+  td { padding:2px 0; vertical-align:top; }
+  td.k { color:#888; width:42%; }
+  td.v { color:#e8e8e8; }
+  .seg { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px;
+    color:#e8e8e8; padding:2px 0; }
+  .seg .idx { color:#d6a87a; display:inline-block; width:18px; }
+  .seg .dur { color:#bbb; display:inline-block; width:54px; }
+  .seg .chk { color:#9ad17a; }
+  .note { font-size:11px; color:#bbb; font-style:italic;
+    padding:8px 10px; background:#0e1012; border-left:2px solid #d6a87a;
+    border-radius:2px; margin:10px 0 0; }
+  .note b { color:#d6a87a; font-style:normal; font-weight:600;
+    letter-spacing:.06em; }
+  .outcome-row { padding-top:10px; border-top:1px solid #2a2d33; margin-top:10px; }
+  .scores { display:flex; gap:14px; flex-wrap:wrap;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; }
+  .score { color:#888; }
+  .score b { color:#e8e8e8; font-weight:500; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Run 001 — single-stage 2K</h1>
+  <div class="sub">2026-05-16 · LTX_Director_4k_v03.json</div>
+
+  <h2 class="run">Phase 1</h2>
+  <table>
+    <tr><td class="k">Format</td>    <td class="v">2K</td></tr>
+    <tr><td class="k">Mult</td>      <td class="v">1</td></tr>
+    <tr><td class="k">Scheduler</td> <td class="v">linear_quadratic</td></tr>
+    <tr><td class="k">Steps</td>     <td class="v">8</td></tr>
+    <tr><td class="k">Denoise</td>   <td class="v">1</td></tr>
+  </table>
+  <div class="note"><b>BASE (notes):</b><br>Changed audio for each segment to match the duration.</div>
+
+  <h2 class="base">Base · model</h2>
+  <table>
+    <tr><td class="k">Checkpoint</td><td class="v">LTX 2.3 22B dev fp8</td></tr>
+    <tr><td class="k">LoRA</td>      <td class="v">distilled-384-1.1 @ 0.5</td></tr>
+    <tr><td class="k">CLIP</td>      <td class="v">Gemma 3 12B (fp4)</td></tr>
+    <tr><td class="k">Video VAE</td> <td class="v">ltx-2.3-22b distilled</td></tr>
+    <tr><td class="k">Audio VAE</td> <td class="v">ltx-2.3-22b distilled</td></tr>
+  </table>
+
+  <h2 class="base">Base · locked</h2>
+  <table>
+    <tr><td class="k">Sampler</td>      <td class="v">euler</td></tr>
+    <tr><td class="k">CFG</td>          <td class="v">1.0</td></tr>
+    <tr><td class="k">Seed</td>         <td class="v">12 (fixed)</td></tr>
+    <tr><td class="k">ε (epsilon)</td>  <td class="v">0.001</td></tr>
+    <tr><td class="k">Custom audio</td> <td class="v">off · model-generated</td></tr>
+  </table>
+
+  <h2 class="base">Base · scene</h2>
+  <table>
+    <tr><td class="k">Duration</td>  <td class="v">144 f · 6 s @ 24 fps</td></tr>
+    <tr><td class="k">Segments</td>  <td class="v">3 × 48 f (2 s each)</td></tr>
+  </table>
+  <div class="seg"><span class="idx">①</span><span class="dur">0–2 s</span><span class="chk">✓ prompt · ✓ audio · ✓ keyframe</span></div>
+  <div class="seg"><span class="idx">②</span><span class="dur">2–4 s</span><span class="chk">✓ prompt · ✓ audio · ✓ keyframe</span></div>
+  <div class="seg"><span class="idx">③</span><span class="dur">4–6 s</span><span class="chk">✓ prompt · ✓ audio · ✓ keyframe</span></div>
+
+  <div class="outcome-row">
+    <h2 class="outcome">Outcome</h2>
+    <div class="scores">
+      <div class="score">Motion <b>?/5</b></div>
+      <div class="score">Sync <b>?/5</b></div>
+      <div class="score">Sharp <b>?/5</b></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
