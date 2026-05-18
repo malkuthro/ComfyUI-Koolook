@@ -106,6 +106,7 @@ import {
     listAutosaves,
     revealPresetFolder,
 } from "./snapshot.js";
+import { resolveFolderExpanded } from "./tree_expansion.js";
 
 // =============================================================================
 // Built-in section IDs. These are also pathState key prefixes — every
@@ -179,6 +180,7 @@ const SECTIONS = [];
  * @property {string} path                            Segment-relative; engine
  *                                                    prefixes with section.id.
  * @property {boolean} [startExpanded=false]
+ * @property {boolean} [forceExpandedWhenFiltered=true]
  * @property {(e: MouseEvent) => void} [onContextMenu]
  * @property {(sub: SectionCtx) => void} build        Populate the sub-folder.
  *
@@ -389,13 +391,25 @@ function renderTree({ treeEl, query }) {
 // folders only need to provide segment-relative paths.
 function makeSectionCtx(parentEl, prefix, isFiltered, validPaths) {
     return {
-        folder({ name, count, iconKind, path, startExpanded = false, onContextMenu, build, draggablePayload, dropTarget }) {
+        folder({
+            name,
+            count,
+            iconKind,
+            path,
+            startExpanded = false,
+            forceExpandedWhenFiltered = true,
+            onContextMenu,
+            build,
+            draggablePayload,
+            dropTarget,
+        }) {
             const fullPath = prefix ? `${prefix}/${path}` : path;
             validPaths.add(fullPath);
             const folder = buildFolder({
                 name, count, iconKind, startExpanded,
                 path: fullPath,
                 forceExpanded: isFiltered,
+                forceExpandedWhenFiltered,
                 onContextMenu,
                 draggablePayload,
                 dropTarget,
@@ -1413,7 +1427,19 @@ function isModuleWorkflow(dirPath, wfName) {
     return isWorkflowModule(dirPath, wfName);
 }
 
-function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, startExpanded = true, path, forceExpanded = false, draggablePayload, dropTarget }) {
+function buildFolder({
+    name,
+    count,
+    iconKind,
+    childrenBuilder,
+    onContextMenu,
+    startExpanded = true,
+    path,
+    forceExpanded = false,
+    forceExpandedWhenFiltered = true,
+    draggablePayload,
+    dropTarget,
+}) {
     // `path` is required — every section/sub-section calling site routes
     // through `makeSectionCtx`, which always supplies a non-empty
     // section-prefixed string. The assertion below converts a "future
@@ -1427,7 +1453,9 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
     }
 
     // Resolution order:
-    //   1. forceExpanded (e.g. search active) — overrides everything
+    //   1. forceExpanded (e.g. search active) opens regular folders, but not
+    //      Archive folders. A crowded Archive should stay summarized under
+    //      search unless the user has explicitly opened or pinned it.
     //   2. pinnedPaths (a save/spotlight flow has flagged this for force-open
     //      on the current render) — Phase 3 writes pins into pathStates AFTER
     //      Phase 2 builds DOM, so without a direct pinnedPaths read here the
@@ -1436,16 +1464,15 @@ function buildFolder({ name, count, iconKind, childrenBuilder, onContextMenu, st
     //      on the immediate render.
     //   3. pathStates (user has previously toggled this folder)
     //   4. startExpanded (the natural default for this folder)
-    let initiallyExpanded;
-    if (forceExpanded) {
-        initiallyExpanded = true;
-    } else if (pinnedPaths.has(path)) {
-        initiallyExpanded = true;
-    } else if (pathStates.has(path)) {
-        initiallyExpanded = pathStates.get(path);
-    } else {
-        initiallyExpanded = startExpanded;
-    }
+    const initiallyExpanded = resolveFolderExpanded({
+        forceExpanded,
+        forceExpandedWhenFiltered,
+        iconKind,
+        isPinned: pinnedPaths.has(path),
+        hasStoredState: pathStates.has(path),
+        storedState: pathStates.get(path),
+        startExpanded,
+    });
 
     // Track the live expanded state in a closure variable instead of
     // round-tripping through `wrapper.dataset.expanded`. The DOM dataset
