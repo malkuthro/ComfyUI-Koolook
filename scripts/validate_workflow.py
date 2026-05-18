@@ -34,19 +34,102 @@ import sys
 from pathlib import Path
 
 
-def validate(data: dict) -> list[str]:
+def _sanitize_slots(
+    node: dict, key: str, problems: list[str]
+) -> list[dict]:
+    """Return a list-of-dicts view of node[key], appending a problem for any
+    malformed entry. Non-list `node[key]` → reported and treated as empty.
+    Non-dict entries → reported and dropped.
+    """
+    slots = node.get(key)
+    if slots is None:
+        return []
+    if not isinstance(slots, list):
+        problems.append(
+            f"node {node.get('id')!r}: {key!r} must be a list, got {type(slots).__name__}"
+        )
+        return []
+    cleaned: list[dict] = []
+    for j, slot in enumerate(slots):
+        if not isinstance(slot, dict):
+            problems.append(
+                f"node {node.get('id')!r}: {key}[{j}] must be an object, got {type(slot).__name__}"
+            )
+            continue
+        cleaned.append(slot)
+    return cleaned
+
+
+def validate(data) -> list[str]:
     """Return a list of problem strings; empty list means OK.
 
-    Takes a parsed workflow dict (so callers can reuse already-loaded data).
+    Defensive: every shape assumption is guarded so that malformed-but-valid
+    JSON produces problem lines, never an uncaught exception. Top-level not
+    being an object is the only short-circuit return (nothing else is safe
+    to do without a dict).
     """
     problems: list[str] = []
 
-    nodes = data.get("nodes") or []
-    links = data.get("links") or []
+    # Top-level must be a JSON object.
+    if not isinstance(data, dict):
+        return [
+            f"top-level JSON must be an object, got {type(data).__name__}"
+        ]
 
-    # Duplicate IDs.
+    # `nodes` and `links` arrays — must be lists; non-list reported and skipped.
+    raw_nodes = data.get("nodes") or []
+    if not isinstance(raw_nodes, list):
+        problems.append(
+            f"'nodes' must be a list, got {type(raw_nodes).__name__}"
+        )
+        raw_nodes = []
+
+    raw_links = data.get("links") or []
+    if not isinstance(raw_links, list):
+        problems.append(
+            f"'links' must be a list, got {type(raw_links).__name__}"
+        )
+        raw_links = []
+
+    # Filter to well-shaped node entries, recording each bad one.
+    nodes: list[dict] = []
+    for i, n in enumerate(raw_nodes):
+        if not isinstance(n, dict):
+            problems.append(
+                f"nodes[{i}]: must be an object, got {type(n).__name__}"
+            )
+            continue
+        nodes.append(n)
+
+    # Filter to well-shaped link entries. Each must be a 6-element list.
+    links: list[list] = []
+    for i, link in enumerate(raw_links):
+        if not isinstance(link, list):
+            problems.append(
+                f"links[{i}]: must be a list of 6 elements, got {type(link).__name__}"
+            )
+            continue
+        if len(link) != 6:
+            problems.append(
+                f"links[{i}]: malformed — expected 6 elements "
+                f"[id, src, src_slot, dst, dst_slot, type], got {len(link)}"
+            )
+            continue
+        links.append(link)
+
+    # Pre-sanitize each node's inputs/outputs into list-of-dict views so
+    # downstream code can index safely. Caches per-node so problems aren't
+    # double-reported when a node is touched by multiple links.
+    sanitized_io: dict[int, dict[str, list[dict]]] = {}
+    for n in nodes:
+        sanitized_io[id(n)] = {
+            "inputs": _sanitize_slots(n, "inputs", problems),
+            "outputs": _sanitize_slots(n, "outputs", problems),
+        }
+
+    # Duplicate IDs (over good entries).
     node_ids = [n.get("id") for n in nodes]
-    link_ids = [link[0] for link in links if isinstance(link, list) and link]
+    link_ids = [link[0] for link in links]
     dup_nodes = sorted({i for i in node_ids if node_ids.count(i) > 1})
     dup_links = sorted({i for i in link_ids if link_ids.count(i) > 1})
     if dup_nodes:
@@ -56,24 +139,39 @@ def validate(data: dict) -> list[str]:
 
     # Header counters should bound observed IDs (Comfy uses these to assign
     # the next id when adding nodes; if they lag, the next add can collide).
-    if node_ids and data.get("last_node_id", -1) < max(node_ids):
-        problems.append(
-            f"last_node_id={data.get('last_node_id')} < max(node id)={max(node_ids)}"
-        )
-    if link_ids and data.get("last_link_id", -1) < max(link_ids):
-        problems.append(
-            f"last_link_id={data.get('last_link_id')} < max(link id)={max(link_ids)}"
-        )
+    int_node_ids = [i for i in node_ids if isinstance(i, int)]
+    int_link_ids = [i for i in link_ids if isinstance(i, int)]
+    if int_node_ids:
+        last_node_id = data.get("last_node_id", -1)
+        if not isinstance(last_node_id, int) or last_node_id < max(int_node_ids):
+            problems.append(
+                f"last_node_id={last_node_id!r} < max(node id)={max(int_node_ids)}"
+            )
+    if int_link_ids:
+        last_link_id = data.get("last_link_id", -1)
+        if not isinstance(last_link_id, int) or last_link_id < max(int_link_ids):
+            problems.append(
+                f"last_link_id={last_link_id!r} < max(link id)={max(int_link_ids)}"
+            )
 
     # Cross-reference link declarations vs node IO references.
-    declared = set(link_ids)
+    declared = set(int_link_ids)
     referenced: set[int] = set()
     for n in nodes:
-        for inp in n.get("inputs") or []:
-            if isinstance(inp.get("link"), int):
-                referenced.add(inp["link"])
-        for out in n.get("outputs") or []:
-            for lk in out.get("links") or []:
+        io = sanitized_io[id(n)]
+        for inp in io["inputs"]:
+            link_val = inp.get("link")
+            if isinstance(link_val, int):
+                referenced.add(link_val)
+        for out in io["outputs"]:
+            out_links = out.get("links") or []
+            if not isinstance(out_links, list):
+                problems.append(
+                    f"node {n.get('id')!r}: output.links must be a list, "
+                    f"got {type(out_links).__name__}"
+                )
+                continue
+            for lk in out_links:
                 if isinstance(lk, int):
                     referenced.add(lk)
 
@@ -87,29 +185,27 @@ def validate(data: dict) -> list[str]:
         )
 
     # Per-link endpoint validation.
-    node_by_id = {n.get("id"): n for n in nodes}
+    # Build node_by_id over int ids only — non-int ids can't match a link's
+    # src/dst (which are ints in the link tuple), and treating them as keys
+    # would mask bad data.
+    node_by_id = {n.get("id"): n for n in nodes if isinstance(n.get("id"), int)}
     for link in links:
-        if not isinstance(link, list) or len(link) != 6:
-            problems.append(
-                f"link {link!r}: malformed — expected [id, src, src_slot, dst, dst_slot, type]"
-            )
-            continue
         lid, src, src_slot, dst, dst_slot, ltype = link
         src_node = node_by_id.get(src)
         dst_node = node_by_id.get(dst)
         if src_node is None:
-            problems.append(f"link {lid}: src node {src} missing")
+            problems.append(f"link {lid}: src node {src!r} missing")
             continue
         if dst_node is None:
-            problems.append(f"link {lid}: dst node {dst} missing")
+            problems.append(f"link {lid}: dst node {dst!r} missing")
             continue
-        src_outs = src_node.get("outputs") or []
-        dst_ins = dst_node.get("inputs") or []
+        src_outs = sanitized_io[id(src_node)]["outputs"]
+        dst_ins = sanitized_io[id(dst_node)]["inputs"]
 
         # Slot index bounds + type checks.
         if not isinstance(src_slot, int) or src_slot < 0 or src_slot >= len(src_outs):
             problems.append(
-                f"link {lid}: src slot {src_slot} out of bounds on node {src} "
+                f"link {lid}: src slot {src_slot!r} out of bounds on node {src} "
                 f"(has {len(src_outs)} outputs)"
             )
         elif src_outs[src_slot].get("type") != ltype:
@@ -119,7 +215,7 @@ def validate(data: dict) -> list[str]:
             )
         if not isinstance(dst_slot, int) or dst_slot < 0 or dst_slot >= len(dst_ins):
             problems.append(
-                f"link {lid}: dst slot {dst_slot} out of bounds on node {dst} "
+                f"link {lid}: dst slot {dst_slot!r} out of bounds on node {dst} "
                 f"(has {len(dst_ins)} inputs)"
             )
         elif dst_ins[dst_slot].get("type") != ltype:
@@ -131,7 +227,7 @@ def validate(data: dict) -> list[str]:
         # Endpoint cross-check: node IO must reference this link id symmetrically.
         if isinstance(src_slot, int) and 0 <= src_slot < len(src_outs):
             out_links = src_outs[src_slot].get("links") or []
-            if lid not in out_links:
+            if isinstance(out_links, list) and lid not in out_links:
                 problems.append(
                     f"link {lid}: missing from node {src} output[{src_slot}].links={out_links}"
                 )

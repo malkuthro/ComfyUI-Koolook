@@ -13,8 +13,12 @@ The format is inspired by Keep a Changelog and SemVer.
   references, `last_node_id`/`last_link_id` bounds, and duplicate IDs.
   Catches the class of bugs that come from hand-editing workflow JSONs
   (e.g. agent-driven node re-wiring when building a slim variant from a
-  Director workflow). Exit codes: `0` clean, `1` problems on stderr, `2`
-  file missing or bad JSON. See
+  Director workflow). Defensive against malformed-but-valid JSON — every
+  shape assumption is guarded so bad input produces problem lines, never
+  an uncaught exception. Exit codes: `0` clean, `1` problems on stderr,
+  `2` file missing or bad JSON. Covered by
+  [`tests/scripts/test_validate_workflow.py`](tests/scripts/test_validate_workflow.py)
+  (24 tests). See
   [`docs/automations/CONVENTIONS.md`](docs/automations/CONVENTIONS.md) §11
   for usage and triggers.
 
