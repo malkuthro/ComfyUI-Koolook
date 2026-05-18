@@ -595,6 +595,7 @@ function ensureDirectoryAtPath(path) {
 export function addDirectory(parentPath, name) {
     name = (name || "").trim();
     if (!name) return false;
+    if (!isSafeObjectKey(name)) return false;
     // Type guard mirroring `moveDirectory` — without this, a future caller
     // passing `undefined` would crash on `parentPath.length`.
     if (!Array.isArray(parentPath)) return false;
@@ -690,6 +691,7 @@ export function renameWorkflow(path, oldWfName, newWfName) {
 }
 
 export function deleteWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName];
@@ -700,6 +702,7 @@ export function deleteWorkflow(path, wfName) {
 // false on identical paths, missing source workflow, missing destination,
 // or a name collision in the destination.
 export function moveWorkflow(srcPath, wfName, dstPath) {
+    if (!isSafeObjectKey(wfName)) return false;
     if (pathsEqual(srcPath, dstPath)) return false;
     const src = dirOf(srcPath);
     if (!src || !src.workflows[wfName]) return false;
@@ -835,6 +838,7 @@ export function clearArchive(path) {
 export function moveDirectory(srcParentPath, name, dstParentPath) {
     name = (name || "").trim();
     if (!name) return false;
+    if (!isSafeObjectKey(name)) return false;
     if (!Array.isArray(srcParentPath) || !Array.isArray(dstParentPath)) return false;
     // Same parent → no-op (identical location).
     if (pathsEqual(srcParentPath, dstParentPath)) return false;
