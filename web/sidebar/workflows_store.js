@@ -37,6 +37,10 @@ import {
 
 let workflowsCache = { directories: {} };
 
+function isSafeObjectKey(name) {
+    return name !== "__proto__" && name !== "constructor" && name !== "prototype";
+}
+
 function notifyWorkflowsChanged() {
     window.dispatchEvent(new CustomEvent(WORKFLOWS_CHANGED_EVENT));
 }
@@ -609,6 +613,7 @@ export function addDirectory(parentPath, name) {
 export function renameDirectory(parentPath, oldName, newName) {
     newName = (newName || "").trim();
     if (!newName || newName === oldName) return false;
+    if (!isSafeObjectKey(oldName) || !isSafeObjectKey(newName)) return false;
     if (parentPath.length > 0 && newName.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
     const parent = dirOf(parentPath);
     if (!parent || !parent.directories || !parent.directories[oldName]) return false;
@@ -619,6 +624,7 @@ export function renameDirectory(parentPath, oldName, newName) {
 }
 
 export function deleteDirectory(parentPath, name) {
+    if (!isSafeObjectKey(name)) return false;
     const parent = dirOf(parentPath);
     if (!parent || !parent.directories || !parent.directories[name]) return false;
     delete parent.directories[name];
@@ -629,6 +635,7 @@ export function deleteDirectory(parentPath, name) {
 // Workflow operations (path-addressed)
 // =============================================================================
 export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = ensureDirectoryAtPath(path);
     if (!dir) return false;
     let archivedAs = null;
@@ -655,6 +662,7 @@ export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
 }
 
 export function archiveWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     dir.workflows[wfName].archived = true;
@@ -662,6 +670,7 @@ export function archiveWorkflow(path, wfName) {
 }
 
 export function unarchiveWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName].archived;
@@ -671,6 +680,7 @@ export function unarchiveWorkflow(path, wfName) {
 export function renameWorkflow(path, oldWfName, newWfName) {
     newWfName = (newWfName || "").trim();
     if (!newWfName || newWfName === oldWfName) return false;
+    if (!isSafeObjectKey(oldWfName) || !isSafeObjectKey(newWfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[oldWfName]) return false;
     if (dir.workflows[newWfName]) return false;
