@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-05-18
+
 ### Fixed
 - **Kforge Labs workflow loads no longer churn Comfy draft ids.** Loading the
   same saved workflow from the sidebar now uses a stable temporary workflow id
