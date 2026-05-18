@@ -126,7 +126,37 @@ ComfyUI's metadata bundle JSONs (`<name>_<seq>.json`) work natively with #2.
 |---|---|---|
 | Card renderer | `scripts/make_card.py` | All project scripts under `scripts/`. |
 | File watcher | `scripts/watch_cards.py` | Same. |
+| Workflow validator | `scripts/validate_workflow.py` | Same. See §11. |
 | Skill | `.claude/skills/make-card/` | Claude Code expects skills under `.claude/skills/`. |
 | Working folder env var | `.env` → `KOLOOK_AUTOMATIONS_WORK_DIR` | Project convention; see `.env.example`. |
 | Per-project artifacts | `<working folder>/` | One path for everything. |
 | Loop docs | `docs/automations/<model>/` | This folder. |
+
+## 11. Hand-editing workflow JSONs — validate before reload
+
+Workflow JSONs are large and link-heavy. Adding or removing a node by hand (or via an agent edit) is easy to get subtly wrong: a link can be declared in the top-level `links` table but missing from one endpoint's IO; a slot index can drift; a slot type can mismatch. ComfyUI's loader will sometimes silently drop or mis-wire the bad parts, producing a graph that looks fine but behaves wrong.
+
+Run `scripts/validate_workflow.py` after any non-trivial hand edit:
+
+```bash
+python scripts/validate_workflow.py <workflow.json>
+# OK: <name>.json — 22 nodes, 26 links, 5 groups
+```
+
+Checks performed:
+
+- The file parses as JSON.
+- Every link referenced by a node input/output is declared in the top-level `links` table.
+- Every entry in the `links` table is referenced by both endpoints (no orphans).
+- For each link, the source/destination nodes and slots exist and the slot type matches the declared link type.
+- `last_node_id >= max(node ids)` and `last_link_id >= max(link ids)` (so the next added node/link won't collide).
+- No duplicate node IDs or link IDs.
+
+Exit codes: `0` clean, `1` problems printed to stderr, `2` file missing or not valid JSON. Use `--quiet` to suppress the OK summary in scripts.
+
+**When to run it:**
+- After any agent edit that adds, removes, or re-wires nodes in a workflow JSON (e.g. building a slim variant from a Director workflow).
+- Before opening a hand-edited workflow in ComfyUI for the first time.
+- In CI, against any workflow JSON checked into the repo (none today — workflow files normally live in `<working folder>/`, not the repo).
+
+stdlib only — no install step.

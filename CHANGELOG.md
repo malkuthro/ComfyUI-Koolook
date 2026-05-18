@@ -6,6 +6,28 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Workflow validator (`scripts/validate_workflow.py`).** stdlib-only CLI
+  that checks a ComfyUI workflow JSON for internal consistency: declared-
+  vs-referenced links, slot index bounds and type matches, endpoint cross-
+  references, `last_node_id`/`last_link_id` bounds, and duplicate IDs.
+  Catches the class of bugs that come from hand-editing workflow JSONs
+  (e.g. agent-driven node re-wiring when building a slim variant from a
+  Director workflow). Exit codes: `0` clean, `1` problems on stderr, `2`
+  file missing or bad JSON. See
+  [`docs/automations/CONVENTIONS.md`](docs/automations/CONVENTIONS.md) §11
+  for usage and triggers.
+
+### Docs
+- **LTX 2.3 findings — spatial upscaler architecture & stage-2-only path.**
+  Two new sections in
+  [`docs/automations/LTX-2.3/findings.md`](docs/automations/LTX-2.3/findings.md):
+  a locked-in *Spatial upscaler architecture* block (×2 hardcoded factor,
+  brief enters only via `Director → guide_data → DirectorGuide`, attention
+  scales `(W × H × T)²`) and an open *Stage-2-only refine path* block
+  with the recipe, initial knob settings, and three hypotheses still
+  pending validation across runs.
+
 ## [0.3.6] - 2026-05-18
 
 ### Fixed
