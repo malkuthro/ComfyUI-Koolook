@@ -230,7 +230,7 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
         toast(`Workflow not found: ${wfName}`);
         return;
     }
-    const graph = cloneWorkflowForTemporaryLoad(sourceGraph);
+    const graph = cloneWorkflowForTemporaryLoad(sourceGraph, [...dirPath, wfName].join("\u0000"));
     const apply = async () => {
         // Snapshot the current canvas before loading. If loadGraphData throws
         // partway (missing node type, malformed payload), we restore the

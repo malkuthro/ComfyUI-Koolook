@@ -6,6 +6,15 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **Kforge Labs workflow loads no longer churn Comfy draft ids.** Loading the
+  same saved workflow from the sidebar now uses a stable temporary workflow id
+  derived from its sidebar path/name, so Comfy's browser-side
+  `Comfy.Workflow.Drafts` cache replaces the same draft entry instead of
+  accumulating a new large draft on every load. This reduces the chance of
+  hitting repeated `Failed to save workflow draft` toasts from browser storage
+  quota exhaustion after restoring or loading archived workflows.
+
 ## [0.3.5] - 2026-05-18
 
 ### Added
