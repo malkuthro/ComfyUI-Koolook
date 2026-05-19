@@ -1,19 +1,20 @@
 # Comfy Registry Metrics: koolook
 
-Last updated: `2026-05-18T08:36:28Z`
+Last updated: `2026-05-19T08:28:55Z`
 
 ## Current
 
-- Total downloads: **237**
-- Latest active version: **0.3.2** (Active)
+- Total downloads: **247**
+- Latest active version: **0.3.6** (Active)
 - Pending versions: **none**
-- Last recorded daily change: **5**
-- Rolling 7-day average: **13.6/day**
+- Last recorded daily change: **10**
+- Rolling 7-day average: **13.3/day**
 
 ## Recent Trend
 
 | Date | Total | Daily change | 7-day avg | Latest | Status | Pending |
 |---|---:|---:|---:|---|---|---|
+| 2026-05-19 | 247 | 10 | 13.3 | 0.3.6 | Active |  |
 | 2026-05-18 | 237 | 5 | 13.6 | 0.3.2 | Active |  |
 | 2026-05-17 | 232 | 3 | 12.9 | 0.3.2 | Active |  |
 | 2026-05-16 | 229 | 18 | 14.5 | 0.3.2 | Active |  |
