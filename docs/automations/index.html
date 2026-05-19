@@ -1,0 +1,985 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+SPDX-License-Identifier: GPL-3.0-only
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kforge Labs Automation Loop</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e0e0e;
+      --panel: #151515;
+      --panel-soft: #1a1a1f;
+      --panel-warm: #18150f;
+      --line: #302f2f;
+      --line-strong: #4f4f54;
+      --text: #f9fafb;
+      --muted: #8f959c;
+      --dim: #555b62;
+      --blue: #4268ba;
+      --blue-bright: #6db4ff;
+      --green: #7bcf80;
+      --amber: #ffb84d;
+      --red: #ff8a8a;
+      --violet: #8c7dff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(rgba(150, 150, 150, 0.08) 1px, transparent 1px),
+        var(--bg);
+      background-size: 13px 13px;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--blue-bright);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .hero,
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.98fr) minmax(320px, 0.82fr);
+      gap: 34px;
+      align-items: end;
+      padding: 52px 0 30px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--blue-bright);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 780px;
+      margin-bottom: 14px;
+      font-size: clamp(38px, 7vw, 72px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    code {
+      padding: 1px 7px;
+      border-radius: 5px;
+      background: rgb(255 255 255 / 7%);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    .lead {
+      max-width: 720px;
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: clamp(18px, 2.2vw, 21px);
+    }
+
+    .hero-panel {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+      overflow: hidden;
+      box-shadow: 0 22px 60px rgb(0 0 0 / 28%);
+    }
+
+    .hero-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #141414;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .window-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--dim);
+    }
+
+    .hero-panel-title {
+      min-width: 0;
+      color: #c9ccd1;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-preview {
+      padding: 16px;
+    }
+
+    .tracking-card {
+      max-width: 420px;
+      margin: 0 auto;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .tracking-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, #151515, #1b1811);
+    }
+
+    .tracking-header strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .tracking-header span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid rgb(255 255 255 / 8%);
+      border-radius: 6px;
+      background: var(--panel-soft);
+    }
+
+    .metric b {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .note-strip {
+      margin: 0 12px 12px;
+      padding: 10px 12px;
+      border-left: 4px solid var(--amber);
+      border-radius: 5px;
+      background: var(--panel-warm);
+      color: #e5e7eb;
+      font-size: 13px;
+    }
+
+    .score-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      border-top: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .score-row div {
+      padding: 10px 8px;
+      background: #111;
+      text-align: center;
+    }
+
+    .score-row b {
+      display: block;
+      color: var(--green);
+      font-size: 17px;
+      line-height: 1.1;
+    }
+
+    .score-row span {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .nav-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 28px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgb(21 21 21 / 82%);
+    }
+
+    .nav-strip a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 1px solid rgb(255 255 255 / 8%);
+      border-radius: 5px;
+      background: var(--panel-soft);
+      color: #d8dadd;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .section {
+      display: grid;
+      grid-template-columns: minmax(250px, 0.78fr) minmax(0, 1.22fr);
+      gap: 34px;
+      align-items: center;
+      padding: 38px 0;
+    }
+
+    .section-copy {
+      max-width: 460px;
+      padding-left: 16px;
+      border-left: 4px solid var(--blue);
+    }
+
+    .section-copy p,
+    .band > p,
+    .feature-card p,
+    .timeline p,
+    .caption {
+      color: var(--muted);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 142px;
+      padding: 15px 12px 14px;
+      border: 1px solid rgb(255 255 255 / 9%);
+      border-radius: 7px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .flow-step::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: var(--blue-bright);
+    }
+
+    .flow-step:nth-child(2)::before {
+      background: var(--amber);
+    }
+
+    .flow-step:nth-child(3)::before {
+      background: var(--green);
+    }
+
+    .flow-step:nth-child(4)::before {
+      background: var(--violet);
+    }
+
+    .flow-step:nth-child(5)::before {
+      background: var(--red);
+    }
+
+    .flow-step .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 12px;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 8%);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .flow-step h3 {
+      margin-bottom: 7px;
+      font-size: 17px;
+    }
+
+    .flow-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .band {
+      margin: 30px 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .band-head {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 0.78fr) minmax(260px, 0.62fr);
+      gap: 22px;
+      align-items: end;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+      background: #131313;
+    }
+
+    .band-head::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: var(--green);
+    }
+
+    .band-head p:last-child {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .system-map {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      padding: 22px;
+    }
+
+    .folder-panel,
+    .contract-panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #101010;
+      overflow: hidden;
+    }
+
+    .mini-head {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #171717;
+      color: #d8dadd;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .folder-tree {
+      margin: 0;
+      padding: 15px;
+      color: #d8dadd;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.78;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .folder-tree .safe {
+      color: var(--green);
+    }
+
+    .folder-tree .user {
+      color: var(--blue-bright);
+    }
+
+    .node-list {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .node-card {
+      padding: 12px;
+      border: 1px solid rgb(255 255 255 / 8%);
+      border-radius: 6px;
+      background: var(--panel-soft);
+    }
+
+    .node-card h3 {
+      margin: 0 0 5px;
+      color: var(--text);
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+
+    .node-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      padding: 30px 0;
+    }
+
+    .feature-card {
+      position: relative;
+      min-height: 168px;
+      padding: 18px 16px 16px 20px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: var(--blue);
+    }
+
+    .feature-card:nth-child(2)::before {
+      background: var(--amber);
+    }
+
+    .feature-card:nth-child(3)::before {
+      background: var(--green);
+    }
+
+    .feature-card:nth-child(4)::before {
+      background: var(--violet);
+    }
+
+    .feature-card p {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 0;
+      padding: 36px 0 76px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.76fr) minmax(0, 1.24fr);
+      gap: 44px;
+      align-items: center;
+      padding: 40px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .timeline-item:last-child {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .timeline-item.reverse {
+      grid-template-columns: minmax(0, 1.24fr) minmax(260px, 0.76fr);
+    }
+
+    .timeline-item.reverse .timeline-copy {
+      grid-column: 2;
+    }
+
+    .timeline-item.reverse .timeline-visual {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .timeline-copy {
+      max-width: 520px;
+    }
+
+    .timeline-copy .eyebrow {
+      color: #9ca3af;
+    }
+
+    .timeline-copy h3 {
+      max-width: 600px;
+      margin-bottom: 16px;
+      font-size: clamp(30px, 4vw, 48px);
+      line-height: 1.08;
+    }
+
+    .timeline-copy p:not(.eyebrow) {
+      margin: 0;
+      color: #9ca3af;
+      font-size: clamp(18px, 2.1vw, 23px);
+      line-height: 1.48;
+    }
+
+    .timeline-copy strong {
+      color: var(--text);
+    }
+
+    .timeline-visual {
+      margin: 0;
+    }
+
+    .device,
+    .terminal,
+    .findings-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+      overflow: hidden;
+      box-shadow: 0 18px 46px rgb(0 0 0 / 24%);
+    }
+
+    .device-screen {
+      padding: 16px;
+    }
+
+    .comfy-node {
+      max-width: 520px;
+      margin: 0 auto 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .comfy-node:last-child {
+      margin-bottom: 0;
+    }
+
+    .comfy-node-title {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #1b1b1d;
+      color: #e6e8ec;
+      font-size: 13px;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .comfy-node-body {
+      padding: 11px 12px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .terminal pre {
+      margin: 0;
+      padding: 16px;
+      color: #d8dadd;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .terminal .prompt {
+      color: var(--green);
+    }
+
+    .terminal .path {
+      color: var(--blue-bright);
+    }
+
+    .findings-box {
+      padding: 0;
+    }
+
+    .finding-row {
+      display: grid;
+      grid-template-columns: 140px minmax(0, 1fr);
+      gap: 12px;
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .finding-row:last-child {
+      border-bottom: 0;
+    }
+
+    .finding-row b {
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .finding-row span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .caption {
+      margin-top: 10px;
+      font-size: 13px;
+    }
+
+    .callout {
+      margin: 0 0 54px;
+      padding: 18px 22px;
+      border: 1px solid rgb(109 180 255 / 30%);
+      border-radius: 8px;
+      background: rgb(5 47 74 / 35%);
+    }
+
+    .callout p {
+      margin: 0;
+      color: #d8dadd;
+      font-size: 16px;
+    }
+
+    @media (max-width: 1040px) {
+      .flow,
+      .feature-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 860px) {
+      .hero,
+      .section,
+      .band-head,
+      .system-map,
+      .timeline-item,
+      .timeline-item.reverse {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline-item.reverse .timeline-copy,
+      .timeline-item.reverse .timeline-visual {
+        grid-column: auto;
+        grid-row: auto;
+      }
+
+      .hero {
+        align-items: start;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .hero,
+      main {
+        width: min(100% - 20px, 1180px);
+      }
+
+      .hero {
+        padding-top: 34px;
+      }
+
+      .flow,
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid,
+      .score-row {
+        grid-template-columns: 1fr;
+      }
+
+      .finding-row {
+        grid-template-columns: 1fr;
+        gap: 2px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Kforge Labs automations</p>
+      <h1>Turn model tests into evidence.</h1>
+      <p class="lead">The automation loop keeps ComfyUI renders, workflow JSON, tracking cards, iteration logs, and promoted findings moving through one repeatable path.</p>
+    </div>
+    <aside class="hero-panel" aria-label="Example tracking card">
+      <div class="hero-panel-head">
+        <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="hero-panel-title">_AI/card.png</div>
+      </div>
+      <div class="card-preview">
+        <div class="tracking-card">
+          <div class="tracking-header">
+            <strong>LTX 2.3 Director</strong>
+            <span>Run v04 - 2K - seed 12 fixed</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><span>Scheduler</span><b>linear_quadratic</b></div>
+            <div class="metric"><span>Steps</span><b>8</b></div>
+            <div class="metric"><span>Denoise</span><b>0.40</b></div>
+            <div class="metric"><span>Sampler</span><b>euler</b></div>
+            <div class="metric"><span>CFG</span><b>1.0</b></div>
+            <div class="metric"><span>Audio</span><b>model-gen</b></div>
+          </div>
+          <p class="note-strip">Delta from base: lower Phase 2 denoise; check whether lip sync survives fast motion.</p>
+          <div class="score-row">
+            <div><span>Motion</span><b>4/5</b></div>
+            <div><span>Sync</span><b>5/5</b></div>
+            <div><span>Sharp</span><b>4/5</b></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </header>
+
+  <main>
+    <nav class="nav-strip" aria-label="Page sections">
+      <a href="#loop">Loop</a>
+      <a href="#contract">Contract</a>
+      <a href="#outputs">Outputs</a>
+      <a href="#daily-workflow">Daily workflow</a>
+      <a href="#findings">Findings</a>
+    </nav>
+
+    <section class="section" id="loop">
+      <div class="section-copy">
+        <p class="eyebrow">Mental model</p>
+        <h2>One project folder, one repeatable loop.</h2>
+        <p>ComfyUI still owns creative iteration. The automation layer gives every render a traceable card and a durable log, so the next decision is based on what actually happened.</p>
+      </div>
+      <div class="flow" aria-label="Automation loop">
+        <article class="flow-step">
+          <span class="num">1</span>
+          <h3>Tweak</h3>
+          <p>Change one knob in ComfyUI and update the run notes.</p>
+        </article>
+        <article class="flow-step">
+          <span class="num">2</span>
+          <h3>Save</h3>
+          <p>Export workflow JSON into the working folder.</p>
+        </article>
+        <article class="flow-step">
+          <span class="num">3</span>
+          <h3>Render</h3>
+          <p>Write the video beside the JSON with the same run identity.</p>
+        </article>
+        <article class="flow-step">
+          <span class="num">4</span>
+          <h3>Card</h3>
+          <p>Run <code>/make-card</code> to create the visual run summary.</p>
+        </article>
+        <article class="flow-step">
+          <span class="num">5</span>
+          <h3>Promote</h3>
+          <p>Move stable patterns from the iteration log into findings.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="band" id="contract">
+      <div class="band-head">
+        <div>
+          <p class="eyebrow">Data contract</p>
+          <h2>The workflow tells the script what matters.</h2>
+        </div>
+        <p>Three Text Multiline nodes are enough to connect ComfyUI, the repo tools, and the per-project evidence folder.</p>
+      </div>
+      <div class="system-map">
+        <section class="folder-panel" aria-label="Working folder structure">
+          <div class="mini-head">Per-project working folder</div>
+          <pre class="folder-tree"><span class="user">&lt;working folder&gt;/</span>
+  LTX-Director_v04.json
+  LTX-Director_v04.mp4
+  more JSONs and MP4s
+  <span class="safe">_AI/</span>
+    <span class="safe">card.png</span>
+    <span class="safe">iterations.md</span></pre>
+        </section>
+        <section class="contract-panel" aria-label="Required ComfyUI nodes">
+          <div class="mini-head">Required Text Multiline nodes</div>
+          <div class="node-list">
+            <article class="node-card">
+              <h3>Working_Folder_PATH</h3>
+              <p>Absolute path to the project folder. This wins over the repo <code>.env</code> fallback.</p>
+            </article>
+            <article class="node-card">
+              <h3>OVERLAY - INFO</h3>
+              <p>Run summary plus a <code>BASE (notes):</code> section for what changed this time.</p>
+            </article>
+            <article class="node-card">
+              <h3>OVERLAY - FEEDBACK</h3>
+              <p>Post-render observations and scores like <code>motion: 4/5</code>, <code>sync: 5/5</code>, <code>sharp: 4/5</code>.</p>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="feature-grid" id="outputs" aria-label="Automation outputs">
+      <article class="feature-card">
+        <h3>Stable card filename</h3>
+        <p><code>_AI/card.png</code> is overwritten each run. Wire your NLE to it once and keep comparing.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Append-only log</h3>
+        <p><code>_AI/iterations.md</code> grows one row per unique workflow save, with duplicate runs filtered.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Repo stays clean</h3>
+        <p>Per-project JSON, MP4, cards, and logs live outside the repo. Docs and findings live here.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Model folders scale</h3>
+        <p>Each model gets its own docs folder under <code>docs/automations/</code>; shared rules stay in <code>CONVENTIONS.md</code>.</p>
+      </article>
+    </section>
+
+    <section class="timeline" id="daily-workflow" aria-label="Daily workflow details">
+      <article class="timeline-item">
+        <div class="timeline-copy">
+          <p class="eyebrow">Inside ComfyUI</p>
+          <h3>Write the run context where the workflow can carry it.</h3>
+          <p>Before rendering, update <strong>OVERLAY - INFO</strong>. After watching the video, update <strong>OVERLAY - FEEDBACK</strong>. The saved JSON becomes the source of truth for the card.</p>
+        </div>
+        <figure class="timeline-visual device">
+          <div class="mini-head">Workflow notes</div>
+          <div class="device-screen">
+            <div class="comfy-node">
+              <div class="comfy-node-title">OVERLAY - INFO</div>
+              <div class="comfy-node-body">Phase 2
+Scheduler: linear_quadratic
+Steps: 8
+Denoise: 0.40
+
+BASE (notes):
+Lower denoise from 0.80 to preserve stage 1.</div>
+            </div>
+            <div class="comfy-node">
+              <div class="comfy-node-title">OVERLAY - FEEDBACK</div>
+              <div class="comfy-node-body">Cleaner mouth movement on fast turns.
+Background retains 2K structure.
+motion: 4/5
+sync: 5/5
+sharp: 4/5</div>
+            </div>
+          </div>
+        </figure>
+      </article>
+
+      <article class="timeline-item reverse">
+        <div class="timeline-copy">
+          <p class="eyebrow">In the agent</p>
+          <h3>One command turns the latest JSON into a review artifact.</h3>
+          <p><strong>/make-card</strong> finds the newest non-loop workflow JSON, extracts node parameters, writes the card, and appends the iteration log.</p>
+        </div>
+        <figure class="timeline-visual terminal">
+          <div class="mini-head">Command output</div>
+          <pre><span class="prompt">$</span> /make-card
+Reading newest workflow JSON...
+Writing <span class="path">_AI/card.png</span>
+Appending <span class="path">_AI/iterations.md</span>
+
+Card ready:
+<span class="path">/JOBS/scene/ComfyUI-working-folder/_AI/card.png</span></pre>
+        </figure>
+      </article>
+
+      <article class="timeline-item" id="findings">
+        <div class="timeline-copy">
+          <p class="eyebrow">When evidence settles</p>
+          <h3>Promote patterns so they stop being rediscovered.</h3>
+          <p>When a knob behaves the same way across several runs, move the conclusion into the model's <strong>findings.md</strong>. The loop gets smarter because the docs shrink toward truth.</p>
+        </div>
+        <figure class="timeline-visual findings-box">
+          <div class="mini-head">LTX 2.3 findings snapshot</div>
+          <div class="finding-row">
+            <b>Scheduler</b>
+            <span><code>linear_quadratic</code> with 8 steps is the current locked path.</span>
+          </div>
+          <div class="finding-row">
+            <b>Sampler / CFG</b>
+            <span><code>euler</code> and <code>CFG 1.0</code> stay fixed while sweeping other knobs.</span>
+          </div>
+          <div class="finding-row">
+            <b>Resolution</b>
+            <span>2K is the recommended target for multi-segment work; 4K transitions currently dissolve.</span>
+          </div>
+          <div class="finding-row">
+            <b>Audio mode</b>
+            <span>Model-generated audio makes Phase 2 denoise visible as lip-sync drift.</span>
+          </div>
+        </figure>
+      </article>
+    </section>
+
+    <aside class="callout">
+      <p><strong>Reference layer:</strong> use <a href="./README.md">README.md</a> for the overview, <a href="./CONVENTIONS.md">CONVENTIONS.md</a> for the shared contract, <a href="./CHEATSHEET.md">CHEATSHEET.md</a> during a live session, and <a href="./LTX-2.3/README.md">LTX-2.3/README.md</a> for the active model loop.</p>
+    </aside>
+  </main>
+</body>
+</html>
