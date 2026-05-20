@@ -1,0 +1,1015 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snapshot Merge / Branch Review — Mockup</title>
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --panel: #151515;
+      --panel-soft: #1a1a1f;
+      --border: #302f2f;
+      --border-strong: #4f4f54;
+      --text: #f9fafb;
+      --muted: #8f959c;
+      --dim: #555b62;
+      --sky: #6db4ff;
+      --sky-bg: #052f4a;
+      --green: #7bcf80;
+      --green-bg: #0f2e15;
+      --amber: #ffb84d;
+      --amber-bg: #2e1f08;
+      --red: #ff8a8a;
+      --red-bg: #2e0c0c;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #090909;
+      color: var(--text);
+      font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 28px; }
+
+    h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+    h2 { margin: 32px 0 10px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #c9ccd1; }
+    h3 { margin: 18px 0 8px; font-size: 13px; font-weight: 700; color: #d8dadd; }
+
+    .intro { margin: 0 0 24px; color: var(--muted); max-width: 800px; }
+    .intro code { color: #d8dadd; background: rgba(255,255,255,.05); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .card-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #121212;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-tag {
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      padding: 2px 6px; border-radius: 3px;
+      background: rgba(255,255,255,.06);
+      color: #c9ccd1;
+    }
+    .card-tag.proposed {
+      background: rgba(123,207,128,.18);
+      color: #cbeed0;
+      border: 1px solid rgba(123,207,128,.35);
+    }
+    .card-tag.flow {
+      background: rgba(109,180,255,.18);
+      color: #cfe4fb;
+      border: 1px solid rgba(109,180,255,.35);
+    }
+    .card-title { font-weight: 600; font-size: 14px; color: #e6e8ec; }
+    .card-body { padding: 18px; background: #0c0c0c; }
+
+    /* ============ modal ============ */
+
+    .modal {
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    .modal.wide { max-width: 100%; }
+    .modal-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: #181818;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .modal-title { margin: 0; font-size: 15px; font-weight: 700; }
+    .modal-sub { font-size: 11px; color: var(--muted); font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; }
+    .modal-body { padding: 14px 18px; background: #0c0c0c; }
+    .modal-actions {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      display: flex; gap: 8px; justify-content: flex-end;
+      background: #131313;
+    }
+    .modal-actions.split { justify-content: flex-start; }
+    .modal-actions .spacer { flex: 1; }
+
+    .modal-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--panel-soft);
+      color: #e6e8ec;
+      font: inherit; font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-btn.primary {
+      background: linear-gradient(180deg, rgba(3,46,21,.95), rgba(6,58,27,.82));
+      border-color: rgba(123,207,128,.55);
+      color: #dff4df;
+    }
+    .modal-btn.subtle { border-color: var(--border); background: transparent; color: var(--muted); }
+    .modal-btn.small { padding: 3px 9px; font-size: 12px; }
+
+    /* ============ lib-row (reused from snapshot-dialogs.html) ============ */
+
+    .lib-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 12px;
+      margin: -2px 0 14px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .lib-row-info { flex: 1; min-width: 0; }
+    .lib-row-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+    .lib-row-name { font-size: 13px; font-weight: 600; color: #e6e8ec; margin-top: 2px; }
+    .lib-row-path { font-size: 11px; color: var(--muted); font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; word-break: break-all; margin-top: 2px; }
+    .lib-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+
+    .text-link {
+      color: var(--sky); text-decoration: none;
+      font-size: 11px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+    }
+    .text-link:hover { text-decoration: underline; }
+
+    /* ============ branches in Load dialog ============ */
+
+    .preset-list {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0a0a0a;
+    }
+    .preset-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .preset-row:last-child { border-bottom: 0; }
+    .preset-row-info { flex: 1; min-width: 0; }
+    .preset-row-name { font-weight: 600; font-size: 13px; }
+    .preset-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .branch-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 6px; margin-left: 6px;
+      border-radius: 3px;
+      background: rgba(109,180,255,.15);
+      color: #cfe4fb;
+      border: 1px solid rgba(109,180,255,.35);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .branch-chip.mine {
+      background: rgba(123,207,128,.15);
+      color: #cbeed0;
+      border-color: rgba(123,207,128,.35);
+    }
+
+    .branch-children {
+      background: #060606;
+    }
+    .branch-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px 8px 28px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .branch-row:last-child { border-bottom: 0; }
+    .branch-row-info { flex: 1; min-width: 0; }
+    .branch-row-name { font-weight: 600; color: #e6e8ec; }
+    .branch-row-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .branch-row-author { color: var(--sky); font-weight: 600; }
+
+    /* ============ diff visualization ============ */
+
+    .summary-row {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-bottom: 14px;
+    }
+    .summary-chip {
+      font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 10px;
+      border: 1px solid var(--border-strong);
+      background: var(--panel-soft);
+      color: #d8dadd;
+    }
+    .summary-chip.add { background: var(--green-bg); border-color: rgba(123,207,128,.45); color: #d8efdc; }
+    .summary-chip.remove { background: var(--red-bg); border-color: rgba(255,138,138,.45); color: #f5dada; }
+    .summary-chip.conflict { background: var(--amber-bg); border-color: rgba(255,184,77,.45); color: #f5d3a0; }
+
+    .pane-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .pane-pair .lib-row { margin: 0; }
+    .pane-pair .lib-row.mine { border-left: 3px solid var(--green); }
+    .pane-pair .lib-row.theirs { border-left: 3px solid var(--sky); }
+
+    .section-title {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--border);
+      border-radius: 4px 4px 0 0;
+      font-size: 12px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: #c9ccd1;
+    }
+    .section-controls {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 11px; color: var(--muted);
+      text-transform: none; letter-spacing: 0; font-weight: 500;
+    }
+    .section-controls label { cursor: pointer; }
+    .section-controls input[type="checkbox"] { margin-right: 4px; vertical-align: -1px; }
+
+    .diff-list {
+      border: 1px solid var(--border);
+      border-top: 0;
+      border-radius: 0 0 4px 4px;
+      background: #0a0a0a;
+      margin-bottom: 14px;
+    }
+    .diff-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: 13px;
+    }
+    .diff-row:last-child { border-bottom: 0; }
+    .diff-row.add { background: linear-gradient(90deg, rgba(123,207,128,.06), transparent 80%); }
+    .diff-row.remove { background: linear-gradient(90deg, rgba(255,138,138,.06), transparent 80%); }
+    .diff-row.conflict { background: linear-gradient(90deg, rgba(255,184,77,.08), transparent 80%); }
+
+    .diff-mark {
+      flex: 0 0 auto;
+      width: 18px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px;
+      border-radius: 3px;
+    }
+    .diff-mark.add { background: rgba(123,207,128,.22); color: #cbeed0; }
+    .diff-mark.remove { background: rgba(255,138,138,.18); color: #ffd9d9; }
+    .diff-mark.same { background: rgba(255,255,255,.05); color: var(--dim); }
+    .diff-mark.conflict { background: rgba(255,184,77,.22); color: #f5d3a0; }
+
+    .diff-name { flex: 1; min-width: 0; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 12px; }
+    .diff-name.dim { color: var(--dim); }
+    .diff-side {
+      flex: 0 0 auto;
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .04em;
+      padding: 2px 6px; border-radius: 3px;
+    }
+    .diff-side.mine { background: rgba(123,207,128,.12); color: #cbeed0; }
+    .diff-side.theirs { background: rgba(109,180,255,.12); color: #cfe4fb; }
+
+    .diff-row input[type="checkbox"] { flex: 0 0 auto; cursor: pointer; }
+
+    .diff-decision {
+      flex: 0 0 auto;
+      display: inline-flex; gap: 4px;
+      padding: 2px;
+      background: rgba(255,255,255,.04);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .diff-decision button {
+      padding: 2px 8px;
+      font-size: 11px; font-weight: 600;
+      border: 0; background: transparent;
+      color: var(--muted); border-radius: 3px;
+      cursor: pointer;
+    }
+    .diff-decision button.active { background: rgba(109,180,255,.18); color: #cfe4fb; }
+    .diff-decision button.active.danger { background: rgba(255,138,138,.18); color: #ffd9d9; }
+    .diff-decision button.active.success { background: rgba(123,207,128,.22); color: #cbeed0; }
+
+    /* ============ workflows tree ============ */
+
+    .tree {
+      border: 1px solid var(--border);
+      border-top: 0;
+      border-radius: 0 0 4px 4px;
+      background: #0a0a0a;
+      padding: 4px 0;
+      margin-bottom: 14px;
+    }
+    .tree-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    .tree-row.add { background: linear-gradient(90deg, rgba(123,207,128,.06), transparent 80%); }
+    .tree-row.remove { background: linear-gradient(90deg, rgba(255,138,138,.06), transparent 80%); }
+    .tree-row.conflict { background: linear-gradient(90deg, rgba(255,184,77,.08), transparent 80%); }
+    .tree-row .indent { display: inline-block; }
+    .indent.l1 { width: 0; }
+    .indent.l2 { width: 16px; }
+    .indent.l3 { width: 32px; }
+    .tree-row .folder-icon { color: var(--amber); flex: 0 0 auto; }
+    .tree-row .file-icon { color: var(--dim); flex: 0 0 auto; }
+    .tree-row .name { flex: 1; min-width: 0; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 12px; }
+    .tree-row .meta { font-size: 10px; color: var(--muted); flex: 0 0 auto; }
+
+    /* ============ conflict resolution pane ============ */
+
+    .conflict-card {
+      border: 1px solid rgba(255,184,77,.4);
+      background: linear-gradient(180deg, rgba(255,184,77,.05), transparent);
+      border-radius: 4px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .conflict-head {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 12px;
+    }
+    .conflict-icon {
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700;
+      background: rgba(255,184,77,.22); color: #f5d3a0;
+      border-radius: 3px;
+    }
+    .conflict-title { font-weight: 700; font-size: 13px; }
+    .conflict-path { font-size: 11px; color: var(--muted); font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; }
+
+    .conflict-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    .conflict-option {
+      padding: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .conflict-option.selected {
+      background: rgba(109,180,255,.08);
+      border-color: rgba(109,180,255,.5);
+    }
+    .conflict-option-label {
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .04em;
+      color: var(--sky); margin-bottom: 6px;
+    }
+    .conflict-option-name {
+      font-size: 12px; font-weight: 600;
+      font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+    }
+    .conflict-option-meta {
+      font-size: 10px; color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ============ result preview ============ */
+
+    .preview-box {
+      padding: 14px;
+      border: 1px solid rgba(123,207,128,.4);
+      background: linear-gradient(180deg, rgba(123,207,128,.05), transparent);
+      border-radius: 4px;
+      margin-bottom: 14px;
+    }
+    .preview-title { font-size: 12px; font-weight: 700; color: #cbeed0; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .preview-meta { font-size: 12px; color: #d8dadd; }
+    .preview-meta strong { color: #cbeed0; }
+    .preview-name {
+      display: block; width: 100%;
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #0a0a0a;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text);
+      font: inherit;
+    }
+    .preview-target {
+      display: flex; gap: 4px;
+      margin-top: 6px;
+    }
+    .preview-target label {
+      flex: 1;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,.02);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-size: 12px; color: #d8dadd;
+      cursor: pointer;
+    }
+    .preview-target label.selected {
+      background: rgba(109,180,255,.1);
+      border-color: rgba(109,180,255,.45);
+      color: #cfe4fb;
+    }
+
+    /* ============ annotations ============ */
+
+    .anno {
+      margin: 12px 0 0;
+      padding: 8px 12px;
+      background: rgba(109,180,255,.08);
+      border-left: 2px solid var(--sky);
+      font-size: 12px;
+      color: #d6e6f5;
+    }
+    .anno.removed { background: rgba(255,138,138,.07); border-left-color: var(--red); color: #f5dada; }
+    .anno.fix { background: rgba(123,207,128,.08); border-left-color: var(--green); color: #d6f0d8; }
+
+    .legend {
+      margin-top: 22px;
+      padding: 14px 16px;
+      border: 1px dashed var(--border);
+      border-radius: 4px;
+      background: rgba(255,255,255,.02);
+      font-size: 12px;
+      color: var(--muted);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px 16px;
+    }
+    .legend strong { color: var(--text); }
+    .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+    .swatch.add { background: var(--green); }
+    .swatch.remove { background: var(--red); }
+    .swatch.conflict { background: var(--amber); }
+    .swatch.theirs { background: var(--sky); }
+
+    @media (max-width: 900px) {
+      .grid, .pane-pair, .conflict-options { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Snapshot Merge / Branch Review — Mockup</h1>
+  <p class="intro">
+    A "GitHub-style" branch + merge UX for snapshots. Two maintainers
+    work from the same starting point, end up with diverging snapshots,
+    then review and selectively merge each other's work — without ever
+    overwriting silently. Discussion-only; no implementation. The
+    storage layer behind this can be plain JSON files with a
+    <code>lineage_id</code> + <code>parent_hash</code> (v1), a real git
+    remote (v2), or a hosted service (v3) — this mockup is the UI
+    surface, independent of where the bytes live. Schema referenced
+    throughout matches the actual snapshot shape from
+    <code>web/sidebar/snapshot.js</code>:
+    <code>{kind, version, name, exportedAt, picks: [], workflows: {directories: {}}}</code>.
+  </p>
+
+  <div class="legend" aria-label="Legend">
+    <span><span class="swatch add"></span><strong>Add</strong> — present in theirs, not in yours</span>
+    <span><span class="swatch remove"></span><strong>Remove</strong> — present in yours, not in theirs</span>
+    <span><span class="swatch conflict"></span><strong>Conflict</strong> — same item changed differently on both sides</span>
+    <span><span class="swatch theirs"></span><strong>Theirs</strong> — the incoming branch</span>
+  </div>
+
+  <!-- =========================================================
+       1. The shared scenario
+       ========================================================= -->
+  <h2>1. The scenario (carried through all sections)</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag flow">Setup</span><span class="card-title">Two maintainers, one shared starting point, two diverging snapshots</span></header>
+    <div class="card-body">
+      <div class="pane-pair">
+        <div class="lib-row mine">
+          <div class="lib-row-info">
+            <div class="lib-row-top">
+              <span class="lib-row-label">Yours — current state</span>
+              <span class="branch-chip mine">Local</span>
+            </div>
+            <div class="lib-row-name">Wan22 VFX kit</div>
+            <div class="lib-row-path">12 picks · 6 workflows · saved May 14 09:12</div>
+            <div class="lib-row-path" style="margin-top:6px; color: var(--dim);">lineage <code>wan22-vfx</code> · parent <code>3f1c…</code></div>
+          </div>
+        </div>
+        <div class="lib-row theirs">
+          <div class="lib-row-info">
+            <div class="lib-row-top">
+              <span class="lib-row-label">Incoming from <span style="color: var(--sky);">Alice</span></span>
+              <span class="branch-chip">Branch</span>
+            </div>
+            <div class="lib-row-name">Wan22 VFX kit (Alice)</div>
+            <div class="lib-row-path">14 picks · 7 workflows · shared May 14 16:48</div>
+            <div class="lib-row-path" style="margin-top:6px; color: var(--dim);">lineage <code>wan22-vfx</code> · parent <code>3f1c…</code></div>
+          </div>
+        </div>
+      </div>
+      <div class="anno">
+        Both snapshots share the same <code>lineage_id</code> and a common
+        <code>parent_hash</code> — that's the only thing required for the
+        merge dialog to apply. Two unrelated snapshots (different lineage)
+        would fall back to a plain "import as new" instead of opening
+        review.
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       2. Discovery — Load dialog with branches
+       ========================================================= -->
+  <h2>2. Discovery — branches show up inside the Load dialog</h2>
+  <div class="grid">
+    <section class="card">
+      <header class="card-head"><span class="card-tag">Today</span><span class="card-title">Load dialog only shows your own presets</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Loaded from</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">Wan22 VFX kit</div>
+                  <div class="preset-row-meta">12 picks · 6 workflows · saved May 14 09:12</div>
+                </div>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">12 picks · 0 workflows · saved May 5 14:30</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions split">
+            <button class="modal-btn">Load from…</button>
+            <span class="spacer"></span>
+            <button class="modal-btn subtle">Close</button>
+          </div>
+        </div>
+        <div class="anno">If Alice sends you her snapshot JSON today, your only options are <em>overwrite</em> (load it, lose your work) or <em>save under a different name</em> (now you have two unrelated presets, no diff).</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">A preset row that has incoming branches gets an expandable child list</span></header>
+      <div class="card-body">
+        <div class="modal">
+          <div class="modal-head"><h3 class="modal-title">Load snapshot</h3></div>
+          <div class="modal-body">
+            <div class="lib-row" style="margin-bottom: 14px;">
+              <div class="lib-row-info">
+                <div class="lib-row-top">
+                  <span class="lib-row-label">Loaded from</span>
+                  <a class="text-link" href="#">Open folder ↗</a>
+                </div>
+                <div class="lib-row-name">koolook-presets</div>
+                <div class="lib-row-path">/Users/m/ComfyUI/user/default/koolook-presets</div>
+              </div>
+            </div>
+            <div class="preset-list">
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">
+                    ▾ Wan22 VFX kit
+                    <span class="branch-chip mine">Yours</span>
+                    <span class="branch-chip">2 branches</span>
+                  </div>
+                  <div class="preset-row-meta">12 picks · 6 workflows · saved May 14 09:12</div>
+                </div>
+              </div>
+              <div class="branch-children">
+                <div class="branch-row">
+                  <div class="branch-row-info">
+                    <div class="branch-row-name"><span class="branch-row-author">Alice</span> · Wan22 VFX kit (Alice)</div>
+                    <div class="branch-row-meta">14 picks · 7 workflows · shared 16:48 · +3 / −1 / 1 conflict</div>
+                  </div>
+                  <button class="modal-btn small">Review…</button>
+                </div>
+                <div class="branch-row">
+                  <div class="branch-row-info">
+                    <div class="branch-row-name"><span class="branch-row-author">Ben</span> · Wan22 VFX kit (Ben)</div>
+                    <div class="branch-row-meta">11 picks · 6 workflows · shared May 13 22:04 · +1 / −2 / 0 conflicts</div>
+                  </div>
+                  <button class="modal-btn small">Review…</button>
+                </div>
+              </div>
+              <div class="preset-row">
+                <div class="preset-row-info">
+                  <div class="preset-row-name">starter</div>
+                  <div class="preset-row-meta">12 picks · 0 workflows · saved May 5 14:30</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions split">
+            <button class="modal-btn">Load from…</button>
+            <span class="spacer"></span>
+            <button class="modal-btn">Import branch…</button>
+            <button class="modal-btn subtle">Close</button>
+          </div>
+        </div>
+        <div class="anno fix">
+          A preset that has incoming branches sharing its <code>lineage_id</code> gets a
+          ▾ disclosure. Children inline directly under the parent — same visual
+          pattern as the recovery row from PR #144. <strong>Import branch…</strong>
+          in the command bar opens a folder picker / paste dialog for adding a
+          new branch file (or, in v2+, pulls from a remote).
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================
+       3. The review dialog — overview
+       ========================================================= -->
+  <h2>3. Review dialog — overview pane</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Clicking Review… opens a wider dialog with a side-by-side header + summary chips</span></header>
+    <div class="card-body">
+      <div class="modal wide">
+        <div class="modal-head">
+          <h3 class="modal-title">Review branch — Alice / Wan22 VFX kit</h3>
+          <span class="modal-sub">lineage wan22-vfx · base 3f1c… · theirs c4a9…</span>
+        </div>
+        <div class="modal-body">
+          <div class="pane-pair">
+            <div class="lib-row mine">
+              <div class="lib-row-info">
+                <div class="lib-row-top"><span class="lib-row-label">Yours</span><span class="branch-chip mine">Local</span></div>
+                <div class="lib-row-name">Wan22 VFX kit</div>
+                <div class="lib-row-path">12 picks · 6 workflows · May 14 09:12</div>
+              </div>
+            </div>
+            <div class="lib-row theirs">
+              <div class="lib-row-info">
+                <div class="lib-row-top"><span class="lib-row-label">Theirs</span><span class="branch-chip">Alice</span></div>
+                <div class="lib-row-name">Wan22 VFX kit (Alice)</div>
+                <div class="lib-row-path">14 picks · 7 workflows · May 14 16:48</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-row">
+            <span class="summary-chip add">+3 picks</span>
+            <span class="summary-chip remove">−1 pick</span>
+            <span class="summary-chip add">+1 workflow folder</span>
+            <span class="summary-chip add">+1 workflow file</span>
+            <span class="summary-chip conflict">1 workflow conflict</span>
+          </div>
+
+          <p style="font-size: 12px; color: var(--muted); margin: 0 0 6px;">Scroll down to inspect each change. Anything you tick gets included in the merged result; anything you leave unticked stays as-is in your local copy.</p>
+        </div>
+        <div class="modal-actions split">
+          <button class="modal-btn subtle">Discard branch</button>
+          <span class="spacer"></span>
+          <button class="modal-btn subtle">Cancel</button>
+          <button class="modal-btn primary">Merge selected (4)…</button>
+        </div>
+      </div>
+      <div class="anno">
+        Three counters define the whole merge surface: <strong>adds</strong>,
+        <strong>removes</strong>, <strong>conflicts</strong>. The primary button
+        counter (<em>Merge selected (4)…</em>) updates live as the user ticks
+        rows below. <strong>Discard branch</strong> on the left removes the
+        branch file without applying it — the only destructive action besides
+        the merge itself, and visually placed away from the primary button.
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       4. Picks diff
+       ========================================================= -->
+  <h2>4. Review dialog — picks section</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Flat list (picks have no hierarchy) with per-row checkbox + group toggles</span></header>
+    <div class="card-body">
+      <div class="modal wide">
+        <div class="modal-body">
+          <div class="section-title">
+            Picks (+3 / −1)
+            <span class="section-controls">
+              <label><input type="checkbox" checked> All adds</label>
+              <label><input type="checkbox"> All removes</label>
+            </span>
+          </div>
+          <div class="diff-list">
+            <div class="diff-row add">
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="diff-name">easy_pattern</span>
+              <span class="diff-side theirs">Alice added</span>
+            </div>
+            <div class="diff-row add">
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="diff-name">EasyResize_Koolook</span>
+              <span class="diff-side theirs">Alice added</span>
+            </div>
+            <div class="diff-row add">
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="diff-name">Easy_hdr_VAE_encode</span>
+              <span class="diff-side theirs">Alice added</span>
+            </div>
+            <div class="diff-row remove">
+              <input type="checkbox">
+              <span class="diff-mark remove">−</span>
+              <span class="diff-name">NukeConstant</span>
+              <span class="diff-side mine">Alice removed</span>
+            </div>
+            <div class="diff-row">
+              <input type="checkbox" disabled>
+              <span class="diff-mark same">=</span>
+              <span class="diff-name dim">Frames Slice</span>
+              <span class="diff-side mine" style="opacity:.5;">in both</span>
+            </div>
+            <div class="diff-row">
+              <input type="checkbox" disabled>
+              <span class="diff-mark same">=</span>
+              <span class="diff-name dim">GetImageSizeAndCount</span>
+              <span class="diff-side mine" style="opacity:.5;">in both</span>
+            </div>
+            <div class="diff-row">
+              <input type="checkbox" disabled>
+              <span class="diff-mark same">=</span>
+              <span class="diff-name dim">SaveEXRFrames</span>
+              <span class="diff-side mine" style="opacity:.5;">in both</span>
+            </div>
+            <div class="diff-row" style="border-bottom:0;">
+              <span style="flex:1; font-size:11px; color: var(--muted); padding-left: 28px;">+ 9 more unchanged picks…</span>
+            </div>
+          </div>
+
+          <div class="anno fix">
+            <strong>Adds default to checked; removes default to unchecked.</strong>
+            Picking up new picks from Alice is the common case; deleting a pick
+            you intentionally kept is the rare destructive case. Unchanged rows
+            are non-interactive (dimmed) — purely to give the user the
+            "and these are the 9 we both already have" reassurance.
+          </div>
+          <div class="anno">
+            Group toggles in the section header (<em>All adds / All removes</em>)
+            cascade to the rows. The same checkbox / decision model carries
+            into the workflows section below.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       5. Workflows diff
+       ========================================================= -->
+  <h2>5. Review dialog — workflows section</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Folder tree (matches the real <code>workflows.directories.*</code> shape)</span></header>
+    <div class="card-body">
+      <div class="modal wide">
+        <div class="modal-body">
+          <div class="section-title">
+            Workflows (+2 / 0 / 1 conflict)
+            <span class="section-controls">
+              <label><input type="checkbox" checked> All adds</label>
+              <label><input type="checkbox"> All conflicts (open below)</label>
+            </span>
+          </div>
+          <div class="tree">
+            <div class="tree-row">
+              <span class="indent l1"></span>
+              <input type="checkbox" disabled>
+              <span class="folder-icon">📁</span>
+              <span class="name">VFX/</span>
+              <span class="meta">(folder exists in both)</span>
+            </div>
+            <div class="tree-row">
+              <span class="indent l2"></span>
+              <input type="checkbox" disabled>
+              <span class="file-icon">📄</span>
+              <span class="name" style="color:var(--dim);">comp_v01.json</span>
+              <span class="meta">in both, identical</span>
+            </div>
+            <div class="tree-row conflict">
+              <span class="indent l2"></span>
+              <input type="checkbox">
+              <span class="diff-mark conflict">!</span>
+              <span class="name">comp_v02.json</span>
+              <span class="meta">edited on both sides → open in conflict pane</span>
+            </div>
+            <div class="tree-row add">
+              <span class="indent l2"></span>
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="name">comp_v03.json</span>
+              <span class="meta">Alice added · 24 nodes</span>
+            </div>
+
+            <div class="tree-row add">
+              <span class="indent l1"></span>
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="folder-icon">📁</span>
+              <span class="name">Color science/</span>
+              <span class="meta">Alice added folder · 2 workflows</span>
+            </div>
+            <div class="tree-row add">
+              <span class="indent l2"></span>
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="file-icon">📄</span>
+              <span class="name">aces_grade.json</span>
+              <span class="meta">31 nodes</span>
+            </div>
+            <div class="tree-row add">
+              <span class="indent l2"></span>
+              <input type="checkbox" checked>
+              <span class="diff-mark add">+</span>
+              <span class="file-icon">📄</span>
+              <span class="name">ocio_roundtrip.json</span>
+              <span class="meta">18 nodes</span>
+            </div>
+
+            <div class="tree-row">
+              <span class="indent l1"></span>
+              <input type="checkbox" disabled>
+              <span class="folder-icon">📁</span>
+              <span class="name" style="color:var(--dim);">HDR pipeline/</span>
+              <span class="meta">in both, no changes (1 workflow)</span>
+            </div>
+          </div>
+
+          <div class="anno fix">
+            <strong>Adding a folder is a single tick that cascades.</strong>
+            Checking <code>Color science/</code> implicitly checks both child
+            files. Unticking a child leaves the folder "partial" (visualized
+            with a half-shaded checkbox in the live UI, not shown here).
+            Folder removes would behave symmetrically — uncheck the folder to
+            keep the whole tree on your side.
+          </div>
+          <div class="anno">
+            The leaf with the conflict (<code>comp_v02.json</code>) is not
+            committable from this row alone — its checkbox is "armed" but
+            the actual decision is taken in the conflict pane below. Until
+            the user resolves it (or skips), the row stays amber.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       6. Conflict pane
+       ========================================================= -->
+  <h2>6. Review dialog — conflict on one workflow</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Three-way choice: keep mine · take theirs · keep both (renamed)</span></header>
+    <div class="card-body">
+      <div class="modal wide">
+        <div class="modal-body">
+          <div class="conflict-card">
+            <div class="conflict-head">
+              <span class="conflict-icon">!</span>
+              <div>
+                <div class="conflict-title">Conflict — same workflow edited on both sides</div>
+                <div class="conflict-path">VFX/comp_v02.json</div>
+              </div>
+            </div>
+            <div class="conflict-options">
+              <div class="conflict-option">
+                <div class="conflict-option-label">Keep mine</div>
+                <div class="conflict-option-name">comp_v02.json</div>
+                <div class="conflict-option-meta">12 nodes · last edit May 14 09:08 · 1 group</div>
+              </div>
+              <div class="conflict-option selected">
+                <div class="conflict-option-label">Keep both (rename theirs)</div>
+                <div class="conflict-option-name">comp_v02 (Alice).json</div>
+                <div class="conflict-option-meta">Alice's version saved alongside · 14 nodes · 2 groups</div>
+              </div>
+              <div class="conflict-option">
+                <div class="conflict-option-label">Take theirs</div>
+                <div class="conflict-option-name">comp_v02.json</div>
+                <div class="conflict-option-meta">14 nodes · last edit May 14 16:32 · 2 groups</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="anno fix">
+            <strong>"Keep both" is the safe default for conflicting workflows.</strong>
+            Workflows are opaque (JSON node graphs); we can't safely line-merge
+            two of them like text — a merged graph might run but produce
+            nonsense. So the third option preserves both, with the incoming
+            one renamed by suffix. The user can open both in the canvas
+            afterwards and decide which to keep on their own time.
+          </div>
+          <div class="anno">
+            <strong>Picks conflicts don't exist</strong> — picks are a set of
+            string IDs, so the only conflict is "in yours and not in theirs"
+            or vice versa, which is exactly the add/remove rows above. The
+            three-way choice only applies to workflow files.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       7. Final commit step
+       ========================================================= -->
+  <h2>7. Review dialog — commit step</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag proposed">Proposed</span><span class="card-title">Confirm the merge target (overwrite yours, or save as a new branch)</span></header>
+    <div class="card-body">
+      <div class="modal">
+        <div class="modal-head">
+          <h3 class="modal-title">Merge selected — confirm</h3>
+          <span class="modal-sub">4 changes from Alice + 1 keep-both</span>
+        </div>
+        <div class="modal-body">
+          <div class="preview-box">
+            <div class="preview-title">After merge</div>
+            <div class="preview-meta">
+              <strong>15 picks</strong> (12 yours + 3 from Alice, kept NukeConstant) ·
+              <strong>9 workflows</strong> (6 yours, 3 from Alice, 1 kept-both rename) ·
+              new lineage commit <code>e7d2…</code>
+            </div>
+            <input class="preview-name" type="text" value="Wan22 VFX kit">
+            <div class="preview-target">
+              <label class="selected"><input type="radio" name="t" checked> Save into this snapshot</label>
+              <label><input type="radio" name="t"> Save as new branch</label>
+            </div>
+          </div>
+          <div class="anno fix">
+            <strong>Default = save into the current snapshot.</strong> The user
+            opened this from <em>their</em> preset row, so "merge into mine" is
+            the dominant intent. <em>Save as new branch</em> covers "I want to
+            try Alice's flavor on top of mine without losing my pre-merge
+            version" — picks a new name automatically (e.g. <code>Wan22 VFX kit
+            (merged Alice 05-14)</code>) but the user can rename.
+          </div>
+          <div class="anno">
+            <strong>The pre-merge state is always preserved.</strong> Same as a
+            regular Load, a <code>pre_load_*.json</code> autosave of the
+            current state is written into the preset's <code>_autosave/</code>
+            folder first. If the merge result is wrong, the user can recover
+            via the existing Recovery section (PR #144) — no new recovery
+            surface needed.
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn subtle">Back</button>
+          <button class="modal-btn primary">Merge</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       8. Out of scope
+       ========================================================= -->
+  <h2>8. Out of scope (for this sketch)</h2>
+  <section class="card">
+    <header class="card-head"><span class="card-tag">Notes</span><span class="card-title">Deliberately deferred — pin down before any code</span></header>
+    <div class="card-body" style="font-size: 13px; color: #d8dadd; line-height: 1.6;">
+      <ul style="margin: 0; padding-left: 20px;">
+        <li><strong>Transport.</strong> How Alice's snapshot lands in your library — file paste, drag-drop, git pull, hosted-service fetch — is a separate decision. The dialog only needs a snapshot file with a matching <code>lineage_id</code>.</li>
+        <li><strong>Identity / auth.</strong> "Alice" is the <code>author</code> field on the snapshot envelope. v1 trusts whatever the file says (same trust model as opening a workflow JSON today). Signed snapshots or a real account system is a v2+ concern.</li>
+        <li><strong>Three-way merge of workflow internals.</strong> Out of scope on purpose — see §6 annotation. v1 ships the "keep both rename" affordance; a true graph-level merge tool is its own project.</li>
+        <li><strong>Multi-branch merge in one pass.</strong> v1 supports one incoming branch at a time. Stacking Alice + Ben in one review is a v2 polish.</li>
+        <li><strong>Live collaboration / CRDT.</strong> This is explicitly the "review and merge" pattern, not "Google Docs for snapshots." If real-time co-editing is desired, that's a different feature entirely (different storage, different UI).</li>
+        <li><strong>History view.</strong> Showing the full lineage tree (<em>Yours → Alice → merge → next branch</em>) is a nice-to-have but not in the merge flow. Could live in a separate "snapshot history" surface later.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>
