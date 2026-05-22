@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -43,8 +44,14 @@ def test_mutable_snapshot_reads_bypass_browser_cache() -> None:
 def test_snapshot_load_list_displays_disk_filename() -> None:
     text = SNAPSHOT_JS.read_text(encoding="utf-8")
 
-    assert "displayName: bareName,\n            fileName: bareName," in text
+    assert re.search(r"displayName:\s*bareName,\s*fileName:\s*bareName,", text)
     assert "Display name comes from inside the file" not in text
+
+
+def test_autosave_list_preserves_embedded_name() -> None:
+    """Recovery snapshots are auto-generated files, not user-renamed rows."""
+    text = SNAPSHOT_JS.read_text(encoding="utf-8")
+
     assert "displayName: typeof obj.name === \"string\" && obj.name ? obj.name : bareName," in text
 
 
