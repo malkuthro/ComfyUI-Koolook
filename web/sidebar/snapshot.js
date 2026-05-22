@@ -675,11 +675,12 @@ async function loadPreview(fullName, dir, rowMeta) {
             return null;
         }
         return {
-            // Display name comes from inside the file; the filename is the
-            // storage key. They should match, but a hand-edited file might
-            // disagree — trust the file's `name` for display, the filename
-            // for operations.
-            displayName: typeof obj.name === "string" && obj.name ? obj.name : bareName,
+            // The filename is the user-visible snapshot name. Users can
+            // rename snapshots directly on disk; if the embedded `name`
+            // lags behind, the Load list must still reflect the file they
+            // see in Finder / Explorer. Keep reading the JSON for validation
+            // + metadata, but use the storage key for display and actions.
+            displayName: bareName,
             fileName: bareName,
             exportedAt: typeof obj.exportedAt === "string" ? obj.exportedAt : null,
             // mtime + size threaded through from the listing endpoint so
