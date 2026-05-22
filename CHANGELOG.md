@@ -32,6 +32,14 @@ The format is inspired by Keep a Changelog and SemVer.
   with the recipe, initial knob settings, and three hypotheses still
   pending validation across runs.
 
+### Fixed
+- **Snapshot Load list now reflects disk renames.** The snapshot library
+  still validates each JSON file and reads its counts/metadata, but the
+  Load dialog displays and sorts root snapshot rows by the current
+  filename stem instead of the embedded `name` field. Renaming
+  `Shot_A.json` to `Shot_B.json` in Finder/Explorer now shows `Shot_B`
+  in the sidebar without editing the JSON contents.
+
 ## [0.3.6] - 2026-05-18
 
 ### Fixed
