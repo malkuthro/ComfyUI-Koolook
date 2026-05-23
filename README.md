@@ -75,11 +75,30 @@ Restart ComfyUI after installation.
 - **Public overview:** [kforgelabs.com/comfyui-projects/comfyui-koolook/](https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/)
 - **In-app visual guide:** [malkuthro.github.io/ComfyUI-Koolook/web/guide/](https://malkuthro.github.io/ComfyUI-Koolook/web/guide/)
   (offline copy: [`web/guide/index.html`](web/guide/index.html))
+- **Support / bug reports:** [`SUPPORT.md`](SUPPORT.md)
 - **User guide:** [`docs/user_guide/`](docs/user_guide/)
 - **Change history:** [`CHANGELOG.md`](CHANGELOG.md)
 - **Maintainer docs:** [`docs/maintainers/`](docs/maintainers/)
 - **Fork attribution and provenance:** [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md)
 - **Versioning reference:** [`docs/reference/versioning.md`](docs/reference/versioning.md)
+
+## Troubleshooting
+
+| What you see | What it usually means | What to do |
+|---|---|---|
+| The **Kforge Labs** tab does not appear | ComfyUI needs a restart, or the extension did not load | Restart ComfyUI and check the terminal for `[Koolook]` messages. |
+| The Help guide does not open | The browser blocked the popup | Allow popups for the ComfyUI page, or open [`web/guide/index.html`](web/guide/index.html) directly. |
+| Missing custom nodes after loading a workflow | One or more node packs used by that workflow are not installed | In Kforge Labs, use **Tools → Install missing packs**, or use ComfyUI Manager's **Install Missing Custom Nodes** flow. |
+| Snapshot save/load fails | The snapshot library path may be missing, read-only, or unavailable | Use **Snapshot → Save to...** or **Load from...** and choose a writable folder. |
+| A loaded snapshot looks older than expected | Named saves and auto-saves are intentionally separate | In **Snapshot → Load**, select the snapshot and check **Recovery auto-saves** for a newer periodic/pre-load recovery. |
+
+## Support
+
+For reproducible bugs, open a
+[GitHub issue](https://github.com/malkuthro/ComfyUI-Koolook/issues/new/choose).
+For the fastest answer, include your ComfyUI version, Koolook version,
+operating system, install method, terminal log, browser console errors, and
+steps to reproduce. See [`SUPPORT.md`](SUPPORT.md) for the exact checklist.
 
 ## Stability
 

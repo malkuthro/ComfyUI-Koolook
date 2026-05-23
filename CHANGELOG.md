@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-05-23
+
 ### Added
 - **Workflow validator (`scripts/validate_workflow.py`).** stdlib-only CLI
   that checks a ComfyUI workflow JSON for internal consistency: declared-
@@ -23,6 +25,11 @@ The format is inspired by Keep a Changelog and SemVer.
   for usage and triggers.
 
 ### Docs
+- **User support and bug-reporting path.** The GitHub landing page now has
+  troubleshooting and support sections, the in-app Help guide links to a
+  support checklist, and GitHub issues include a bug-report template that
+  asks for ComfyUI/Koolook versions, install method, logs, browser console
+  errors, screenshots, and reproduction steps.
 - **LTX 2.3 findings — spatial upscaler architecture & stage-2-only path.**
   Two new sections in
   [`docs/automations/LTX-2.3/findings.md`](docs/automations/LTX-2.3/findings.md):
@@ -33,6 +40,11 @@ The format is inspired by Keep a Changelog and SemVer.
   pending validation across runs.
 
 ### Fixed
+- **Workflow archive stays collapsed during search.** The sidebar search
+  state now preserves the archive folder's collapsed/expanded intent instead
+  of forcing archived workflows open while filtering. This keeps normal
+  workflow search focused on active entries unless the archive was explicitly
+  opened.
 - **Snapshot Load list now reflects disk renames.** The snapshot library
   still validates each JSON file and reads its counts/metadata, but the
   Load dialog displays and sorts root snapshot rows by the current
