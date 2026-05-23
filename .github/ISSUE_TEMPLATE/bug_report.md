@@ -35,7 +35,7 @@ small workflow JSON.
 
 Before attaching anything public, remove API keys, private client/project
 names, private prompts, personal paths you do not want public, and any private
-media.
+media, and personal contact details.
 
 ## Quick checks
 
