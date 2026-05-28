@@ -148,7 +148,7 @@ def main() -> int:
         paths=AUDIO_PATHS,
     )
     verb = "would sync" if args.dry_run else "synced"
-    print(_dev._build_line())
+    print(_dev.build_line())
     print(f"{verb} {n} entries -> {target}  (dev-sync-audio)")
     if not args.dry_run:
         _dev.write_build_info(target, args.scope)

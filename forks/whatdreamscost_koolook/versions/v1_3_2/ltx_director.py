@@ -311,37 +311,11 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _parse_relay_overrides(s):
-    """KOOLOOK PATCH (Koolook issue #177, 2026-05-28):
-    Parse Prompt Relay per-stream overrides from a JSON string typed into the
-    LTX Director's `relay_overrides` widget. No disk I/O — values live entirely
-    inside the workflow JSON and travel with it.
-
-    Returns a dict or None. None == upstream behaviour.
-
-    Supported keys (see prompt_relay.build_segments):
-      video_strength       (float, default 1.0)  — multiplies attn2 penalty
-      video_window_scale   (float, default 1.0)  — scales flat-top width
-      audio_strength       (float, default 1.0)  — multiplies audio_attn2 penalty
-      audio_window_scale   (float, default 1.0)  — scales flat-top width (audio)
-      audio_epsilon        (float, None)         — independent sigma for audio path
-    Underscore-prefixed keys are ignored (use for inline comments).
-    """
-    if not s or not s.strip():
-        return None
-    try:
-        opts = json.loads(s)
-    except Exception as e:
-        log.warning("[PromptRelay] relay_overrides input is not valid JSON, ignoring: %s", e)
-        return None
-    if not isinstance(opts, dict):
-        log.warning("[PromptRelay] relay_overrides must be a JSON object, got %s. Ignoring.", type(opts).__name__)
-        return None
-    cleaned = {k: v for k, v in opts.items() if not k.startswith("_")}
-    if not cleaned:
-        return None
-    log.info("[PromptRelay] Loaded relay_overrides from node input: %s", cleaned)
-    return cleaned
+# KOOLOOK PATCH (issue #177, 2026-05-28):
+# The relay_overrides parser lives in a stdlib-only sibling module so it
+# can be unit-tested without ComfyUI. See _relay_overrides.py for the
+# parser contract (allowlist, type coercion, fail-fast on malformed JSON).
+from ._relay_overrides import parse_relay_overrides as _parse_relay_overrides
 
 
 def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, relay_overrides=""):

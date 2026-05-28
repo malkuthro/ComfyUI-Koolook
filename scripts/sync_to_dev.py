@@ -110,7 +110,7 @@ def _get_worktree_name() -> str:
     return REPO_ROOT.name
 
 
-def _build_line() -> str:
+def build_line() -> str:
     """Composes the two-piece header line consumed by the chat-report
     convention defined in project CLAUDE.md:
 
@@ -118,9 +118,20 @@ def _build_line() -> str:
 
     SHA falls back to ``unknown`` if git is unreachable (we always need
     SOMETHING in slot 1 — the line shape is part of the convention).
-    Worktree name comes from ``REPO_ROOT.name`` and is always present."""
+    Worktree name comes from ``REPO_ROOT.name`` and is always present.
+
+    Public — consumed by scoped per-module wrappers like
+    ``sync_to_dev_audio.py`` so every dev-sync variant emits the same
+    chat-report header.
+    """
     sha = _get_short_sha() or "unknown"
     return f"{sha} - {_get_worktree_name()}"
+
+
+# Backwards-compatible alias (the function was private until the audio
+# wrapper landed). Drop after the next release cycle once we're sure no
+# downstream caller imports the underscore name.
+_build_line = build_line
 
 
 def trigger_restart(url: str, timeout: float = 2.0) -> tuple[bool, str]:
@@ -431,7 +442,7 @@ def main() -> int:
     # chat-report convention that consumes this output. Header first so
     # the maintainer's eye lands on the build identifier before the
     # mechanical sync details.
-    print(_build_line())
+    print(build_line())
     print(f"{verb} {n} entries -> {target}")
     if not args.dry_run:
         write_build_info(target, args.scope)

@@ -1,5 +1,10 @@
 source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
-source_ref: "v1.3.2"
+# source_ref names the release. pinned_commit is the latest `main` SHA
+# at the time the fork was cut — a README-only update sitting one commit
+# beyond the actual `v1.3.2` release tag on upstream's history. Code is
+# byte-identical to the tagged release; the SHA differs because upstream
+# pushed a docs touch-up afterwards.
+source_ref: "v1.3.2 (pinned to post-tag README-only commit on main)"
 pinned_commit: "e81223a2add687555a6371e311b325880bf7c3c9"
 external_checkout_relative_to_forks_root: "whatdreamscost-v1.3.2-koolook"
 upstream_tracking_relative_to_forks_root: "whatdreamscost-main-upstream"

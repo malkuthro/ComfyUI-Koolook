@@ -42,7 +42,7 @@ entries:
   - id: "whatdreamscost_koolook_v1_3_2_ltx_director"
     name: "WhatDreamsCost Koolook v1.3.2 LTX Director subset"
     source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
-    source_ref: "v1.3.2"
+    source_ref: "v1.3.2 (pinned to post-tag README-only commit on main)"
     pinned_commit: "e81223a2add687555a6371e311b325880bf7c3c9"
     external_checkout:
       relative_path_from_forks_root: "whatdreamscost-v1.3.2-koolook"
