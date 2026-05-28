@@ -251,9 +251,24 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
-def sync(target: Path, dry_run: bool, verbose: bool) -> int:
+def sync(
+    target: Path,
+    dry_run: bool,
+    verbose: bool,
+    paths: tuple[str, ...] = RUNTIME_PATHS,
+) -> int:
+    """Copy each entry in ``paths`` (relative to the repo root) to the
+    matching subpath under ``target``. Directories are recursively
+    copied with ``DIR_EXCLUDES`` filtered out and the previous dest
+    subtree removed first; files are overwritten in place.
+
+    The optional ``paths`` argument lets scoped wrappers (e.g.
+    ``sync_to_dev_audio.py``) reuse this function with a smaller set —
+    just the subtree their automation module touches. The default is
+    the full ``RUNTIME_PATHS`` (every file ComfyUI loads at runtime).
+    """
     copied = 0
-    for rel in RUNTIME_PATHS:
+    for rel in paths:
         src = REPO_ROOT / rel
         if not src.exists():
             continue

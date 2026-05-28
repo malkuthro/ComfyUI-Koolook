@@ -83,11 +83,12 @@ audio-lipsync/
 ## Iteration loop
 
 1. **Edit a knob.** Either:
-   - **Widget-only swap** — change `relay_overrides` JSON on the LTXDirector node in ComfyUI. No restart needed; just queue.
+   - **Widget-only swap** — change `relay_overrides` JSON on the LTXDirector node in ComfyUI. No sync, no restart; just queue.
    - **Code-level change** — edit
      [`../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py)
      or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py)
-     in this repo. Then sync into the maintainer's live ComfyUI via the standard `dev-sync` (user-initiated; see project `CLAUDE.md`). Restart Comfy for Python module reload.
+     in this repo. Then run **`dev-sync-audio`** (chat phrase or directly
+     [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) — a scoped variant of `dev-sync` that copies just the fork dir + the root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, leaves `forks/radiance_koolook/` and the rest of the tree alone, then triggers a ComfyUI-Manager reboot so the Python module re-imports. User-initiated only — same rule as `dev-sync`; see project `CLAUDE.md`.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
@@ -119,5 +120,6 @@ install is untouched.
 
 Edits to `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` are normal
 git-tracked changes — `git restore` / `git stash` work as usual. Once
-`dev-sync` is run, the running ComfyUI install is updated; restart Comfy
-so the Python module reimports.
+`dev-sync-audio` is run, the running ComfyUI install is updated; the
+auto-restart triggered at the end of the sync re-imports the Python
+module.

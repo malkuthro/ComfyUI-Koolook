@@ -10,7 +10,7 @@
 
 | Step | Who | What |
 |---|---|---|
-| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook v1.3.2)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` source in this repo + run `dev-sync` + restart Comfy. |
+| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook v1.3.2)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` source in this repo + run **`dev-sync-audio`** (auto-restarts Comfy). |
 | 2 | Maintainer | **Save** workflow → overwrites the current workflow file at the working folder. |
 | 3 | Maintainer | Queue render in ComfyUI. |
 | 4 | Maintainer | Report result in chat (verbal feedback — sync state, motion state, prompt adherence). |
@@ -51,18 +51,39 @@ Auto-generated from key knob state + feedback summary, e.g.:
 
 The maintainer can override any label by stating it explicitly.
 
-## Syncing fork-code edits to the live install
+## Syncing fork-code edits to the live install — `dev-sync-audio`
 
 When the iteration step requires editing a `forks/whatdreamscost_koolook/`
-source (not just the widget), the standard
-[`dev-sync`](../../../../scripts/sync_to_dev.py) flow applies — it's a
-user-initiated, never-automatic action per the project `CLAUDE.md`. Quick
-recipe:
+source (not just the widget), run the **scoped** sync for this module —
+not the full `dev-sync`:
 
 ```
-python scripts/sync_to_dev.py --scope "audio-lipsync fork edit"
+python scripts/sync_to_dev_audio.py
+# or just say "dev-sync-audio" in chat — the agent runs the script
 ```
 
-Then restart Comfy so the Python module re-imports. Widget-only changes
-(editing `relay_overrides` JSON on the canvas) do **not** require sync or
-restart — just queue the next render.
+What it does:
+- Copies only `forks/whatdreamscost_koolook/` + the root `__init__.py`
+  to `$KOLOOK_COMFYUI_DEV_PATH` (read from `.env`).
+- Leaves the rest of the live install (radiance fork, the root `k_*.py`
+  nodes, the sidebar `web/` bundle, `video_formats/`) untouched.
+- Auto-triggers a ComfyUI-Manager reboot so the Python module re-imports
+  (custom-node `.py` files load once at server start; without a restart
+  the new code stays invisible). Use `--no-restart` to opt out.
+- Writes the scope tag into `<target>/web/_dev_build.json` so the
+  Kforge Labs sidebar footer shows which build is live.
+
+Flags mirror `dev-sync`: `--dry-run`, `--init`, `--verbose`,
+`--scope "<≤10-word change>"`, `--no-restart`, `--restart-url`.
+
+User-initiated only — same rule as `dev-sync` (see project `CLAUDE.md`).
+Never automatic. Never on commit, never on session end.
+
+Widget-only changes (editing `relay_overrides` JSON on the canvas) do
+**not** require sync or restart — just queue the next render.
+
+Why not full `dev-sync`? Because it `rmtree`s the entire dest `forks/`
+tree and re-copies both Koolook forks. For this module's iteration
+loop, that churns `forks/radiance_koolook/` for no reason. Scoping to
+`forks/whatdreamscost_koolook/` keeps the radiance side of the live
+install stable across audio-lipsync iterations.
