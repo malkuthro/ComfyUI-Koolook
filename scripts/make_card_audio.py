@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
 """
 Audio-lipsync card renderer — vertical PIL card scoped to the
-``docs/automations/LTX-2.3/audio-lipsync/`` iteration loop. Renders
-into the run-NNN snapshot folder produced by ``scripts/loop_audio.py``,
-so each card travels with its workflow JSON + relay_overrides + patch
-state + notes.
+``docs/automations/LTX-2.3/audio-lipsync/`` iteration loop.
 
-Sister to ``scripts/make_card.py`` (base-1step automation), not a
-replacement. The two layouts highlight different things:
+Sibling to ``scripts/make_card.py`` (base-1step). The two families
+share palette, font fallback chain, and layout primitives — so the
+cards read as a set — but each highlights what matters for its module:
 
   base-1step       Phase 1 / Phase 2 / Base · model / Base · locked /
                    Base · scene / Outcome — the upstream-default
                    parameter sweep view.
-  audio-lipsync    KNOB STATE / FORK STATE / SAMPLER / BASE notes /
-                   OUTCOME — the fork-iteration view, dominated by
-                   the relay_overrides JSON + which fork SHA produced
-                   the render.
+  audio-lipsync    Knob state / Fork state / Sampler / Base · notes /
+                   Feedback / Outcome — the fork-iteration view,
+                   dominated by the relay_overrides JSON + which fork
+                   SHA produced the render.
 
-Same palette + font fallback chain as make_card.py so the two card
-families read as a set. ~540 px wide, vertical, dark, beside-a-video.
+Visual conventions copied 1:1 from make_card.py so the rendering is
+consistent: small uppercase accent-coloured section labels (no solid
+header bars), subtle panel outlines, key/value mono-rows, and
+left-accented note boxes for the prose blocks. When make_card.py
+evolves, update both here and there until we factor the primitives
+into a shared module.
 
-The renderer is callable two ways:
+Two entry points:
 
-1. From loop_audio.py at the end of a snapshot, with the in-memory
-   state dict (no disk read):
+1. From loop_audio.py at end-of-snapshot:
 
        from scripts.make_card_audio import render_audio_card
-       render_audio_card(state, out_path=run_dir / "card.png")
+       render_audio_card(state, run_dir / "card.png")
 
-2. Standalone against an existing run folder, e.g. for re-renders or
-   for refreshing the layout after a script tweak:
+2. Standalone, against an existing run folder (re-render after a
+   layout tweak):
 
        python scripts/make_card_audio.py <run_dir>
-
-Exit codes:
-  0  card rendered (or would render, in --dry-run)
-  2  run folder missing or unreadable
 """
 from __future__ import annotations
 
@@ -49,41 +46,43 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 # --------------------------------------------------------------------------
-# Palette & fonts — copied from make_card.py so the audio-lipsync card
-# reads as the same family. Identical numeric values keep both renderers
-# in sync visually until/unless we factor them into a shared module.
+# Palette + geometry — kept in lockstep with scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 W            = 540
 PAD_X        = 28
 PAD_TOP      = 28
 PAD_BOTTOM   = 28
-
 BG_OUTER     = (14, 14, 14)
 BG_CARD      = (21, 21, 21)
 BG_SECTION   = (26, 26, 31)
 BORDER       = (48, 47, 47)
+BORDER_STR   = (79, 79, 84)
 TEXT         = (249, 250, 251)
 MUTED        = (143, 149, 156)
 DIM          = (200, 204, 209)
 HEADER_GREY  = (201, 204, 209)
-ACCENT_KNOB  = (255, 184, 77)    # amber — knob state (the thing that changes)
-ACCENT_BASE  = (109, 180, 255)   # sky — frozen / locked
-ACCENT_FORK  = (175, 138, 230)   # violet — fork state, distinct from knob
-ACCENT_OUT   = (123, 207, 128)   # green — outcome
+ACCENT_RUN   = (255, 184, 77)    # amber  — knob state (what changes per render)
+ACCENT_BASE  = (109, 180, 255)   # sky    — frozen base / fork pin / sampler
+ACCENT_FORK  = (175, 138, 230)   # violet — fork state, visually distinct from knob
+ACCENT_OUT   = (123, 207, 128)   # green  — post-render outcome
 NOTE_BG      = (12, 12, 12)
 RADIUS       = 14
 SECTION_RADIUS = 8
 
 
+# --------------------------------------------------------------------------
+# Fonts — same fallback chain + same sizes as scripts/make_card.py.
+# --------------------------------------------------------------------------
+
+WIN_FONTS = Path(r"C:/Windows/Fonts")
+
+
 def _load_font(filenames: list[str], size: int) -> ImageFont.FreeTypeFont:
-    """Try OS-specific font paths; fall back to PIL's default."""
-    win = Path(r"C:/Windows/Fonts")
-    mac = Path("/Library/Fonts")
-    linux = Path("/usr/share/fonts")
     for fn in filenames:
-        for p in (win / fn, mac / fn, linux / fn):
-            if p.is_file():
+        for p in (WIN_FONTS / fn, Path("/Library/Fonts") / fn,
+                  Path("/usr/share/fonts") / fn):
+            if p.exists():
                 try:
                     return ImageFont.truetype(str(p), size)
                 except OSError:
@@ -91,169 +90,184 @@ def _load_font(filenames: list[str], size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-F_TITLE   = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 26)
-F_SUB     = _load_font(["segoeui.ttf",  "Arial.ttf"],      16)
-F_SECTION = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 14)
-F_KEY     = _load_font(["segoeui.ttf",  "Arial.ttf"],      14)
-F_MONO    = _load_font(["consola.ttf",  "Menlo.ttc", "DejaVuSansMono.ttf"], 14)
-F_NOTE    = _load_font(["segoeuii.ttf", "Arial Italic.ttf"], 14)
+F_TITLE   = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 28)
+F_SUB     = _load_font(["segoeui.ttf",  "Arial.ttf"],      17)
+F_H2      = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 16)
+F_TAG     = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 12)
+F_SECTION = _load_font(["segoeuib.ttf", "Arial Bold.ttf"], 17)
+F_MONO    = _load_font(["consola.ttf",  "Menlo.ttc", "DejaVuSansMono.ttf"], 19)
+F_NOTE    = _load_font(["segoeuii.ttf", "Arial Italic.ttf"], 18)
 
 
 # --------------------------------------------------------------------------
-# Drawing helpers — minimal layout primitives, not a layout engine. If
-# this card grows past 5–6 sections we should refactor into a generic
-# vertical-section layout shared with make_card.py.
+# Drawing primitives — copied 1:1 from scripts/make_card.py. The two
+# renderers stay in visual sync by sharing these signatures.
 # --------------------------------------------------------------------------
 
 
-def _draw_section_box(
-    draw: ImageDraw.ImageDraw,
-    y: int,
-    title: str,
-    rows: list[tuple[str, str]],
-    accent: tuple[int, int, int],
-    body_lines: list[str] | None = None,
-) -> int:
-    """One titled section with a colored header band + a vertical
-    key/value table + an optional free-text block at the bottom.
-    Returns the new ``y`` cursor after the section (caller stacks)."""
-    inner_pad = 12
-    title_h = 24
-    row_h = 20
-    note_pad = 8
-
-    body_h = (
-        len(body_lines) * row_h if body_lines else 0
-    )
-    section_h = (
-        title_h + inner_pad
-        + len(rows) * row_h
-        + (note_pad + body_h if body_lines else 0)
-        + inner_pad
-    )
-
-    box_l, box_r = PAD_X, W - PAD_X
-    draw.rounded_rectangle(
-        (box_l, y, box_r, y + section_h),
-        radius=SECTION_RADIUS,
-        fill=BG_SECTION,
-        outline=BORDER,
-        width=1,
-    )
-
-    # Header band
-    draw.rectangle(
-        (box_l, y, box_r, y + title_h),
-        fill=accent,
-    )
-    draw.text(
-        (box_l + 10, y + 3),
-        title,
-        font=F_SECTION,
-        fill=(20, 20, 20),
-    )
-
-    # Rows
-    row_y = y + title_h + inner_pad
-    key_x = box_l + 14
-    val_x = box_l + 130
-    for k, v in rows:
-        draw.text((key_x, row_y), k, font=F_KEY, fill=MUTED)
-        draw.text((val_x, row_y), v, font=F_MONO, fill=TEXT)
-        row_y += row_h
-
-    # Optional body block (used for OVERLAY - INFO notes, feedback text)
-    if body_lines:
-        body_y = row_y + note_pad
-        for line in body_lines:
-            draw.text(
-                (key_x, body_y),
-                line,
-                font=F_NOTE,
-                fill=DIM,
-            )
-            body_y += row_h
-
-    return y + section_h + 8
-
-
-def _wrap_text(s: str, max_chars: int) -> list[str]:
-    """Hard wrap by character count. Good enough for short body blocks."""
+def _wrap_text(text: str, max_chars: int, keep_blank_lines: bool = False) -> list[str]:
     out: list[str] = []
-    for raw in s.splitlines():
-        if not raw.strip():
+    for raw_line in text.split("\n"):
+        if not raw_line.strip():
+            if keep_blank_lines:
+                out.append("")
             continue
-        if len(raw) <= max_chars:
-            out.append(raw)
-            continue
-        words = raw.split()
-        line = ""
+        words = raw_line.split()
+        cur = ""
         for w in words:
-            if len(line) + len(w) + 1 > max_chars:
-                if line:
-                    out.append(line)
-                line = w
+            if len(cur) + len(w) + 1 <= max_chars:
+                cur = (cur + " " + w).strip()
             else:
-                line = (line + " " + w) if line else w
-        if line:
-            out.append(line)
+                if cur:
+                    out.append(cur)
+                cur = w
+        if cur:
+            out.append(cur)
     return out
 
 
+def _draw_kv_row(
+    draw: ImageDraw.ImageDraw, x: int, y: int,
+    key: str, val: str, key_w: int,
+) -> int:
+    draw.text((x, y), key, font=F_MONO, fill=MUTED)
+    draw.text((x + key_w, y), str(val), font=F_MONO, fill=TEXT)
+    return y + 26
+
+
+def _draw_text_box(
+    draw: ImageDraw.ImageDraw, x: int, y: int, width: int,
+    label: str, content: str, accent: tuple[int, int, int],
+    max_lines: int = 4, char_per_line: int = 42,
+) -> int:
+    """Left-accented note block — colored 4-px bar on the left, label
+    in the accent colour, italic body text. Same shape as make_card.py."""
+    lines = _wrap_text(content, char_per_line)[:max_lines]
+    box_h = 28 + 22 * max(1, len(lines)) + 14
+    draw.rounded_rectangle(
+        [x - 12, y, x + width, y + box_h],
+        radius=4, fill=NOTE_BG,
+    )
+    draw.rectangle(
+        [x - 12, y, x - 8, y + box_h],
+        fill=accent,
+    )
+    draw.text((x + 4, y + 8), label.upper(), font=F_H2, fill=accent)
+    line_y = y + 36
+    for line in lines:
+        draw.text((x + 4, line_y), line, font=F_NOTE, fill=DIM)
+        line_y += 22
+    return y + box_h + 4
+
+
+def _draw_section(
+    draw: ImageDraw.ImageDraw, x: int, y: int, width: int,
+    accent: tuple[int, int, int], label: str, body_h: int,
+    bg: tuple[int, int, int] = BG_SECTION,
+    border: tuple[int, int, int] = BORDER,
+) -> tuple[int, int, int, int]:
+    """Subtle panel with an accent-coloured uppercase label at the top.
+    Returns (content_x, content_y, content_w, end_y) so the caller
+    stacks kv-rows directly underneath."""
+    HEADER_H = 36
+    section_h = HEADER_H + body_h + 14
+    draw.rounded_rectangle(
+        [x, y, x + width, y + section_h],
+        radius=SECTION_RADIUS, fill=bg, outline=border, width=1,
+    )
+    draw.text((x + 14, y + 10), label.upper(), font=F_SECTION, fill=accent)
+    return x + 14, y + HEADER_H, width - 28, y + section_h + 10
+
+
+def _section_body_rows(num_rows: int, extra: int = 0) -> int:
+    return num_rows * 26 + extra
+
+
 # --------------------------------------------------------------------------
-# State -> card. ``state`` is the dict loop_audio.py builds; keys
-# intentionally mirror the script's extraction.
+# Renderer — driven entirely by the ``state`` dict that loop_audio.py
+# builds. Keep the rendering pure-state-in/PNG-out so the snapshot
+# folder is always re-renderable.
 # --------------------------------------------------------------------------
 
 
 def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
-    """Render the card PNG. ``state`` keys consumed:
+    """Render the audio-lipsync card PNG. ``state`` keys consumed:
 
-      run_number       int    1-based NNN
-      run_label        str    sanitized slug (used in the run folder)
-      date             str    ISO date (today)
-      name             str    NAME multiline body
-      workflow_name    str    source workflow filename (no path)
-      relay_overrides_raw    str    RELAY_OVERRIDES body verbatim
-      director         dict   from extract_director_state()
-      scheduler        dict   from extract_scheduler_chain()
-      scores           dict   {motion,sync,sharp -> int|None}
-      feedback_lines   list[str]
-      info_body        str    OVERLAY - INFO multiline body
-      build            dict   from web/_dev_build.json (may be empty)
-      main_sha         str    short repo HEAD SHA
-      fork_dir_status  str    'clean (matches HEAD)' or git-status output
+      run_number, run_label, date, name, workflow_name
+      relay_overrides_raw, director, scheduler, scores
+      feedback_lines, info_body, build, main_sha, fork_dir_status
     """
     director = state["director"]
     scheduler = state["scheduler"]
     scores = state["scores"]
     build = state.get("build") or {}
 
-    # ---- Build section rows ----------------------------------------
+    # ----- canvas (oversized, cropped after layout) -----
+    canvas_h = 2000
+    img = Image.new("RGB", (W, canvas_h), BG_OUTER)
+    draw = ImageDraw.Draw(img)
 
+    inset = 18
+    draw.rounded_rectangle(
+        [inset, inset, W - inset, canvas_h - inset],
+        radius=RADIUS, fill=BG_CARD, outline=BORDER, width=1,
+    )
+
+    x = inset + PAD_X
+    y = inset + PAD_TOP
+    inner_w = W - 2 * inset - 2 * PAD_X
+
+    # ----- HEADER -----
+    title_line = f"Run {state['run_number']:03d} — {state['name']}"
+    sub_line = (
+        f"{state['date']} · audio-lipsync · {state['workflow_name']}"
+    )
+    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT)
+    y += 38
+    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED)
+    y += 30
+    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1)
+    y += 18
+
+    key_w = 152
+
+    # ----- KNOB STATE (amber) -----
     relay_raw = state["relay_overrides_raw"].strip()
-    relay_summary = relay_raw if relay_raw else "(empty → upstream defaults)"
     custom_audio = director.get("use_custom_audio")
-    knob_rows = [
-        ("relay_overrides", relay_summary[:48]),
-        ("custom audio", (
-            "ON" if custom_audio is True
-            else "off" if custom_audio is False
-            else "?"
-        )),
-    ]
+    audio_cell = (
+        "ON · custom file" if custom_audio is True
+        else "off · model-generated" if custom_audio is False
+        else "?"
+    )
+    relay_summary = relay_raw if relay_raw else "(empty → defaults)"
+    body_h = _section_body_rows(2)
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_RUN, "Knob state", body_h,
+    )
+    cy = _draw_kv_row(draw, cx, cy, "relay_overrides", relay_summary[:32], key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Custom audio", audio_cell, key_w)
+    y = end_y
 
+    # ----- FORK STATE (violet) -----
     director_variant = director.get("variant", "?")
-    is_koolook = director.get("is_koolook")
-    fork_rows = [
-        ("MAIN sha", state["main_sha"]),
-        ("synced (script)", f"{build.get('commit', '—')} "
-                            f"{build.get('synced_at', '')}".strip()),
-        ("sync scope", build.get("scope", "—")),
-        ("director node", director_variant),
-        ("fork files", state["fork_dir_status"][:60]),
-    ]
+    sync_line = (
+        f"{build.get('commit', '—')} · {build.get('synced_at', '?')}"
+    )
+    body_h = _section_body_rows(5)
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_FORK, "Fork state", body_h,
+    )
+    cy = _draw_kv_row(draw, cx, cy, "MAIN sha", state["main_sha"], key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Synced (script)", sync_line[:28], key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Sync scope", build.get("scope", "—")[:28], key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Director node", director_variant[:28], key_w)
+    cy = _draw_kv_row(
+        draw, cx, cy, "Fork files",
+        state["fork_dir_status"][:28], key_w,
+    )
+    y = end_y
 
+    # ----- SAMPLER (sky) -----
     schedulers = scheduler["schedulers"]
     samplers = scheduler["samplers"]
     noises = scheduler["noises"]
@@ -262,110 +276,80 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         s1, s2 = schedulers[0], schedulers[1]
         if len(s2) > 2 and s2[2] == 1.0 and len(s1) > 2 and s1[2] < 1.0:
             s1, s2 = s2, s1
-        p1 = f"{s1[0]} · {s1[1]} steps · d={s1[2]}"
-        p2 = f"{s2[0]} · {s2[1]} steps · d={s2[2]}"
+        p1 = f"{s1[0]} · {s1[1]} stp · d={s1[2]}"
+        p2 = f"{s2[0]} · {s2[1]} stp · d={s2[2]}"
     elif schedulers:
-        p1 = f"{schedulers[0][0]} · {schedulers[0][1]} steps · d={schedulers[0][2]}"
+        p1 = f"{schedulers[0][0]} · {schedulers[0][1]} stp · d={schedulers[0][2]}"
         p2 = "—"
     else:
         p1 = p2 = "—"
-    sampler_rows = [
-        ("Phase 1", p1),
-        ("Phase 2", p2),
-        ("samplers", " / ".join(str(s) for s in samplers) or "—"),
-        ("seed", str(noises[0][0]) if noises and noises[0] else "—"),
-        ("CFG", " / ".join(str(c) for c in cfgs) or "—"),
-    ]
+    sampler_join = " / ".join(str(s) for s in samplers) if samplers else "—"
+    seed_val = str(noises[0][0]) if noises and noises[0] else "—"
+    cfg_join = " / ".join(str(c) for c in cfgs) if cfgs else "—"
 
+    body_h = _section_body_rows(5)
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_BASE, "Sampler", body_h,
+    )
+    cy = _draw_kv_row(draw, cx, cy, "Phase 1", p1, key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Phase 2", p2, key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Samplers", sampler_join, key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Seed", f"{seed_val} (fixed)", key_w)
+    cy = _draw_kv_row(draw, cx, cy, "CFG", cfg_join, key_w)
+    y = end_y
+
+    # ----- BASE · NOTES (left-accented amber block) -----
     info_body = (state.get("info_body") or "").strip()
-    info_lines = _wrap_text(info_body, 52) if info_body else None
+    if info_body:
+        y = _draw_text_box(
+            draw, x, y, inner_w, "Base · notes (Δ this run)",
+            info_body, ACCENT_RUN, max_lines=18, char_per_line=42,
+        )
 
-    score_cell = (
-        f"Motion {scores['motion'] or '?'}/5  "
-        f"·  Sync {scores['sync'] or '?'}/5  "
-        f"·  Sharp {scores['sharp'] or '?'}/5"
-    )
-    outcome_rows = [("scores", score_cell)]
+    # ----- FEEDBACK (left-accented green block) -----
     feedback_lines = state.get("feedback_lines") or []
-    feedback_wrapped = []
-    for line in feedback_lines:
-        feedback_wrapped.extend(_wrap_text(line, 52))
-
-    # ---- Compute card height by walking sections in advance --------
-    title_block_h = 64
-    section_pad = 8
-
-    def _section_h(rows: list, body_lines: list[str] | None) -> int:
-        title_h = 24
-        inner_pad = 12
-        row_h = 20
-        note_pad = 8
-        body_h = len(body_lines) * row_h if body_lines else 0
-        return (
-            title_h + inner_pad + len(rows) * row_h
-            + (note_pad + body_h if body_lines else 0)
-            + inner_pad
-        )
-
-    sections = [
-        (knob_rows, None),
-        (fork_rows, None),
-        (sampler_rows, None),
-        ([], info_lines) if info_lines else None,
-        (outcome_rows, feedback_wrapped),
-    ]
-    sections = [s for s in sections if s is not None]
-    total_h = (
-        PAD_TOP + title_block_h
-        + sum(_section_h(rows, body) + section_pad for rows, body in sections)
-        + PAD_BOTTOM
+    feedback_text = "\n".join(feedback_lines) if feedback_lines else "(none)"
+    y = _draw_text_box(
+        draw, x, y, inner_w, "Feedback (video)",
+        feedback_text, ACCENT_OUT, max_lines=6, char_per_line=42,
     )
 
-    # ---- Render ---------------------------------------------------
-    img = Image.new("RGB", (W, total_h), BG_OUTER)
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(
-        (8, 8, W - 8, total_h - 8),
-        radius=RADIUS, fill=BG_CARD, outline=BORDER, width=1,
+    # ----- OUTCOME (sky → green scores row) -----
+    body_h = _section_body_rows(1)
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_OUT, "Outcome", body_h,
     )
-
-    y = PAD_TOP
-    title = f"Run {state['run_number']:03d} — {state['name']}"
-    draw.text((PAD_X, y), title, font=F_TITLE, fill=TEXT)
-    y += 32
-    sub = (
-        f"{state['date']} · audio-lipsync · {state['workflow_name']}"
+    score_cell = (
+        f"Motion {scores['motion'] or '?'}/5"
+        f"   Sync {scores['sync'] or '?'}/5"
+        f"   Sharp {scores['sharp'] or '?'}/5"
     )
-    draw.text((PAD_X, y), sub, font=F_SUB, fill=MUTED)
-    y += 28
+    draw.text((cx, cy), score_cell, font=F_MONO, fill=TEXT)
+    y = end_y
 
-    section_specs = [
-        ("KNOB STATE", knob_rows, None, ACCENT_KNOB),
-        ("FORK STATE", fork_rows, None, ACCENT_FORK),
-        ("SAMPLER", sampler_rows, None, ACCENT_BASE),
-    ]
-    if info_lines:
-        section_specs.append(("BASE notes", [], info_lines, ACCENT_BASE))
-    section_specs.append(
-        ("OUTCOME", outcome_rows, feedback_wrapped, ACCENT_OUT)
-    )
-
-    for title, rows, body_lines, accent in section_specs:
-        y = _draw_section_box(draw, y, title, rows, accent, body_lines)
-
+    # ----- INERT WARNING (conditional) -----
+    is_koolook = director.get("is_koolook")
     if not is_koolook and relay_raw:
-        warn_h = 30
-        draw.rounded_rectangle(
-            (PAD_X, y, W - PAD_X, y + warn_h),
-            radius=SECTION_RADIUS,
-            fill=NOTE_BG, outline=ACCENT_KNOB, width=1,
+        warn_text = (
+            "Director is upstream LTXDirector — relay_overrides and per-segment "
+            "σ are INERT for this render. Swap to LTX Director (Koolook v1.3.2) "
+            "to make the knobs active."
         )
-        draw.text(
-            (PAD_X + 10, y + 7),
-            "⚠ Director is upstream — relay_overrides INERT",
-            font=F_NOTE, fill=ACCENT_KNOB,
+        y = _draw_text_box(
+            draw, x, y, inner_w, "⚠ Director note",
+            warn_text, ACCENT_RUN, max_lines=8, char_per_line=42,
         )
-        y += warn_h + 8
+
+    # ----- crop to actual content + save -----
+    final_h = y + PAD_BOTTOM + inset
+    img = img.crop((0, 0, W, final_h))
+    # redraw outer rounded-rect outline at the new height so the
+    # bottom curve matches the top
+    out_draw = ImageDraw.Draw(img)
+    out_draw.rounded_rectangle(
+        [inset, inset, W - inset, final_h - inset],
+        radius=RADIUS, outline=BORDER, width=1,
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(str(out_path))
@@ -373,21 +357,18 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
 
 
 # --------------------------------------------------------------------------
-# Standalone entry point — rebuild a card from an existing run folder.
-# Used for re-renders after a script tweak; loop_audio.py calls the
-# function directly without going through this CLI.
+# Standalone CLI — re-render a card from an existing run folder.
 # --------------------------------------------------------------------------
 
 
 def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     """Reconstruct enough of the loop_audio state dict to re-render
-    the card. We re-read workflow.json + the small txt artifacts that
-    the snapshot already preserves."""
-    # Local import to keep loop_audio import cheap when this script is
-    # imported as a render helper.
+    the card. Re-reads workflow.json + small txt artifacts already in
+    the snapshot."""
     from loop_audio import (  # type: ignore[import-not-found]
         extract_director_state, extract_multilines, extract_scheduler_chain,
         parse_feedback, read_dev_build_json, short_sha, fork_dir_status,
+        load_config, DEFAULT_CONFIG_PATH,
     )
 
     wf_path = run_dir / "workflow.json"
@@ -398,22 +379,23 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         wf = json.load(f)
     nodes = wf.get("nodes") or []
 
-    multilines = extract_multilines(nodes)
+    cfg = load_config(DEFAULT_CONFIG_PATH)
+    multilines = extract_multilines(nodes, cfg["tracked_multilines"])
     director = extract_director_state(nodes)
     scheduler = extract_scheduler_chain(nodes)
     scores, feedback_lines = parse_feedback(
         multilines.get("overlay - feedback", "")
     )
 
-    # NNN is in the folder name: run-NNN_<label>
-    m = run_dir.name.split("_", 1)
-    nnn = int(m[0].removeprefix("run-")) if m[0].startswith("run-") else 0
-    label = m[1] if len(m) > 1 else ""
+    name_parts = run_dir.name.split("_", 1)
+    nnn = int(name_parts[0].removeprefix("run-")) if name_parts[0].startswith("run-") else 0
+    label = name_parts[1] if len(name_parts) > 1 else ""
 
+    from datetime import date
     return {
         "run_number": nnn,
         "run_label": label,
-        "date": run_dir.stat().st_mtime,  # caller can override
+        "date": date.today().isoformat(),
         "name": multilines.get("name", "(unnamed)"),
         "workflow_name": "workflow.json",
         "relay_overrides_raw": multilines.get("relay_overrides", ""),
@@ -424,7 +406,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "info_body": multilines.get("overlay - info", ""),
         "build": read_dev_build_json(),
         "main_sha": short_sha(),
-        "fork_dir_status": fork_dir_status(),
+        "fork_dir_status": fork_dir_status(cfg["fork_to_track"]),
     }
 
 
@@ -439,12 +421,15 @@ def main() -> int:
         print(f"run folder not found: {run_dir}", file=sys.stderr)
         return 2
 
-    # Make loop_audio importable when running this script standalone.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    # Load the repo's .env so the standalone re-render gets the same
+    # KOLOOK_COMFYUI_DEV_PATH the live loop_audio run had — otherwise
+    # the rebuilt state has an empty `build` dict and the FORK STATE
+    # rows show `—` placeholders.
+    from loop_audio import load_dotenv, REPO_ROOT  # type: ignore[import-not-found]
+    load_dotenv(REPO_ROOT / ".env")
 
     state = _rebuild_state_from_run_dir(run_dir)
-    from datetime import date
-    state["date"] = date.today().isoformat()
 
     out = run_dir / "card.png"
     if args.dry_run:
