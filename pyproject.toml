@@ -47,6 +47,7 @@ py-modules = [
     "k_easy_wan22_prompt",
     "k_video_combine",
     "koolook_routes",
+    "koolook_versioning",
 ]
 
 [tool.ruff.lint.per-file-ignores]
