@@ -1,6 +1,16 @@
-# LTX 2.3 — promoted findings
+# LTX 2.3 base — promoted findings
 
-Settled conclusions from the iteration loop. Entries graduate here from the running [iterations log](../../../).<br>
+Settled conclusions from the iteration loop. Entries graduate here from the
+running per-project `_AI/iterations.md` log (lives outside the repo, in your
+working folder; see [`../README.md`](README.md) for the contract).
+
+This file is scoped to the **single-stage LTX 2.3 base** automation. The
+spatial-upscaler architecture facts at the bottom of this file are model-level
+truths that any LTX 2.3 automation can rely on (including the sibling
+[`../audio-lipsync/`](../audio-lipsync/) module); they sit here because this
+is where they were first established. Lift to a shared model-architecture doc
+if a third LTX module ever needs to reference them.
+
 Anything in this file is **locked in** — don't sweep it again without a reason.
 
 ## Sampling — scheduler shape
@@ -11,7 +21,7 @@ The sigma curve it produces — flat plateau near σ ≈ 1.0 for the first ~5 st
 
 - Other scheduler shapes degrade fast motion and keyframe transitions.
 - Both Phase 1 and Phase 2 keep this scheduler. Phase 2 starts slightly lower on σ because the lower denoise value shifts the entry point down the curve.
-- Source: [investigation Round 4](../../investigations/ltx-director-4k-transitions.md#round-4--scheduler-finding--tracking-system-plan).
+- Source: [backstory Round 4](backstory/4k-transitions.md#round-4--scheduler-finding--tracking-system-plan).
 
 ## Sampling — locked knobs
 
@@ -101,7 +111,7 @@ Two-stage = render at half-res Phase 1, upscale + resample at Phase 2 via `LTXVL
 
 Current working hypothesis (Round 3 of investigation): #1 is dominant; #2 is a secondary contributor; #3 is the floor.
 
-See [`../../investigations/ltx-director-4k-transitions.md`](../../investigations/ltx-director-4k-transitions.md) for the full hypothesis tree and test plan.
+See [`backstory/4k-transitions.md`](backstory/4k-transitions.md) for the full hypothesis tree and test plan.
 
 ## How to add a new finding
 

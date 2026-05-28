@@ -103,6 +103,35 @@ install-missing button on Nodes row
 Broader iteration pattern (push/publish gates, what survives re-syncs)
 is in [`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-loop.md).
 
+### Per-module scoped variants — `dev-sync-<module>`
+
+When an automation module under `docs/automations/` iterates on code that
+lives in a single subtree (e.g. one fork under `forks/`), a *scoped*
+dev-sync wrapper avoids churning the rest of the live install on every
+iteration. Same `KOLOOK_COMFYUI_DEV_PATH` target, same restart, same
+chat-report shape — just a smaller set of paths copied.
+
+Current per-module variants:
+
+- **`dev-sync-audio`** (chat phrase) → `python scripts/sync_to_dev_audio.py`.
+  Copies `forks/whatdreamscost_koolook/` + root `__init__.py` only.
+  Driven by the
+  [`docs/automations/LTX-2.3/audio-lipsync/`](docs/automations/LTX-2.3/audio-lipsync/)
+  iteration. Leaves `forks/radiance_koolook/` and the rest of the live
+  install alone across iterations.
+
+When a new code-touching automation module is added, follow the same
+pattern: a `scripts/sync_to_dev_<module>.py` wrapper that imports the
+shared infrastructure from `sync_to_dev` and supplies its own
+`PATHS` tuple. The chat trigger is the file name minus `sync_to_dev_`
+and minus `.py`, with the underscore between module segments turned
+into a hyphen: `sync_to_dev_audio.py` → `dev-sync-audio`. Document the
+new trigger in this section *and* in the module's `runs/LOOP.md`.
+
+**All scoped variants follow the same user-initiated-only rule** as
+plain `dev-sync` (the bullet list above applies verbatim). Never run any
+`dev-sync-*` from an automated flow.
+
 ## Kforge Labs sidebar — starter preset distribution
 
 The "Kforge Labs" ComfyUI sidebar tab (implemented in

@@ -1,9 +1,13 @@
 # LTX Director — 4K multi-keyframe transition breakdown
 
-**Branch:** `investigate/ltx-director-4k-transitions`
+The running narrative that produced the [LTX 2.3 base 1-step automation](../README.md).
+Architectural mechanics, observations across four rounds (HD vs 2K vs 4K,
+two-stage workflow, scheduler-shape lock-in), and the open questions that
+graduated to [`../findings.md`](../findings.md).
+
 **Target node:** WhatDreamsCost-ComfyUI → `LTXDirector` (v1.3.2)
-**Status:** investigation kickoff — no code changes yet.
-**Date:** 2026-05-16
+**Status:** narrative complete; live iteration continues per [`../README.md`](../README.md). Audio-file lip-sync work split into the sibling [`../../audio-lipsync/`](../../audio-lipsync/) automation.
+**Started:** 2026-05-16
 
 ---
 

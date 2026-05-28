@@ -1,0 +1,33 @@
+{
+  "_doc": "Settings consumed by scripts/loop_audio.py. Underscore-prefixed keys are ignored by the loader and may carry inline documentation (same convention as the LTXDirector relay_overrides widget). Schema definitions live in docs/reference/glossary.md > 'Loop config (per-module)'.",
+
+  "job_name": "audio-lipsync",
+  "_job_name": "Human-readable identifier for this iteration loop. Surfaces in chat reports and card titles.",
+
+  "module_path": "docs/automations/LTX-2.3/audio-lipsync",
+  "_module_path": "Module root, relative to the repo root. The runs/ subfolder under this path is where snapshot folders + log.md live.",
+
+  "comfyui_workflows_subpath": "user/default/workflows",
+  "_comfyui_workflows_subpath": "Path within the ComfyUI install where the maintainer's workflow JSONs live. The ComfyUI install root is derived from KOLOOK_COMFYUI_DEV_PATH (walk up two levels from custom_nodes/<koolook>). Override by setting KOLOOK_COMFYUI_WORKFLOWS_DIR in .env.",
+
+  "workflow_pattern": "LTX-23-audio_tests*.json",
+  "_workflow_pattern": "Glob picked from the workflows dir. Newest mtime wins. Should match the 'Setup name' the maintainer pins on the canvas.",
+
+  "skip_filename_substring": "loop",
+  "_skip_filename_substring": "Any JSON whose stem contains this substring (case-insensitive) is excluded — these are post-card outputs, never iteration inputs. Convention matches scripts/make_card.py.",
+
+  "tracked_multilines": [
+    "working_folder",
+    "name",
+    "relay_overrides",
+    "overlay - info",
+    "overlay - feedback"
+  ],
+  "_tracked_multilines": "Lowercase substrings the loop expects to find inside Text Multiline node titles in the workflow JSON. Match is case-insensitive title.contains(). Add or rename keys here when the canvas tracking-group changes; no Python edit needed.",
+
+  "fork_to_track": "forks/whatdreamscost_koolook/versions/v1_3_2",
+  "_fork_to_track": "Repo-relative path of the fork files this module iterates on. Recorded in patch_state.txt of each run snapshot + diffed for the 'fork dir status' line.",
+
+  "render_card": true,
+  "_render_card": "When true, loop_audio.py invokes scripts/make_card_audio.render_audio_card at end-of-snapshot, writing card.png into the new run-NNN_ folder. Set false to skip the PIL dependency."
+}

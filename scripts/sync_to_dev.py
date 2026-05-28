@@ -110,7 +110,7 @@ def _get_worktree_name() -> str:
     return REPO_ROOT.name
 
 
-def _build_line() -> str:
+def build_line() -> str:
     """Composes the two-piece header line consumed by the chat-report
     convention defined in project CLAUDE.md:
 
@@ -118,9 +118,20 @@ def _build_line() -> str:
 
     SHA falls back to ``unknown`` if git is unreachable (we always need
     SOMETHING in slot 1 — the line shape is part of the convention).
-    Worktree name comes from ``REPO_ROOT.name`` and is always present."""
+    Worktree name comes from ``REPO_ROOT.name`` and is always present.
+
+    Public — consumed by scoped per-module wrappers like
+    ``sync_to_dev_audio.py`` so every dev-sync variant emits the same
+    chat-report header.
+    """
     sha = _get_short_sha() or "unknown"
     return f"{sha} - {_get_worktree_name()}"
+
+
+# Backwards-compatible alias (the function was private until the audio
+# wrapper landed). Drop after the next release cycle once we're sure no
+# downstream caller imports the underscore name.
+_build_line = build_line
 
 
 def trigger_restart(url: str, timeout: float = 2.0) -> tuple[bool, str]:
@@ -251,9 +262,24 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
-def sync(target: Path, dry_run: bool, verbose: bool) -> int:
+def sync(
+    target: Path,
+    dry_run: bool,
+    verbose: bool,
+    paths: tuple[str, ...] = RUNTIME_PATHS,
+) -> int:
+    """Copy each entry in ``paths`` (relative to the repo root) to the
+    matching subpath under ``target``. Directories are recursively
+    copied with ``DIR_EXCLUDES`` filtered out and the previous dest
+    subtree removed first; files are overwritten in place.
+
+    The optional ``paths`` argument lets scoped wrappers (e.g.
+    ``sync_to_dev_audio.py``) reuse this function with a smaller set —
+    just the subtree their automation module touches. The default is
+    the full ``RUNTIME_PATHS`` (every file ComfyUI loads at runtime).
+    """
     copied = 0
-    for rel in RUNTIME_PATHS:
+    for rel in paths:
         src = REPO_ROOT / rel
         if not src.exists():
             continue
@@ -416,7 +442,7 @@ def main() -> int:
     # chat-report convention that consumes this output. Header first so
     # the maintainer's eye lands on the build identifier before the
     # mechanical sync details.
-    print(_build_line())
+    print(build_line())
     print(f"{verb} {n} entries -> {target}")
     if not args.dry_run:
         write_build_info(target, args.scope)

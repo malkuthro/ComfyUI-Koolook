@@ -1,0 +1,27 @@
+source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
+# source_ref names the release. pinned_commit is the latest `main` SHA
+# at the time the fork was cut — a README-only update sitting one commit
+# beyond the actual `v1.3.2` release tag on upstream's history. Code is
+# byte-identical to the tagged release; the SHA differs because upstream
+# pushed a docs touch-up afterwards.
+source_ref: "v1.3.2 (pinned to post-tag README-only commit on main)"
+pinned_commit: "e81223a2add687555a6371e311b325880bf7c3c9"
+external_checkout_relative_to_forks_root: "whatdreamscost-v1.3.2-koolook"
+upstream_tracking_relative_to_forks_root: "whatdreamscost-main-upstream"
+external_work_branch: "main"
+license: "GPL-3.0"
+license_verified_at: "2026-05-28"
+notes: |
+  This version folder ships:
+    - ltx_director.py  (MODIFIED — adds `relay_overrides` multiline input)
+    - prompt_relay.py  (MODIFIED — per-segment sigma per Prompt-Relay paper)
+    - patches.py       (UNMODIFIED — vendored verbatim; ltx_director.py
+                        imports detect_model_type / apply_patches from it)
+
+  Only one node is registered: `LTXDirector` (suffixed `__koolook_v1_3_2`
+  to avoid colliding with installed upstream WhatDreamsCost-ComfyUI). The
+  companion `LTXDirectorGuide` is unmodified and consumed from the user's
+  upstream install — graphs wire
+  `LTXDirector__koolook_v1_3_2.guide_data -> LTXDirectorGuide.latent`.
+
+  See forks/THIRD_PARTY.md for the full attribution + diff against upstream.

@@ -1,16 +1,25 @@
-# LTX 2.3 — evaluation loop
+# LTX 2.3 base — single-stage iteration loop
 
-AI-assisted iteration loop for evaluating **Lightricks LTX 2.3** video generation behaviour. Currently focused on the WhatDreamsCost `LTXDirector` node — multi-segment prompts, keyframe transitions, audio sync, and high-resolution behaviour.
+AI-assisted iteration loop for the **single-stage LTX 2.3** rendering path: brief
+the WhatDreamsCost `LTXDirector` once, sample 8 steps at the chosen resolution,
+no Phase-2 upscale. Each render produces a side-by-side card; the maintainer
+scores it; locked-in conclusions graduate to [`findings.md`](findings.md). The
+sibling [`../audio-lipsync/`](../audio-lipsync/) automation iterates on the
+same model with audio-file lip-sync instead.
 
-The shared loop pattern + node contract is in [`../CONVENTIONS.md`](../CONVENTIONS.md). Anything LTX-specific is here.
+The shared loop pattern + Text-Multiline node contract is in
+[`../../CONVENTIONS.md`](../../CONVENTIONS.md); anything specific to *this*
+automation lives here.
 
 ## What this loop is for
 
-- Sweep one knob at a time (Phase 2 denoise, scheduler shape, resolution selector, etc.), render at the chosen seed, capture a tracking card next to the video.
+- Sweep one knob at a time (resolution selector, scheduler shape, denoise, etc.) at a fixed seed; capture a tracking card next to the video.
 - Build a body of evidence over multiple runs about *what each knob actually does at this model's training boundaries*.
 - Promote stable findings to [`findings.md`](findings.md) so they don't get re-discovered.
 
-The original investigation that produced this loop: [`../../investigations/ltx-director-4k-transitions.md`](../../investigations/ltx-director-4k-transitions.md).
+How this automation got here — what the LTX Director actually does, the 4K
+dissolve / 2K morph experiments, scheduler-shape lock-in — is captured in the
+backstory: [`backstory/4k-transitions.md`](backstory/4k-transitions.md).
 
 ## The loop (per iteration)
 
@@ -50,23 +59,26 @@ Free-text fields (filled by you in the workflow):
 | Feedback | `OVERLAY - FEEDBACK` (non-score lines) | Post-render observations. |
 | Outcome scores | `OVERLAY - FEEDBACK` (lines like `motion: 4/5`) | Each axis 0–5; missing axes show as `?/5`. |
 
-## Active investigation
+## Open questions (still iterating)
 
-The 4K dissolve / audio drift problem. See [`findings.md`](findings.md) for what's already settled and [`../../investigations/ltx-director-4k-transitions.md`](../../investigations/ltx-director-4k-transitions.md) for the running narrative.
+The 4K dissolve / audio drift behaviour. See [`findings.md`](findings.md) for
+what's already settled and
+[`backstory/4k-transitions.md`](backstory/4k-transitions.md) for the running
+narrative that produced this automation.
 
 Open hypotheses being tested:
-- Phase 2 denoise = 0.80 is too aggressive for "preserve stage 1" semantics; sweep down toward 0.30.
+- Phase 2 denoise = 0.80 is too aggressive for "preserve stage 1" semantics; sweep down toward 0.30. *(Two-stage variant — out of scope for this base 1-step automation; tracked here only because the hypothesis predates the split.)*
 - LTX 2.3 prior weakens at 4K → 5K, producing dissolves in inter-keyframe motion.
-- `LTXVLatentUpsampler [BETA]` may inject mouth-region detail that breaks audio sync.
+- `LTXVLatentUpsampler [BETA]` may inject mouth-region detail that breaks audio sync. *(Same — two-stage-specific.)*
 
 ## Where to find everything
 
 | Thing | Path |
 |---|---|
-| Card renderer | [`scripts/make_card.py`](../../../scripts/make_card.py) |
-| Watcher | [`scripts/watch_cards.py`](../../../scripts/watch_cards.py) |
-| `/make-card` skill | [`.claude/skills/make-card/`](../../../.claude/skills/make-card/) |
-| Cross-cutting conventions | [`../CONVENTIONS.md`](../CONVENTIONS.md) |
-| Original investigation narrative | [`../../investigations/ltx-director-4k-transitions.md`](../../investigations/ltx-director-4k-transitions.md) |
+| Card renderer | [`scripts/make_card.py`](../../../../scripts/make_card.py) |
+| Watcher | [`scripts/watch_cards.py`](../../../../scripts/watch_cards.py) |
+| `/make-card` skill | [`.claude/skills/make-card/`](../../../../.claude/skills/make-card/) |
+| Cross-cutting conventions | [`../../CONVENTIONS.md`](../../CONVENTIONS.md) |
+| Backstory narrative | [`backstory/4k-transitions.md`](backstory/4k-transitions.md) |
 | Working folder | `$KOLOOK_AUTOMATIONS_WORK_DIR` (set in `.env` — see `.env.example`) |
 | Handoff to another machine / person | [`handoff-checklist.md`](handoff-checklist.md) |

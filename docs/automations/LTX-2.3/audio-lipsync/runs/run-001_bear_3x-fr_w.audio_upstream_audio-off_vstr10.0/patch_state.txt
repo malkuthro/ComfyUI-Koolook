@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 3ffb7b7
+Last dev-sync-audio   : 15d5688  (2026-05-28 22:07)
+Sync scope tag        : Koolook LTXDirector v1.3.2 available
+Sync worktree         : beautiful-mahavira-ae6da6
+Fork dir status       : clean (matches HEAD)

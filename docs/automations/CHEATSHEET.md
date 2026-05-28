@@ -1,12 +1,12 @@
 # Cheat sheet
 
-For someone who already knows the loop. Full docs: [`README.md`](README.md), [`CONVENTIONS.md`](CONVENTIONS.md), [`LTX-2.3/README.md`](LTX-2.3/README.md).
+For someone who already knows the loop. Full docs: [`README.md`](README.md), [`CONVENTIONS.md`](CONVENTIONS.md), and the per-module READMEs (e.g. [`LTX-2.3/base-1step/README.md`](LTX-2.3/base-1step/README.md), [`LTX-2.3/audio-lipsync/README.md`](LTX-2.3/audio-lipsync/README.md)).
 
 ---
 
 ## Bootstrap
 
-Bare-bones — what's needed to get the loop running on a fresh machine. Model-specific setup (checkpoints, LoRAs, custom nodes for a particular model) lives in each model's handoff checklist, e.g. [`LTX-2.3/handoff-checklist.md`](LTX-2.3/handoff-checklist.md).
+Bare-bones — what's needed to get the loop running on a fresh machine. Module-specific setup (checkpoints, LoRAs, custom nodes for a particular task, optional fork code) lives in each module's handoff checklist, e.g. [`LTX-2.3/base-1step/handoff-checklist.md`](LTX-2.3/base-1step/handoff-checklist.md).
 
 **Repo side**
 - [ ] Python 3.11+ with `pip install Pillow`. On Windows, the absolute path `C:/Python313/python.exe` sidesteps the Microsoft Store stub.
@@ -85,10 +85,16 @@ ComfyUI-Koolook/
     ├── README.md                       overview + start-here
     ├── CHEATSHEET.md                   this file
     ├── CONVENTIONS.md                  full contract
-    └── LTX-2.3/                        one folder per model
-        ├── README.md
-        ├── handoff-checklist.md
-        └── findings.md
+    └── LTX-2.3/                        model grouping (no shared docs of its own)
+        ├── base-1step/                  ← one automation module
+        │   ├── README.md
+        │   ├── handoff-checklist.md
+        │   └── findings.md
+        └── audio-lipsync/               ← another module on the same model
+            ├── README.md
+            ├── handoff-checklist.md
+            ├── findings.md
+            └── runs/                    in-repo run snapshots for fork-touching iterations
 ```
 
 ### Working-folder-side (per project — pointed at by `KOLOOK_AUTOMATIONS_WORK_DIR`)
@@ -113,7 +119,7 @@ Wipe `_AI/` to reset the agent's tracking history without touching renders. Wipe
 - **`loop` in the filename = post-card output, skipped.** When ComfyUI saves the composited-with-card video back into the working folder, name it `<base>_loop_<seq>.mp4` (and pair JSON). Auto-discovery ignores anything with `loop` in the stem, so the script never feeds its own output back as input.
 - **Card filename is stable.** Wire your NLE to `_AI/card.png` once.
 - **Seed = 12 (fixed)** while sweeping any other knob. Vary seed only after a setting stabilises.
-- **Scheduler = `linear_quadratic` (8 steps)** — locked-in finding. See [`LTX-2.3/findings.md`](LTX-2.3/findings.md).
+- **Scheduler = `linear_quadratic` (8 steps)** — locked-in finding. See [`LTX-2.3/base-1step/findings.md`](LTX-2.3/base-1step/findings.md).
 - **Promote** a hypothesis to a finding when it's stable across ≥ 3 runs in `_AI/iterations.md`.
 - **Run label** on the card: prefers `v01`-style; falls back to `_00001` sequence numbers; else `?`.
 - **Switching projects:** update `Working_Folder_PATH` node + `.env`. Node wins on mismatch.

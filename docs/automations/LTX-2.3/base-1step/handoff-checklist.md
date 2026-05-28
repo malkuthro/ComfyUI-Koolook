@@ -1,12 +1,14 @@
-# Handoff checklist — LTX 2.3 loop
+# Handoff checklist — LTX 2.3 base (single-stage) automation
 
-Use this when picking up the loop on a different machine, or handing over to someone else. Target time-to-first-card: ~5 minutes.
+Use this when picking up this automation on a different machine, or handing over to someone else. Target time-to-first-card: ~5 minutes.
+
+The sibling [`../audio-lipsync/`](../audio-lipsync/) automation has its own handoff checklist — that one needs the WhatDreamsCost Koolook fork loaded and a workflow JSON that uses the Koolook-namespaced node. This one does not.
 
 ## 1. Repo + branch
 
 - [ ] Clone `ComfyUI-Koolook`.
-- [ ] Check out the branch carrying the loop tooling — currently `investigate/ltx-director-4k-transitions`. (Eventually expected to merge to `main`.)
-- [ ] Read [`README.md`](README.md) (this folder) and [`../CONVENTIONS.md`](../CONVENTIONS.md).
+- [ ] Use `main` (the loop tooling is part of the standard tree).
+- [ ] Read [`README.md`](README.md) (this folder) and [`../../CONVENTIONS.md`](../../CONVENTIONS.md).
 
 ## 2. Python + Pillow
 
@@ -24,7 +26,7 @@ Use this when picking up the loop on a different machine, or handing over to som
   - `was-node-suite-comfyui` (`Text Multiline`).
   - `rgthree-comfy` (helpful for finding nodes by ID).
   - `pythongosssss/ComfyUI-Custom-Scripts` (optional — workflow auto-save).
-- [ ] An LTX-2.3 workflow with the three required Text Multiline nodes (see `../CONVENTIONS.md` §2): `Working_Folder_PATH`, `OVERLAY - INFO`, `OVERLAY - FEEDBACK`.
+- [ ] An LTX-2.3 workflow with the three required Text Multiline nodes (see `../../CONVENTIONS.md` §2): `Working_Folder_PATH`, `OVERLAY - INFO`, `OVERLAY - FEEDBACK`.
 
 ## 4. Working folder
 

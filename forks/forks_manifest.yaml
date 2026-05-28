@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-05-04"
+updated_at: "2026-05-28"
 external_forks:
   root_relative_to_main: "../ComfyUI-Forks"
   root_env_var: "KOLOOK_FORKS_DIR"
@@ -38,6 +38,43 @@ entries:
     license: "GPL-3.0"
     license_verified_at: "2026-05-03"
     notes: "Mirrors only the RadianceVAE4KEncode/Decode interface surface — Koolook ships a slimmer rank-agnostic reimplementation that handles image sequences (video frames) without the upstream's 4K cosine-blend tile engine, which conflicts with video VAEs (Wan 2.2 etc.) that already do their own temporal stitching."
+
+  - id: "whatdreamscost_koolook_v1_3_2_ltx_director"
+    name: "WhatDreamsCost Koolook v1.3.2 LTX Director subset"
+    source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
+    source_ref: "v1.3.2 (pinned to post-tag README-only commit on main)"
+    pinned_commit: "e81223a2add687555a6371e311b325880bf7c3c9"
+    external_checkout:
+      relative_path_from_forks_root: "whatdreamscost-v1.3.2-koolook"
+      upstream_tracking_path_from_forks_root: "whatdreamscost-main-upstream"
+      default_branch: "main"
+    local_paths:
+      - "forks/whatdreamscost_koolook/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_2/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_2/UPSTREAM_PIN.yaml"
+      - "forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_2/patches.py"
+    status: "modified"
+    sync_state: "ltx-director-modified-plus-deps"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-28"
+    exposed_node_ids:
+      - "LTXDirector__koolook_v1_3_2"
+    notes: |
+      Ships a Koolook variant of upstream's `LTXDirector` only — the companion
+      `LTXDirectorGuide` is consumed from the user's upstream install via the
+      `guide_data -> latent` wiring. The Koolook variant adds:
+        1) a `relay_overrides` multiline JSON input on the LTX Director canvas
+           widget so per-render Prompt-Relay knob overrides live inside the
+           workflow JSON (no disk file / no env var);
+        2) per-segment sigma in `build_segments` matching the Prompt-Relay paper
+           formula σ = (L − w_eff) / (2 · sqrt(ln(1/ε))) instead of upstream's
+           length-independent constant (≈ 0.1448 at ε=0.001).
+      `patches.py` is vendored verbatim from upstream e81223a — `ltx_director.py`
+      imports `detect_model_type` and `apply_patches` from it. The maintainer-
+      facing iteration loop driving changes here lives at
+      `docs/automations/LTX-2.3/audio-lipsync/`.
 
   - id: "easy_resize_inspiration"
     name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"
