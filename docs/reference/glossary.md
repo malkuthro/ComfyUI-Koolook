@@ -72,3 +72,66 @@ Short, plain-English definitions for this repo workflow.
 - Debug by reading the installed EasyUse frontend source
   (`comfyui-easy-use/web_version/v1/js/getset.js`) and simulating the relevant
   LiteGraph shape locally when the live `app.graph` object is not exposed.
+
+## Investigation folder
+- A subfolder under `docs/investigations/` that holds everything related to
+  one investigation — the narrative README, an `upstream.yaml` pin file,
+  modified upstream code under `patches/`, and per-render snapshots under
+  `runs/`.
+- Numbered prefix for ordering and short topic identifier:
+  `docs/investigations/<NN>_<topic-slug>/`.
+- Examples: `00_LTX23-base-1-step/`, `01_LTX23-audio-file-lipsync/`.
+- Created when a piece of investigative work needs its own code patches and
+  iteration log; promoted to a proper `forks/<name>_koolook/` fork when the
+  patches validate.
+
+## JSON file folder
+- ComfyUI's workflow library directory where the maintainer overwrites a
+  single workflow file between iterations.
+- Current example (investigation 01): `E:\_AI\portable\ComfyUI_windows_312\ComfyUI\user\default\workflows\LTX-23-audio_tests_v01.json`.
+- Read-only from the agent's perspective — never edited by the agent
+  (preserves the ComfyUI canvas layout). Agent copies it into the
+  investigation's `runs/run-NNN_*/` folder on each render.
+
+## Loop
+- The save → render → feedback → snapshot cycle for an investigation.
+- Step 1: maintainer edits and **saves** workflow in ComfyUI (overwrites the
+  JSON file folder target).
+- Step 2: maintainer queues render.
+- Step 3: maintainer reports result in chat.
+- Step 4: agent snapshots current state (workflow + relay_overrides + active
+  patches) into a new run folder under
+  `docs/investigations/<NN>_<topic>/runs/`.
+- Per-investigation protocol lives at
+  `docs/investigations/<NN>_<topic>/runs/LOOP.md`.
+
+## Run
+- One iteration of the loop.
+- Folder named `run-NNN_<short-knob-summary>_<short-result-tag>` inside
+  `docs/investigations/<NN>_<topic>/runs/`.
+- Contains: `workflow.json` (snapshot), `relay_overrides.txt`,
+  `patch_state.txt` (MAIN SHA + upstream SHA + synced files), and `notes.md`
+  (maintainer feedback + agent interpretation).
+
+## Investigation patches
+- Modifications to a third-party node's source code, applied during the
+  investigation phase before a fork is formally registered under `forks/`.
+- Source of truth lives in
+  `docs/investigations/<NN>_<topic>/patches/<file>` — versioned by git.
+- Pushed to the live install via
+  `python scripts/sync_investigation_patches.py <NN>_<topic>`, which reads
+  `upstream.yaml` from the investigation folder for the target path and
+  file list.
+- Each investigation declares its own short chat-trigger phrase via
+  `trigger:` in `upstream.yaml` (e.g. `sync-audio` for investigation 01).
+- Promoted to a proper `forks/<name>_koolook/` fork once the approach
+  validates (≥ 3 confirming runs per the LTX-2.3 findings rule).
+
+## `sync_investigation_patches.py`
+- Helper script that copies an investigation's `patches/*` files to the
+  live install path declared in its `upstream.yaml`.
+- Mirrors the pattern of `scripts/sync_to_dev.py` but for third-party node
+  modifications outside `KOLOOK_COMFYUI_DEV_PATH`.
+- Creates a per-day backup of the target's current state
+  (`<filename>.bak.<YYYYMMDD>`) before overwriting.
+- User-initiated only (never automatic) — same rule as `dev-sync`.
