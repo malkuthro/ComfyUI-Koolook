@@ -383,9 +383,16 @@ class LTXDirector(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         return io.Schema(
-            node_id="LTXDirector",
-            display_name="LTX Director",
-            category="conditioning/prompt_relay",
+            # KOOLOOK PATCH (issue #177): override upstream schema identity
+            # so the fork is visually distinguishable from the unmodified
+            # upstream `LTXDirector` in the node picker. The legacy
+            # NODE_DISPLAY_NAME_MAPPINGS / NODE_CLASS_MAPPINGS dicts can't
+            # override these — the new ComfyAPI io.ComfyNode base class
+            # reads them straight from this schema, so the override has
+            # to live here.
+            node_id="LTXDirector__koolook_v1_3_2",
+            display_name="LTX Director (Koolook v1.3.2)",
+            category="Koolook/PromptRelay",
             description=(
                 "Same as Prompt Relay Encode, but local prompts and segment lengths are edited "
                 "visually as draggable blocks on a timeline. The duration_frames input only sets the "

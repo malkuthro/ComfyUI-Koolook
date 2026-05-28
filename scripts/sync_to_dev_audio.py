@@ -70,6 +70,7 @@ import sync_to_dev as _dev  # noqa: E402
 AUDIO_PATHS: tuple[str, ...] = (
     "__init__.py",
     "forks/whatdreamscost_koolook",
+    "web/whatdreamscost_koolook_v1_3_2",
 )
 
 
