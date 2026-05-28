@@ -134,10 +134,36 @@ Short, plain-English definitions for this repo workflow.
   more commonly, each module's iteration uses its own working folder.
 
 ## Card
-- `_AI/card.png` — the per-render tracking visual rendered by the
-  `/make-card` skill (or `scripts/make_card.py` directly). Stable
-  filename, overwritten each run; the maintainer's NLE points at it
-  once.
-- Renders from the latest workflow JSON in the working folder. Format
-  and palette mirror `docs/designs/snapshot-dialogs.html`. See
-  `docs/automations/CONVENTIONS.md` §3.
+- A per-render tracking visual (PNG) rendered automatically at the end
+  of a loop iteration. Travels alongside the rendered video into the
+  NLE for side-by-side comparison.
+- Each automation module ships its own card renderer in
+  [scripts/](../../scripts/) to highlight what matters for *that*
+  module's iteration:
+  - `make_card.py` → base-1step card (Phase 1 / Phase 2 / Base · model /
+    Base · locked / Base · scene / Outcome). Writes to
+    `<working folder>/_AI/card.png`.
+  - `make_card_audio.py` → audio-lipsync card (KNOB STATE / FORK STATE /
+    SAMPLER / BASE notes / OUTCOME, plus an INERT warning when the
+    Director is upstream). Writes inside the module's
+    `runs/run-NNN_<label>/card.png`.
+- Palette + font fallback chain is shared (see
+  `scripts/make_card.py` and `scripts/make_card_audio.py`) so the two
+  card families read as a set.
+
+## Loop config (per-module)
+- A JSON file co-located with the module's loop script that holds the
+  customisable settings — workflow filename pattern, ComfyUI workflows
+  subpath, tracked multiline titles, fork dir to pin, whether to
+  render a card. Underscore-prefixed keys are ignored by the loader
+  (carry inline documentation).
+- Convention: `<script-name>.config.json` next to the script. The
+  audio-lipsync loop config lives at
+  [scripts/loop_audio.config.json](../../scripts/loop_audio.config.json).
+- Required keys (validated at script start): `job_name`, `module_path`,
+  `comfyui_workflows_subpath`, `workflow_pattern`,
+  `skip_filename_substring`, `tracked_multilines`, `fork_to_track`,
+  `render_card`.
+- Per-module operating instructions live in the module's
+  `CHEATSHEET.md` (e.g.
+  [docs/automations/LTX-2.3/audio-lipsync/CHEATSHEET.md](../automations/LTX-2.3/audio-lipsync/CHEATSHEET.md)).
