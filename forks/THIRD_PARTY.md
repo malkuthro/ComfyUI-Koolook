@@ -146,6 +146,66 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   pipeline and routes color-prepped frames directly to `vae.encode()`.
 - **Last reviewed:** 2026-05-03
 
+### WhatDreamsCost/WhatDreamsCost-ComfyUI — v1.3.2 LTX Director subset (Koolook fork)
+
+- **Name:** WhatDreamsCost-ComfyUI
+- **Upstream repo URL:** https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI
+- **Upstream commit/tag used:** `e81223a2add687555a6371e311b325880bf7c3c9`
+  (v1.3.2; the latest README-only update on the release commit chain).
+- **License:** GPL-3.0 (verified 2026-05-28 from the upstream `LICENSE`
+  file — *GNU General Public License Version 3, 29 June 2007*).
+- **Local path(s):** [`forks/whatdreamscost_koolook/versions/v1_3_2/`](whatdreamscost_koolook/versions/v1_3_2/)
+- **What changed locally:**
+  - **`ltx_director.py` (modified).** The `LTXDirector` node gains a new
+    optional `relay_overrides` multiline-string input. The maintainer pastes
+    a JSON dict of Prompt-Relay knobs (`video_strength`,
+    `video_window_scale`, `audio_strength`, `audio_window_scale`,
+    `audio_epsilon`) directly into the canvas widget; underscore-prefixed
+    keys are ignored so the field can carry inline JSON comments. The
+    parsed overrides flow through to `build_segments` per render — no
+    disk file, no env var, the values live entirely inside the workflow
+    JSON. Empty field → upstream Prompt-Relay defaults.
+  - **`prompt_relay.py` (modified).** `build_segments` now computes σ
+    per-segment using the Prompt-Relay paper formula
+    `σ = (L − w_eff) / (2 · √ln(1/ε))` instead of the upstream's
+    length-independent `σ = 1/ln(1/ε)` (≈ 0.1448 at ε=0.001). The new
+    formula calibrates the penalty so it hits threshold ε exactly at
+    the segment boundary regardless of segment length. A
+    `SIGMA_FALLBACK = 0.1448` preserves the prior constant for the
+    degenerate `L ≤ w_eff` corner. Per-segment σ is logged.
+  - **`patches.py` (verbatim vendored).** `ltx_director.py` imports
+    `detect_model_type` and `apply_patches` from this file. Carried
+    along unmodified so the fork is self-contained — same precedent as
+    `forks/radiance_koolook/versions/v2_3_3/color_helpers.py`.
+- **What was *not* forked:** The companion `LTXDirectorGuide` node, plus
+  `LTXKeyframer`, `MultiImageLoader`, `LTXSequencer`,
+  `SpeechLengthCalculator`, `LoadAudioUI`, and `LoadVideoUI`. These are
+  unmodified upstream nodes; users need an installed copy of upstream
+  WhatDreamsCost-ComfyUI to use them. The Koolook variant of LTXDirector
+  is namespaced (`LTXDirector__koolook_v1_3_2`) so the two coexist in
+  the node picker.
+- **Why namespaced (`__koolook_v1_3_2`):** per the convention in
+  `forks/README.md`, ports of upstream-named classes carry the version
+  suffix to avoid colliding with an installed copy of the same upstream
+  package. Graphs wiring the Koolook variant pick
+  `LTX Director (Koolook v1.3.2)` from the picker; the unsuffixed
+  `LTX Director` continues to refer to the user's upstream install.
+- **Why a partial fork rather than a subclass:** the two upstream
+  modifications cross multiple call sites inside the `LTXDirector` body
+  and inside the `build_segments` function in `prompt_relay.py`. A
+  subclass override would have to either reach into upstream internals
+  (brittle) or duplicate the bodies (more code than the verbatim fork).
+  The partial fork was the smaller surface.
+- **Maintenance loop:** the audio-lipsync iteration that drives changes
+  here lives at
+  [`../docs/automations/LTX-2.3/audio-lipsync/`](../docs/automations/LTX-2.3/audio-lipsync/).
+  Patches were originally synced into the user's upstream install via
+  `scripts/sync_investigation_patches.py`; with v1.3.2 promoted to a
+  fork, the iteration uses the standard
+  [`../scripts/sync_to_dev.py`](../scripts/sync_to_dev.py) flow and the
+  workflow JSON references the Koolook-suffixed node ID.
+- **Last reviewed:** 2026-05-28
+
 ## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)
 
 Six third-party trees were untracked from MAIN's git index in the

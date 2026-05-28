@@ -6,6 +6,46 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Changed
+- **Automations restructured around modules instead of models.**
+  `docs/automations/` now pivots on one folder per *task* (each its own
+  workflow + iteration loop + findings) rather than one folder per model.
+  The existing `LTX-2.3/{README,findings,handoff-checklist}.md` content
+  moved into `LTX-2.3/base-1step/` (single-stage render task) and the new
+  sibling `LTX-2.3/audio-lipsync/` (audio-file lip-sync task) was created.
+  `docs/automations/{README,CHEATSHEET}.md` updated to reflect the new
+  layout; `docs/automations/CONVENTIONS.md` unchanged.
+- **`docs/investigations/` removed.** Its two children migrated to their
+  natural homes: narrative content into the new automation modules under
+  `docs/automations/LTX-2.3/{base-1step,audio-lipsync}/`; the modified
+  upstream Python code into the new `forks/whatdreamscost_koolook/`
+  fork (see *Added*). The retired `scripts/sync_investigation_patches.py`
+  and its `KOLOOK_WHATDREAMSCOST_PATH` env-var section in `.env.example`
+  go with it — iteration now uses the standard `dev-sync` flow against
+  the in-repo fork.
+- **Glossary updated.** The *Investigation folder*, *Investigation patches*,
+  *JSON file folder*, and `sync_investigation_patches.py` entries in
+  [`docs/reference/glossary.md`](docs/reference/glossary.md) are replaced
+  by *Automation module*, *Backstory*, *Working folder*, and *Card*; the
+  *Loop* and *Run* entries are rewritten to point at the new structure.
+
+### Added
+- **`forks/whatdreamscost_koolook/v1_3_2/` — Koolook fork of WhatDreamsCost-ComfyUI's
+  `LTXDirector`** (upstream `e81223a`, GPL-3.0). Two upstream files modified
+  (`ltx_director.py` adds a `relay_overrides` multiline-JSON widget;
+  `prompt_relay.py` uses the Prompt-Relay paper's per-segment σ formula
+  instead of upstream's length-independent constant) plus the
+  unmodified `patches.py` vendored verbatim because the modified file
+  imports from it. Registered as
+  `LTXDirector__koolook_v1_3_2` (display name *"LTX Director (Koolook
+  v1.3.2)"*) so it coexists with an installed copy of upstream
+  WhatDreamsCost-ComfyUI in the node picker. Drives the
+  [`docs/automations/LTX-2.3/audio-lipsync/`](docs/automations/LTX-2.3/audio-lipsync/)
+  iteration loop. License attribution + change log in
+  [`forks/THIRD_PARTY.md`](forks/THIRD_PARTY.md); pin metadata in
+  [`forks/whatdreamscost_koolook/versions/v1_3_2/UPSTREAM_PIN.yaml`](forks/whatdreamscost_koolook/versions/v1_3_2/UPSTREAM_PIN.yaml)
+  and [`forks/forks_manifest.yaml`](forks/forks_manifest.yaml).
+
 ## [0.3.7] - 2026-05-23
 
 ### Added

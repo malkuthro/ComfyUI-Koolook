@@ -25,6 +25,9 @@ try:
 
     from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
     from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
+
+    from .forks.whatdreamscost_koolook import NODE_CLASS_MAPPINGS as whatdreamscost_koolook_mappings
+    from .forks.whatdreamscost_koolook import NODE_DISPLAY_NAME_MAPPINGS as whatdreamscost_koolook_display
 except ImportError as _node_import_exc:
     # The relative imports above require a parent-package context that
     # only ComfyUI's custom-node loader provides. Pytest's package
@@ -68,6 +71,7 @@ else:
         **pattern_mappings,
         **video_combine_mappings,
         **radiance_koolook_mappings,
+        **whatdreamscost_koolook_mappings,
     }
 
     NODE_DISPLAY_NAME_MAPPINGS = {
@@ -79,6 +83,7 @@ else:
         **pattern_display,
         **video_combine_display,
         **radiance_koolook_display,
+        **whatdreamscost_koolook_display,
     }
 
 WEB_DIRECTORY = "./web"

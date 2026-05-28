@@ -1,0 +1,123 @@
+# LTX 2.3 audio-file lip-sync — iteration loop
+
+AI-assisted iteration loop for getting audio-file-driven lip-sync working
+on the WhatDreamsCost `LTXDirector` (LTX 2.3). The vanilla `use_custom_audio = True`
+path produces broken video — no lip-sync, no meaningful animation, prompt
+adherence collapses. This automation iterates on a Koolook-modified
+`LTXDirector` that adds a `relay_overrides` widget and a per-segment-σ
+formula in `build_segments`; the loop sweeps those knobs to find a setting
+that preserves video coherence with the external audio.
+
+**Tracking issue:** [#177](https://github.com/malkuthro/ComfyUI-Koolook/issues/177)
+**Sibling automation:** [`../base-1step/`](../base-1step/) — same model, the single-stage path with model-generated audio. Locked-in LTX-2.3 architecture facts live in its [`findings.md`](../base-1step/findings.md).
+**Backstory:** [`backstory/audio-lipsync-rationale.md`](backstory/audio-lipsync-rationale.md) — why the audio path fails by default, the Prompt-Relay paper, what the two patches are doing mechanically.
+**Started:** 2026-05-28
+
+## What the Koolook fork ships
+
+Lives at [`../../../../forks/whatdreamscost_koolook/versions/v1_3_2/`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/),
+loaded by ComfyUI as `LTX Director (Koolook v1.3.2)` in the picker. Two upstream
+modifications:
+
+### Modification 1 — per-segment σ in `prompt_relay.py`
+
+`build_segments` now computes σ per-segment using the Prompt-Relay paper
+formula:
+
+```
+σ = (L − w_eff) / (2 · √ln(1/ε))
+```
+
+Upstream used a length-independent `σ = 1/ln(1/ε)` (≈ 0.1448 at ε=0.001) —
+a razor-sharp boundary that did not scale with segment length L. The new
+formula calibrates the penalty so it hits threshold ε exactly at the
+segment boundary regardless of L. A `SIGMA_FALLBACK = 0.1448` preserves
+the prior constant for the degenerate `L ≤ w_eff` corner. Per-segment σ
+is logged as `[PromptRelay] seg L=… w_v=… sigma_v=…`.
+
+### Modification 2 — `relay_overrides` widget on `LTXDirector`
+
+A new optional multiline-string input on the LTXDirector canvas widget.
+The maintainer pastes a JSON dict of Prompt-Relay knobs directly into the
+node — values live entirely inside the workflow JSON, no disk file, no
+env var.
+
+Supported keys (all optional):
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `video_strength` | float | 1.0 | Multiplies `attn2` penalty (video × text). Raise to tighten per-segment text routing. |
+| `video_window_scale` | float | 1.0 | Scales the flat-top window width on the video side. < 1.0 = penalty kicks in closer to segment center. |
+| `audio_strength` | float | 1.0 | Same for `audio_attn2`. **Note:** no-op for video output when `use_custom_audio=true` (audio latent is frozen at `noise_mask=0`). |
+| `audio_window_scale` | float | 1.0 | Audio-side window. |
+| `audio_epsilon` | float | inherit | Independent σ for the audio path. |
+
+Underscore-prefixed keys are ignored (use for inline JSON comments). Example value to paste:
+
+```json
+{"video_strength": 10.0}
+```
+
+Empty field → upstream Prompt-Relay defaults (Modification 1 still active —
+the new σ formula is unconditional).
+
+## Folder map
+
+```
+audio-lipsync/
+├── README.md           ← this file
+├── handoff-checklist.md ← bootstrap for picking up this automation cold
+├── findings.md          ← locked-in (currently empty; populated as runs validate)
+├── backstory/
+│   └── audio-lipsync-rationale.md
+└── runs/               ← per-render snapshots
+    ├── LOOP.md         ← the iteration protocol
+    ├── log.md          ← rolling table of runs
+    └── run-NNN_<label>/
+        ├── workflow.json
+        ├── relay_overrides.txt
+        ├── patch_state.txt
+        └── notes.md
+```
+
+## Iteration loop
+
+1. **Edit a knob.** Either:
+   - **Widget-only swap** — change `relay_overrides` JSON on the LTXDirector node in ComfyUI. No restart needed; just queue.
+   - **Code-level change** — edit
+     [`../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py)
+     or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py)
+     in this repo. Then sync into the maintainer's live ComfyUI via the standard `dev-sync` (user-initiated; see project `CLAUDE.md`). Restart Comfy for Python module reload.
+2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
+3. **Render** — queue.
+4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
+5. **Agent snapshots** the run into `runs/run-NNN_<label>/` and appends a row to [`runs/log.md`](runs/log.md).
+
+See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol.
+
+## Workflow JSON — Koolook node ID
+
+The test workflow uses `LTXDirector__koolook_v1_3_2` (display name *"LTX
+Director (Koolook v1.3.2)"*), not the upstream `LTXDirector`. Both appear
+in ComfyUI's node picker side-by-side — upstream stays vanilla, the Koolook
+variant carries our two modifications.
+
+If you're starting from an existing workflow that wires the upstream
+`LTXDirector`:
+
+1. Open the workflow in ComfyUI.
+2. Right-click the `LTX Director` node → **Convert / Replace** with `LTX Director (Koolook v1.3.2)`. Same input/output socket layout — wires are preserved.
+3. The new `relay_overrides` widget appears at the bottom of the node — paste your JSON there (empty field is fine).
+4. `Workflow → Save (API Format)` into the working folder.
+
+Reverting to upstream behaviour for an A/B comparison: drop in the upstream
+`LTXDirector` node next to the Koolook one and toggle which feeds the
+downstream `LTXDirectorGuide`. No file backups needed — the upstream
+install is untouched.
+
+## Reverting changes to the fork
+
+Edits to `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` are normal
+git-tracked changes — `git restore` / `git stash` work as usual. Once
+`dev-sync` is run, the running ComfyUI install is updated; restart Comfy
+so the Python module reimports.

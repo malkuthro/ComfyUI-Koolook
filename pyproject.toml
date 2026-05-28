@@ -35,7 +35,7 @@ includes = []
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
 [tool.ruff]
-extend-exclude = [".venv", "forks", "upscaler_FIX", "nuke_CAM_exporter", "docs/investigations"]
+extend-exclude = [".venv", "forks", "upscaler_FIX", "nuke_CAM_exporter"]
 
 [tool.setuptools]
 py-modules = [
