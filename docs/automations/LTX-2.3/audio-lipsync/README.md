@@ -70,15 +70,20 @@ audio-lipsync/
 ├── findings.md          ← locked-in (currently empty; populated as runs validate)
 ├── backstory/
 │   └── audio-lipsync-rationale.md
-└── runs/               ← per-render snapshots
-    ├── LOOP.md         ← the iteration protocol
-    ├── log.md          ← rolling table of runs
-    └── run-NNN_<label>/
+└── runs/                ← iteration log + per-render snapshots
+    ├── LOOP.md          ← the iteration protocol
+    ├── log.md           ← rolling table — one row per render, always
+    └── run-NNN_<label>/  ← only created when maintainer says "keep" / "save run"
         ├── workflow.json
         ├── relay_overrides.txt
         ├── patch_state.txt
         └── notes.md
 ```
+
+Every render adds a row to `log.md`. The heavier `run-NNN/` snapshot
+folders are created **only on request** — when the maintainer asks to
+"keep", "save run", or "save this" in chat. Renders during a fast knob
+sweep don't accumulate folder noise.
 
 ## Iteration loop
 
@@ -92,9 +97,9 @@ audio-lipsync/
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
-5. **Agent snapshots** the run into `runs/run-NNN_<label>/` and appends a row to [`runs/log.md`](runs/log.md).
+5. **Agent appends a row** to [`runs/log.md`](runs/log.md). If you say **"keep"**, **"save run"**, or **"save this"**, it also creates `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + notes). Without that trigger, no folder.
 
-See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol.
+See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
 
 ## Workflow JSON — Koolook node ID
 

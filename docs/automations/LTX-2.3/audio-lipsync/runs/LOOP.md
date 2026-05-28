@@ -14,12 +14,17 @@
 | 2 | Maintainer | **Save** workflow → overwrites the current workflow file at the working folder. |
 | 3 | Maintainer | Queue render in ComfyUI. |
 | 4 | Maintainer | Report result in chat (verbal feedback — sync state, motion state, prompt adherence). |
-| 5 | Agent | Snapshot current state into a new `run-NNN_<label>/` folder here + append a row to [`log.md`](log.md). |
-| 6 | Agent | Confirm what was captured. |
+| 5 | Agent | Append a row to [`log.md`](log.md) — always. |
+| 6 | Agent (only on request) | Snapshot the current state into a `run-NNN_<label>/` folder under `runs/` — **only when the maintainer says "keep", "save run", or "save this"**. Without the explicit trigger, no folder is created. |
+| 7 | Agent | Confirm what was captured (`log.md` row + folder if one was made). |
 
 **Save-before-render** is the anchor: the workflow file on disk at submission time = exactly what produced the render being described. No copy-paste, no version drift.
 
-## Per-run snapshot contents
+**Why this retention policy.** Renders happen fast — easily 10+/hour during a knob sweep. Most are noise once you've seen the next one. The rolling [`log.md`](log.md) table captures every render cheaply (one line apiece); the heavyweight `run-NNN/` folders (workflow JSON copy + relay_overrides + patch state + notes) only get created for runs *worth pinning* — a knob that worked, a surprising failure, the run that lands in `findings.md` later. Keeps `runs/` navigable.
+
+## Saved-run snapshot contents
+
+When the maintainer asks to "keep" a render, the snapshot folder looks like:
 
 ```
 run-NNN_<label>/
@@ -35,11 +40,15 @@ run folder.
 
 ## Trigger detection
 
-No magic phrase. Whenever the maintainer describes a render result in chat, the agent treats it as a feedback signal and creates a new run folder. The agent confirms in chat what was captured; the maintainer can rename, delete, or correct.
+| Maintainer chat input | Agent action |
+|---|---|
+| Describes a render result | Append a row to [`log.md`](log.md). |
+| Says **"keep"**, **"save run"**, **"save this"**, **"snapshot"** | Append the `log.md` row *and* create `run-NNN_<label>/` with the full snapshot. |
+| Says "no log" / "don't log this" | Skip both — pure scratch render. |
 
-To share a workflow file *without* logging it as a run, say "no log" or "don't log this" in the chat message.
+The maintainer can also ask to keep a run *after* the fact ("save run 003" or "keep that last one") as long as the workflow file and chat history are still recoverable.
 
-## Run labels
+## Run labels (when a run gets saved)
 
 Auto-generated from key knob state + feedback summary, e.g.:
 
@@ -49,7 +58,7 @@ Auto-generated from key knob state + feedback summary, e.g.:
 - `run-004_vstr10_astr0.5_sync-partial`
 - `run-005_codechange_sigma-bumped_sync-clean`
 
-The maintainer can override any label by stating it explicitly.
+`log.md` row numbers increment on every render; saved-folder NNN reuses that row number, so `run-003_…` corresponds to row 3 in `log.md`. The maintainer can override any label by stating it explicitly.
 
 ## Syncing fork-code edits to the live install — `dev-sync-audio`
 
