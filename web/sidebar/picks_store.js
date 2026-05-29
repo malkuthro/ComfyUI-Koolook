@@ -10,7 +10,24 @@ import {
     AUTOPULL_HIDDEN_KEY,
 } from "./constants.js";
 
+// Read-only render-source override (issue #181, Compare mode). When set, the
+// render path (`loadUserPicks`) returns this list instead of the user's live
+// localStorage picks, so the Compare view can render a *second* sidebar from a
+// loaded snapshot without touching live state. Set only synchronously around a
+// read-only render and always cleared afterwards (see `withSnapshotSource` in
+// tree.js); never written back to localStorage.
+let renderSourcePicks = null;
+
+export function setPicksRenderSource(picks) {
+    renderSourcePicks = Array.isArray(picks) ? picks.filter(p => typeof p === "string") : [];
+}
+
+export function clearPicksRenderSource() {
+    renderSourcePicks = null;
+}
+
 export function loadUserPicks() {
+    if (renderSourcePicks) return [...renderSourcePicks];
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return [];

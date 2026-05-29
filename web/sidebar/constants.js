@@ -359,6 +359,16 @@ export function ensureStyle() {
 /* Inline delete state outlines the target row in red. Reminder: no
    backticks in comments inside this CSS template literal. */
 .koolook-snapshot-row-pending-delete { outline: 1.5px solid rgba(220, 80, 80, 0.75); outline-offset: -1px; background: rgba(220, 80, 80, 0.06); }
+/* Compare mode (issue 181): two live sidebars side by side, plus a bottom
+   status bar. The columns reuse the normal koolook-sidebar render verbatim.
+   Reminder: no backticks in comments inside this CSS template literal. */
+.koolook-compare-host { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.koolook-compare-split { display: flex; flex: 1 1 auto; gap: 8px; min-height: 0; overflow: auto; padding: 0 4px; }
+.koolook-compare-col { flex: 1 1 0; min-width: 0; }
+.koolook-compare-status { flex: 0 0 auto; padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; color: rgba(170, 200, 255, 0.95); background: rgba(80, 140, 235, 0.18); border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); }
+/* Text-only diff tint, applied only to the comparison column's rows. */
+.koolook-cmp-new .koolook-name { color: #7be08a; }
+.koolook-cmp-diff .koolook-name { color: #ff7d7d; }
 `;
     document.head.appendChild(s);
 }
