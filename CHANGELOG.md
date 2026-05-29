@@ -7,6 +7,14 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Fixed
+- **`EasyAIPipeline`: path preview follows subgraph-routed version inputs.**
+  The "Get output directory/file path" buttons no longer reuse a stale
+  converted-widget `version` value when the live value is wired through
+  KJ Set/Get nodes and a ComfyUI subgraph. The browser preview resolver
+  now crosses subgraph outputs, maps subgraph inputs back to their host
+  node widgets/links, evaluates `Easy_Utility`'s `int_to_padded_string`
+  output, and reports "Cannot preview" instead of silently falling back
+  to stale local widget state when a connected value is too complex.
 - **`EasyAIPipeline` / `Easy_VideoCombine`: Run no-op when `version` widget
   is wired or carries a stale value.** PR #180 introduced a new STRING
   `version` widget in the same widget-slot the old INT lived in. Workflows
