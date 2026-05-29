@@ -222,7 +222,9 @@ def find_workflow(workflows_dir: Path, cfg: dict[str, Any]) -> Path:
 # --------------------------------------------------------------------------
 
 
-DIRECTOR_TYPE = "LTXDirector__koolook_v1_3_2"
+DIRECTOR_TYPE = "LTXDirector__koolook"
+LEGACY_DIRECTOR_TYPES = ("LTXDirector__koolook_v1_3_2",)
+DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES)
 
 # Koolook Director widget order — verified empirically against saved
 # workflow JSON. The Comfy frontend serialises widgets in their original
@@ -333,9 +335,13 @@ def extract_director(nodes: list[dict]) -> Optional[dict]:
     socket wiring — the audio_vae link is what decides whether audio
     gets generated at all (see derive_audio_state)."""
     for n in nodes:
-        if n.get("type") == DIRECTOR_TYPE:
+        if n.get("type") in DIRECTOR_TYPES:
             return n
     return None
+
+
+def director_type(node: Optional[dict]) -> str:
+    return node.get("type") if node else "(missing)"
 
 
 def director_widget(node: Optional[dict], key: str) -> Any:
@@ -373,6 +379,11 @@ def _coerce_segment_numeric(seg: dict) -> dict:
             try:
                 out[k] = int(float(out[k]))
             except (TypeError, ValueError):
+                print(
+                    f"WARNING: timeline segment {k}={out[k]!r} is not numeric; "
+                    "using 0 for loop/card extraction.",
+                    file=sys.stderr,
+                )
                 out[k] = 0
     return out
 
@@ -411,8 +422,8 @@ def parse_timeline(director_node: Optional[dict]) -> dict[str, list]:
 def derive_audio_state(
     director_node: Optional[dict], timeline: dict[str, list]
 ) -> str:
-    """Reduce the three structural audio signals — audio_vae wiring,
-    use_custom_audio toggle, audioSegments count — to one label that
+    """Reduce director presence plus three structural audio signals —
+    audio_vae wiring, use_custom_audio toggle, audioSegments count — to one label that
     mirrors how the Director would actually behave at runtime
     (see forks/.../ltx_director.py: audio_vae None gates everything;
     then use_custom_audio chooses between the encoded path and the
@@ -535,6 +546,15 @@ def next_run_number(runs_dir: Path) -> int:
         m = re.match(r"run-(\d+)", child.name)
         if m:
             nums.append(int(m.group(1)))
+    log_path = runs_dir / "log.md"
+    if log_path.is_file():
+        try:
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                m = re.match(r"\|\s*(\d{3,})\s*\|", line)
+                if m:
+                    nums.append(int(m.group(1)))
+        except OSError:
+            pass
     return max(nums) + 1 if nums else 1
 
 
@@ -576,7 +596,7 @@ def render_relay_overrides_txt(
     missing_note = ""
     if director_node is None:
         missing_note = (
-            "\n\n# WARNING: no LTXDirector__koolook_v1_3_2 node found in "
+            "\n\n# WARNING: no LTXDirector__koolook node found in "
             "the workflow — the relay_overrides value above isn't being "
             "consumed by anything. Add the Koolook Director to the canvas.\n"
         )
@@ -620,11 +640,11 @@ def render_notes_md(
 
     if director_node is None:
         director_kind = (
-            "**missing** — no `LTXDirector__koolook_v1_3_2` node on the "
+            "**missing** — no `LTXDirector__koolook` node on the "
             "canvas; this render didn't run through the Koolook fork."
         )
     else:
-        director_kind = "Koolook variant (`LTXDirector__koolook_v1_3_2`)"
+        director_kind = f"Koolook variant (`{director_type(director_node)}`)"
 
     epsilon = director_widget(director_node, "epsilon")
     dur_f = director_widget(director_node, "duration_frames")
@@ -662,7 +682,7 @@ def render_log_row(
     """Rolling-table row aligned with the card's data-source rule —
     multilines + Koolook Director only. Scheduler/sampler columns are
     deliberately absent (they aren't what this loop sweeps)."""
-    director_cell = DIRECTOR_TYPE if director_node else "(missing)"
+    director_cell = director_type(director_node)
     relay_cell = (
         f"`{relay_overrides_raw.strip()}`"
         if relay_overrides_raw.strip()
@@ -672,12 +692,13 @@ def render_log_row(
     seg_cell = str(len(segments))
     # `or '?'` would map a legitimate 0/5 to '?' because 0 is falsy;
     # explicit None-check preserves the score the maintainer typed.
-    # Mirrors render_audio_card._s() for card/log consistency.
+    # Parallels render_audio_card._s(): the log uses bare digits, while
+    # the card uses N/5 labels.
     def _score(v: Optional[int]) -> str:
         return str(v) if v is not None else "?"
     score_cell = (
-        f"M{_score(scores['motion'])}·S{_score(scores['sync'])}·"
-        f"Sh{_score(scores['sharp'])}"
+        f"M{_score(scores.get('motion'))}·S{_score(scores.get('sync'))}·"
+        f"Sh{_score(scores.get('sharp'))}"
     )
     notes_cell = (
         " ".join(feedback_lines)[:120] if feedback_lines else "(none)"
@@ -725,7 +746,7 @@ def _build_state_for_card(
             multilines.get("working_folder") or []
         ),
         "director_node": director_node,
-        "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
+        "director_variant": director_type(director_node),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
@@ -792,7 +813,7 @@ def main() -> int:
     print(f"{short_sha()} - {REPO_ROOT.name}")
     print(
         f"loop-{cfg['job_name']} run-{nnn:03d}  workflow={wf_path.name}  "
-        f"director={DIRECTOR_TYPE if director_node else '(missing)'}  "
+        f"director={director_type(director_node)}  "
         f"audio={audio_src}"
     )
 

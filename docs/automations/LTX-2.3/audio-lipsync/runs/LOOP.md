@@ -10,27 +10,30 @@
 
 | Step | Who | What |
 |---|---|---|
-| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook v1.3.2)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` source in this repo + run **`dev-sync-audio`** (auto-restarts Comfy). |
+| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source in this repo + run **`dev-sync-audio`** (auto-restarts Comfy). |
 | 2 | Maintainer | **Save** workflow → overwrites the current workflow file at the working folder. |
 | 3 | Maintainer | Queue render in ComfyUI. |
 | 4 | Maintainer | Report result in chat (verbal feedback — sync state, motion state, prompt adherence). |
-| 5 | Agent | Append a row to [`log.md`](log.md) — always. |
-| 6 | Agent (only on request) | Snapshot the current state into a `run-NNN_<label>/` folder under `runs/` — **only when the maintainer says "keep", "save run", or "save this"**. Without the explicit trigger, no folder is created. |
+| 5 | Agent | Append a row to [`log.md`](log.md). |
+| 6 | Agent | Snapshot the current state into a matching `run-NNN_<label>/` folder under `runs/`. |
 | 7 | Agent | Confirm what was captured (`log.md` row + folder if one was made). |
 
 **Save-before-render** is the anchor: the workflow file on disk at submission time = exactly what produced the render being described. No copy-paste, no version drift.
 
-**Why this retention policy.** Renders happen fast — easily 10+/hour during a knob sweep. Most are noise once you've seen the next one. The rolling [`log.md`](log.md) table captures every render cheaply (one line apiece); the heavyweight `run-NNN/` folders (workflow JSON copy + relay_overrides + patch state + notes) only get created for runs *worth pinning* — a knob that worked, a surprising failure, the run that lands in `findings.md` later. Keeps `runs/` navigable.
+**Why this retention policy.** For this fork-touching loop, every `loop-audio`
+capture is kept as a reproducibility snapshot: workflow JSON,
+relay_overrides, fork state, and notes. The rolling [`log.md`](log.md)
+stays the skim view; the folders carry the evidence.
 
 ## Saved-run snapshot contents
 
-When the maintainer asks to "keep" a render, the snapshot folder looks like:
+Each `loop-audio` capture folder looks like:
 
 ```
 run-NNN_<label>/
 ├── workflow.json           ← copy of the working-folder workflow at submission
 ├── relay_overrides.txt     ← the LTX Director (Koolook) node's relay_overrides widget value
-├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_2/*.py differs from MAIN
+├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
 └── notes.md                ← maintainer's verbal feedback + agent's one-line interp
 ```
 
@@ -42,11 +45,11 @@ run folder.
 
 | Maintainer chat input | Agent action |
 |---|---|
-| Describes a render result | Append a row to [`log.md`](log.md). |
-| Says **"keep"**, **"save run"**, **"save this"**, **"snapshot"** | Append the `log.md` row *and* create `run-NNN_<label>/` with the full snapshot. |
-| Says "no log" / "don't log this" | Skip both — pure scratch render. |
+| Says **`loop-audio`** after a saved render | Append the `log.md` row and create `run-NNN_<label>/` with the full snapshot. |
+| Says "no log" / "don't log this" before capture | Skip the command — pure scratch render. |
 
-The maintainer can also ask to keep a run *after* the fact ("save run 003" or "keep that last one") as long as the workflow file and chat history are still recoverable.
+The maintainer can override the generated label with `loop-audio --label ...`
+when a run needs a specific name.
 
 ## Run labels (when a run gets saved)
 

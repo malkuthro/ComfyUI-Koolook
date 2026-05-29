@@ -7,6 +7,14 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Fixed
+- **`loop-audio`: run numbering now respects the log.** The audio-lipsync
+  loop now chooses the next run number from both existing `run-NNN_*`
+  folders and `runs/log.md`, preventing a newly saved snapshot from reusing
+  an already logged number when a folder is absent or a run was log-only.
+- **`loop-audio`: fork-touching captures are always retained.** Every
+  `loop-audio` invocation now writes the log row and matching
+  `run-NNN_<label>/` evidence folder; scratch renders should be skipped
+  explicitly with "no log" / "don't log this" before capture.
 - **`EasyAIPipeline`: preview resolves connected text-name builders.**
   The path preview buttons now evaluate common connected text nodes such as
   `Text Multiline` and `Text Concatenate` instead of reading the concatenate
@@ -43,7 +51,7 @@ The format is inspired by Keep a Changelog and SemVer.
 - **`loop-audio` card redesigned around a strict two-source rule** (issue
   [#177](https://github.com/malkuthro/ComfyUI-Koolook/issues/177)). The
   audio-lipsync card now only reads (a) the five tracked
-  `Text Multiline` nodes and (b) the `LTXDirector__koolook_v1_3_2` node's
+  `Text Multiline` nodes and (b) the `LTXDirector__koolook` node's
   own widget values + input wiring. The previous SAMPLER block
   (`BasicScheduler` / `KSamplerSelect` / `RandomNoise` / `CFGGuider`
   scrapes), FORK STATE block (`_dev_build.json` + `git status`), and
@@ -54,8 +62,8 @@ The format is inspired by Keep a Changelog and SemVer.
   (flat-left labels with one indented child — `Segments (N)` parent,
   spelled-out `1) 0 to 5 seconds` per segment, aggregated
   `Prompt / Audio / Keyframe` coverage rows). Audio src is derived
-  structurally from the four-state machine (audio_vae link ×
-  use_custom_audio × audioSegments count) — never from substring matches
+  structurally from the five-state machine (director presence ×
+  audio_vae link × use_custom_audio × audioSegments count) — never from substring matches
   on prompt text. `notes.md` and `runs/log.md` follow the same source
   rule; the log's Phase 1 / Phase 2 / Custom audio columns are replaced
   by `Audio src` + `Segments`. `loop_audio.py`'s `.env` discovery now
@@ -88,6 +96,16 @@ The format is inspired by Keep a Changelog and SemVer.
   *Loop* and *Run* entries are rewritten to point at the new structure.
 
 ### Added
+- **`forks/whatdreamscost_koolook/v1_3_9/` — updated Koolook LTX Director
+  fork.** Upgrades the Koolook Director to upstream WhatDreamsCost-ComfyUI `3b65410`
+  (pyproject/README version `1.3.9`; no `v1.3.9` git tag at fork time).
+  It carries forward the Koolook `relay_overrides` multiline JSON input and
+  per-segment Prompt Relay sigma patch, while keeping upstream's v1.3.9
+  audio latent fixes. New workflows use stable node ID
+  `LTXDirector__koolook`; existing workflows saved with
+  `LTXDirector__koolook_v1_3_2` still load through a compatibility alias
+  backed by v1.3.9. The original v1.3.2 source remains on disk for
+  attribution, review, and rollback.
 - **Easy Load Video (`Easy_LoadVideo`).** Path-aware sibling of VHS's
   `Load Video Path` node. It exposes a split `input_path` + `video`
   field layout so a workflow can keep the source folder fixed while
@@ -109,7 +127,7 @@ The format is inspired by Keep a Changelog and SemVer.
   widget indices, audio state machine, card-section field map,
   invariants); [`CHEATSHEET.md`](docs/automations/LTX-2.3/audio-lipsync/CHEATSHEET.md)
   refreshed against the new card design (chat triggers, required canvas
-  shape, card source rule, the four Audio src states, snapshot folder
+  shape, card source rule, the five Audio src states, snapshot folder
   layout, settings map).
 - **`forks/whatdreamscost_koolook/v1_3_2/` — Koolook fork of WhatDreamsCost-ComfyUI's
   `LTXDirector`** (upstream `e81223a`, GPL-3.0). Two upstream files modified

@@ -10,7 +10,7 @@ Backstory: [`backstory/audio-lipsync-rationale.md`](backstory/audio-lipsync-rati
 
 Iterating on the LTX 2.3 audio-file lip-sync failure mode by sweeping
 the `relay_overrides` knobs on the Koolook fork of `LTXDirector`
-(`LTXDirector__koolook_v1_3_2`). Baseline = `use_custom_audio=False`
+(`LTXDirector__koolook`). Baseline = `use_custom_audio=False`
 (model-generated audio path). Goal: get `use_custom_audio=True` to
 look as clean as baseline.
 
@@ -36,7 +36,7 @@ the title) + the Koolook Director node:
 | `OVERLAY - INFO` | Free-form Δ-this-run note. Card renders verbatim |
 | `OVERLAY - FEEDBACK` | Observations + `motion: N/5 · sync: N/5 · sharp: N/5` score lines |
 | `Working_Folder_PATH` | Per-project working folder. Duplicates allowed (mount + mirror); first existing wins |
-| **node** `LTX Director (Koolook v1.3.2)` | Registered as `LTXDirector__koolook_v1_3_2`. Required — upstream `LTXDirector` won't have the `relay_overrides` input and the per-segment σ formula is also absent |
+| **node** `LTX Director (Koolook)` | Registered as `LTXDirector__koolook`. Required — upstream `LTXDirector` won't have the `relay_overrides` input and the per-segment σ formula is also absent. Older workflows saved as `LTXDirector__koolook_v1_3_2` still load through a compatibility alias |
 
 Save the workflow as `LTX-23-audio_tests_v01.json` in ComfyUI's
 `user/default/workflows/` (or whatever filename matches `workflow_pattern`
@@ -45,7 +45,7 @@ in [`loop_audio.config.json`](../../../../scripts/loop_audio.config.json)).
 ## The render cycle
 
 1. Edit the knob — either change the `RELAY_OVERRIDES` multiline JSON,
-   or edit a `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` source
+   or edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source
    then say `dev-sync-audio`.
 2. **Save (API format)** into the workflows dir. Mtime decides which
    file `loop-audio` picks.
@@ -59,7 +59,7 @@ in [`loop_audio.config.json`](../../../../scripts/loop_audio.config.json)).
 The card draws **only** from two source families:
 
 1. The five `Text Multiline` nodes above (the per-render notes).
-2. The `LTXDirector__koolook_v1_3_2` node's own widget values and
+2. The `LTXDirector__koolook` node's own widget values and
    input wiring.
 
 Forbidden on the card: `BasicScheduler` / `KSamplerSelect` / `RandomNoise` /
@@ -72,11 +72,11 @@ breakdown: [`reading-graph.html`](reading-graph.html).
 Derived from director-presence + `audio_vae` input link + `use_custom_audio`
 widget + `timeline_data.audioSegments` count. Mirrors what the director
 does at runtime
-(`forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py:610-622`).
+(`forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py`).
 
 | Label | Conditions |
 |---|---|
-| `(no director)` | No `LTXDirector__koolook_v1_3_2` node on the canvas |
+| `(no director)` | No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2` node on the canvas |
 | `off (no VAE)` | Director present · audio_vae not wired |
 | `model-gen` | audio_vae wired · use_custom_audio = False |
 | `custom` | audio_vae wired · use_custom_audio = True · audioSegments non-empty |

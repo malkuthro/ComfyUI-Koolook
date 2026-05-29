@@ -225,6 +225,44 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   workflow JSON references the Koolook-suffixed node ID.
 - **Last reviewed:** 2026-05-28
 
+### WhatDreamsCost/WhatDreamsCost-ComfyUI — v1.3.9 LTX Director subset (Koolook fork)
+
+- **Name:** WhatDreamsCost-ComfyUI
+- **Upstream repo URL:** https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI
+- **Upstream commit/tag used:** `3b65410c1ce684663a3dfa6fb073588c35275d83`
+  (pyproject/README version `1.3.9`; upstream had no `v1.3.9` git tag at
+  fork time).
+- **License:** GPL-3.0 (verified 2026-05-29 from the upstream `LICENSE`
+  file).
+- **Local path(s):** [`forks/whatdreamscost_koolook/versions/v1_3_9/`](whatdreamscost_koolook/versions/v1_3_9/)
+  plus the in-place timeline editor at
+  [`web/whatdreamscost_koolook/ltx_director.js`](../web/whatdreamscost_koolook/ltx_director.js).
+- **What changed locally:**
+  - **`ltx_director.py` (modified).** Carries forward the Koolook
+    `relay_overrides` multiline-string input, exposes the stable
+    `LTXDirector__koolook` node ID, and keeps the old
+    `LTXDirector__koolook_v1_3_2` workflow ID as a compatibility alias,
+    while preserving upstream v1.3.9's audio latent fixes for wrapped vs
+    raw AudioVAE handling.
+  - **`prompt_relay.py` (modified).** Carries forward the Koolook
+    per-segment sigma formula from the v1.3.2 fork.
+  - **`patches.py` (verbatim vendored).** Carried unmodified from upstream
+    `3b65410` because `ltx_director.py` imports `detect_model_type` and
+    `apply_patches` from it.
+- **What was *not* forked:** Same policy as v1.3.2. The companion
+  `LTXDirectorGuide` and other WhatDreamsCost helper nodes remain runtime
+  dependencies from the user's installed upstream package.
+- **Why the workflow-facing ID is stable:** new workflows use
+  `LTXDirector__koolook` so future compatible upstream-version upgrades can
+  fit in place. The previous `LTXDirector__koolook_v1_3_2` ID remains
+  registered as a legacy alias for saved workflows, but it resolves to this
+  v1.3.9 implementation. The original v1.3.2 source stays on disk for
+  attribution, review, and rollback, not as the active runtime class.
+- **Maintenance loop:** the audio-lipsync automation now targets
+  `LTXDirector__koolook` and tracks this folder in
+  `scripts/loop_audio.config.json`.
+- **Last reviewed:** 2026-05-29
+
 ## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)
 
 Six third-party trees were untracked from MAIN's git index in the

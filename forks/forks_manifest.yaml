@@ -60,6 +60,7 @@ entries:
     license: "GPL-3.0"
     license_verified_at: "2026-05-28"
     exposed_node_ids:
+      - "LTXDirector__koolook"
       - "LTXDirector__koolook_v1_3_2"
     notes: |
       Ships a Koolook variant of upstream's `LTXDirector` only — the companion
@@ -75,6 +76,39 @@ entries:
       imports `detect_model_type` and `apply_patches` from it. The maintainer-
       facing iteration loop driving changes here lives at
       `docs/automations/LTX-2.3/audio-lipsync/`.
+
+  - id: "whatdreamscost_koolook_v1_3_9_ltx_director"
+    name: "WhatDreamsCost Koolook v1.3.9 LTX Director subset"
+    source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
+    source_ref: "v1.3.9 (pyproject/README version on main; no v1.3.9 git tag at fork time)"
+    pinned_commit: "3b65410c1ce684663a3dfa6fb073588c35275d83"
+    external_checkout:
+      relative_path_from_forks_root: "whatdreamscost-v1.3.9-koolook"
+      upstream_tracking_path_from_forks_root: "whatdreamscost-main-upstream"
+      default_branch: "main"
+    local_paths:
+      - "forks/whatdreamscost_koolook/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_9/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_9/UPSTREAM_PIN.yaml"
+      - "forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py"
+      - "forks/whatdreamscost_koolook/versions/v1_3_9/patches.py"
+      - "web/whatdreamscost_koolook/ltx_director.js"
+    status: "modified"
+    sync_state: "ltx-director-modified-plus-deps"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-29"
+    exposed_node_ids:
+      - "LTXDirector__koolook_v1_3_2"
+    notes: |
+      Side-by-side successor to the v1.3.2 Koolook fork. Carries forward the
+      `relay_overrides` multiline JSON input and Prompt-Relay per-segment sigma
+      patch, while keeping upstream v1.3.9's audio latent compatibility fixes.
+      `patches.py` is vendored verbatim from upstream 3b65410. New workflows
+      use stable node ID `LTXDirector__koolook`; saved workflows using
+      `LTXDirector__koolook_v1_3_2` still load through a legacy alias backed
+      by this v1.3.9 implementation. The original v1.3.2 source remains on
+      disk for attribution, review, and rollback.
 
   - id: "easy_resize_inspiration"
     name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"

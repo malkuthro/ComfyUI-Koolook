@@ -3,13 +3,14 @@
 One row per render. Newest at the bottom.
 
 Schema: per the audio-lipsync card design, columns are drawn from the
-five tracked `Text Multiline` nodes + the `LTX Director (Koolook v1.3.2)`
+five tracked `Text Multiline` nodes + the `LTX Director (Koolook)`
 node's own widgets and input wiring. No `BasicScheduler` /
 `KSamplerSelect` / `RandomNoise` / `CFGGuider` scrapes.
 
-`Audio src` reflects the four structural states derived from
-`audio_vae` link + `use_custom_audio` widget + `timeline_data.audioSegments`:
-`model-gen` · `custom` · `custom (empty)` · `off (no VAE)`.
+`Audio src` reflects the five structural states derived from
+Director presence + `audio_vae` link + `use_custom_audio` widget +
+`timeline_data.audioSegments`: `(no director)` · `off (no VAE)` ·
+`model-gen` · `custom` · `custom (empty)`.
 
 | Run | Date | Director | `relay_overrides` | Audio src | Segments | Scores | Notes |
 |---|---|---|---|---|---|---|---|

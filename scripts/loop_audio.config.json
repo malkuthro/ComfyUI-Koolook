@@ -25,7 +25,7 @@
   ],
   "_tracked_multilines": "Lowercase substrings the loop expects to find inside Text Multiline node titles in the workflow JSON. Match is case-insensitive title.contains(). Add or rename keys here when the canvas tracking-group changes; no Python edit needed.",
 
-  "fork_to_track": "forks/whatdreamscost_koolook/versions/v1_3_2",
+  "fork_to_track": "forks/whatdreamscost_koolook/versions/v1_3_9",
   "_fork_to_track": "Repo-relative path of the fork files this module iterates on. Recorded in patch_state.txt of each run snapshot + diffed for the 'fork dir status' line.",
 
   "render_card": true,
