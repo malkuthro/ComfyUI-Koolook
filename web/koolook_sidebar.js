@@ -24,6 +24,7 @@ import {
     startPeriodicAutosave,
     markStateSaved,
     getCurrentPresetName,
+    detectBootDrift,
     SNAPSHOT_KIND,
     SNAPSHOT_VERSION,
     writePreset,
@@ -37,6 +38,7 @@ import { loadUserPicks } from "./sidebar/picks_store.js";
 import { showConfirmModal } from "./sidebar/modals.js";
 import { renderSidebar } from "./sidebar/tree.js";
 import { patchCanvasMenu } from "./sidebar/canvas_menu.js";
+import { claimSidebarRegistration } from "./sidebar/extension_guard.js";
 
 function wireOfflineFallbackRecovery(initialBlob) {
     criticalToast(
@@ -136,7 +138,45 @@ function wireOfflineFallbackRecovery(initialBlob) {
     );
 }
 
-app.registerExtension({
+// Client-side duplicate-install guard (#162). The backend `__init__.py`
+// guard already prevents two Koolook installations from publishing
+// competing `./web/` folders to ComfyUI (the non-winning install drops
+// its `WEB_DIRECTORY`), so this path normally fires only once. But a
+// downgraded sibling install on an older Koolook version without the
+// backend guard, or a stale Manager-side cache that loads two
+// `koolook_sidebar.js` files anyway, would land here twice and the
+// second `app.registerExtension(...)` would silently shadow the first
+// in some ComfyUI builds. The claim helper sets a window sentinel on
+// first call so the second load skips registration entirely.
+if (!claimSidebarRegistration(window)) {
+    console.warn(
+        "[Koolook] duplicate Kforge Labs install detected — this file was loaded twice. " +
+        "Check ComfyUI's custom_nodes/ for both `koolook/` and `ComfyUI-Koolook/` folders " +
+        "(or any other Koolook copy) and remove one. The first registration stays live."
+    );
+    // Defer the user-facing toast until the next microtask — `criticalToast`
+    // appends to `document.body`, which exists at script-eval time in ComfyUI
+    // but the surrounding style sheet (`ensureStyle()`) is installed inside
+    // `renderPanel`. Queuing the toast lets the user see it as soon as the
+    // sidebar tab opens, even on a duplicate install where the second
+    // `setup()` never runs.
+    queueMicrotask(() => {
+        try {
+            criticalToast(
+                "Kforge Labs is installed twice in ComfyUI's custom_nodes/. " +
+                "Two copies (typically `koolook/` from the ComfyUI Manager / Registry " +
+                "and `ComfyUI-Koolook/` from a git clone) both register the same " +
+                "sidebar tab and write to the same /userdata file — running both " +
+                "silently corrupts your workflow store. Remove one of the folders " +
+                "and restart ComfyUI. See the server log for the resolved paths."
+            );
+        } catch (e) {
+            // No usable DOM yet — the console.warn above already carries
+            // the essential signal. Don't escalate.
+        }
+    });
+} else {
+    app.registerExtension({
     name: "koolook.curated_sidebar",
     async setup() {
         if (!app.extensionManager || !app.extensionManager.registerSidebarTab) {
@@ -186,6 +226,30 @@ app.registerExtension({
         if (getCurrentPresetName() && !localStorage.getItem("koolook.snapshot.savedFingerprint.v1")) {
             markStateSaved();
         }
+        // Boot-time tracked-snapshot drift check (#161). When a preset is
+        // tracked, compare the named snapshot file on disk against the
+        // live /userdata + picks state. On mismatch, flag drift — the
+        // status pill flips to "drifted (reload?)" and periodic auto-
+        // saves redirect to `_unsaved_autosave/` so the named preset's
+        // recovery folder is never overwritten with the (potentially
+        // corrupt) live state.
+        //
+        // Runs AFTER the localStorage fingerprint baseline above so the
+        // drift flag wins precedence over the fingerprint match — see
+        // `getSnapshotStatus()` for the precedence rationale.
+        //
+        // Failure here is silent (logged, not toasted): a missing file or
+        // unreachable server are distinct failure modes the user already
+        // has surface for elsewhere. Drift specifically means "both
+        // present, both differ".
+        const trackedNameForDrift = getCurrentPresetName();
+        if (trackedNameForDrift) {
+            try {
+                await detectBootDrift(trackedNameForDrift);
+            } catch (e) {
+                console.warn("[Koolook] boot drift check threw:", e);
+            }
+        }
         app.extensionManager.registerSidebarTab({
             id: TAB_ID,
             title: TAB_TITLE,
@@ -203,4 +267,5 @@ app.registerExtension({
         // load/seed flows above settle first.
         startPeriodicAutosave();
     },
-});
+    });
+}

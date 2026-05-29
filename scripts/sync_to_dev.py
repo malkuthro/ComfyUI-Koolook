@@ -17,9 +17,16 @@ is intentionally kept out of the committed tree - see `.env.example`.
 
 `KOLOOK_COMFYUI_DEV_PATH` should point at the eventual Koolook
 subdirectory inside `custom_nodes/`, NOT at the `custom_nodes/` parent.
+Target ``custom_nodes/koolook/`` — that's where ComfyUI-Manager and the
+Comfy Registry install (derived from ``[project].name`` in
+``pyproject.toml``), so dev-sync overwrites the Manager install in place.
+Targeting ``custom_nodes/ComfyUI-Koolook/`` instead spawns a parallel
+install; ``__init__.py``'s duplicate-install guard logs a critical
+message and disables the non-winning copy (issue #162).
+
 Example layouts:
-    macOS:   /Volumes/Data/ComfyUI/custom_nodes/ComfyUI-Koolook
-    Windows: C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook
+    macOS:   /Volumes/Data/ComfyUI/custom_nodes/koolook
+    Windows: C:/ComfyUI_portable/ComfyUI/custom_nodes/koolook
 
 Usage:
     python scripts/sync_to_dev.py            # copy files
@@ -154,6 +161,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "k_easy_wan22_prompt.py",
     "k_video_combine.py",
     "k_video_load.py",
+    "koolook_install_guard.py",
     "koolook_routes.py",
     "koolook_versioning.py",
     "forks",

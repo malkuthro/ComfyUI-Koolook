@@ -10,11 +10,24 @@ round-trip.
 inside your live ComfyUI `custom_nodes/` folder — **not** the `custom_nodes/`
 parent itself.
 
+Target the **`koolook/`** leaf, not `ComfyUI-Koolook/`. The ComfyUI Manager
+and the Comfy Registry both install at `custom_nodes/koolook/` (derived from
+`[project].name = "koolook"` in our [`pyproject.toml`](../../pyproject.toml)).
+Pointing dev-sync at the same path overwrites the Manager install in place,
+which is what you want. Targeting `custom_nodes/ComfyUI-Koolook/` instead
+creates a parallel install — both get loaded on every ComfyUI boot, both
+register the same routes / sidebar tab, both write to the same `/userdata`
+file, and the workflow store silently corrupts on every restart. The
+`__init__.py` duplicate-install guard catches this and prints a critical
+log naming both paths, but the cleanest path is to never create the dual
+install. See issue [#162](https://github.com/malkuthro/ComfyUI-Koolook/issues/162)
+for the full failure mode.
+
 | Platform | Typical path |
 |---|---|
-| macOS | `/Volumes/Data/ComfyUI/custom_nodes/ComfyUI-Koolook` |
-| Linux | `/home/<user>/ComfyUI/custom_nodes/ComfyUI-Koolook` |
-| Windows | `C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook` (forward slashes work fine) |
+| macOS | `/Volumes/Data/ComfyUI/custom_nodes/koolook` |
+| Linux | `/home/<user>/ComfyUI/custom_nodes/koolook` |
+| Windows | `C:/ComfyUI_portable/ComfyUI/custom_nodes/koolook` (forward slashes work fine) |
 
 ```bash
 cp .env.example .env                            # if you don't have one yet
