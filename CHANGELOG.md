@@ -7,6 +7,13 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Fixed
+- **`EasyAIPipeline`: preview resolves connected text-name builders.**
+  The path preview buttons now evaluate common connected text nodes such as
+  `Text Multiline` and `Text Concatenate` instead of reading the concatenate
+  node's delimiter widget (`_`) as the whole shot name. This fixes previews
+  like `.../_/v003/__v003.%04d.exr` when `shot_name` is wired, and the
+  preview version formatter now matches Python: `003` becomes `v003`, while
+  an existing `v003` stays `v003`.
 - **`EasyAIPipeline`: path preview follows subgraph-routed version inputs.**
   The "Get output directory/file path" buttons no longer reuse a stale
   converted-widget `version` value when the live value is wired through

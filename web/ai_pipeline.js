@@ -97,6 +97,16 @@ app.registerExtension({
                 // in .exr" — splitext returns ".exr " with the space, which doesn't match.
                 const cleanExtension = (s) => String(s ?? "").replace(/\s/g, "");
 
+                const resolveVersionToken = (version, disableVersioning) => {
+                    if (disableVersioning) return "";
+                    const token = normalizeTextInput(version).replace(/[\/\\]/g, "_");
+                    if (!token) return "";
+                    if (/^\d+$/.test(token)) {
+                        return `v${String(Number.parseInt(token, 10)).padStart(3, "0")}`;
+                    }
+                    return token;
+                };
+
                 const getNodeWidgetValue = (node, slot) => {
                     const output = node.outputs?.[slot];
                     const candidateWidgets = [
@@ -198,25 +208,53 @@ app.registerExtension({
                     return resolveLinkValue(innerLinkId, null, seen, subgraph, hostNode);
                 };
 
-                const evaluateKnownNodeOutput = (node, slot, graph, seen, subgraphHost) => {
-                    if (node?.type !== "Easy_Utility" || slot !== 0) return null;
-                    const mode = getWidgetValueByName(node, "mode", node.widgets_values?.[0] ?? "int_to_padded_string");
-                    if (mode !== "int_to_padded_string") return null;
+                const evaluateTextConcatenate = (node, graph, seen, subgraphHost) => {
+                    const delimiter = getWidgetValueByName(node, "delimiter", node.widgets_values?.[0] ?? "");
+                    const cleanWhitespace = getWidgetValueByName(node, "clean_whitespace", node.widgets_values?.[1] ?? true);
+                    const parts = [];
+                    for (const input of node.inputs ?? []) {
+                        if (!/^text_[a-z]$/i.test(input.name ?? "")) continue;
+                        let value = null;
+                        if (input.link !== null && input.link !== undefined) {
+                            value = resolveLinkValue(input.link, null, seen, graph, subgraphHost);
+                        }
+                        value = normalizeTextInput(value);
+                        if (cleanWhitespace === true || cleanWhitespace === "true") {
+                            value = value.trim();
+                        }
+                        if (value) parts.push(value);
+                    }
+                    return parts.join(String(delimiter ?? ""));
+                };
 
-                    const intInput = node.inputs?.find(input => input.name === "int_value");
-                    let intValue;
-                    if (intInput?.link !== null && intInput?.link !== undefined) {
-                        intValue = resolveLinkValue(intInput.link, null, seen, graph, subgraphHost);
+                const evaluateKnownNodeOutput = (node, slot, graph, seen, subgraphHost) => {
+                    if (slot !== 0) return null;
+                    if (node?.type === "Text Multiline") {
+                        return getWidgetValueByName(node, "text", node.widgets_values?.[0] ?? "");
                     }
-                    if (intValue === null || intValue === undefined) {
-                        intValue = getWidgetValueByName(node, "int_value", node.widgets_values?.[1] ?? 1);
+                    if (node?.type === "Text Concatenate") {
+                        return evaluateTextConcatenate(node, graph, seen, subgraphHost);
                     }
-                    const prefix = getWidgetValueByName(node, "prefix", node.widgets_values?.[2] ?? "");
-                    const padWidth = getWidgetValueByName(node, "pad_width", node.widgets_values?.[3] ?? 3);
-                    const n = Number.parseInt(intValue, 10);
-                    const w = Math.max(0, Number.parseInt(padWidth, 10) || 0);
-                    if (Number.isNaN(n)) return null;
-                    return `${prefix ?? ""}${String(n).padStart(w, "0")}`;
+                    if (node?.type === "Easy_Utility") {
+                        const mode = getWidgetValueByName(node, "mode", node.widgets_values?.[0] ?? "int_to_padded_string");
+                        if (mode !== "int_to_padded_string") return null;
+
+                        const intInput = node.inputs?.find(input => input.name === "int_value");
+                        let intValue;
+                        if (intInput?.link !== null && intInput?.link !== undefined) {
+                            intValue = resolveLinkValue(intInput.link, null, seen, graph, subgraphHost);
+                        }
+                        if (intValue === null || intValue === undefined) {
+                            intValue = getWidgetValueByName(node, "int_value", node.widgets_values?.[1] ?? 1);
+                        }
+                        const prefix = getWidgetValueByName(node, "prefix", node.widgets_values?.[2] ?? "");
+                        const padWidth = getWidgetValueByName(node, "pad_width", node.widgets_values?.[3] ?? 3);
+                        const n = Number.parseInt(intValue, 10);
+                        const w = Math.max(0, Number.parseInt(padWidth, 10) || 0);
+                        if (Number.isNaN(n)) return null;
+                        return `${prefix ?? ""}${String(n).padStart(w, "0")}`;
+                    }
+                    return null;
                 };
 
                 const resolveLinkValue = (linkId, fallback, seen = new Set(), graph = app.graph, subgraphHost = null) => {
@@ -344,7 +382,7 @@ app.registerExtension({
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const version_str = resolveVersionToken(values.version, values.disable_versioning);
                         displayWidget.value = buildOutputDirectory(values, version_str);
                     }
                     this.setDirtyCanvas(true, true);
@@ -364,7 +402,7 @@ app.registerExtension({
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const version_str = resolveVersionToken(values.version, values.disable_versioning);
                         const output_directory = buildOutputDirectory(values, version_str);
                         // Filenames can't contain / or \ on any OS, so flatten any internal
                         // separators in shot_name / ai_method to `_`. Mirror of the Python
