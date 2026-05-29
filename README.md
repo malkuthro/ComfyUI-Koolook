@@ -44,6 +44,7 @@ Using it inside ComfyUI? Open the operational guide:
 | `Easy_hdr_VAE_encode` | Easy HDR VAE Encode (Koolook) | `Koolook/VAE` |
 | `Easy_hdr_VAE_decode` | Easy HDR VAE Decode (Koolook) | `Koolook/VAE` |
 | `Easy_Pattern` | Easy Pattern (Koolook) | `Koolook/Testing` |
+| `Easy_LoadVideo` | Easy Load Video (Koolook) | `Koolook/Video` |
 | `Easy_VideoCombine` | Easy Video Combine (Koolook) | `Koolook/Video` |
 
 The root Koolook nodes and the slim Radiance Koolook VAE wrappers have no

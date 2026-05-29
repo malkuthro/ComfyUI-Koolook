@@ -20,12 +20,6 @@ try:
     from .k_easy_utility import NODE_CLASS_MAPPINGS as utility_mappings
     from .k_easy_utility import NODE_DISPLAY_NAME_MAPPINGS as utility_display
 
-    # Easy_VideoCombine self-skips registration when VHS isn't installed
-    # (its inner try/import returns empty mappings), so importing here is
-    # always safe even on workstations without ComfyUI-VideoHelperSuite.
-    from .k_video_combine import NODE_CLASS_MAPPINGS as video_combine_mappings
-    from .k_video_combine import NODE_DISPLAY_NAME_MAPPINGS as video_combine_display
-
     from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
     from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
 
@@ -47,6 +41,22 @@ except ImportError as _node_import_exc:
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 else:
+    video_load_mappings = {}
+    video_load_display = {}
+    try:
+        from .k_video_load import NODE_CLASS_MAPPINGS as video_load_mappings
+        from .k_video_load import NODE_DISPLAY_NAME_MAPPINGS as video_load_display
+    except ImportError as _exc:
+        print(f"[Koolook] Easy_LoadVideo registry skipped: {_exc}")
+
+    video_combine_mappings = {}
+    video_combine_display = {}
+    try:
+        from .k_video_combine import NODE_CLASS_MAPPINGS as video_combine_mappings
+        from .k_video_combine import NODE_DISPLAY_NAME_MAPPINGS as video_combine_display
+    except ImportError as _exc:
+        print(f"[Koolook] Easy_VideoCombine registry skipped: {_exc}")
+
     # Register the Kforge Labs snapshot/preset endpoints. Failure here is
     # non-fatal — the node mappings still load and the rest of the plugin
     # works; only the snapshot feature in the sidebar is unavailable. Both
@@ -73,6 +83,7 @@ else:
         **cam_loader_mappings,
         **pattern_mappings,
         **utility_mappings,
+        **video_load_mappings,
         **video_combine_mappings,
         **radiance_koolook_mappings,
         **whatdreamscost_koolook_mappings,
@@ -86,6 +97,7 @@ else:
         **cam_loader_display,
         **pattern_display,
         **utility_display,
+        **video_load_display,
         **video_combine_display,
         **radiance_koolook_display,
         **whatdreamscost_koolook_display,

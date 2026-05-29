@@ -75,6 +75,17 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [0.3.7] - 2026-05-23
 
 ### Added
+- **Easy Load Video (`Easy_LoadVideo`).** Path-aware sibling of VHS's
+  `Load Video Path` node. It exposes a split `input_path` + `video`
+  field layout so a workflow can keep the source folder fixed while
+  changing only the clip name. Absolute `input_path` values load
+  directly from disk; relative values resolve under ComfyUI's `input/`
+  directory. Leaving `input_path` empty passes `video` through to VHS
+  unchanged, preserving full-path/URL workflows. Implemented as a thin
+  subclass in [`k_video_load.py`](k_video_load.py), with pure helper
+  coverage in [`tests/nodes/test_easy_video_load.py`](tests/nodes/test_easy_video_load.py)
+  and usage docs in
+  [`docs/user_guide/nodes/koolook_video/easy_load_video.md`](docs/user_guide/nodes/koolook_video/easy_load_video.md).
 - **Workflow validator (`scripts/validate_workflow.py`).** stdlib-only CLI
   that checks a ComfyUI workflow JSON for internal consistency: declared-
   vs-referenced links, slot index bounds and type matches, endpoint cross-

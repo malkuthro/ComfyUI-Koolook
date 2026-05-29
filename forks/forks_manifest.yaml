@@ -112,6 +112,20 @@ entries:
       notes: "os.path.isabs(filename_prefix) discrimination pattern from SaveEXR — overload the existing field for relative vs absolute paths rather than adding a new input pin. No source code copied; pattern only."
     notes: "Thin subclass of videohelpersuite.nodes.VideoCombine (~60 LoC). Scoped-patches folder_paths.get_save_image_path for the duration of one combine_video() call so upstream's encoder/audio/batch-manager pipeline runs unchanged but writes to an absolute path when filename_prefix is absolute. Relative prefixes pass through to upstream verbatim. VHS is a runtime dependency only — if it isn't installed, k_video_combine.py logs a one-line skip and the node is omitted from NODE_CLASS_MAPPINGS. Pinned by commit (not tag) because VHS publishes no git tags/releases — its version (1.7.7) is declared in pyproject.toml only. k_video_combine.py stays at the repo root: it is a Koolook-original runtime subclass, not a vendored fork, so it gets no forks/versions/ wrapper namespace."
 
+  - id: "video_load_path_aware_subclass"
+    name: "Easy Load Video (Koolook subclass of VHS Load Video Path)"
+    source_repo: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    source_ref: "main (runtime composition; no upstream code copied)"
+    local_paths:
+      - "k_video_load.py"
+    status: "subclass_runtime_dep"
+    sync_state: "no-upstream-tracking-needed"
+    license: "GPL-3.0"
+    license_verified_at: "2026-05-19"
+    exposed_node_ids:
+      - "Easy_LoadVideo"
+    notes: "Thin subclass of VHS_LoadVideoPath. Composes split input_path + video fields into the single path string that upstream already accepts, then delegates loading to VHS unchanged. Absolute input_path values load directly; relative input_path values resolve under ComfyUI's input directory. VHS is a runtime dependency only - if it isn't installed, k_video_load.py logs a one-line skip and the node is omitted from NODE_CLASS_MAPPINGS."
+
   - id: "promptjson_integration_reference"
     name: "PromptJSON interoperability reference"
     source_repo: "https://github.com/NeuralSamurAI/ComfyUI-PromptJSON"
