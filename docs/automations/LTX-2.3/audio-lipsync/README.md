@@ -85,6 +85,10 @@ Each `loop-audio` capture adds a row to `log.md` and creates a matching
 existing folders and `log.md`, so a missing folder cannot make the next
 capture reuse an already logged number.
 
+This module keeps every `loop-audio` capture as a reproducibility snapshot.
+There is no extra "keep this run" prompt in this fork-touching loop; scratch
+renders should be skipped with "no log" / "don't log this" before capture.
+
 ## Iteration loop
 
 1. **Edit a knob.** Either:
@@ -106,8 +110,9 @@ See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the rete
 New workflows should use the stable node ID `LTXDirector__koolook` (display
 name *"LTX Director (Koolook)"*), not the upstream `LTXDirector`. Old
 workflows saved with `LTXDirector__koolook_v1_3_2` still load through a
-compatibility alias backed by the same v1.3.9 implementation, so future
-fork upgrades do not require repeated node replacement.
+compatibility alias backed by the same v1.3.9 implementation, not the
+byte-identical v1.3.2 class, so future fork upgrades do not require repeated
+node replacement.
 
 The upstream node and the Koolook variant still appear side-by-side —
 upstream stays vanilla, the Koolook variant carries our two modifications.

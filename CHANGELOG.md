@@ -11,6 +11,10 @@ The format is inspired by Keep a Changelog and SemVer.
   loop now chooses the next run number from both existing `run-NNN_*`
   folders and `runs/log.md`, preventing a newly saved snapshot from reusing
   an already logged number when a folder is absent or a run was log-only.
+- **`loop-audio`: fork-touching captures are always retained.** Every
+  `loop-audio` invocation now writes the log row and matching
+  `run-NNN_<label>/` evidence folder; scratch renders should be skipped
+  explicitly with "no log" / "don't log this" before capture.
 - **`EasyAIPipeline`: preview resolves connected text-name builders.**
   The path preview buttons now evaluate common connected text nodes such as
   `Text Multiline` and `Text Concatenate` instead of reading the concatenate
@@ -99,7 +103,9 @@ The format is inspired by Keep a Changelog and SemVer.
   per-segment Prompt Relay sigma patch, while keeping upstream's v1.3.9
   audio latent fixes. New workflows use stable node ID
   `LTXDirector__koolook`; existing workflows saved with
-  `LTXDirector__koolook_v1_3_2` still load through a compatibility alias.
+  `LTXDirector__koolook_v1_3_2` still load through a compatibility alias
+  backed by v1.3.9. The original v1.3.2 source remains on disk for
+  attribution, review, and rollback.
 - **Easy Load Video (`Easy_LoadVideo`).** Path-aware sibling of VHS's
   `Load Video Path` node. It exposes a split `input_path` + `video`
   field layout so a workflow can keep the source folder fixed while

@@ -17,10 +17,12 @@ Current active version:
   `1.3.9`; no `v1.3.9` git tag at fork time), with the Koolook
   `relay_overrides` and per-segment-sigma patches carried forward. New
   workflows use stable node ID `LTXDirector__koolook`; older
-  `LTXDirector__koolook_v1_3_2` workflows load through an alias.
+  `LTXDirector__koolook_v1_3_2` workflows load through an alias backed by
+  this v1.3.9 implementation.
 - `v1_3_2` — see [`forks/THIRD_PARTY.md`](../THIRD_PARTY.md) for upstream
-  attribution and what changed locally. Kept registered for saved-workflow
-  compatibility. Tracks
+  attribution and what changed locally. Kept on disk for reference and
+  rollback; at runtime its workflow-facing ID is intentionally replaced by
+  the v1.3.9 compatibility alias. Tracks
   [WhatDreamsCost/WhatDreamsCost-ComfyUI](https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI)
   at commit `e81223a`. License: GPL-3.0 (compatible with this pack).
 

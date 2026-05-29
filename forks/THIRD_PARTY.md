@@ -236,7 +236,7 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   file).
 - **Local path(s):** [`forks/whatdreamscost_koolook/versions/v1_3_9/`](whatdreamscost_koolook/versions/v1_3_9/)
   plus the in-place timeline editor at
-  [`web/whatdreamscost_koolook_v1_3_2/ltx_director.js`](../web/whatdreamscost_koolook_v1_3_2/ltx_director.js).
+  [`web/whatdreamscost_koolook/ltx_director.js`](../web/whatdreamscost_koolook/ltx_director.js).
 - **What changed locally:**
   - **`ltx_director.py` (modified).** Carries forward the Koolook
     `relay_overrides` multiline-string input, exposes the stable
@@ -255,7 +255,9 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 - **Why the workflow-facing ID is stable:** new workflows use
   `LTXDirector__koolook` so future compatible upstream-version upgrades can
   fit in place. The previous `LTXDirector__koolook_v1_3_2` ID remains
-  registered as a legacy alias for saved workflows.
+  registered as a legacy alias for saved workflows, but it resolves to this
+  v1.3.9 implementation. The original v1.3.2 source stays on disk for
+  attribution, review, and rollback, not as the active runtime class.
 - **Maintenance loop:** the audio-lipsync automation now targets
   `LTXDirector__koolook` and tracks this folder in
   `scripts/loop_audio.config.json`.

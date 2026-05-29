@@ -17,5 +17,6 @@ notes: |
   The canonical workflow-facing ID is `LTXDirector__koolook` so future
   compatible upstream-version upgrades can fit in place. The previous
   `LTXDirector__koolook_v1_3_2` ID remains registered as a compatibility
-  alias for saved workflows. The companion `LTXDirectorGuide` is unmodified
-  and consumed from the user's upstream install.
+  alias for saved workflows, backed by this v1.3.9 implementation rather
+  than byte-identical v1.3.2 code. The companion `LTXDirectorGuide` is
+  unmodified and consumed from the user's upstream install.

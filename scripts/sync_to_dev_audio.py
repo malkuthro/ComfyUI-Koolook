@@ -11,9 +11,11 @@ Copies only what that automation's iteration loop touches:
                                        node mappings; needs to be re-synced
                                        when the fork's NODE_CLASS_MAPPINGS
                                        set changes)
+    - web/whatdreamscost_koolook/      Director timeline-editor extension
 
 Everything else in the live install — ``forks/radiance_koolook/``, the
-root ``k_*.py`` nodes, ``web/``, ``video_formats/`` — is left untouched.
+root ``k_*.py`` nodes, unrelated ``web/`` assets, ``video_formats/`` —
+is left untouched.
 
 USER-INITIATED ONLY. Same rule as plain ``dev-sync`` (see project
 ``CLAUDE.md`` → ``dev-sync`` section). Never run automatically:
@@ -70,7 +72,7 @@ import sync_to_dev as _dev  # noqa: E402
 AUDIO_PATHS: tuple[str, ...] = (
     "__init__.py",
     "forks/whatdreamscost_koolook",
-    "web/whatdreamscost_koolook_v1_3_2",
+    "web/whatdreamscost_koolook",
 )
 
 

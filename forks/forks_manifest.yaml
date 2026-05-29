@@ -93,7 +93,7 @@ entries:
       - "forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py"
       - "forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py"
       - "forks/whatdreamscost_koolook/versions/v1_3_9/patches.py"
-      - "web/whatdreamscost_koolook_v1_3_2/ltx_director.js"
+      - "web/whatdreamscost_koolook/ltx_director.js"
     status: "modified"
     sync_state: "ltx-director-modified-plus-deps"
     license: "GPL-3.0"
@@ -106,7 +106,9 @@ entries:
       patch, while keeping upstream v1.3.9's audio latent compatibility fixes.
       `patches.py` is vendored verbatim from upstream 3b65410. New workflows
       use stable node ID `LTXDirector__koolook`; saved workflows using
-      `LTXDirector__koolook_v1_3_2` still load through a legacy alias.
+      `LTXDirector__koolook_v1_3_2` still load through a legacy alias backed
+      by this v1.3.9 implementation. The original v1.3.2 source remains on
+      disk for attribution, review, and rollback.
 
   - id: "easy_resize_inspiration"
     name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"

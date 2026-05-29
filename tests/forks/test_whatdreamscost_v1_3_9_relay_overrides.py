@@ -1,6 +1,6 @@
 """Tests for the LTXDirector ``relay_overrides`` widget parser.
 
-These guard the failure modes flagged in the PR #178 verified review
+These guard the failure modes flagged in the PR #185 verified review
 (H1 — values were never type-checked; H2 — malformed JSON silently fell
 back to upstream defaults and polluted A/B iteration logs). The parser
 lives in
