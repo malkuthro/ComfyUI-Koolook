@@ -1,0 +1,75 @@
+"""Guards on the locked test dependency set (``constraints-test.txt``).
+
+The bootstrap scripts install the test extras against this pinned lock, so
+every fresh ``.venv`` is reproducible and ``pip-audit``-verifiable. These
+tests fail loudly if the lock drifts out of sync with the ``[test]`` extras
+declared in ``pyproject.toml`` (e.g. an extra was added without re-locking).
+"""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover - Python < 3.11 fallback
+    import tomli as tomllib
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONSTRAINTS = REPO_ROOT / "constraints-test.txt"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+
+
+def _canonical(name: str) -> str:
+    """PEP 503 normalised distribution name."""
+    return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+
+def _pinned_names() -> dict[str, str]:
+    """Map canonical distribution name -> exact version from the lock."""
+    pins: dict[str, str] = {}
+    for raw in CONSTRAINTS.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        assert "==" in line, f"constraint not pinned with '==': {line!r}"
+        name, version = line.split("==", 1)
+        pins[_canonical(name)] = version.strip()
+    return pins
+
+
+def _test_extra_names() -> list[str]:
+    data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    extras = data["project"]["optional-dependencies"]["test"]
+    return [_canonical(re.split(r"[<>=!~;\[ ]", spec, maxsplit=1)[0]) for spec in extras]
+
+
+def test_constraints_file_exists_and_nonempty():
+    assert CONSTRAINTS.is_file(), "constraints-test.txt is missing"
+    assert _pinned_names(), "constraints-test.txt has no pinned entries"
+
+
+def test_no_editable_or_self_package_leaked():
+    text = CONSTRAINTS.read_text(encoding="utf-8")
+    assert "-e " not in text, "an editable install leaked into the lock"
+    assert "koolook" not in _pinned_names(), "the self package leaked into the lock"
+
+
+def test_every_top_level_test_extra_is_pinned():
+    pins = _pinned_names()
+    missing = [name for name in _test_extra_names() if name not in pins]
+    assert not missing, (
+        f"these [test] extras are not pinned in constraints-test.txt: {missing}. "
+        "Regenerate the lock: bash scripts/bootstrap_test_env.sh --force --relock"
+    )
+
+
+def test_no_duplicate_pins():
+    names: list[str] = []
+    for raw in CONSTRAINTS.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            names.append(_canonical(line.split("==", 1)[0]))
+    dupes = sorted({name for name in names if names.count(name) > 1})
+    assert not dupes, f"duplicate pins in constraints-test.txt: {dupes}"

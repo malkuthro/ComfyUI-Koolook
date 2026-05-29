@@ -111,6 +111,22 @@ The format is inspired by Keep a Changelog and SemVer.
   widget-to-input conversion, stale workflows, and downstream widget patches.
 
 ### Changed
+- **Locked + audited test environment; bootstrap pre-authorized.**
+  `scripts/bootstrap_test_env.{sh,ps1}` now install the `[test]` extras
+  against a committed lock (`constraints-test.txt` — a pinned resolve of the
+  extras + their full transitive closure) and gate the result with
+  `pip-audit`; a known CVE fails the bootstrap. New flags: `--relock` /
+  `-Relock` (re-resolve + rewrite the lock) and `--no-audit` / `-NoAudit`
+  (skip the audit, e.g. offline). Because the bootstrap can now only install
+  an already-reviewed, pinned, audited set, it is **pre-authorized to run
+  automatically** — `CLAUDE.md` documents that this supersedes the global
+  `/warmup` `MISSING_VENV` hard-stop, while dependency *changes* still land
+  as a reviewed `pyproject.toml` / `constraints-test.txt` diff. The lock +
+  audit govern local and agent bootstraps; CI still installs the minimal
+  `pytest` + `aiohttp` subset it needs directly (not yet on the lock/audit
+  path). New guard test
+  [`tests/scripts/test_bootstrap_constraints.py`](tests/scripts/test_bootstrap_constraints.py)
+  keeps the lock in sync with the declared extras.
 - **Dev-sync scripts now only copy files.** `sync_to_dev.py` and the
   scoped `dev-sync-audio` wrapper no longer call the ComfyUI-Manager
   reboot endpoint and no longer expose `--no-restart` / `--restart-url`;
@@ -139,7 +155,6 @@ The format is inspired by Keep a Changelog and SemVer.
   bug — the saved workflow preserves the legacy widget order even after
   the Koolook fork reordered the schema, so `DIRECTOR_WIDX` matches the
   serialised order, not the schema declaration.
-
 - **Automations restructured around modules instead of models.**
   `docs/automations/` now pivots on one folder per *task* (each its own
   workflow + iteration loop + findings) rather than one folder per model.
