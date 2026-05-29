@@ -346,23 +346,31 @@ def _remove_audio_suffix_from_result(result, keep_silent_intermediate: bool):
 _COUNTER_RE = re.compile(r"_\d{5}$")
 
 
-def _build_metadata_payload(prompt, extra_pnginfo) -> dict:
-    """Assemble the workflow metadata written to the JSON sidecar.
+def _build_sidecar_workflow(prompt, extra_pnginfo, creation_time):
+    """Build the JSON sidecar as a **drag-loadable ComfyUI workflow**.
 
-    Always records ``CreationTime``. Records the ``prompt`` graph when present.
-    Crucially, when ``extra_pnginfo`` (which carries the ``workflow`` graph in a
-    canvas run) is absent — the headless / API ``/prompt`` path, or any run
-    where the frontend doesn't forward it — fall back to recording the prompt
-    as ``workflow`` so the sidecar is never reduced to a bare timestamp (the
-    "empty JSON" the maintainer reported).
+    ComfyUI restores a workflow from the litegraph graph at the TOP LEVEL of
+    the JSON (``nodes`` / ``links`` / ``last_node_id`` ...). That graph is
+    carried in ``extra_pnginfo['workflow']``, so we write it directly —
+    dropping the sidecar onto the canvas reloads the graph, exactly like
+    ComfyUI's own "Save". ``CreationTime`` is tucked into the graph's
+    ``extra`` so it is preserved without breaking loadability.
+
+    Falls back to ``{CreationTime, prompt}`` when no litegraph graph is
+    available (e.g. the headless / API ``/prompt`` path, which carries only
+    the API-format prompt, not a positioned graph) so the sidecar is never
+    empty — just not drag-loadable in that case.
     """
-    payload = {"CreationTime": datetime.datetime.now().isoformat(" ")[:19]}
+    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+    if isinstance(workflow, dict) and "nodes" in workflow:
+        graph = dict(workflow)
+        extra = dict(graph.get("extra") or {})
+        extra.setdefault("CreationTime", creation_time)
+        graph["extra"] = extra
+        return graph
+    payload = {"CreationTime": creation_time}
     if prompt is not None:
         payload["prompt"] = prompt
-    if extra_pnginfo:
-        payload.update(extra_pnginfo)
-    elif prompt is not None:
-        payload["workflow"] = prompt
     return payload
 
 
@@ -671,8 +679,10 @@ if _VHS_AVAILABLE:
             version_token = resolve_version_token(
                 _coerce_version_input(kwargs.pop("version", ""))
             )
-            metadata_payload = _build_metadata_payload(
-                kwargs.get("prompt"), kwargs.get("extra_pnginfo")
+            metadata_payload = _build_sidecar_workflow(
+                kwargs.get("prompt"),
+                kwargs.get("extra_pnginfo"),
+                datetime.datetime.now().isoformat(" ")[:19],
             )
 
             # Inject VHS's hidden extra_options flags so upstream handles

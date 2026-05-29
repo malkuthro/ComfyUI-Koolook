@@ -21,7 +21,7 @@ import pytest
 from k_video_combine import (
     _add_metadata_json_sidecar,
     _append_version_to_prefix,
-    _build_metadata_payload,
+    _build_sidecar_workflow,
     _coerce_version_input,
     _compose_prefix,
     _display_format_name,
@@ -401,24 +401,33 @@ def test_strict_version_replaces_on_collision_with_overwrite(tmp_path: Path) -> 
     assert out["result"][0][1][-1] == str(clean)
 
 
-def test_build_metadata_payload_canvas_records_prompt_and_workflow() -> None:
-    payload = _build_metadata_payload({"1": {"class_type": "X"}}, {"workflow": {"nodes": []}})
-    assert payload["prompt"] == {"1": {"class_type": "X"}}
-    assert payload["workflow"] == {"nodes": []}
-    assert "CreationTime" in payload
+def test_sidecar_is_drag_loadable_workflow_on_canvas() -> None:
+    """Canvas run: the sidecar IS the litegraph graph at top level, so dropping
+    it into ComfyUI reloads the workflow (not a metadata wrapper)."""
+    wf = {"last_node_id": 5, "nodes": [{"id": 1}], "links": []}
+    out = _build_sidecar_workflow({"1": {"class_type": "X"}}, {"workflow": wf}, "2026-05-29 01:00:00")
+    assert out["nodes"] == [{"id": 1}]
+    assert out["links"] == []
+    assert out["last_node_id"] == 5
+    assert out["extra"]["CreationTime"] == "2026-05-29 01:00:00"
 
 
-def test_build_metadata_payload_headless_falls_back_to_prompt_as_workflow() -> None:
-    """The empty-JSON fix: no extra_pnginfo (headless / API) used to drop the
-    whole graph, leaving a bare timestamp. Fallback records the prompt."""
-    payload = _build_metadata_payload({"1": {"class_type": "X"}}, None)
-    assert payload["prompt"] == {"1": {"class_type": "X"}}
-    assert payload["workflow"] == {"1": {"class_type": "X"}}
+def test_sidecar_preserves_existing_workflow_extra() -> None:
+    wf = {"nodes": [], "extra": {"foo": "bar"}}
+    out = _build_sidecar_workflow(None, {"workflow": wf}, "t")
+    assert out["extra"] == {"foo": "bar", "CreationTime": "t"}
 
 
-def test_build_metadata_payload_empty_inputs_still_timestamped() -> None:
-    payload = _build_metadata_payload(None, None)
-    assert set(payload) == {"CreationTime"}
+def test_sidecar_falls_back_when_no_graph_available() -> None:
+    """Headless/API: no litegraph graph -> keep prompt + timestamp so the
+    sidecar is never empty (just not drag-loadable in that case)."""
+    out = _build_sidecar_workflow({"1": {"class_type": "X"}}, None, "2026-05-29 01:00:00")
+    assert out == {"CreationTime": "2026-05-29 01:00:00", "prompt": {"1": {"class_type": "X"}}}
+
+
+def test_sidecar_empty_inputs_still_timestamped() -> None:
+    out = _build_sidecar_workflow(None, None, "2026-05-29 01:00:00")
+    assert out == {"CreationTime": "2026-05-29 01:00:00"}
 
 
 def test_coerce_version_input_drops_stale_boolean() -> None:
