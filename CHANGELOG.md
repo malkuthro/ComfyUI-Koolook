@@ -6,6 +6,24 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **`EasyAIPipeline` / `Easy_VideoCombine`: Run no-op when `version` widget
+  is wired or carries a stale value.** PR #180 introduced a new STRING
+  `version` widget in the same widget-slot the old INT lived in. Workflows
+  saved before #180 replay an INT into the new slot; widgets converted to
+  inputs leave the widget object with `value: undefined`; dict-serialized
+  Easy_VideoCombine workflows simply omit the new key. Any of those states
+  combined with ComfyUI-Custom-Scripts (pysssss) installed crashed
+  `graphToPrompt` — pysssss's `presetText.js` patches every STRING widget's
+  `serializeValue` to run `value.replace(...)` for `{variable}` substitution,
+  and `.replace` on `undefined` aborts the whole queue ("Cannot read
+  properties of undefined (reading 'replace')"; Run does nothing). Fixed by
+  trapping `widget.value` reads/writes on the `version` widget via a
+  property descriptor so the value is always coerced to a string
+  ([`web/ai_pipeline.js`](web/ai_pipeline.js),
+  [`web/easy_video_combine.js`](web/easy_video_combine.js)). Survives
+  widget-to-input conversion, stale workflows, and downstream widget patches.
+
 ### Changed
 - **Automations restructured around modules instead of models.**
   `docs/automations/` now pivots on one folder per *task* (each its own

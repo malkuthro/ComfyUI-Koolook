@@ -6,6 +6,39 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 
 globalThis.__KOLOOK_AI_PIPELINE_PREVIEW_RESOLVER__ = "easyuse-getset-v2";
 
+// Pysssss's presetText.js wraps every STRING widget's serializeValue with
+// a callback chain that does `value.replace(...)` for {variable} substitution.
+// If `widget.value` is ever undefined or null (stale pre-PR#180 widgets_values
+// slot, widget-to-input conversion that voids the value, or a missing key
+// in dict-based widgets_values), `.replace` throws and the entire
+// graphToPrompt aborts — Run becomes a no-op for the whole workflow.
+//
+// Defensive coercion: trap reads/writes on widget.value so the property is
+// always a string, no matter who touches it. Cheap, survives upstream
+// widget patches because we wrap the property descriptor itself.
+function bulletproofStringWidget(widget, fallback = "") {
+    if (!widget) return;
+    let stored;
+    const initial = widget.value;
+    if (typeof initial === "string") {
+        stored = initial;
+    } else if (initial == null) {
+        stored = fallback;
+    } else {
+        stored = String(initial);
+    }
+    Object.defineProperty(widget, "value", {
+        configurable: true,
+        enumerable: true,
+        get() { return stored; },
+        set(v) {
+            if (typeof v === "string") stored = v;
+            else if (v == null) stored = fallback;
+            else stored = String(v);
+        },
+    });
+}
+
 app.registerExtension({
     name: "koolook.ai_pipeline",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -15,6 +48,11 @@ app.registerExtension({
                 if (originalOnNodeCreated) {
                     originalOnNodeCreated.call(this);
                 }
+
+                // Guard the version STRING widget. Pre-PR#180 workflows save
+                // an INT here; widget-to-input conversion can void the value
+                // to undefined. Either trips pysssss's .replace callback.
+                bulletproofStringWidget(this.widgets.find(w => w.name === "version"), "v001");
 
                 // Make instruction widget read-only and dimmed
                 const instructionWidget = this.widgets.find(w => w.name === "instruction");
