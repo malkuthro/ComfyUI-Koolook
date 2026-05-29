@@ -198,38 +198,15 @@ def _section_body_rows(num_rows: int, extra: int = 0) -> int:
 # --------------------------------------------------------------------------
 
 
-def _wrap_path(path: str, max_chars: int = 40) -> list[str]:
-    """Wrap a filesystem path onto multiple lines, breaking only on
-    ``/`` or ``\\`` separators so directory names stay whole."""
-    if not path:
-        return [""]
-    raw = path.replace("/", "\\")
-    parts = [p for p in raw.split("\\") if p]
-    if not parts:
-        return [path]
-    lines: list[str] = []
-    cur = ""
-    for i, p in enumerate(parts):
-        token = p + ("\\" if i < len(parts) - 1 else "")
-        if cur and len(cur) + len(token) > max_chars:
-            lines.append(cur)
-            cur = token
-        else:
-            cur = cur + token
-    if cur:
-        lines.append(cur)
-    return lines
-
-
-def _video_segment_has_audio(video_seg: dict, audio_segs: list[dict]) -> bool:
-    v_start = video_seg.get("start", 0)
-    v_end = v_start + video_seg.get("length", 0)
-    for a in audio_segs:
-        a_start = a.get("start", 0)
-        a_end = a_start + a.get("length", 0)
-        if a_start < v_end and a_end > v_start:
-            return True
-    return False
+# Shared helpers live in loop_audio so the renderer and extractor agree
+# byte-for-byte on path-wrapping rules and audio-overlap geometry.
+# Importing here keeps the standalone CLI working (it adds scripts/ to
+# sys.path before invoking render_audio_card).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from loop_audio import (  # type: ignore[import-not-found]  # noqa: E402
+    video_segment_has_audio,
+    wrap_path,
+)
 
 
 def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
@@ -238,8 +215,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
       run_number, run_label, date, workflow_name
       name, relay_overrides_raw, info_body, feedback_lines, scores,
       work_folder
-      director_node, director_variant, audio_src, epsilon,
-      duration_frames, duration_seconds, frame_rate,
+      director_variant, audio_src, epsilon, frame_rate,
       segments, audio_segments
     """
     name              = state.get("name") or "(unnamed)"
@@ -307,7 +283,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         locked_rows.append(("epsilon", str(epsilon)))
     locked_rows.append(("Audio src", audio_src))
 
-    path_lines = _wrap_path(work_folder, max_chars=40) if work_folder else []
+    path_lines = wrap_path(work_folder, max_chars=40) if work_folder else []
     body_h = _section_body_rows(len(locked_rows))
     if path_lines:
         body_h += 26 + 26 * len(path_lines) + 4
@@ -339,21 +315,26 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     visible = segments[:seg_rows]
     all_have_prompt   = bool(visible) and all((s.get("prompt") or "") for s in visible)
     all_have_audio    = bool(visible) and all(
-        _video_segment_has_audio(s, audio_segs) for s in visible
+        video_segment_has_audio(s, audio_segs) for s in visible
     )
     all_have_keyframe = bool(visible) and all(s.get("imageFile") for s in visible)
 
     for i, seg in enumerate(visible):
         start = seg.get("start", 0)
         length = seg.get("length", 0)
-        start_s = start / fps if fps else 0
-        end_s = (start + length) / fps if fps else 0
         prompt = seg.get("prompt") or ""
         has_p = bool(prompt)
-        has_a = _video_segment_has_audio(seg, audio_segs)
+        has_a = video_segment_has_audio(seg, audio_segs)
         has_k = bool(seg.get("imageFile"))
         header_col = ACCENT_OUT if (has_p and has_a and has_k) else ACCENT_BASE
-        header = f"{i+1}) {start_s:.0f} to {end_s:.0f} seconds"
+        # Without a frame_rate widget we can't compute the time range;
+        # show frame counts instead of pretending "0 to 0 seconds".
+        if fps:
+            start_s = start / fps
+            end_s = (start + length) / fps
+            header = f"{i+1}) {start_s:.0f} to {end_s:.0f} seconds"
+        else:
+            header = f"{i+1}) frames {start}-{start + length} (no fps)"
         draw.text((cx + indent_seg, cy), header, font=F_MONO, fill=header_col)
         cy += 26
     cy += 8
@@ -473,8 +454,6 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
-        "duration_frames": director_widget(director_node, "duration_frames"),
-        "duration_seconds": director_widget(director_node, "duration_seconds"),
         "frame_rate": director_widget(director_node, "frame_rate"),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
@@ -492,7 +471,8 @@ def main() -> int:
         print(f"run folder not found: {run_dir}", file=sys.stderr)
         return 2
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    # sys.path already pointed at scripts/ by the module-level import of
+    # wrap_path/video_segment_has_audio above; no need to repeat it here.
     state = _rebuild_state_from_run_dir(run_dir)
 
     out = run_dir / "card.png"

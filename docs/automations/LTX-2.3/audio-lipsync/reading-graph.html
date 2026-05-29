@@ -88,7 +88,7 @@
     .output-file strong { display: block; margin-bottom: 4px; font-size: 13px; color: var(--ink); }
     .output-file span { color: var(--muted); font-size: 12px; }
     .output-file code { display: block; margin-top: 4px; color: #bdcad7; font-size: 11px; }
-    .audio-states { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .audio-states { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
     .state-cell { background: rgba(30, 52, 54, 0.52); border: 1px solid rgba(145, 199, 194, 0.25); border-radius: 10px; padding: 11px; }
     .state-cell strong { display: block; color: #d7eeee; font-size: 13px; margin-bottom: 4px; font-family: "SFMono-Regular", Consolas, monospace; }
     .state-cell span { display: block; color: #abc9c7; font-size: 11px; line-height: 1.4; }
@@ -218,7 +218,7 @@
             </div>
             <div class="mini">
               <h3>derive_audio_state()</h3>
-              <p>Reduces audio_vae link + use_custom_audio + audioSegments count to one of four labels. Mirrors what the director actually does at runtime.</p>
+              <p>Reduces audio_vae link + use_custom_audio + audioSegments count to one of five labels — including the "(no director)" split that prevents a missing-Director workflow from silently collapsing into "VAE unwired".</p>
               <code>4-state machine</code>
             </div>
             <div class="mini">
@@ -234,20 +234,24 @@
         <div class="band-label">Audio-src state machine — derived structurally, never from prompt text</div>
         <div class="audio-states">
           <div class="state-cell">
-            <strong>model-gen</strong>
-            <span>audio_vae <em>wired</em> · use_custom_audio = False · audioSegments ignored</span>
-          </div>
-          <div class="state-cell">
-            <strong>custom</strong>
-            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments non-empty</span>
-          </div>
-          <div class="state-cell">
-            <strong>custom (empty)</strong>
-            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments = []</span>
+            <strong>(no director)</strong>
+            <span>No <code>LTXDirector__koolook_v1_3_2</code> on the canvas — relay_overrides and σ patches are unreachable.</span>
           </div>
           <div class="state-cell">
             <strong>off (no VAE)</strong>
-            <span>audio_vae <em>not wired</em> — no audio latent produced regardless of any other widget</span>
+            <span>Director present · audio_vae <em>not wired</em> — no audio latent produced regardless of any other widget.</span>
+          </div>
+          <div class="state-cell">
+            <strong>model-gen</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = False · audioSegments ignored.</span>
+          </div>
+          <div class="state-cell">
+            <strong>custom</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments non-empty.</span>
+          </div>
+          <div class="state-cell">
+            <strong>custom (empty)</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments = [].</span>
           </div>
         </div>
 

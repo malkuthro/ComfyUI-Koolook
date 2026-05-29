@@ -230,6 +230,12 @@ DIRECTOR_TYPE = "LTXDirector__koolook_v1_3_2"
 # schema; the only new widget — `relay_overrides` — is appended at the
 # end. So the saved widgets_values matches the legacy LTXDirector order
 # plus one extra slot.
+#
+# MIRROR: this dict is also documented in
+# docs/automations/LTX-2.3/audio-lipsync/reading-graph.schema.yaml under
+# `source_families.director_node.widget_order` (and indirectly under
+# `state_dict.director_derived`). Update both when this dict changes,
+# or the YAML drifts silently.
 DIRECTOR_WIDX = {
     "global_prompt":    0,
     "duration_frames":  1,
@@ -259,12 +265,18 @@ def extract_multilines(
     project-mount and a local-mirror copy, for example — so we keep
     all hits keyed by needle and let the caller pick which to use."""
     out: dict[str, list[str]] = {n.lower(): [] for n in tracked_titles}
+    # Longest-needle-wins for the per-node `break`. The current five
+    # needles don't collide, but as the canvas grows a shorter substring
+    # (e.g. "relay") in the same config could shadow a longer one
+    # ("relay_overrides") just because of declaration order. Sorting
+    # longest-first removes that footgun.
+    needles_by_length = sorted(out.keys(), key=len, reverse=True)
     for n in nodes:
         if n.get("type") != "Text Multiline":
             continue
         title = (n.get("title") or "").strip().lower()
         body = (n.get("widgets_values") or [""])[0] or ""
-        for needle in out.keys():
+        for needle in needles_by_length:
             if needle in title:
                 out[needle].append(body)
                 break
@@ -347,10 +359,32 @@ def is_input_wired(node: Optional[dict], input_name: str) -> Optional[bool]:
     return None
 
 
+def _coerce_segment_numeric(seg: dict) -> dict:
+    """Coerce a timeline segment's numeric fields (start, length,
+    trimStart) to int. The upstream Director itself does this
+    defensively at ltx_director.py:232-234 — the saved JSON sometimes
+    contains string values for these fields, and downstream
+    arithmetic (`start / fps`, `<` comparisons) breaks silently
+    without coercion. Failures collapse to 0 so a malformed segment
+    can't crash the loop."""
+    out = dict(seg)
+    for k in ("start", "length", "trimStart"):
+        if k in out:
+            try:
+                out[k] = int(float(out[k]))
+            except (TypeError, ValueError):
+                out[k] = 0
+    return out
+
+
 def parse_timeline(director_node: Optional[dict]) -> dict[str, list]:
     """Parse the timeline_data JSON widget into a dict of segments +
     audioSegments. Both default to empty lists on any error so the
-    rest of the pipeline can iterate without further guards."""
+    rest of the pipeline can iterate without further guards.
+
+    Per-segment numeric fields are coerced via _coerce_segment_numeric
+    so downstream arithmetic stays type-safe regardless of what shape
+    the Comfy frontend saved into the JSON."""
     raw = director_widget(director_node, "timeline_data") or ""
     if not raw:
         return {"segments": [], "audioSegments": []}
@@ -361,8 +395,16 @@ def parse_timeline(director_node: Optional[dict]) -> dict[str, list]:
     if not isinstance(tl, dict):
         return {"segments": [], "audioSegments": []}
     return {
-        "segments": tl.get("segments") or [],
-        "audioSegments": tl.get("audioSegments") or [],
+        "segments": [
+            _coerce_segment_numeric(s)
+            for s in (tl.get("segments") or [])
+            if isinstance(s, dict)
+        ],
+        "audioSegments": [
+            _coerce_segment_numeric(s)
+            for s in (tl.get("audioSegments") or [])
+            if isinstance(s, dict)
+        ],
     }
 
 
@@ -374,10 +416,22 @@ def derive_audio_state(
     mirrors how the Director would actually behave at runtime
     (see forks/.../ltx_director.py: audio_vae None gates everything;
     then use_custom_audio chooses between the encoded path and the
-    empty/model-gen path)."""
+    empty/model-gen path).
+
+    Five distinct outcomes — "(no director)" is split off so a
+    missing-director workflow doesn't get the same label as a
+    director-present-but-VAE-unwired one, which silently collapsed
+    pre-fix because is_input_wired(None, …) also returns None."""
+    if director_node is None:
+        return "(no director)"
     vae_wired = is_input_wired(director_node, "audio_vae")
     use_custom = director_widget(director_node, "use_custom_audio")
     audio_segs = timeline.get("audioSegments") or []
+    # vae_wired can be None (input socket missing from this node's
+    # schema, e.g. an older workflow before audio_vae existed) OR
+    # False (socket present but unwired). Both functionally mean
+    # "no audio latent produced", so collapse them here — but only
+    # AFTER the director-missing case has been split off above.
     if not vae_wired:
         return "off (no VAE)"
     if use_custom is True:
@@ -616,9 +670,14 @@ def render_log_row(
     )
     segments = timeline.get("segments") or []
     seg_cell = str(len(segments))
+    # `or '?'` would map a legitimate 0/5 to '?' because 0 is falsy;
+    # explicit None-check preserves the score the maintainer typed.
+    # Mirrors render_audio_card._s() for card/log consistency.
+    def _score(v: Optional[int]) -> str:
+        return str(v) if v is not None else "?"
     score_cell = (
-        f"M{scores['motion'] or '?'}·S{scores['sync'] or '?'}·"
-        f"Sh{scores['sharp'] or '?'}"
+        f"M{_score(scores['motion'])}·S{_score(scores['sync'])}·"
+        f"Sh{_score(scores['sharp'])}"
     )
     notes_cell = (
         " ".join(feedback_lines)[:120] if feedback_lines else "(none)"
@@ -645,7 +704,13 @@ def _build_state_for_card(
 ) -> dict[str, Any]:
     """Card state — strict subset matching the agreed source families:
     five tracked multilines + the Koolook Director node's own values.
-    No git, no _dev_build.json, no scheduler scrape."""
+    No git, no _dev_build.json, no scheduler scrape.
+
+    Director's duration_frames / duration_seconds widgets are NOT
+    included — the card dropped the Duration row in favour of
+    per-segment time ranges, and notes.md reads them straight from
+    `director_node` via `director_widget`. Keeping them out of state
+    prevents the consumed-but-unused asymmetry the review caught."""
     return {
         "run_number": nnn,
         "run_label": label,
@@ -663,8 +728,6 @@ def _build_state_for_card(
         "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
-        "duration_frames": director_widget(director_node, "duration_frames"),
-        "duration_seconds": director_widget(director_node, "duration_seconds"),
         "frame_rate": director_widget(director_node, "frame_rate"),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],

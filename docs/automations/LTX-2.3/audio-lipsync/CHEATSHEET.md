@@ -67,18 +67,20 @@ Forbidden on the card: `BasicScheduler` / `KSamplerSelect` / `RandomNoise` /
 sampler/CFG/seed constants, substring matches on prompt text. Full
 breakdown: [`reading-graph.html`](reading-graph.html).
 
-## Audio src — the four structural states
+## Audio src — the five structural states
 
-Derived from `audio_vae` input link + `use_custom_audio` widget +
-`timeline_data.audioSegments` count. Mirrors what the director does at
-runtime (`forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py:610-622`).
+Derived from director-presence + `audio_vae` input link + `use_custom_audio`
+widget + `timeline_data.audioSegments` count. Mirrors what the director
+does at runtime
+(`forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py:610-622`).
 
 | Label | Conditions |
 |---|---|
+| `(no director)` | No `LTXDirector__koolook_v1_3_2` node on the canvas |
+| `off (no VAE)` | Director present · audio_vae not wired |
 | `model-gen` | audio_vae wired · use_custom_audio = False |
 | `custom` | audio_vae wired · use_custom_audio = True · audioSegments non-empty |
 | `custom (empty)` | audio_vae wired · use_custom_audio = True · audioSegments empty |
-| `off (no VAE)` | audio_vae not wired (no audio latent produced) |
 
 ## What lands in `runs/run-NNN_<label>/`
 
