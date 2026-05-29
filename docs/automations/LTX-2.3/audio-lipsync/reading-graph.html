@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LTX 2.3 audio-lipsync · card reading graph</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #14181d; --surface: #1b2027; --surface-2: #202731; --surface-3: #252e39;
+      --ink: #e6ebf0; --soft: #b0bbc7; --muted: #7f8b98;
+      --line: #39434f; --line-soft: #2b333d;
+      --accent: #8fb4d8; --accent-soft: #263746;
+      --module: #9fc9b5; --module-soft: #20342d;
+      --adapter: #d6bd85; --adapter-soft: #3a3020;
+      --test: #91c7c2; --test-soft: #1e3436;
+      --ui: #b7a6d9; --ui-soft: #30293d;
+      --warn: #d19a8c; --warn-soft: #392722;
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.26);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(143, 180, 216, 0.08), transparent 32rem),
+        radial-gradient(circle at 90% 10%, rgba(159, 201, 181, 0.08), transparent 28rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    main { width: min(1380px, calc(100vw - 40px)); margin: 0 auto; padding: 32px 0 52px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.04; max-width: 920px; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 14px; }
+    p { color: var(--soft); font-size: 14px; }
+    code { color: #d9e4ee; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: end; margin-bottom: 24px; }
+    .subtitle { max-width: 900px; margin-top: 12px; font-size: 16px; color: var(--soft); }
+    .read-key { background: rgba(27, 32, 39, 0.76); border: 1px solid var(--line-soft); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); }
+    .read-key h2 { font-size: 15px; margin-bottom: 10px; }
+    .legend { display: grid; gap: 8px; }
+    .legend-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: center; color: var(--soft); font-size: 13px; }
+    .swatch { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line); }
+    .swatch.ui { background: var(--ui-soft); border-color: #564a69; }
+    .swatch.interface { background: var(--accent-soft); border-color: #40596e; }
+    .swatch.module { background: var(--module-soft); border-color: #426052; }
+    .swatch.adapter { background: var(--adapter-soft); border-color: #655236; }
+    .swatch.test { background: var(--test-soft); border-color: #3f6365; }
+    .swatch.warning { background: var(--warn-soft); border-color: #684137; }
+    .card { background: rgba(27, 32, 39, 0.86); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: var(--shadow); padding: 18px; }
+    .card + .card { margin-top: 20px; }
+    .card-header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 16px; }
+    .eyebrow { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; font-weight: 700; }
+    .map { display: grid; gap: 14px; }
+    .band-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: -4px; }
+    .lane { display: grid; gap: 12px; }
+    .lane.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lane.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .lane.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .lane.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .box { border: 1px solid var(--line); border-radius: 12px; padding: 13px; background: var(--surface-2); min-height: 84px; }
+    .box h3 { margin-bottom: 6px; color: var(--ink); }
+    .box p { font-size: 13px; color: var(--soft); }
+    .box.ui { background: var(--ui-soft); border-color: #514760; }
+    .box.interface { background: var(--accent-soft); border-color: #41586a; }
+    .box.module { background: var(--module-soft); border-color: #3e5d50; }
+    .box.adapter { background: var(--adapter-soft); border-color: #5b4a31; }
+    .box.test { background: var(--test-soft); border-color: #3f6365; }
+    .box.warning { background: var(--warn-soft); border-color: #644037; }
+    .box code { display: block; margin-top: 6px; color: #bdcad7; font-size: 11px; line-height: 1.4; }
+    .thin-interface { border: 1px solid #587188; background: linear-gradient(180deg, rgba(143, 180, 216, 0.18), rgba(143, 180, 216, 0.1)); border-radius: 14px; padding: 14px; text-align: center; }
+    .thin-interface h3 { color: #dcebf7; font-size: 16px; margin-bottom: 4px; }
+    .module-shell { border: 1px solid #4f7463; border-radius: 18px; background: rgba(32, 52, 45, 0.58); padding: 16px; position: relative; }
+    .module-title { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 14px; }
+    .module-title strong { font-size: 18px; color: #dff4eb; }
+    .module-title span { color: var(--module); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .belly { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .mini { background: rgba(20, 24, 29, 0.48); border: 1px solid rgba(159, 201, 181, 0.22); border-radius: 12px; padding: 12px; }
+    .mini h3 { font-size: 13px; color: #e4f3ec; margin-bottom: 5px; }
+    .mini p { font-size: 12px; color: #b9c8c0; }
+    .mini code { display: block; margin-top: 4px; color: #c7e4d7; font-size: 11px; }
+    .arrow { height: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+    .arrow::before { content: ""; width: 1px; height: 18px; background: var(--line); }
+    .outputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .output-file { background: #182028; border: 1px solid var(--line-soft); border-radius: 10px; padding: 11px; }
+    .output-file strong { display: block; margin-bottom: 4px; font-size: 13px; color: var(--ink); }
+    .output-file span { color: var(--muted); font-size: 12px; }
+    .output-file code { display: block; margin-top: 4px; color: #bdcad7; font-size: 11px; }
+    .audio-states { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .state-cell { background: rgba(30, 52, 54, 0.52); border: 1px solid rgba(145, 199, 194, 0.25); border-radius: 10px; padding: 11px; }
+    .state-cell strong { display: block; color: #d7eeee; font-size: 13px; margin-bottom: 4px; font-family: "SFMono-Regular", Consolas, monospace; }
+    .state-cell span { display: block; color: #abc9c7; font-size: 11px; line-height: 1.4; }
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th, .table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+    .table th { color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+    .table td { color: var(--soft); }
+    .table td code { color: #c7e4d7; }
+    .note { margin-top: 14px; padding: 12px; border-radius: 12px; background: rgba(209, 154, 140, 0.1); border: 1px solid rgba(209, 154, 140, 0.25); }
+    .note p { color: #ecd2c8; }
+    @media (max-width: 1050px) { .hero { grid-template-columns: 1fr; } .belly { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { main { width: min(100vw - 24px, 1380px); padding-top: 22px; } .lane.two, .lane.three, .lane.five, .lane.six, .belly, .outputs, .audio-states { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <div class="eyebrow">LTX 2.3 · audio-lipsync · iteration loop</div>
+        <h1>Every value on the run card maps back to one node on the canvas — and nothing else.</h1>
+        <p class="subtitle">
+          The card the maintainer pins next to each render is generated by <code>scripts/loop_audio.py</code> from the saved workflow JSON.
+          To keep what's shown honest, only <strong style="color: var(--module);">two source families</strong> are allowed:
+          the five tracked <code>Text Multiline</code> nodes (the per-render notes), and the
+          <strong style="color: var(--module);">LTX Director (Koolook v1.3.2)</strong> node's own widget values + input wiring.
+          No <code>BasicScheduler</code>, no <code>KSamplerSelect</code>, no <code>git status</code>, no <code>_dev_build.json</code>.
+          If a value can't be traced to one of those two sources, it doesn't appear on the card.
+        </p>
+      </div>
+      <aside class="read-key">
+        <h2>How to read this</h2>
+        <div class="legend">
+          <div class="legend-row"><span class="swatch ui"></span><span>Canvas: source nodes the loop reads</span></div>
+          <div class="legend-row"><span class="swatch interface"></span><span>The thin interface — chat phrase / CLI</span></div>
+          <div class="legend-row"><span class="swatch module"></span><span>Belly: extraction + state-build helpers</span></div>
+          <div class="legend-row"><span class="swatch adapter"></span><span>Card section + which source feeds it</span></div>
+          <div class="legend-row"><span class="swatch test"></span><span>State-machine derived from director wiring</span></div>
+          <div class="legend-row"><span class="swatch warning"></span><span>Risk / forbidden source</span></div>
+        </div>
+      </aside>
+    </section>
+
+    <article class="card">
+      <div class="card-header">
+        <div>
+          <div class="eyebrow">The reading graph</div>
+          <h2>Workflow JSON → extract → state dict → card sections</h2>
+        </div>
+        <p>Top-down. Each arrow is a one-way data dependency.</p>
+      </div>
+
+      <div class="map">
+        <div class="band-label">Canvas — the source nodes</div>
+        <div class="lane six">
+          <div class="box ui">
+            <h3>NAME</h3>
+            <p>Short run identifier. Feeds the snapshot folder name + card header.</p>
+            <code>Text Multiline</code>
+          </div>
+          <div class="box ui">
+            <h3>RELAY_OVERRIDES</h3>
+            <p>JSON object of Prompt-Relay knobs. <strong>Wired</strong> into the Director's <code>relay_overrides</code> input.</p>
+            <code>Text Multiline</code>
+          </div>
+          <div class="box ui">
+            <h3>OVERLAY · INFO</h3>
+            <p>Δ-this-render free-form note. Card renders this verbatim.</p>
+            <code>Text Multiline</code>
+          </div>
+          <div class="box ui">
+            <h3>OVERLAY · FEEDBACK</h3>
+            <p>Post-render observations. <code>motion:N/5</code> / <code>sync:N/5</code> / <code>sharp:N/5</code> lines auto-parsed into Outcome.</p>
+            <code>Text Multiline</code>
+          </div>
+          <div class="box ui">
+            <h3>Working_Folder_PATH</h3>
+            <p>Per-project working folder for renders. Duplicates allowed (mount + mirror); picker uses first that resolves on disk.</p>
+            <code>Text Multiline</code>
+          </div>
+          <div class="box ui">
+            <h3>LTX Director (Koolook v1.3.2)</h3>
+            <p>The fork node itself — widget values + audio_vae input wiring + timeline_data JSON.</p>
+            <code>LTXDirector__koolook_v1_3_2</code>
+          </div>
+        </div>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">The thin interface</div>
+        <div class="thin-interface">
+          <h3>loop-audio</h3>
+          <p>
+            Chat phrase &rarr; <code>python scripts/loop_audio.py</code>
+            &nbsp;·&nbsp; user-initiated only, never automatic
+            &nbsp;·&nbsp; config: <code>scripts/loop_audio.config.json</code>
+          </p>
+        </div>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">Belly — extraction module</div>
+        <div class="module-shell">
+          <div class="module-title">
+            <strong>scripts/loop_audio.py</strong>
+            <span>Pure JSON-walking. No I/O outside the workflow file.</span>
+          </div>
+          <div class="belly">
+            <div class="mini">
+              <h3>find_workflow()</h3>
+              <p>Newest JSON in the ComfyUI workflows dir matching <code>workflow_pattern</code>; excludes filenames containing <code>skip_filename_substring</code>.</p>
+              <code>config-driven · stdlib only</code>
+            </div>
+            <div class="mini">
+              <h3>extract_multilines()</h3>
+              <p>Dict-of-lists keyed by needle (lowercased substring). Keeps duplicates so <code>Working_Folder_PATH</code> can be picked by reachability.</p>
+              <code>config.tracked_multilines</code>
+            </div>
+            <div class="mini">
+              <h3>extract_director()</h3>
+              <p>Finds the <code>LTXDirector__koolook_v1_3_2</code> node. Returns the whole node dict so callers can read widgets AND <code>inputs[].link</code>.</p>
+              <code>DIRECTOR_TYPE constant</code>
+            </div>
+            <div class="mini">
+              <h3>parse_timeline()</h3>
+              <p>Decodes the <code>timeline_data</code> JSON widget into <code>segments</code> + <code>audioSegments</code> arrays. Returns empties on any error.</p>
+              <code>director widget [3]</code>
+            </div>
+            <div class="mini">
+              <h3>derive_audio_state()</h3>
+              <p>Reduces audio_vae link + use_custom_audio + audioSegments count to one of five labels — including the "(no director)" split that prevents a missing-Director workflow from silently collapsing into "VAE unwired".</p>
+              <code>4-state machine</code>
+            </div>
+            <div class="mini">
+              <h3>parse_feedback()</h3>
+              <p>Splits OVERLAY · FEEDBACK into <code>motion / sync / sharp</code> scores and prose lines via per-line regex.</p>
+              <code>SCORE_PAT regex</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">Audio-src state machine — derived structurally, never from prompt text</div>
+        <div class="audio-states">
+          <div class="state-cell">
+            <strong>(no director)</strong>
+            <span>No <code>LTXDirector__koolook_v1_3_2</code> on the canvas — relay_overrides and σ patches are unreachable.</span>
+          </div>
+          <div class="state-cell">
+            <strong>off (no VAE)</strong>
+            <span>Director present · audio_vae <em>not wired</em> — no audio latent produced regardless of any other widget.</span>
+          </div>
+          <div class="state-cell">
+            <strong>model-gen</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = False · audioSegments ignored.</span>
+          </div>
+          <div class="state-cell">
+            <strong>custom</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments non-empty.</span>
+          </div>
+          <div class="state-cell">
+            <strong>custom (empty)</strong>
+            <span>audio_vae <em>wired</em> · use_custom_audio = True · audioSegments = [].</span>
+          </div>
+        </div>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">The state dict — single contract between loop and renderer</div>
+        <div class="box interface">
+          <h3>_build_state_for_card()</h3>
+          <p>
+            Returns a flat dict with the canonical field set the renderer consumes. Building it in one place — not inside the renderer — keeps the source rule auditable: every key here can be traced to one node on the canvas.
+          </p>
+          <code>
+run_number · run_label · date · workflow_name<br>
+name · relay_overrides_raw · info_body · feedback_lines · scores · work_folder<br>
+director_node · director_variant · audio_src<br>
+epsilon · duration_frames · duration_seconds · frame_rate<br>
+segments · audio_segments
+          </code>
+        </div>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">Card sections &mdash; which source feeds each</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Accent</th>
+              <th>Source family</th>
+              <th>Exact source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>HEADER</strong></td>
+              <td>—</td>
+              <td>multiline + loop bookkeeping</td>
+              <td><code>name</code> multiline + loop's own run number + date + workflow filename</td>
+            </tr>
+            <tr>
+              <td><strong>KNOB STATE</strong></td>
+              <td style="color: #ffb84d;">amber</td>
+              <td>multiline</td>
+              <td><code>relay_overrides</code> multiline (verbatim)</td>
+            </tr>
+            <tr>
+              <td><strong>BASE · NOTES (Δ this run)</strong></td>
+              <td style="color: #ffb84d;">amber</td>
+              <td>multiline</td>
+              <td><code>overlay - info</code> multiline (verbatim, blank lines preserved)</td>
+            </tr>
+            <tr>
+              <td><strong>BASE · LOCKED</strong></td>
+              <td style="color: #6db4ff;">sky</td>
+              <td>director + multiline</td>
+              <td>director <code>epsilon</code> widget · derived <code>audio_src</code> · <code>working_folder</code> multiline (path-wrapped, first reachable copy wins)</td>
+            </tr>
+            <tr>
+              <td><strong>BASE · SCENE</strong></td>
+              <td style="color: #6db4ff;">sky</td>
+              <td>director</td>
+              <td>director <code>timeline_data.segments</code> + <code>audioSegments</code> + <code>frame_rate</code> widget; per-segment <code>prompt</code> / <code>audioSegments</code>-overlap / <code>imageFile</code> for coverage</td>
+            </tr>
+            <tr>
+              <td><strong>POST-RENDER</strong></td>
+              <td style="color: #7bcf80;">green</td>
+              <td>multiline</td>
+              <td><code>overlay - feedback</code> multiline → feedback body + parsed <code>motion/sync/sharp</code> scores</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="arrow"></div>
+
+        <div class="band-label">Snapshot folder — what the loop writes per render</div>
+        <div class="outputs">
+          <div class="output-file">
+            <strong>workflow.json</strong>
+            <span>Copy of the workflow at submission. The ground truth.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
+            <strong>card.png</strong>
+            <span>Rendered card matching this graph.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
+            <strong>notes.md</strong>
+            <span>OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + director's structural state.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
+            <strong>relay_overrides.txt</strong>
+            <span>RELAY_OVERRIDES body in plain text, diff-friendly.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
+            <strong>patch_state.txt</strong>
+            <span>MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. <em>Not</em> on the card — audit trail only.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
+            <strong>log.md row</strong>
+            <span>Appended to <code>runs/log.md</code>. Same column rule as the card (multilines + director only).</span>
+            <code>runs/log.md</code>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-header">
+        <div>
+          <div class="eyebrow">Forbidden sources</div>
+          <h2>What is deliberately not read</h2>
+        </div>
+        <p>Every removal here was a card-design fix.</p>
+      </div>
+
+      <div class="lane two">
+        <div class="box warning">
+          <h3>BasicScheduler · KSamplerSelect · RandomNoise · CFGGuider widgets</h3>
+          <p>The previous card surfaced these as a SAMPLER block. But this loop sweeps <code>relay_overrides</code>, not the sampler — surfacing them mixed Δ-this-run signal with frozen-across-the-sweep state and produced cards that contradicted the maintainer's curated OVERLAY-INFO.</p>
+        </div>
+        <div class="box warning">
+          <h3>_dev_build.json + git status of the fork dir</h3>
+          <p>The previous card had a FORK STATE block reading the dev-sync footer and the working-tree status. Useful audit trail, but neither is a multiline nor a director value — so they're forbidden on the card and stay in <code>patch_state.txt</code> instead.</p>
+        </div>
+        <div class="box warning">
+          <h3>Substring matches on prompt text (e.g. "Audio:")</h3>
+          <p>Per-segment audio coverage used to be inferred from a substring search on the prompt. That treats the maintainer's <code>[Audio]:</code> formatting convention as a wiring signal, which it isn't — the director reads <code>audioSegments</code>, not the prompt. Coverage now overlaps audioSegments against segment time ranges.</p>
+        </div>
+        <div class="box warning">
+          <h3>Hardcoded sampler / CFG / seed values</h3>
+          <p>base-1step's card hardcodes <code>Sampler = euler</code> and <code>CFG = 1.0</code> because they never change in that loop. For audio-lipsync we drop the rows entirely — the Koolook Director doesn't expose them, and hardcoding contradicts the automation principle.</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-header">
+        <div>
+          <div class="eyebrow">Trigger surface</div>
+          <h2>What the maintainer types and what runs</h2>
+        </div>
+        <p>User-initiated only. Never on commit, never on session end.</p>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Chat phrase</th>
+            <th>Script</th>
+            <th>What it does</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>loop-audio</code></td>
+            <td><code>scripts/loop_audio.py</code></td>
+            <td>This document. Snapshots the most recent render into <code>runs/run-NNN_&lt;label&gt;/</code> and appends a row to <code>runs/log.md</code>.</td>
+          </tr>
+          <tr>
+            <td><code>dev-sync-audio</code></td>
+            <td><code>scripts/sync_to_dev_audio.py</code></td>
+            <td>Copies <code>forks/whatdreamscost_koolook/</code> into the live ComfyUI install (<code>$KOLOOK_COMFYUI_DEV_PATH</code>), auto-restarts. Required after editing fork source. <em>Not</em> required for widget-only changes on the canvas.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note">
+        <p>
+          <strong>Companion docs:</strong> the machine-readable schema next to this file
+          (<code>reading-graph.schema.yaml</code>) lists every node, widget index, and card field
+          in YAML so an agent can rebuild the pipeline without reading prose.
+          The short cheat sheet (<code>CHEATSHEET.md</code>) is the minimum a maintainer needs
+          to drive the loop on a fresh machine.
+        </p>
+      </div>
+    </article>
+  </main>
+</body>
+</html>

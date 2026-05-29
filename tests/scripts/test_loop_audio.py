@@ -1,0 +1,436 @@
+"""Pure-function coverage for scripts/loop_audio.py.
+
+Anchored by the PR #185 multi-agent review which surfaced three
+silent-failure HIGHs on the audio-source-derivation path:
+
+  * derive_audio_state collapsed missing-Director and unwired-VAE
+    into the same label;
+  * extract_multilines used dict-insertion order, so a shorter needle
+    declared first could silently shadow a longer match;
+  * parse_timeline returned segments verbatim, so a string-valued
+    `start` field would crash the renderer at `start / fps` or quietly
+    break `<` comparisons in video_segment_has_audio.
+
+These tests pin each fix plus the surrounding helpers so future edits
+can't silently regress.
+"""
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+import pytest
+
+# Load the script directly — it lives under scripts/, not under a package.
+_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "loop_audio.py"
+_spec = importlib.util.spec_from_file_location("loop_audio", _SCRIPT)
+assert _spec is not None and _spec.loader is not None
+loop_audio = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(loop_audio)
+
+
+# --- helpers used by multiple tests -----------------------------------------
+
+
+def _director(
+    *,
+    use_custom_audio: bool = False,
+    audio_vae_link: int | None = None,
+    timeline: dict | None = None,
+    epsilon: float = 0.001,
+    fps: int = 24,
+) -> dict:
+    """Build a minimal Koolook Director node dict matching the saved
+    widget order (DIRECTOR_WIDX). Only fields the helpers under test
+    actually read are populated; the rest are placeholders."""
+    import json as _json
+    timeline_str = _json.dumps(timeline) if timeline is not None else ""
+    wv = [
+        "",                # 0  global_prompt
+        120,               # 1  duration_frames
+        5,                 # 2  duration_seconds
+        timeline_str,      # 3  timeline_data
+        "",                # 4  local_prompts
+        "120",             # 5  segment_lengths
+        epsilon,           # 6  epsilon
+        "1.00",            # 7  guide_strength
+        use_custom_audio,  # 8  use_custom_audio
+        fps,               # 9  frame_rate
+        "seconds",         # 10 display_mode
+        0,                 # 11 custom_width
+        0,                 # 12 custom_height
+        "maintain aspect ratio",  # 13 resize_method
+        32,                # 14 divisible_by
+        18,                # 15 img_compression
+        "",                # 16 relay_overrides
+    ]
+    return {
+        "type": "LTXDirector__koolook_v1_3_2",
+        "widgets_values": wv,
+        "inputs": [
+            {"name": "audio_vae", "link": audio_vae_link},
+            {"name": "use_custom_audio", "link": None},
+        ],
+    }
+
+
+# --- derive_audio_state — 5 distinct states --------------------------------
+
+
+@pytest.mark.parametrize(
+    "director_node, timeline, expected",
+    [
+        # (no director) — split off so a missing-Director workflow can't
+        # silently look identical to a director-present-but-VAE-unwired
+        # one (PR #185 review HIGH-1).
+        (None, {"segments": [], "audioSegments": []}, "(no director)"),
+        # off (no VAE) — Director present, audio_vae socket unwired.
+        (
+            _director(audio_vae_link=None),
+            {"segments": [], "audioSegments": []},
+            "off (no VAE)",
+        ),
+        # model-gen — VAE wired, use_custom_audio=False. audioSegments
+        # are ignored on this path.
+        (
+            _director(audio_vae_link=42, use_custom_audio=False),
+            {"segments": [], "audioSegments": []},
+            "model-gen",
+        ),
+        # custom — VAE wired, use_custom_audio=True, audioSegments
+        # non-empty.
+        (
+            _director(audio_vae_link=42, use_custom_audio=True),
+            {"segments": [], "audioSegments": [{"start": 0, "length": 100}]},
+            "custom",
+        ),
+        # custom (empty) — VAE wired, use_custom_audio=True, but no
+        # audioSegments uploaded.
+        (
+            _director(audio_vae_link=42, use_custom_audio=True),
+            {"segments": [], "audioSegments": []},
+            "custom (empty)",
+        ),
+    ],
+)
+def test_derive_audio_state_all_five_states(director_node, timeline, expected):
+    assert loop_audio.derive_audio_state(director_node, timeline) == expected
+
+
+# --- extract_multilines — longest-needle-wins guards future drift ----------
+
+
+def _multiline(title: str, body: str) -> dict:
+    return {
+        "type": "Text Multiline",
+        "title": title,
+        "widgets_values": [body],
+    }
+
+
+def test_extract_multilines_keeps_all_hits_for_one_needle():
+    """Working_Folder_PATH legitimately appears twice on the canvas
+    (project mount + local mirror). Both bodies must come back so the
+    caller can pick by reachability."""
+    nodes = [
+        _multiline("Working_Folder_PATH", "W:/projects/foo"),
+        _multiline("Working_Folder_PATH", "e:/local/foo"),
+    ]
+    out = loop_audio.extract_multilines(nodes, ["working_folder"])
+    assert out["working_folder"] == ["W:/projects/foo", "e:/local/foo"]
+
+
+def test_extract_multilines_longest_needle_wins():
+    """If a future config adds a short substring that's contained in
+    an existing longer one, the longer match should win — regardless
+    of declaration order. The pre-fix loop iterated in dict-insertion
+    order and would have routed both nodes to the shorter needle."""
+    nodes = [
+        _multiline("RELAY_OVERRIDES", "{video_strength: 10}"),
+    ]
+    # Shorter "relay" declared FIRST in the config — pre-fix this would
+    # have shadowed "relay_overrides". Longest-first ordering routes
+    # the node to the more specific needle.
+    out = loop_audio.extract_multilines(
+        nodes, ["relay", "relay_overrides"]
+    )
+    assert out["relay_overrides"] == ["{video_strength: 10}"]
+    assert out["relay"] == []
+
+
+def test_extract_multilines_first_match_wins_per_node():
+    """A node's title can match multiple needles. The loop should
+    record at most one match per node (the longest) to avoid
+    double-counting."""
+    nodes = [_multiline("NAME_OVERLAY", "shouldn't match overlay")]
+    out = loop_audio.extract_multilines(
+        nodes, ["name", "overlay - info"]
+    )
+    # "name" matches; "overlay - info" doesn't (substring "overlay"
+    # alone isn't enough — the needle is "overlay - info").
+    assert out["name"] == ["shouldn't match overlay"]
+    assert out["overlay - info"] == []
+
+
+def test_extract_multilines_ignores_non_text_multiline_nodes():
+    nodes = [
+        {"type": "LTXDirector__koolook_v1_3_2", "title": "NAME"},
+        _multiline("NAME", "real"),
+    ]
+    out = loop_audio.extract_multilines(nodes, ["name"])
+    assert out["name"] == ["real"]
+
+
+# --- parse_timeline — coerce numeric segment fields ------------------------
+
+
+def test_parse_timeline_coerces_string_numerics():
+    """The Comfy frontend sometimes saves numeric segment fields as
+    strings. parse_timeline must coerce them so downstream arithmetic
+    in the renderer (`start / fps`, `<` comparisons) stays type-safe
+    instead of crashing or doing lexical comparisons."""
+    node = _director(timeline={
+        "segments": [
+            {"id": "a", "start": "0", "length": "120", "prompt": "x"},
+        ],
+        "audioSegments": [],
+    })
+    tl = loop_audio.parse_timeline(node)
+    seg = tl["segments"][0]
+    assert seg["start"] == 0
+    assert seg["length"] == 120
+    assert isinstance(seg["start"], int)
+    assert isinstance(seg["length"], int)
+    # Non-numeric fields pass through.
+    assert seg["prompt"] == "x"
+
+
+def test_parse_timeline_coerces_float_to_int():
+    node = _director(timeline={
+        "segments": [{"start": 1.7, "length": 12.4}],
+        "audioSegments": [],
+    })
+    tl = loop_audio.parse_timeline(node)
+    # int(float(...)) truncates toward 0, matching the upstream
+    # Director's _build_combined_audio coercion behavior.
+    assert tl["segments"][0]["start"] == 1
+    assert tl["segments"][0]["length"] == 12
+
+
+def test_parse_timeline_collapses_bad_values_to_zero():
+    """A malformed segment shouldn't crash the whole loop — the
+    offending field collapses to 0 and we keep going."""
+    node = _director(timeline={
+        "segments": [{"start": "not a number", "length": 100}],
+        "audioSegments": [],
+    })
+    tl = loop_audio.parse_timeline(node)
+    assert tl["segments"][0]["start"] == 0
+    assert tl["segments"][0]["length"] == 100
+
+
+def test_parse_timeline_handles_malformed_json():
+    """Invalid JSON in timeline_data must not raise — the helper
+    returns empty lists so the renderer falls back to "(N=0)" and
+    proceeds."""
+    bad = _director()
+    bad["widgets_values"][3] = "{not json"
+    assert loop_audio.parse_timeline(bad) == {
+        "segments": [], "audioSegments": [],
+    }
+
+
+def test_parse_timeline_handles_missing_director():
+    assert loop_audio.parse_timeline(None) == {
+        "segments": [], "audioSegments": [],
+    }
+
+
+def test_parse_timeline_drops_non_dict_segments():
+    node = _director(timeline={
+        "segments": [
+            {"start": 0, "length": 60},  # kept
+            "not a dict",                 # dropped
+            None,                         # dropped
+        ],
+        "audioSegments": [],
+    })
+    tl = loop_audio.parse_timeline(node)
+    assert len(tl["segments"]) == 1
+
+
+# --- video_segment_has_audio — overlap boundaries --------------------------
+
+
+@pytest.mark.parametrize(
+    "video, audio_segs, expected",
+    [
+        # Same range — overlaps.
+        ({"start": 0, "length": 100}, [{"start": 0, "length": 100}], True),
+        # Audio starts inside video — overlaps.
+        ({"start": 0, "length": 100}, [{"start": 50, "length": 50}], True),
+        # Audio ends inside video — overlaps.
+        ({"start": 50, "length": 100}, [{"start": 0, "length": 75}], True),
+        # Audio strictly before video — no overlap.
+        ({"start": 100, "length": 50}, [{"start": 0, "length": 100}], False),
+        # Audio strictly after video — no overlap.
+        ({"start": 0, "length": 50}, [{"start": 100, "length": 50}], False),
+        # Audio exactly touches video end — half-open intervals
+        # (a_start < v_end) treats this as NOT overlapping.
+        ({"start": 0, "length": 50}, [{"start": 50, "length": 50}], False),
+        # Multiple audio segs — any one overlap is enough.
+        (
+            {"start": 0, "length": 50},
+            [{"start": 100, "length": 10}, {"start": 25, "length": 10}],
+            True,
+        ),
+        # No audio segs — false.
+        ({"start": 0, "length": 50}, [], False),
+    ],
+)
+def test_video_segment_has_audio_boundaries(video, audio_segs, expected):
+    assert loop_audio.video_segment_has_audio(video, audio_segs) is expected
+
+
+# --- parse_feedback — score 0 must round-trip (PR #185 review MEDIUM-9) ----
+
+
+def test_parse_feedback_extracts_scores_with_lines():
+    body = (
+        "Looking solid overall\n"
+        "Sync drifts in the last second\n"
+        "motion: 4/5\n"
+        "sync: 3/5\n"
+        "sharpness: 5/5\n"
+    )
+    scores, lines = loop_audio.parse_feedback(body)
+    assert scores == {"motion": 4, "sync": 3, "sharp": 5}
+    assert lines == ["Looking solid overall", "Sync drifts in the last second"]
+
+
+def test_parse_feedback_preserves_zero_as_score():
+    """0 is a legitimate score. Pre-fix the log row coerced it to '?'
+    via `or '?'`; parse_feedback itself stores 0 correctly — this test
+    pins that contract so a future refactor can't subtly inject `or 0`
+    semantics."""
+    scores, _ = loop_audio.parse_feedback("motion: 0/5\nsync: 0\nsharp: 0\n")
+    assert scores == {"motion": 0, "sync": 0, "sharp": 0}
+
+
+def test_parse_feedback_accepts_sharpness_alias():
+    """Both 'sharp' and 'sharpness' are accepted axis names. Both map
+    to the 'sharp' key."""
+    scores, _ = loop_audio.parse_feedback("sharpness: 4\n")
+    assert scores["sharp"] == 4
+
+
+def test_parse_feedback_case_insensitive():
+    scores, _ = loop_audio.parse_feedback("MOTION: 3\nSync 4\n")
+    assert scores["motion"] == 3
+    assert scores["sync"] == 4
+
+
+def test_parse_feedback_empty_body_returns_blank_scores():
+    scores, lines = loop_audio.parse_feedback("")
+    assert scores == {"motion": None, "sync": None, "sharp": None}
+    assert lines == []
+
+
+# --- is_input_wired — None vs False semantics matter for derive_audio_state ---
+
+
+def test_is_input_wired_none_when_director_missing():
+    assert loop_audio.is_input_wired(None, "audio_vae") is None
+
+
+def test_is_input_wired_true_when_link_set():
+    node = {"inputs": [{"name": "audio_vae", "link": 42}]}
+    assert loop_audio.is_input_wired(node, "audio_vae") is True
+
+
+def test_is_input_wired_false_when_link_null():
+    node = {"inputs": [{"name": "audio_vae", "link": None}]}
+    assert loop_audio.is_input_wired(node, "audio_vae") is False
+
+
+def test_is_input_wired_none_when_input_socket_absent():
+    """An older Director schema might not have the named socket at
+    all — same outcome as 'unwired' at runtime (no audio latent
+    produced), but a distinct value here so callers can tell."""
+    node = {"inputs": [{"name": "model", "link": 1}]}
+    assert loop_audio.is_input_wired(node, "audio_vae") is None
+
+
+# --- wrap_path — long mount paths shouldn't bleed past the card edge -------
+
+
+def test_wrap_path_breaks_on_separator():
+    out = loop_audio.wrap_path(
+        "e:/G-Drive-BaconX/Jobs/Jeep_Animals/ComfyUI_LTX23/Phase2",
+        max_chars=30,
+    )
+    # Joined with backslashes, never split mid-segment.
+    for line in out:
+        assert "/" not in line  # normalised to backslash separators
+    joined = "".join(out)
+    assert joined == "e:\\G-Drive-BaconX\\Jobs\\Jeep_Animals\\ComfyUI_LTX23\\Phase2"
+
+
+def test_wrap_path_returns_single_empty_string_for_empty_input():
+    assert loop_audio.wrap_path("") == [""]
+
+
+def test_wrap_path_handles_single_segment_longer_than_max():
+    """A directory name longer than max_chars still gets its own
+    line — we never split mid-name."""
+    out = loop_audio.wrap_path("verylongsingledirectoryname", max_chars=10)
+    assert len(out) == 1
+    assert out[0] == "verylongsingledirectoryname"
+
+
+# --- pick_existing_path — picks reachable path, falls back to first ------
+
+
+def test_pick_existing_path_prefers_real_directory(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    out = loop_audio.pick_existing_path([
+        "Z:/never-exists",
+        str(real),
+        "Y:/also-never",
+    ])
+    assert out == str(real)
+
+
+def test_pick_existing_path_falls_back_to_first_nonempty():
+    out = loop_audio.pick_existing_path(["Z:/never-exists", "Y:/also-never"])
+    assert out == "Z:/never-exists"
+
+
+def test_pick_existing_path_returns_empty_when_all_empty():
+    assert loop_audio.pick_existing_path(["", "   ", "\""]) == ""
+
+
+# --- first_multiline + autogen_label sanity checks ------------------------
+
+
+def test_first_multiline_returns_first_or_empty():
+    assert loop_audio.first_multiline({"name": ["foo", "bar"]}, "name") == "foo"
+    assert loop_audio.first_multiline({}, "name") == ""
+    assert loop_audio.first_multiline({"name": []}, "name") == ""
+
+
+def test_autogen_label_when_director_missing():
+    label = loop_audio.autogen_label("Bear_3x", None, "")
+    assert "missing" in label
+    assert "audio-off" in label
+
+
+def test_autogen_label_when_director_present():
+    node = _director(use_custom_audio=True, audio_vae_link=42)
+    label = loop_audio.autogen_label(
+        "Bear_3x", node, '{"video_strength": 10.0}'
+    )
+    assert "koolook" in label
+    assert "audio-on" in label
+    assert "vstr10.0" in label

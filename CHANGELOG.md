@@ -40,6 +40,31 @@ The format is inspired by Keep a Changelog and SemVer.
   widget-to-input conversion, stale workflows, and downstream widget patches.
 
 ### Changed
+- **`loop-audio` card redesigned around a strict two-source rule** (issue
+  [#177](https://github.com/malkuthro/ComfyUI-Koolook/issues/177)). The
+  audio-lipsync card now only reads (a) the five tracked
+  `Text Multiline` nodes and (b) the `LTXDirector__koolook_v1_3_2` node's
+  own widget values + input wiring. The previous SAMPLER block
+  (`BasicScheduler` / `KSamplerSelect` / `RandomNoise` / `CFGGuider`
+  scrapes), FORK STATE block (`_dev_build.json` + `git status`), and
+  INERT warning are gone — they were either widget scrapes from outside
+  the two source families or duplicates of the Koolook Director's own
+  state. New sections: `BASE · LOCKED` (epsilon · Audio src · Working
+  folder, path-wrapped on separator boundaries) and `BASE · SCENE`
+  (flat-left labels with one indented child — `Segments (N)` parent,
+  spelled-out `1) 0 to 5 seconds` per segment, aggregated
+  `Prompt / Audio / Keyframe` coverage rows). Audio src is derived
+  structurally from the four-state machine (audio_vae link ×
+  use_custom_audio × audioSegments count) — never from substring matches
+  on prompt text. `notes.md` and `runs/log.md` follow the same source
+  rule; the log's Phase 1 / Phase 2 / Custom audio columns are replaced
+  by `Audio src` + `Segments`. `loop_audio.py`'s `.env` discovery now
+  falls back to the main repo when running from a worktree (same as
+  `scripts/make_card.py`). Fixed the upstream-LTXDirector widget index
+  bug — the saved workflow preserves the legacy widget order even after
+  the Koolook fork reordered the schema, so `DIRECTOR_WIDX` matches the
+  serialised order, not the schema declaration.
+
 - **Automations restructured around modules instead of models.**
   `docs/automations/` now pivots on one folder per *task* (each its own
   workflow + iteration loop + findings) rather than one folder per model.
@@ -74,6 +99,18 @@ The format is inspired by Keep a Changelog and SemVer.
   coverage in [`tests/nodes/test_easy_video_load.py`](tests/nodes/test_easy_video_load.py)
   and usage docs in
   [`docs/user_guide/nodes/koolook_video/easy_load_video.md`](docs/user_guide/nodes/koolook_video/easy_load_video.md).
+- **Audio-lipsync reading-graph docs.** Three new files alongside
+  [`docs/automations/LTX-2.3/audio-lipsync/`](docs/automations/LTX-2.3/audio-lipsync/):
+  [`reading-graph.html`](docs/automations/LTX-2.3/audio-lipsync/reading-graph.html)
+  is a visual flow diagram (dark theme, color-coded source bands) showing
+  every value's path from canvas node to card section;
+  [`reading-graph.schema.yaml`](docs/automations/LTX-2.3/audio-lipsync/reading-graph.schema.yaml)
+  is the machine-readable version of the same graph (source families,
+  widget indices, audio state machine, card-section field map,
+  invariants); [`CHEATSHEET.md`](docs/automations/LTX-2.3/audio-lipsync/CHEATSHEET.md)
+  refreshed against the new card design (chat triggers, required canvas
+  shape, card source rule, the four Audio src states, snapshot folder
+  layout, settings map).
 - **`forks/whatdreamscost_koolook/v1_3_2/` — Koolook fork of WhatDreamsCost-ComfyUI's
   `LTXDirector`** (upstream `e81223a`, GPL-3.0). Two upstream files modified
   (`ltx_director.py` adds a `relay_overrides` multiline-JSON widget;

@@ -131,6 +131,33 @@ def load_dotenv(env_path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def find_dotenv() -> Optional[Path]:
+    """Find .env starting at this worktree; fall back to the main repo
+    root via git's common-dir when running from a worktree. Mirrors
+    scripts/make_card.py so both scripts behave the same when invoked
+    from a fresh worktree where the maintainer hasn't copied the .env
+    over yet."""
+    direct = REPO_ROOT / ".env"
+    if direct.exists():
+        return direct
+    git_marker = REPO_ROOT / ".git"
+    if not git_marker.is_file():
+        return None
+    try:
+        content = git_marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.split(":", 1)[1].strip())
+    if "worktrees" not in gitdir.parts:
+        return None
+    idx = gitdir.parts.index("worktrees")
+    main_repo_root = Path(*gitdir.parts[:idx]).parent
+    candidate = main_repo_root / ".env"
+    return candidate if candidate.exists() else None
+
+
 # --------------------------------------------------------------------------
 # Workflow discovery — turn config + env into a concrete JSON path.
 # --------------------------------------------------------------------------
@@ -195,62 +222,235 @@ def find_workflow(workflows_dir: Path, cfg: dict[str, Any]) -> Path:
 # --------------------------------------------------------------------------
 
 
+DIRECTOR_TYPE = "LTXDirector__koolook_v1_3_2"
+
+# Koolook Director widget order — verified empirically against saved
+# workflow JSON. The Comfy frontend serialises widgets in their original
+# (upstream) order even after the Koolook fork reordered them in the
+# schema; the only new widget — `relay_overrides` — is appended at the
+# end. So the saved widgets_values matches the legacy LTXDirector order
+# plus one extra slot.
+#
+# MIRROR: this dict is also documented in
+# docs/automations/LTX-2.3/audio-lipsync/reading-graph.schema.yaml under
+# `source_families.director_node.widget_order` (and indirectly under
+# `state_dict.director_derived`). Update both when this dict changes,
+# or the YAML drifts silently.
+DIRECTOR_WIDX = {
+    "global_prompt":    0,
+    "duration_frames":  1,
+    "duration_seconds": 2,
+    "timeline_data":    3,
+    "local_prompts":    4,
+    "segment_lengths":  5,
+    "epsilon":          6,
+    "guide_strength":   7,
+    "use_custom_audio": 8,
+    "frame_rate":       9,
+    "display_mode":     10,
+    "custom_width":     11,
+    "custom_height":    12,
+    "resize_method":    13,
+    "divisible_by":     14,
+    "img_compression":  15,
+    "relay_overrides":  16,
+}
+
+
 def extract_multilines(
     nodes: list[dict], tracked_titles: list[str]
-) -> dict[str, str]:
-    out: dict[str, str] = {}
-    needles = [t.lower() for t in tracked_titles]
+) -> dict[str, list[str]]:
+    """Collect every body matching each needle. The canvas legitimately
+    ships duplicates for some needles — Working_Folder_PATH has both a
+    project-mount and a local-mirror copy, for example — so we keep
+    all hits keyed by needle and let the caller pick which to use."""
+    out: dict[str, list[str]] = {n.lower(): [] for n in tracked_titles}
+    # Longest-needle-wins for the per-node `break`. The current five
+    # needles don't collide, but as the canvas grows a shorter substring
+    # (e.g. "relay") in the same config could shadow a longer one
+    # ("relay_overrides") just because of declaration order. Sorting
+    # longest-first removes that footgun.
+    needles_by_length = sorted(out.keys(), key=len, reverse=True)
     for n in nodes:
         if n.get("type") != "Text Multiline":
             continue
         title = (n.get("title") or "").strip().lower()
         body = (n.get("widgets_values") or [""])[0] or ""
-        for needle in needles:
-            if needle in title and needle not in out:
-                out[needle] = body
+        for needle in needles_by_length:
+            if needle in title:
+                out[needle].append(body)
                 break
     return out
 
 
-def extract_director_state(nodes: list[dict]) -> dict[str, Any]:
-    for n in nodes:
-        t = n.get("type", "")
-        if "LTXDirector" not in t or "Guide" in t:
-            continue
-        wv = n.get("widgets_values") or []
-        return {
-            "variant": t,
-            "is_koolook": "koolook" in t.lower(),
-            "use_custom_audio": wv[8] if len(wv) > 8 else None,
-            "frame_rate": wv[9] if len(wv) > 9 else None,
-            "duration_seconds": wv[5] if len(wv) > 5 else None,
-            "duration_frames": wv[1] if len(wv) > 1 else None,
-            "custom_width": wv[11] if len(wv) > 11 else None,
-            "custom_height": wv[12] if len(wv) > 12 else None,
-            "epsilon": wv[6] if len(wv) > 6 else None,
-        }
-    return {"variant": "(no LTXDirector node found)"}
+def first_multiline(ml: dict[str, list[str]], needle: str) -> str:
+    return (ml.get(needle) or [""])[0]
 
 
-def extract_scheduler_chain(nodes: list[dict]) -> dict[str, Any]:
-    schedulers, samplers, noises, cfgs = [], [], [], []
+def pick_existing_path(candidates: list[str]) -> str:
+    """Pick the first candidate that resolves to a real directory on
+    this machine. Falls back to the first non-empty candidate so the
+    path still appears on the card even if its drive isn't mounted
+    here (worktree-on-N, render-target-on-W, etc.)."""
+    for c in candidates:
+        cleaned = c.strip().strip('"\'').rstrip("/\\")
+        if cleaned and Path(cleaned).is_dir():
+            return cleaned
+    for c in candidates:
+        cleaned = c.strip().strip('"\'').rstrip("/\\")
+        if cleaned:
+            return cleaned
+    return ""
+
+
+def wrap_path(path: str, max_chars: int = 40) -> list[str]:
+    """Wrap a filesystem path onto multiple lines, breaking only on
+    `/` or `\\` separators so directory names stay whole. Used by the
+    card renderer so long mount paths don't bleed past the card edge."""
+    if not path:
+        return [""]
+    raw = path.replace("/", "\\")
+    parts = [p for p in raw.split("\\") if p]
+    if not parts:
+        return [path]
+    lines: list[str] = []
+    cur = ""
+    for i, p in enumerate(parts):
+        token = p + ("\\" if i < len(parts) - 1 else "")
+        if cur and len(cur) + len(token) > max_chars:
+            lines.append(cur)
+            cur = token
+        else:
+            cur = cur + token
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def extract_director(nodes: list[dict]) -> Optional[dict]:
+    """Return the Koolook Director node dict (or None). The full node
+    is returned so callers can read both widgets_values AND inputs[]
+    socket wiring — the audio_vae link is what decides whether audio
+    gets generated at all (see derive_audio_state)."""
     for n in nodes:
-        t = n.get("type", "")
-        wv = n.get("widgets_values") or []
-        if t == "BasicScheduler":
-            schedulers.append(wv)
-        elif t == "KSamplerSelect":
-            samplers.append(wv[0] if wv else None)
-        elif t == "RandomNoise":
-            noises.append(wv)
-        elif t == "CFGGuider":
-            cfgs.append(wv[0] if wv else None)
+        if n.get("type") == DIRECTOR_TYPE:
+            return n
+    return None
+
+
+def director_widget(node: Optional[dict], key: str) -> Any:
+    if not node:
+        return None
+    wv = node.get("widgets_values") or []
+    idx = DIRECTOR_WIDX.get(key)
+    if idx is None or idx >= len(wv):
+        return None
+    return wv[idx]
+
+
+def is_input_wired(node: Optional[dict], input_name: str) -> Optional[bool]:
+    """True iff a named input socket on the Director has a non-null
+    link. None when the node or input isn't found."""
+    if not node:
+        return None
+    for inp in node.get("inputs") or []:
+        if inp.get("name") == input_name:
+            return inp.get("link") is not None
+    return None
+
+
+def _coerce_segment_numeric(seg: dict) -> dict:
+    """Coerce a timeline segment's numeric fields (start, length,
+    trimStart) to int. The upstream Director itself does this
+    defensively at ltx_director.py:232-234 — the saved JSON sometimes
+    contains string values for these fields, and downstream
+    arithmetic (`start / fps`, `<` comparisons) breaks silently
+    without coercion. Failures collapse to 0 so a malformed segment
+    can't crash the loop."""
+    out = dict(seg)
+    for k in ("start", "length", "trimStart"):
+        if k in out:
+            try:
+                out[k] = int(float(out[k]))
+            except (TypeError, ValueError):
+                out[k] = 0
+    return out
+
+
+def parse_timeline(director_node: Optional[dict]) -> dict[str, list]:
+    """Parse the timeline_data JSON widget into a dict of segments +
+    audioSegments. Both default to empty lists on any error so the
+    rest of the pipeline can iterate without further guards.
+
+    Per-segment numeric fields are coerced via _coerce_segment_numeric
+    so downstream arithmetic stays type-safe regardless of what shape
+    the Comfy frontend saved into the JSON."""
+    raw = director_widget(director_node, "timeline_data") or ""
+    if not raw:
+        return {"segments": [], "audioSegments": []}
+    try:
+        tl = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"segments": [], "audioSegments": []}
+    if not isinstance(tl, dict):
+        return {"segments": [], "audioSegments": []}
     return {
-        "schedulers": schedulers,
-        "samplers": samplers,
-        "noises": noises,
-        "cfgs": cfgs,
+        "segments": [
+            _coerce_segment_numeric(s)
+            for s in (tl.get("segments") or [])
+            if isinstance(s, dict)
+        ],
+        "audioSegments": [
+            _coerce_segment_numeric(s)
+            for s in (tl.get("audioSegments") or [])
+            if isinstance(s, dict)
+        ],
     }
+
+
+def derive_audio_state(
+    director_node: Optional[dict], timeline: dict[str, list]
+) -> str:
+    """Reduce the three structural audio signals — audio_vae wiring,
+    use_custom_audio toggle, audioSegments count — to one label that
+    mirrors how the Director would actually behave at runtime
+    (see forks/.../ltx_director.py: audio_vae None gates everything;
+    then use_custom_audio chooses between the encoded path and the
+    empty/model-gen path).
+
+    Five distinct outcomes — "(no director)" is split off so a
+    missing-director workflow doesn't get the same label as a
+    director-present-but-VAE-unwired one, which silently collapsed
+    pre-fix because is_input_wired(None, …) also returns None."""
+    if director_node is None:
+        return "(no director)"
+    vae_wired = is_input_wired(director_node, "audio_vae")
+    use_custom = director_widget(director_node, "use_custom_audio")
+    audio_segs = timeline.get("audioSegments") or []
+    # vae_wired can be None (input socket missing from this node's
+    # schema, e.g. an older workflow before audio_vae existed) OR
+    # False (socket present but unwired). Both functionally mean
+    # "no audio latent produced", so collapse them here — but only
+    # AFTER the director-missing case has been split off above.
+    if not vae_wired:
+        return "off (no VAE)"
+    if use_custom is True:
+        return "custom" if audio_segs else "custom (empty)"
+    return "model-gen"
+
+
+def video_segment_has_audio(video_seg: dict, audio_segs: list[dict]) -> bool:
+    """Does an audioSegments[] entry overlap this video segment's time
+    range? Matches how _build_combined_audio aligns the audio waveform
+    onto the global timeline."""
+    v_start = video_seg.get("start", 0)
+    v_end = v_start + video_seg.get("length", 0)
+    for a in audio_segs:
+        a_start = a.get("start", 0)
+        a_end = a_start + a.get("length", 0)
+        if a_start < v_end and a_end > v_start:
+            return True
+    return False
 
 
 SCORE_PAT = re.compile(
@@ -342,17 +542,14 @@ _LABEL_BAD = re.compile(r"[^a-z0-9._-]+")
 
 
 def autogen_label(
-    multilines: dict[str, str],
-    director: dict[str, Any],
+    name: str,
+    director_node: Optional[dict],
     relay_overrides_raw: str,
 ) -> str:
-    name = multilines.get("name", "").strip()
     slug = _LABEL_BAD.sub("-", name.lower()).strip("-") or "unnamed"
-    director_tag = "koolook" if director.get("is_koolook") else "upstream"
-    audio_tag = (
-        "audio-on" if director.get("use_custom_audio") is True
-        else "audio-off"
-    )
+    director_tag = "koolook" if director_node else "missing"
+    use_custom = director_widget(director_node, "use_custom_audio")
+    audio_tag = "audio-on" if use_custom is True else "audio-off"
     knob_tag = ""
     if relay_overrides_raw.strip():
         try:
@@ -372,17 +569,18 @@ def autogen_label(
 # --------------------------------------------------------------------------
 
 
-def render_relay_overrides_txt(raw: str, director: dict[str, Any]) -> str:
+def render_relay_overrides_txt(
+    raw: str, director_node: Optional[dict]
+) -> str:
     body = raw.strip() if raw and raw.strip() else "(empty — upstream defaults)"
-    inert_note = ""
-    if not director.get("is_koolook") and raw.strip():
-        inert_note = (
-            "\n\n# NOTE: this value is INERT for this render — the Director "
-            "node in the workflow is upstream `LTXDirector`, which has no "
-            "`relay_overrides` input. Swap to "
-            "`LTXDirector__koolook_v1_3_2` to make this active.\n"
+    missing_note = ""
+    if director_node is None:
+        missing_note = (
+            "\n\n# WARNING: no LTXDirector__koolook_v1_3_2 node found in "
+            "the workflow — the relay_overrides value above isn't being "
+            "consumed by anything. Add the Koolook Director to the canvas.\n"
         )
-    return f"{body}\n{inert_note}"
+    return f"{body}\n{missing_note}"
 
 
 def render_patch_state(build: dict[str, str], fork_status: str) -> str:
@@ -398,32 +596,43 @@ def render_patch_state(build: dict[str, str], fork_status: str) -> str:
 
 
 def render_notes_md(
-    director: dict[str, Any],
-    multilines: dict[str, str],
-    scheduler: dict[str, Any],
-    scores: dict[str, Optional[int]],
+    director_node: Optional[dict],
+    timeline: dict[str, list],
+    audio_src: str,
+    info_body: str,
     feedback_lines: list[str],
+    scores: dict[str, Optional[int]],
 ) -> str:
-    info_body = multilines.get("overlay - info", "(none)")
-    info_indented = "\n".join("    " + line for line in info_body.splitlines())
+    """Notes pulled exclusively from the two source families the card
+    is allowed to read: the OVERLAY-* multilines and the Koolook
+    Director node. No widget-scraping of BasicScheduler / KSamplerSelect /
+    RandomNoise / CFGGuider — those don't define what this loop sweeps."""
+    info_indented = (
+        "\n".join("    " + line for line in info_body.splitlines())
+        if info_body.strip()
+        else "    (none)"
+    )
     feedback_body = "\n".join(feedback_lines) if feedback_lines else "(none)"
     scores_line = " · ".join(
         f"{k}: {v if v is not None else '?'}/5"
         for k, v in scores.items()
     )
-    director_kind = (
-        "Koolook variant (`LTXDirector__koolook_v1_3_2`)"
-        if director.get("is_koolook")
-        else "**upstream** `LTXDirector` (Koolook variant NOT wired — "
-        "relay_overrides + per-segment σ are INERT this render)"
-    )
-    audio_state = (
-        "**ON** — external audio file driving lip-sync"
-        if director.get("use_custom_audio") is True
-        else "off — model-generated audio from `[Audio]:` prompt tag"
-        if director.get("use_custom_audio") is False
-        else "(could not read)"
-    )
+
+    if director_node is None:
+        director_kind = (
+            "**missing** — no `LTXDirector__koolook_v1_3_2` node on the "
+            "canvas; this render didn't run through the Koolook fork."
+        )
+    else:
+        director_kind = "Koolook variant (`LTXDirector__koolook_v1_3_2`)"
+
+    epsilon = director_widget(director_node, "epsilon")
+    dur_f = director_widget(director_node, "duration_frames")
+    dur_s = director_widget(director_node, "duration_seconds")
+    fps = director_widget(director_node, "frame_rate")
+    segments = timeline.get("segments") or []
+    audio_segs = timeline.get("audioSegments") or []
+
     return (
         f"# Run notes\n\n"
         f"## Maintainer feedback (OVERLAY - FEEDBACK, verbatim)\n\n"
@@ -431,64 +640,51 @@ def render_notes_md(
         f"**Scores:** {scores_line}\n\n"
         f"## OVERLAY - INFO (verbatim)\n\n"
         f"{info_indented}\n\n"
-        f"## Mechanical interp\n\n"
-        f"- Director node: {director_kind}\n"
-        f"- `use_custom_audio`: {audio_state}\n"
-        f"- ε (epsilon): {director.get('epsilon')!r}\n"
-        f"- Duration: {director.get('duration_frames')} frames "
-        f"@ {director.get('frame_rate')} fps "
-        f"({director.get('duration_seconds')} sec)\n"
-        f"- Director custom WxH: "
-        f"{director.get('custom_width')}x{director.get('custom_height')} "
-        f"(may be overridden by wired inputs upstream)\n"
-        f"- Scheduler chain (BasicScheduler widgets): "
-        f"{scheduler['schedulers']}\n"
-        f"- Sampler picks: {scheduler['samplers']}\n"
-        f"- RandomNoise widgets: {scheduler['noises']}\n"
-        f"- CFGGuider widgets: {scheduler['cfgs']}\n"
+        f"## Director node — structural state\n\n"
+        f"- Variant: {director_kind}\n"
+        f"- Audio src: {audio_src}\n"
+        f"- ε (epsilon): {epsilon!r}\n"
+        f"- Duration: {dur_f} frames @ {fps} fps ({dur_s} sec)\n"
+        f"- Segments: {len(segments)} video / "
+        f"{len(audio_segs)} audio\n"
     )
 
 
 def render_log_row(
     nnn: int,
-    director: dict[str, Any],
+    director_node: Optional[dict],
     relay_overrides_raw: str,
-    scheduler: dict[str, Any],
+    audio_src: str,
+    timeline: dict[str, list],
     scores: dict[str, Optional[int]],
     feedback_lines: list[str],
 ) -> str:
-    director_cell = director.get("variant", "?")
+    """Rolling-table row aligned with the card's data-source rule —
+    multilines + Koolook Director only. Scheduler/sampler columns are
+    deliberately absent (they aren't what this loop sweeps)."""
+    director_cell = DIRECTOR_TYPE if director_node else "(missing)"
     relay_cell = (
         f"`{relay_overrides_raw.strip()}`"
         if relay_overrides_raw.strip()
-        else "(empty → upstream defaults)"
+        else "(empty → defaults)"
     )
-    audio_cell = (
-        "ON" if director.get("use_custom_audio") is True
-        else "off" if director.get("use_custom_audio") is False
-        else "?"
-    )
-    phase1 = phase2 = "?"
-    schedulers = scheduler["schedulers"]
-    if len(schedulers) >= 2:
-        s1, s2 = schedulers[0], schedulers[1]
-        if len(s2) > 2 and s2[2] == 1.0 and len(s1) > 2 and s1[2] < 1.0:
-            s1, s2 = s2, s1
-        phase1 = f"{s1[0]} {s1[1]}stp d={s1[2]}" if len(s1) >= 3 else str(s1)
-        phase2 = f"{s2[0]} {s2[1]}stp d={s2[2]}" if len(s2) >= 3 else str(s2)
-    elif schedulers:
-        s1 = schedulers[0]
-        phase1 = f"{s1[0]} {s1[1]}stp d={s1[2]}" if len(s1) >= 3 else str(s1)
+    segments = timeline.get("segments") or []
+    seg_cell = str(len(segments))
+    # `or '?'` would map a legitimate 0/5 to '?' because 0 is falsy;
+    # explicit None-check preserves the score the maintainer typed.
+    # Mirrors render_audio_card._s() for card/log consistency.
+    def _score(v: Optional[int]) -> str:
+        return str(v) if v is not None else "?"
     score_cell = (
-        f"M{scores['motion'] or '?'}·S{scores['sync'] or '?'}·"
-        f"Sh{scores['sharp'] or '?'}"
+        f"M{_score(scores['motion'])}·S{_score(scores['sync'])}·"
+        f"Sh{_score(scores['sharp'])}"
     )
     notes_cell = (
         " ".join(feedback_lines)[:120] if feedback_lines else "(none)"
     ).replace("|", "\\|")
     return (
         f"| {nnn:03d} | {date.today().isoformat()} | `{director_cell}` "
-        f"| {relay_cell} | {audio_cell} | {phase1} | {phase2} "
+        f"| {relay_cell} | {audio_src} | {seg_cell} "
         f"| {score_cell} | {notes_cell} |\n"
     )
 
@@ -500,26 +696,41 @@ def render_log_row(
 
 def _build_state_for_card(
     nnn: int, label: str, wf_path: Path,
-    multilines: dict[str, str],
-    director: dict[str, Any], scheduler: dict[str, Any],
+    multilines: dict[str, list[str]],
+    director_node: Optional[dict],
+    timeline: dict[str, list],
+    audio_src: str,
     scores: dict[str, Optional[int]], feedback_lines: list[str],
-    fork_rel: str,
 ) -> dict[str, Any]:
+    """Card state — strict subset matching the agreed source families:
+    five tracked multilines + the Koolook Director node's own values.
+    No git, no _dev_build.json, no scheduler scrape.
+
+    Director's duration_frames / duration_seconds widgets are NOT
+    included — the card dropped the Duration row in favour of
+    per-segment time ranges, and notes.md reads them straight from
+    `director_node` via `director_widget`. Keeping them out of state
+    prevents the consumed-but-unused asymmetry the review caught."""
     return {
         "run_number": nnn,
         "run_label": label,
         "date": date.today().isoformat(),
-        "name": multilines.get("name", "(unnamed)"),
         "workflow_name": wf_path.name,
-        "relay_overrides_raw": multilines.get("relay_overrides", ""),
-        "director": director,
-        "scheduler": scheduler,
-        "scores": scores,
+        "name": first_multiline(multilines, "name").strip() or "(unnamed)",
+        "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
+        "info_body": first_multiline(multilines, "overlay - info").rstrip(),
         "feedback_lines": feedback_lines,
-        "info_body": multilines.get("overlay - info", ""),
-        "build": read_dev_build_json(),
-        "main_sha": short_sha(),
-        "fork_dir_status": fork_dir_status(fork_rel),
+        "scores": scores,
+        "work_folder": pick_existing_path(
+            multilines.get("working_folder") or []
+        ),
+        "director_node": director_node,
+        "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
+        "audio_src": audio_src,
+        "epsilon": director_widget(director_node, "epsilon"),
+        "frame_rate": director_widget(director_node, "frame_rate"),
+        "segments": timeline.get("segments") or [],
+        "audio_segments": timeline.get("audioSegments") or [],
     }
 
 
@@ -540,7 +751,9 @@ def main() -> int:
     args = p.parse_args()
 
     cfg = load_config(args.config)
-    load_dotenv(REPO_ROOT / ".env")
+    env_file = find_dotenv()
+    if env_file is not None:
+        load_dotenv(env_file)
 
     module_dir = REPO_ROOT / cfg["module_path"]
     runs_dir = module_dir / "runs"
@@ -559,15 +772,18 @@ def main() -> int:
     nodes = wf.get("nodes") or []
 
     multilines = extract_multilines(nodes, cfg["tracked_multilines"])
-    director = extract_director_state(nodes)
-    scheduler = extract_scheduler_chain(nodes)
+    director_node = extract_director(nodes)
+    timeline = parse_timeline(director_node)
+    audio_src = derive_audio_state(director_node, timeline)
     scores, feedback_lines = parse_feedback(
-        multilines.get("overlay - feedback", "")
+        first_multiline(multilines, "overlay - feedback")
     )
 
-    relay_overrides_raw = multilines.get("relay_overrides", "")
+    name = first_multiline(multilines, "name").strip()
+    relay_overrides_raw = first_multiline(multilines, "relay_overrides")
+    info_body = first_multiline(multilines, "overlay - info").rstrip()
     label = args.label or autogen_label(
-        multilines, director, relay_overrides_raw
+        name, director_node, relay_overrides_raw
     )
     nnn = next_run_number(runs_dir)
     run_dir = runs_dir / f"run-{nnn:03d}_{label}"
@@ -576,8 +792,8 @@ def main() -> int:
     print(f"{short_sha()} - {REPO_ROOT.name}")
     print(
         f"loop-{cfg['job_name']} run-{nnn:03d}  workflow={wf_path.name}  "
-        f"director={director.get('variant')}  "
-        f"audio={'ON' if director.get('use_custom_audio') is True else 'off'}"
+        f"director={DIRECTOR_TYPE if director_node else '(missing)'}  "
+        f"audio={audio_src}"
     )
 
     if args.dry_run:
@@ -588,7 +804,7 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=False)
     shutil.copy2(wf_path, run_dir / "workflow.json")
     (run_dir / "relay_overrides.txt").write_text(
-        render_relay_overrides_txt(relay_overrides_raw, director),
+        render_relay_overrides_txt(relay_overrides_raw, director_node),
         encoding="utf-8",
     )
     (run_dir / "patch_state.txt").write_text(
@@ -597,7 +813,8 @@ def main() -> int:
     )
     (run_dir / "notes.md").write_text(
         render_notes_md(
-            director, multilines, scheduler, scores, feedback_lines,
+            director_node, timeline, audio_src,
+            info_body, feedback_lines, scores,
         ),
         encoding="utf-8",
     )
@@ -610,9 +827,8 @@ def main() -> int:
 
             state = _build_state_for_card(
                 nnn, label, wf_path,
-                multilines, director, scheduler,
+                multilines, director_node, timeline, audio_src,
                 scores, feedback_lines,
-                cfg["fork_to_track"],
             )
             render_audio_card(state, run_dir / "card.png")
             card_status = "rendered"
@@ -621,7 +837,8 @@ def main() -> int:
 
     if not args.no_log:
         row = render_log_row(
-            nnn, director, relay_overrides_raw, scheduler, scores, feedback_lines,
+            nnn, director_node, relay_overrides_raw, audio_src,
+            timeline, scores, feedback_lines,
         )
         with log_path.open("a", encoding="utf-8") as f:
             f.write(row)

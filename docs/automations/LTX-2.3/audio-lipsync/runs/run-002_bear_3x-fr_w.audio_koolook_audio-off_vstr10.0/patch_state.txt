@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 9834c10
+Last dev-sync-audio   : c08b554  (2026-05-29 13:23)
+Sync scope tag        : Easy_Utility + version widget guard
+Sync worktree         : dazzling-margulis-91057e
+Fork dir status       : clean (matches HEAD)
