@@ -10,6 +10,11 @@ const source = fs.readFileSync(sourcePath, "utf8")
 
 const registeredExtensions = [];
 const context = {
+  bulletproofStringWidget(widget, fallback = "") {
+    if (!widget) return;
+    if (widget.value == null) widget.value = fallback;
+    else if (typeof widget.value !== "string") widget.value = String(widget.value);
+  },
   app: {
     graph: null,
     registerExtension(extension) {

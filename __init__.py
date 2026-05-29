@@ -41,6 +41,8 @@ except ImportError as _node_import_exc:
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
 else:
+    # VHS-dependent wrappers self-skip when VideoHelperSuite is absent, and
+    # these guards keep a local import surprise from hiding the core nodes.
     video_load_mappings = {}
     video_load_display = {}
     try:

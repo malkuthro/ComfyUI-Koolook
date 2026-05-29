@@ -22,35 +22,7 @@
 
 import { app } from "../../scripts/app.js";
 import { setWidgetConfig } from "../../extensions/core/widgetInputs.js";
-
-// Pysssss's presetText.js wraps every STRING widget's serializeValue with a
-// callback chain that does `value.replace(...)`. If widget.value is undefined
-// or null (widget-to-input conversion voiding the value, or a workflow saved
-// before this widget existed), `.replace` throws and graphToPrompt aborts —
-// Run becomes a no-op for the whole graph. Trap reads/writes via a property
-// descriptor so widget.value is always a string regardless of caller.
-function bulletproofStringWidget(widget, fallback = "") {
-    if (!widget) return;
-    let stored;
-    const initial = widget.value;
-    if (typeof initial === "string") {
-        stored = initial;
-    } else if (initial == null) {
-        stored = fallback;
-    } else {
-        stored = String(initial);
-    }
-    Object.defineProperty(widget, "value", {
-        configurable: true,
-        enumerable: true,
-        get() { return stored; },
-        set(v) {
-            if (typeof v === "string") stored = v;
-            else if (v == null) stored = fallback;
-            else stored = String(v);
-        },
-    });
-}
+import { bulletproofStringWidget } from "./widget_utils.js";
 
 function chainCallback(object, property, callback) {
     if (object == undefined) {
