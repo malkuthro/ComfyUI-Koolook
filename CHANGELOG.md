@@ -7,6 +7,10 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Fixed
+- **`dev-sync-audio`: stale Director web extension cleanup.** The scoped
+  audio sync now removes the old `web/whatdreamscost_koolook_v1_3_2/`
+  folder after the stable v1.3.9 web-extension rename, preventing legacy
+  workflows from loading two identical timeline editors in dev installs.
 - **`loop-audio`: run numbering now respects the log.** The audio-lipsync
   loop now chooses the next run number from both existing `run-NNN_*`
   folders and `runs/log.md`, preventing a newly saved snapshot from reusing

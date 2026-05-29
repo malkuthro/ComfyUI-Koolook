@@ -114,7 +114,10 @@ chat-report shape — just a smaller set of paths copied.
 Current per-module variants:
 
 - **`dev-sync-audio`** (chat phrase) → `python scripts/sync_to_dev_audio.py`.
-  Copies `forks/whatdreamscost_koolook/` + root `__init__.py` only.
+  Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`,
+  and root `__init__.py` only. It also removes the stale pre-v1.3.9
+  `web/whatdreamscost_koolook_v1_3_2/` folder if present so legacy
+  workflows do not load two timeline editors.
   Driven by the
   [`docs/automations/LTX-2.3/audio-lipsync/`](docs/automations/LTX-2.3/audio-lipsync/)
   iteration. Leaves `forks/radiance_koolook/` and the rest of the live

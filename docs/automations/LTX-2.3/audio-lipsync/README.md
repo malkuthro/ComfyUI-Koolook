@@ -97,7 +97,7 @@ renders should be skipped with "no log" / "don't log this" before capture.
      [`../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py)
      or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py)
      in this repo. Then run **`dev-sync-audio`** (chat phrase or directly
-     [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) — a scoped variant of `dev-sync` that copies just the fork dir + the root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, leaves `forks/radiance_koolook/` and the rest of the tree alone, then triggers a ComfyUI-Manager reboot so the Python module re-imports. User-initiated only — same rule as `dev-sync`; see project `CLAUDE.md`.
+     [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) — a scoped variant of `dev-sync` that copies just the fork dir, Director web extension, and root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, removes the stale pre-v1.3.9 web extension folder if present, leaves `forks/radiance_koolook/` and the rest of the tree alone, then triggers a ComfyUI-Manager reboot so the Python module re-imports. User-initiated only — same rule as `dev-sync`; see project `CLAUDE.md`.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.

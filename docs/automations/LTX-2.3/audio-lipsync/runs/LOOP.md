@@ -75,8 +75,12 @@ python scripts/sync_to_dev_audio.py
 ```
 
 What it does:
-- Copies only `forks/whatdreamscost_koolook/` + the root `__init__.py`
-  to `$KOLOOK_COMFYUI_DEV_PATH` (read from `.env`).
+- Copies only `forks/whatdreamscost_koolook/`,
+  `web/whatdreamscost_koolook/`, and the root `__init__.py` to
+  `$KOLOOK_COMFYUI_DEV_PATH` (read from `.env`).
+- Removes the stale pre-v1.3.9 `web/whatdreamscost_koolook_v1_3_2/`
+  folder if present, because leaving both web extensions loaded mounts
+  two identical timeline editors on legacy workflows.
 - Leaves the rest of the live install (radiance fork, the root `k_*.py`
   nodes, the sidebar `web/` bundle, `video_formats/`) untouched.
 - Auto-triggers a ComfyUI-Manager reboot so the Python module re-imports

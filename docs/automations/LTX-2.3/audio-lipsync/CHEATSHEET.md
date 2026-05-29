@@ -19,7 +19,7 @@ look as clean as baseline.
 | Phrase | Script | What it does |
 |---|---|---|
 | `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (workflow.json + relay_overrides.txt + patch_state.txt + notes.md + card.png) and appends a row to [`runs/log.md`](runs/log.md). |
-| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/` + root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`, auto-restarts Comfy. Use after editing fork source. Widget-only changes on the canvas don't need it. |
+| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`; removes stale pre-v1.3.9 web extension folder; auto-restarts Comfy. Use after editing fork source. Widget-only changes on the canvas don't need it. |
 
 Config lives in `<script>.config.json` next to each script — edit the
 config, not the Python, when paths or node titles change.

@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -74,6 +75,48 @@ AUDIO_PATHS: tuple[str, ...] = (
     "forks/whatdreamscost_koolook",
     "web/whatdreamscost_koolook",
 )
+
+STALE_AUDIO_PATHS: tuple[str, ...] = (
+    "web/whatdreamscost_koolook_v1_3_2",
+)
+
+
+def target_is_repo_root(target: Path) -> bool:
+    """Return True when the configured dev target is this source repo."""
+    try:
+        return target.resolve() == _dev.REPO_ROOT.resolve()
+    except OSError:
+        return False
+
+
+def remove_stale_paths(target: Path, *, dry_run: bool, verbose: bool) -> int:
+    """Remove old audio-sync paths that were renamed.
+
+    The v1.3.9 upgrade moved the Director web extension from a versioned
+    folder to a stable one. Existing dev installs can still have the old
+    folder on disk, causing ComfyUI to load two timeline extensions for
+    legacy workflows. Keep this scoped to explicit known paths.
+    """
+    removed = 0
+    for rel in STALE_AUDIO_PATHS:
+        stale = target / rel
+        if not stale.exists() and not stale.is_symlink():
+            continue
+        if dry_run:
+            if verbose:
+                print(f"would remove stale: {rel}")
+            removed += 1
+            continue
+        if stale.is_symlink() or stale.is_file():
+            stale.unlink()
+        elif stale.is_dir():
+            shutil.rmtree(stale)
+        else:
+            stale.unlink()
+        if verbose:
+            print(f"removed stale: {rel}")
+        removed += 1
+    return removed
 
 
 def main() -> int:
@@ -140,6 +183,13 @@ def main() -> int:
         return 2
 
     target = Path(target_str).expanduser()
+    if target_is_repo_root(target):
+        print(
+            "KOLOOK_COMFYUI_DEV_PATH points at this source repo; refusing dev-sync.",
+            file=sys.stderr,
+        )
+        return 2
+
     err = _dev.ensure_target(target, init=args.init)
     if err is not None:
         return err
@@ -150,9 +200,11 @@ def main() -> int:
         verbose=args.verbose,
         paths=AUDIO_PATHS,
     )
+    removed = remove_stale_paths(target, dry_run=args.dry_run, verbose=args.verbose)
     verb = "would sync" if args.dry_run else "synced"
     print(_dev.build_line())
-    print(f"{verb} {n} entries -> {target}  (dev-sync-audio)")
+    stale_note = f"; removed {removed} stale" if removed else ""
+    print(f"{verb} {n} entries{stale_note} -> {target}  (dev-sync-audio)")
     if not args.dry_run:
         _dev.write_build_info(target, args.scope)
         if not args.no_restart:

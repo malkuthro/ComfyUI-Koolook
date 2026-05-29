@@ -282,8 +282,9 @@ triggers:
     script: scripts/sync_to_dev_audio.py
     purpose: >
       Required after editing forks/whatdreamscost_koolook/ source. Copies
-      the fork + the root __init__.py into $KOLOOK_COMFYUI_DEV_PATH and
-      triggers a Comfy restart so the Python module re-imports.
+      the fork, web/whatdreamscost_koolook/, and the root __init__.py into
+      $KOLOOK_COMFYUI_DEV_PATH; removes stale pre-v1.3.9 web extension paths;
+      and triggers a Comfy restart so the Python module re-imports.
     not_required_for: widget-only changes on the canvas (no Python edit)
 
 # ----------------------------------------------------------------------------
