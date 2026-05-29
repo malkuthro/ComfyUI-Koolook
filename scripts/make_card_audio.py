@@ -51,7 +51,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -250,11 +250,12 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     work_folder       = state.get("work_folder") or ""
     audio_src         = state.get("audio_src") or "?"
     epsilon           = state.get("epsilon")
-    dur_f             = state.get("duration_frames")
-    dur_s             = state.get("duration_seconds")
     fps               = state.get("frame_rate")
     segments          = state.get("segments") or []
     audio_segs        = state.get("audio_segments") or []
+    # NOTE: duration_frames / duration_seconds intentionally not read here
+    # — the dropped "Duration" row used them; segment time ranges convey
+    # the same info now. They stay in the state dict for notes.md.
 
     canvas_h = 2400
     img = Image.new("RGB", (W, canvas_h), BG_OUTER)
@@ -276,9 +277,12 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     sub_line = (
         f"{state['date']} · audio-lipsync · {state['workflow_name']}"
     )
-    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT); y += 38
-    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED); y += 30
-    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1); y += 18
+    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT)
+    y += 38
+    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED)
+    y += 30
+    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1)
+    y += 18
 
     # ----- KNOB STATE (amber) — relay_overrides from the multiline -----
     relay_disp = relay if relay else "(empty → defaults)"
@@ -373,11 +377,14 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_OUT, "Post-render", body_h,
     )
-    draw.text((cx, cy), "FEEDBACK", font=F_TAG, fill=ACCENT_OUT); cy += 20
+    draw.text((cx, cy), "FEEDBACK", font=F_TAG, fill=ACCENT_OUT)
+    cy += 20
     for line in fb_lines:
-        draw.text((cx, cy), line, font=F_NOTE, fill=DIM); cy += 22
+        draw.text((cx, cy), line, font=F_NOTE, fill=DIM)
+        cy += 22
     cy += 6
-    draw.text((cx, cy), "OUTCOME", font=F_TAG, fill=ACCENT_OUT); cy += 20
+    draw.text((cx, cy), "OUTCOME", font=F_TAG, fill=ACCENT_OUT)
+    cy += 20
 
     def _s(v: Any) -> str:
         return f"{v}/5" if v is not None else "?/5"
@@ -418,7 +425,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         extract_director, extract_multilines, find_dotenv,
         first_multiline, load_config, load_dotenv,
         parse_feedback, parse_timeline, pick_existing_path,
-        DEFAULT_CONFIG_PATH, REPO_ROOT,
+        DEFAULT_CONFIG_PATH,
     )
 
     wf_path = run_dir / "workflow.json"
