@@ -420,6 +420,79 @@ def test_pre_load_autosave_redirects_to_unsaved_when_drifted() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_detect_drift_does_not_fire_on_normalize_only_shape_differences() -> None:
+    """Cross-machine snapshot import + hand-edited files (the documented
+    NFS/SMB/Dropbox sync workflow this module supports) save fields in
+    shapes the live cache passes through ``normalizeWorkflowsStore`` —
+    ``archived: "false"`` becomes ``archived: false``; missing
+    ``directories: {}`` is filled in; non-string tag entries get dropped.
+    Without normalising the file side too, the first boot after a fresh
+    cross-machine import would false-positive as drift and route every
+    autosave to ``_unsaved_autosave/`` until the user re-saved.
+
+    This guards the symmetric-fingerprint contract: when the disk shape
+    and the live shape are equivalent *after* normalisation, no drift
+    is flagged.
+    """
+    result = _run(
+        """
+        // Live: post-normalize shape — strict bool, deduped tags, present
+        // directories: {}. This is what workflowsCache looks like the
+        // moment loadWorkflowsStore() returns.
+        SERVER.workflowsStore = {
+            directories: {
+                "Renders": {
+                    workflows: {
+                        "A": {
+                            graph: { nodes: [{ id: 1 }] },
+                            archived: false,
+                            module: false,
+                            tags: ["lit", "exterior"],
+                        },
+                    },
+                    directories: {},
+                },
+            },
+        };
+        // File: pre-normalize shape — `archived` as a string literal,
+        // duplicate + whitespace-padded tag entries, missing
+        // `directories: {}` on the leaf node. Hand-edited / cross-
+        // machine import shape that should normalize to the live shape.
+        SERVER.presets.set("CrossMachine.json", {
+            kind: "koolook-snapshot",
+            version: 1,
+            name: "CrossMachine",
+            exportedAt: "2026-05-29T17:00:00.000Z",
+            picks: [],
+            workflows: {
+                directories: {
+                    "Renders": {
+                        workflows: {
+                            "A": {
+                                graph: { nodes: [{ id: 1 }] },
+                                archived: "false",
+                                tags: ["lit", " exterior", "exterior ", "lit"],
+                            },
+                        },
+                        // directories field deliberately omitted — pre-v0.3
+                        // shape that normalize fills with `{}`.
+                    },
+                },
+            },
+        });
+        await loadWorkflowsStore();
+        setAllPicks([]);
+        setCurrentPresetName("CrossMachine");
+
+        const outcome = await detectBootDrift("CrossMachine");
+        assert.equal(outcome.drifted, false,
+            "shape differences that normalize to the same canonical form should NOT trigger drift");
+        assert.equal(isBootDrifted(), false);
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_pre_load_autosave_uses_preset_subdir_when_not_drifted() -> None:
     """Sanity check the other branch: when drift is NOT set,
     pre-load autosaves go to ``<preset>_autosave/`` per the regular

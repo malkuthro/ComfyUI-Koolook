@@ -36,7 +36,12 @@
 // the server.
 // =============================================================================
 import { loadUserPicks, setAllPicks, notifyPicksChanged } from "./picks_store.js";
-import { replaceAllWorkflows, getAllWorkflowsForExport } from "./workflows_store.js";
+import {
+    replaceAllWorkflows,
+    getAllWorkflowsForExport,
+    normalizeWorkflowsStore,
+    sortJsonValue,
+} from "./workflows_store.js";
 import {
     STARTER_SEEDED_KEY,
     STARTER_URL,
@@ -44,6 +49,7 @@ import {
     SNAPSHOT_STATUS_CHANGED_EVENT,
     noStoreUrl,
     toast,
+    compareNames,
 } from "./constants.js";
 
 export const SNAPSHOT_KIND = "koolook-snapshot";
@@ -285,6 +291,21 @@ function _computeFingerprint() {
     });
 }
 
+// Canonical state fingerprint used exclusively by the boot-time drift
+// detector (#161). Sorts picks (set semantics, order irrelevant) and
+// normalize-then-sorts the workflows tree so two state snapshots with
+// the same content but different shapes produce equal fingerprints.
+// See the long comment in ``detectBootDrift`` for why this is distinct
+// from ``_computeFingerprint``.
+function _canonicalStateFingerprint(picks, workflows) {
+    const picksList = Array.isArray(picks) ? [...picks].sort(compareNames) : [];
+    const workflowsTree = workflows && typeof workflows === "object"
+        ? workflows
+        : { directories: {} };
+    const canonicalWorkflows = sortJsonValue(normalizeWorkflowsStore(workflowsTree));
+    return JSON.stringify({ picks: picksList, workflows: canonicalWorkflows });
+}
+
 function _emitStatusChanged() {
     try {
         window.dispatchEvent(new CustomEvent(SNAPSHOT_STATUS_CHANGED_EVENT));
@@ -350,7 +371,22 @@ export function getSnapshotStatus() {
     const name = getCurrentPresetName();
     const fp = _computeFingerprint();
     if (_bootDrifted) {
-        return { name, state: "drifted", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
+        // ``lastNamedSaveAt`` is from localStorage and may be a baseline
+        // captured by a PRIOR session whose live state was already corrupt
+        // — surfacing it in the drift tooltip ("Last named save: <stale>")
+        // would mislead users about when the divergence actually happened.
+        // Replace it with ``driftDetectedAt`` (when this session noticed
+        // the disk-vs-live disagreement) so the tooltip's timestamp
+        // anchors on a meaningful event. ``lastAutosaveAt`` stays — it's
+        // session-scoped and the only autosaves landing while drifted go
+        // to ``_unsaved_autosave/`` so the timestamp is still accurate.
+        return {
+            name,
+            state: "drifted",
+            lastNamedSaveAt: null,
+            lastAutosaveAt: _lastPeriodicAt,
+            driftDetectedAt: _bootDriftDiagnostics ? _bootDriftDiagnostics.detectedAt : null,
+        };
     }
     if (_lastNamedSaveFingerprint && fp === _lastNamedSaveFingerprint) {
         return { name, state: "saved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
@@ -395,18 +431,43 @@ export async function detectBootDrift(trackedName) {
         );
         return null;
     }
-    // Fingerprint shape must match `_computeFingerprint()` exactly so the
-    // comparison is apples-to-apples. The wrapping envelope fields
-    // (`name`, `kind`, `version`, `exportedAt`) differ between the saved
-    // file and a `gatherSnapshot()` call from this session even when the
-    // payload is byte-identical, so they're deliberately excluded here.
-    const fileFingerprint = JSON.stringify({
-        picks: Array.isArray(snapshot.picks) ? snapshot.picks : [],
-        workflows: snapshot.workflows && typeof snapshot.workflows === "object"
-            ? snapshot.workflows
-            : { directories: {} },
-    });
-    const liveFingerprint = _computeFingerprint();
+    // Canonicalize both sides before fingerprinting. The live cache and
+    // a freshly-imported snapshot file can carry the same content in
+    // different *shapes*:
+    //   • ``archived: "false"`` (string, hand-edit) vs ``false`` (bool).
+    //   • Missing ``directories: {}`` on pre-v0.3 leaf nodes vs present.
+    //   • Picks accumulated in a different order on the source machine.
+    //   • Object keys spread-rewrapped in a different insertion order
+    //     by ``normalizeDirNode`` depending on whether the input already
+    //     had ``archived`` / ``module`` / ``tags`` declared.
+    // None of these differences mean the user's state diverged. Without
+    // the canonicalization below, the first boot after a cross-machine
+    // snapshot import (the documented NFS/SMB/Dropbox sync workflow —
+    // see L13-18) would false-positive as drift, redirecting every
+    // autosave to ``_unsaved_autosave/`` until the user re-saved.
+    //
+    // The canonical form runs:
+    //   1. ``normalizeWorkflowsStore`` — same transforms the live cache
+    //      passes through on every load/persist (idempotent on the
+    //      happy path).
+    //   2. ``sortJsonValue`` — case-insensitive recursive key sort, so
+    //      object key order is stable regardless of how the source
+    //      shape was built.
+    //   3. Sort the picks array — picks-as-set semantics; order is
+    //      irrelevant for equality.
+    // ``_computeFingerprint`` deliberately stays unsorted: it's used as
+    // the localStorage-persisted save baseline for the dirty indicator,
+    // and changing its shape would invalidate every existing user's
+    // baseline on first load post-deploy. The boot-drift comparison is
+    // session-local, so it can canonicalize freely.
+    const fileFingerprint = _canonicalStateFingerprint(
+        snapshot.picks,
+        snapshot.workflows,
+    );
+    const liveFingerprint = _canonicalStateFingerprint(
+        loadUserPicks(),
+        getAllWorkflowsForExport(),
+    );
     if (fileFingerprint === liveFingerprint) {
         _clearBootDriftInternal();
         _emitStatusChanged();

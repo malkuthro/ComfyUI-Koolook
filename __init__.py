@@ -31,84 +31,92 @@ if _siblings:
     print(_report)
 
 
-try:
-    from .k_easy_wan22_prompt import NODE_CLASS_MAPPINGS as wan_mappings
-    from .k_easy_wan22_prompt import NODE_DISPLAY_NAME_MAPPINGS as wan_display
-
-    from .k_easy_resize import NODE_CLASS_MAPPINGS as resize_mappings
-    from .k_easy_resize import NODE_DISPLAY_NAME_MAPPINGS as resize_display
-
-    from .k_ai_pipeline import NODE_CLASS_MAPPINGS as pipeline_mappings
-    from .k_ai_pipeline import NODE_DISPLAY_NAME_MAPPINGS as pipeline_display
-
-    from .k_easy_image_batch import NODE_CLASS_MAPPINGS as batch_mappings  # Added for new VFX batch node
-    from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # Added for new VFX batch node
-
-    from .k_easy_track import NODE_CLASS_MAPPINGS as cam_loader_mappings
-    from .k_easy_track import NODE_DISPLAY_NAME_MAPPINGS as cam_loader_display
-
-    from .k_easy_pattern import NODE_CLASS_MAPPINGS as pattern_mappings
-    from .k_easy_pattern import NODE_DISPLAY_NAME_MAPPINGS as pattern_display
-
-    from .k_easy_utility import NODE_CLASS_MAPPINGS as utility_mappings
-    from .k_easy_utility import NODE_DISPLAY_NAME_MAPPINGS as utility_display
-
-    from .k_audio_timeline import NODE_CLASS_MAPPINGS as audio_timeline_mappings
-    from .k_audio_timeline import NODE_DISPLAY_NAME_MAPPINGS as audio_timeline_display
-
-    from .k_timeline_editor import NODE_CLASS_MAPPINGS as timeline_editor_mappings
-    from .k_timeline_editor import NODE_DISPLAY_NAME_MAPPINGS as timeline_editor_display
-
-    from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
-    from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
-
-    from .forks.whatdreamscost_koolook import NODE_CLASS_MAPPINGS as whatdreamscost_koolook_mappings
-    from .forks.whatdreamscost_koolook import NODE_DISPLAY_NAME_MAPPINGS as whatdreamscost_koolook_display
-except ImportError as _node_import_exc:
-    # The relative imports above require a parent-package context that
-    # only ComfyUI's custom-node loader provides. Pytest's package
-    # collector (which walks up from test files looking for ``__init__.py``)
-    # and static-analysis tools load this file as a standalone module,
-    # where the imports raise. Falling back to empty registries lets
-    # tooling import the package directory without crashing — tests
-    # access sibling modules (e.g. ``koolook_routes``) via absolute
-    # imports that don't need the package context.
-    print(
-        f"[Koolook] node registry skipped (non-Comfy import context): "
-        f"{_node_import_exc}"
-    )
+if not _is_winning_install:
+    # Non-winning duplicate (#162). Short-circuit BEFORE any of the
+    # heavy node imports (torch, PIL, diffusers via the radiance/
+    # whatdreamscost forks) or the aiohttp route install — the winner
+    # owns those for this session and there's no point paying their
+    # import cost just to discard the mappings afterward. Critical log
+    # was already printed by ``build_duplicate_report`` above.
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
+    __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 else:
-    # VHS-dependent wrappers self-skip when VideoHelperSuite is absent, and
-    # these guards keep a local import surprise from hiding the core nodes.
-    video_load_mappings = {}
-    video_load_display = {}
     try:
-        from .k_video_load import NODE_CLASS_MAPPINGS as video_load_mappings
-        from .k_video_load import NODE_DISPLAY_NAME_MAPPINGS as video_load_display
-    except ImportError as _exc:
-        print(f"[Koolook] Easy_LoadVideo registry skipped: {_exc}")
+        from .k_easy_wan22_prompt import NODE_CLASS_MAPPINGS as wan_mappings
+        from .k_easy_wan22_prompt import NODE_DISPLAY_NAME_MAPPINGS as wan_display
 
-    video_combine_mappings = {}
-    video_combine_display = {}
-    try:
-        from .k_video_combine import NODE_CLASS_MAPPINGS as video_combine_mappings
-        from .k_video_combine import NODE_DISPLAY_NAME_MAPPINGS as video_combine_display
-    except ImportError as _exc:
-        print(f"[Koolook] Easy_VideoCombine registry skipped: {_exc}")
+        from .k_easy_resize import NODE_CLASS_MAPPINGS as resize_mappings
+        from .k_easy_resize import NODE_DISPLAY_NAME_MAPPINGS as resize_display
 
-    # Register the Kforge Labs snapshot/preset endpoints. Failure here is
-    # non-fatal — the node mappings still load and the rest of the plugin
-    # works; only the snapshot feature in the sidebar is unavailable. Both
-    # the import itself AND the `install()` call are guarded: a missing
-    # `aiohttp` (extremely unusual since it's a ComfyUI hard-dep) or any
-    # other module-load exception falls through to the print without
-    # crashing the node registry.
-    #
-    # Skipped on a non-winning duplicate install (#162) so the winner's
-    # /koolook/presets/* routes stay the sole owner of the URL space.
-    if _is_winning_install:
+        from .k_ai_pipeline import NODE_CLASS_MAPPINGS as pipeline_mappings
+        from .k_ai_pipeline import NODE_DISPLAY_NAME_MAPPINGS as pipeline_display
+
+        from .k_easy_image_batch import NODE_CLASS_MAPPINGS as batch_mappings  # Added for new VFX batch node
+        from .k_easy_image_batch import NODE_DISPLAY_NAME_MAPPINGS as batch_display  # Added for new VFX batch node
+
+        from .k_easy_track import NODE_CLASS_MAPPINGS as cam_loader_mappings
+        from .k_easy_track import NODE_DISPLAY_NAME_MAPPINGS as cam_loader_display
+
+        from .k_easy_pattern import NODE_CLASS_MAPPINGS as pattern_mappings
+        from .k_easy_pattern import NODE_DISPLAY_NAME_MAPPINGS as pattern_display
+
+        from .k_easy_utility import NODE_CLASS_MAPPINGS as utility_mappings
+        from .k_easy_utility import NODE_DISPLAY_NAME_MAPPINGS as utility_display
+
+        from .k_audio_timeline import NODE_CLASS_MAPPINGS as audio_timeline_mappings
+        from .k_audio_timeline import NODE_DISPLAY_NAME_MAPPINGS as audio_timeline_display
+
+        from .k_timeline_editor import NODE_CLASS_MAPPINGS as timeline_editor_mappings
+        from .k_timeline_editor import NODE_DISPLAY_NAME_MAPPINGS as timeline_editor_display
+
+        from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
+        from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
+
+        from .forks.whatdreamscost_koolook import NODE_CLASS_MAPPINGS as whatdreamscost_koolook_mappings
+        from .forks.whatdreamscost_koolook import NODE_DISPLAY_NAME_MAPPINGS as whatdreamscost_koolook_display
+    except ImportError as _node_import_exc:
+        # The relative imports above require a parent-package context that
+        # only ComfyUI's custom-node loader provides. Pytest's package
+        # collector (which walks up from test files looking for ``__init__.py``)
+        # and static-analysis tools load this file as a standalone module,
+        # where the imports raise. Falling back to empty registries lets
+        # tooling import the package directory without crashing — tests
+        # access sibling modules (e.g. ``koolook_routes``) via absolute
+        # imports that don't need the package context.
+        print(
+            f"[Koolook] node registry skipped (non-Comfy import context): "
+            f"{_node_import_exc}"
+        )
+        NODE_CLASS_MAPPINGS = {}
+        NODE_DISPLAY_NAME_MAPPINGS = {}
+        __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+    else:
+        # VHS-dependent wrappers self-skip when VideoHelperSuite is absent, and
+        # these guards keep a local import surprise from hiding the core nodes.
+        video_load_mappings = {}
+        video_load_display = {}
+        try:
+            from .k_video_load import NODE_CLASS_MAPPINGS as video_load_mappings
+            from .k_video_load import NODE_DISPLAY_NAME_MAPPINGS as video_load_display
+        except ImportError as _exc:
+            print(f"[Koolook] Easy_LoadVideo registry skipped: {_exc}")
+
+        video_combine_mappings = {}
+        video_combine_display = {}
+        try:
+            from .k_video_combine import NODE_CLASS_MAPPINGS as video_combine_mappings
+            from .k_video_combine import NODE_DISPLAY_NAME_MAPPINGS as video_combine_display
+        except ImportError as _exc:
+            print(f"[Koolook] Easy_VideoCombine registry skipped: {_exc}")
+
+        # Register the Kforge Labs snapshot/preset endpoints. Failure here is
+        # non-fatal — the node mappings still load and the rest of the plugin
+        # works; only the snapshot feature in the sidebar is unavailable. Both
+        # the import itself AND the `install()` call are guarded: a missing
+        # `aiohttp` (extremely unusual since it's a ComfyUI hard-dep) or any
+        # other module-load exception falls through to the print without
+        # crashing the node registry.
         try:
             from . import koolook_routes  # noqa: E402
 
@@ -120,7 +128,6 @@ else:
         except Exception as _exc:  # pragma: no cover
             print(f"[Koolook] preset routes import failed; node mappings unaffected: {_exc}")
 
-    if _is_winning_install:
         NODE_CLASS_MAPPINGS = {
             **wan_mappings,
             **resize_mappings,
@@ -152,20 +159,6 @@ else:
             **radiance_koolook_display,
             **whatdreamscost_koolook_display,
         }
-    else:
-        # Non-winning duplicate (#162). Register no nodes, no routes, no
-        # web directory — the winner above owns everything for this session.
-        NODE_CLASS_MAPPINGS = {}
-        NODE_DISPLAY_NAME_MAPPINGS = {}
 
-# Web directory is published only by the winning install — otherwise the
-# duplicate's ./web folder competes with the winner's for the
-# /extensions/<plugin>/ URL, and ComfyUI loads both copies of
-# koolook_sidebar.js (the JS-side guard in koolook_sidebar.js catches this
-# as a belt-and-suspenders, but skipping the publish here is the cleaner
-# upstream fix).
-if _is_winning_install:
-    WEB_DIRECTORY = "./web"
-    __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
-else:
-    __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+        WEB_DIRECTORY = "./web"
+        __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

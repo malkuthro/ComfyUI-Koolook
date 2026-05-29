@@ -2536,6 +2536,12 @@ export function renderPanel(container, options = {}) {
         // instructions so the user understands what the pill colour means
         // and how to clear it without hunting through docs.
         if (status.state === "drifted") {
+            // Use ``driftDetectedAt`` (session-noticed-at), NOT
+            // ``lastNamedSaveAt`` — the latter comes from a localStorage
+            // baseline that may have been captured by a prior session
+            // whose live state was already corrupt, and surfacing it
+            // here as "Last named save" would mislead the user about
+            // when the divergence actually started.
             return (
                 `Tracked snapshot "${status.name || "?"}" diverges from live state.\n` +
                 `Periodic auto-saves are being redirected to _unsaved_autosave/\n` +
@@ -2544,7 +2550,7 @@ export function renderPanel(container, options = {}) {
                 `To resolve: Load the tracked snapshot (discards live changes), or\n` +
                 `Save / Quick Save (overwrites the tracked snapshot with live state).\n` +
                 `\n` +
-                `Last named save: ${formatLocalTime(status.lastNamedSaveAt)}\n` +
+                `Drift detected: ${formatLocalTime(status.driftDetectedAt)}\n` +
                 `Location: ${location}`
             );
         }
