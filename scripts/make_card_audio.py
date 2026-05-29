@@ -3,24 +3,35 @@
 Audio-lipsync card renderer — vertical PIL card scoped to the
 ``docs/automations/LTX-2.3/audio-lipsync/`` iteration loop.
 
-Sibling to ``scripts/make_card.py`` (base-1step). The two families
-share palette, font fallback chain, and layout primitives — so the
-cards read as a set — but each highlights what matters for its module:
+Sibling to ``scripts/make_card.py`` (base-1step). Shares palette,
+font fallback chain, and section primitives so the two families read
+as a set, but the data sources are deliberately narrower:
 
-  base-1step       Phase 1 / Phase 2 / Base · model / Base · locked /
-                   Base · scene / Outcome — the upstream-default
-                   parameter sweep view.
-  audio-lipsync    Knob state / Fork state / Sampler / Base · notes /
-                   Feedback / Outcome — the fork-iteration view,
-                   dominated by the relay_overrides JSON + which fork
-                   SHA produced the render.
+Two — and only two — source families feed this card:
 
-Visual conventions copied 1:1 from make_card.py so the rendering is
-consistent: small uppercase accent-coloured section labels (no solid
-header bars), subtle panel outlines, key/value mono-rows, and
-left-accented note boxes for the prose blocks. When make_card.py
-evolves, update both here and there until we factor the primitives
-into a shared module.
+  1. The five ``Text Multiline`` nodes tracked by the loop config
+     (name / relay_overrides / overlay - info / overlay - feedback /
+     working_folder).
+  2. The ``LTXDirector__koolook_v1_3_2`` node's own widget values and
+     input-socket wiring (epsilon, frame_rate, duration_frames/seconds,
+     timeline_data segments + audioSegments, use_custom_audio toggle,
+     audio_vae link state).
+
+Notably absent: BasicScheduler / KSamplerSelect / RandomNoise /
+CFGGuider widget scrapes, ``_dev_build.json`` fork-state, ``git status``
+output. Those don't define what this loop sweeps. Adding them would
+push the card into showing values the maintainer's curated multiline
+notes don't claim to summarise.
+
+Card sections (top to bottom):
+
+  HEADER            run-NNN — {name} · date · job · workflow filename
+  KNOB STATE        relay_overrides (the per-render knob)
+  BASE · NOTES      overlay - info (verbatim, Δ this run)
+  BASE · LOCKED     epsilon · Audio src · Working folder (path-wrapped)
+  BASE · SCENE      Segments (N) — indented segment list with time
+                    ranges + flat Prompt/Audio/Keyframe coverage rows
+  POST-RENDER       feedback body + outcome scores
 
 Two entry points:
 
@@ -40,7 +51,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -57,14 +68,11 @@ BG_OUTER     = (14, 14, 14)
 BG_CARD      = (21, 21, 21)
 BG_SECTION   = (26, 26, 31)
 BORDER       = (48, 47, 47)
-BORDER_STR   = (79, 79, 84)
 TEXT         = (249, 250, 251)
 MUTED        = (143, 149, 156)
 DIM          = (200, 204, 209)
-HEADER_GREY  = (201, 204, 209)
-ACCENT_RUN   = (255, 184, 77)    # amber  — knob state (what changes per render)
-ACCENT_BASE  = (109, 180, 255)   # sky    — frozen base / fork pin / sampler
-ACCENT_FORK  = (175, 138, 230)   # violet — fork state, visually distinct from knob
+ACCENT_RUN   = (255, 184, 77)    # amber  — per-render knob state
+ACCENT_BASE  = (109, 180, 255)   # sky    — locked / scene
 ACCENT_OUT   = (123, 207, 128)   # green  — post-render outcome
 NOTE_BG      = (12, 12, 12)
 RADIUS       = 14
@@ -100,8 +108,7 @@ F_NOTE    = _load_font(["segoeuii.ttf", "Arial Italic.ttf"], 18)
 
 
 # --------------------------------------------------------------------------
-# Drawing primitives — copied 1:1 from scripts/make_card.py. The two
-# renderers stay in visual sync by sharing these signatures.
+# Drawing primitives — copied 1:1 from scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 
@@ -139,10 +146,11 @@ def _draw_text_box(
     draw: ImageDraw.ImageDraw, x: int, y: int, width: int,
     label: str, content: str, accent: tuple[int, int, int],
     max_lines: int = 4, char_per_line: int = 42,
+    keep_blank_lines: bool = False,
 ) -> int:
     """Left-accented note block — colored 4-px bar on the left, label
-    in the accent colour, italic body text. Same shape as make_card.py."""
-    lines = _wrap_text(content, char_per_line)[:max_lines]
+    in the accent colour, italic body text."""
+    lines = _wrap_text(content, char_per_line, keep_blank_lines=keep_blank_lines)[:max_lines]
     box_h = 28 + 22 * max(1, len(lines)) + 14
     draw.rounded_rectangle(
         [x - 12, y, x + width, y + box_h],
@@ -168,7 +176,7 @@ def _draw_section(
 ) -> tuple[int, int, int, int]:
     """Subtle panel with an accent-coloured uppercase label at the top.
     Returns (content_x, content_y, content_w, end_y) so the caller
-    stacks kv-rows directly underneath."""
+    stacks rows directly underneath."""
     HEADER_H = 36
     section_h = HEADER_H + body_h + 14
     draw.rounded_rectangle(
@@ -184,167 +192,207 @@ def _section_body_rows(num_rows: int, extra: int = 0) -> int:
 
 
 # --------------------------------------------------------------------------
-# Renderer — driven entirely by the ``state`` dict that loop_audio.py
-# builds. Keep the rendering pure-state-in/PNG-out so the snapshot
-# folder is always re-renderable.
+# Renderer — pure state-in / PNG-out. The ``state`` dict is built by
+# loop_audio._build_state_for_card. All values come from the two source
+# families documented at the top of this module.
 # --------------------------------------------------------------------------
+
+
+def _wrap_path(path: str, max_chars: int = 40) -> list[str]:
+    """Wrap a filesystem path onto multiple lines, breaking only on
+    ``/`` or ``\\`` separators so directory names stay whole."""
+    if not path:
+        return [""]
+    raw = path.replace("/", "\\")
+    parts = [p for p in raw.split("\\") if p]
+    if not parts:
+        return [path]
+    lines: list[str] = []
+    cur = ""
+    for i, p in enumerate(parts):
+        token = p + ("\\" if i < len(parts) - 1 else "")
+        if cur and len(cur) + len(token) > max_chars:
+            lines.append(cur)
+            cur = token
+        else:
+            cur = cur + token
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _video_segment_has_audio(video_seg: dict, audio_segs: list[dict]) -> bool:
+    v_start = video_seg.get("start", 0)
+    v_end = v_start + video_seg.get("length", 0)
+    for a in audio_segs:
+        a_start = a.get("start", 0)
+        a_end = a_start + a.get("length", 0)
+        if a_start < v_end and a_end > v_start:
+            return True
+    return False
 
 
 def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     """Render the audio-lipsync card PNG. ``state`` keys consumed:
 
-      run_number, run_label, date, name, workflow_name
-      relay_overrides_raw, director, scheduler, scores
-      feedback_lines, info_body, build, main_sha, fork_dir_status
+      run_number, run_label, date, workflow_name
+      name, relay_overrides_raw, info_body, feedback_lines, scores,
+      work_folder
+      director_node, director_variant, audio_src, epsilon,
+      duration_frames, duration_seconds, frame_rate,
+      segments, audio_segments
     """
-    director = state["director"]
-    scheduler = state["scheduler"]
-    scores = state["scores"]
-    build = state.get("build") or {}
+    name              = state.get("name") or "(unnamed)"
+    relay             = (state.get("relay_overrides_raw") or "").strip()
+    info_body         = (state.get("info_body") or "").rstrip()
+    feedback_lines    = state.get("feedback_lines") or []
+    scores            = state.get("scores") or {}
+    work_folder       = state.get("work_folder") or ""
+    audio_src         = state.get("audio_src") or "?"
+    epsilon           = state.get("epsilon")
+    dur_f             = state.get("duration_frames")
+    dur_s             = state.get("duration_seconds")
+    fps               = state.get("frame_rate")
+    segments          = state.get("segments") or []
+    audio_segs        = state.get("audio_segments") or []
 
-    # ----- canvas (oversized, cropped after layout) -----
-    canvas_h = 2000
+    canvas_h = 2400
     img = Image.new("RGB", (W, canvas_h), BG_OUTER)
     draw = ImageDraw.Draw(img)
-
     inset = 18
     draw.rounded_rectangle(
         [inset, inset, W - inset, canvas_h - inset],
         radius=RADIUS, fill=BG_CARD, outline=BORDER, width=1,
     )
-
     x = inset + PAD_X
     y = inset + PAD_TOP
     inner_w = W - 2 * inset - 2 * PAD_X
+    # Wider key column so multi-word labels (relay_overrides, Working
+    # folder) don't collide with their values.
+    key_w = 178
 
     # ----- HEADER -----
-    title_line = f"Run {state['run_number']:03d} — {state['name']}"
+    title_line = f"Run {state['run_number']:03d} — {name}"
     sub_line = (
         f"{state['date']} · audio-lipsync · {state['workflow_name']}"
     )
-    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT)
-    y += 38
-    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED)
-    y += 30
-    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1)
-    y += 18
+    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT); y += 38
+    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED); y += 30
+    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1); y += 18
 
-    key_w = 152
-
-    # ----- KNOB STATE (amber) -----
-    relay_raw = state["relay_overrides_raw"].strip()
-    custom_audio = director.get("use_custom_audio")
-    audio_cell = (
-        "ON · custom file" if custom_audio is True
-        else "off · model-generated" if custom_audio is False
-        else "?"
-    )
-    relay_summary = relay_raw if relay_raw else "(empty → defaults)"
-    body_h = _section_body_rows(2)
+    # ----- KNOB STATE (amber) — relay_overrides from the multiline -----
+    relay_disp = relay if relay else "(empty → defaults)"
+    body_h = _section_body_rows(1)
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_RUN, "Knob state", body_h,
     )
-    cy = _draw_kv_row(draw, cx, cy, "relay_overrides", relay_summary[:32], key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Custom audio", audio_cell, key_w)
+    _draw_kv_row(draw, cx, cy, "relay_overrides", relay_disp[:30], key_w)
     y = end_y
 
-    # ----- FORK STATE (violet) -----
-    director_variant = director.get("variant", "?")
-    sync_line = (
-        f"{build.get('commit', '—')} · {build.get('synced_at', '?')}"
-    )
-    body_h = _section_body_rows(5)
-    cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_FORK, "Fork state", body_h,
-    )
-    cy = _draw_kv_row(draw, cx, cy, "MAIN sha", state["main_sha"], key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Synced (script)", sync_line[:28], key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Sync scope", build.get("scope", "—")[:28], key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Director node", director_variant[:28], key_w)
-    cy = _draw_kv_row(
-        draw, cx, cy, "Fork files",
-        state["fork_dir_status"][:28], key_w,
-    )
-    y = end_y
-
-    # ----- SAMPLER (sky) -----
-    schedulers = scheduler["schedulers"]
-    samplers = scheduler["samplers"]
-    noises = scheduler["noises"]
-    cfgs = scheduler["cfgs"]
-    if len(schedulers) >= 2:
-        s1, s2 = schedulers[0], schedulers[1]
-        if len(s2) > 2 and s2[2] == 1.0 and len(s1) > 2 and s1[2] < 1.0:
-            s1, s2 = s2, s1
-        p1 = f"{s1[0]} · {s1[1]} stp · d={s1[2]}"
-        p2 = f"{s2[0]} · {s2[1]} stp · d={s2[2]}"
-    elif schedulers:
-        p1 = f"{schedulers[0][0]} · {schedulers[0][1]} stp · d={schedulers[0][2]}"
-        p2 = "—"
-    else:
-        p1 = p2 = "—"
-    sampler_join = " / ".join(str(s) for s in samplers) if samplers else "—"
-    seed_val = str(noises[0][0]) if noises and noises[0] else "—"
-    cfg_join = " / ".join(str(c) for c in cfgs) if cfgs else "—"
-
-    body_h = _section_body_rows(5)
-    cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_BASE, "Sampler", body_h,
-    )
-    cy = _draw_kv_row(draw, cx, cy, "Phase 1", p1, key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Phase 2", p2, key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Samplers", sampler_join, key_w)
-    cy = _draw_kv_row(draw, cx, cy, "Seed", f"{seed_val} (fixed)", key_w)
-    cy = _draw_kv_row(draw, cx, cy, "CFG", cfg_join, key_w)
-    y = end_y
-
-    # ----- BASE · NOTES (left-accented amber block) -----
-    info_body = (state.get("info_body") or "").strip()
-    if info_body:
-        y = _draw_text_box(
-            draw, x, y, inner_w, "Base · notes (Δ this run)",
-            info_body, ACCENT_RUN, max_lines=18, char_per_line=42,
-        )
-
-    # ----- FEEDBACK (left-accented green block) -----
-    feedback_lines = state.get("feedback_lines") or []
-    feedback_text = "\n".join(feedback_lines) if feedback_lines else "(none)"
+    # ----- BASE · NOTES (Δ this run, amber) — overlay - info verbatim -----
+    note_text = info_body if info_body.strip() else "(no Δ this render)"
     y = _draw_text_box(
-        draw, x, y, inner_w, "Feedback (video)",
-        feedback_text, ACCENT_OUT, max_lines=6, char_per_line=42,
+        draw, x, y, inner_w, "Base · notes (Δ this run)",
+        note_text, ACCENT_RUN, max_lines=18, char_per_line=42,
+        keep_blank_lines=True,
     )
 
-    # ----- OUTCOME (sky → green scores row) -----
-    body_h = _section_body_rows(1)
+    # ----- BASE · LOCKED (sky) — Koolook Director widgets + working folder -----
+    locked_rows: list[tuple[str, str]] = []
+    if epsilon is not None:
+        locked_rows.append(("epsilon", str(epsilon)))
+    locked_rows.append(("Audio src", audio_src))
+
+    path_lines = _wrap_path(work_folder, max_chars=40) if work_folder else []
+    body_h = _section_body_rows(len(locked_rows))
+    if path_lines:
+        body_h += 26 + 26 * len(path_lines) + 4
     cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_OUT, "Outcome", body_h,
+        draw, x, y, inner_w, ACCENT_BASE, "Base · locked", body_h,
     )
-    score_cell = (
-        f"Motion {scores['motion'] or '?'}/5"
-        f"   Sync {scores['sync'] or '?'}/5"
-        f"   Sharp {scores['sharp'] or '?'}/5"
-    )
-    draw.text((cx, cy), score_cell, font=F_MONO, fill=TEXT)
+    for k, v in locked_rows:
+        cy = _draw_kv_row(draw, cx, cy, k, v, key_w)
+    if path_lines:
+        draw.text((cx, cy), "Working folder", font=F_MONO, fill=MUTED)
+        cy += 26
+        for line in path_lines:
+            draw.text((cx + 12, cy), line, font=F_MONO, fill=TEXT)
+            cy += 26
     y = end_y
 
-    # ----- INERT WARNING (conditional) -----
-    is_koolook = director.get("is_koolook")
-    if not is_koolook and relay_raw:
-        warn_text = (
-            "Director is upstream LTXDirector — relay_overrides and per-segment "
-            "σ are INERT for this render. Swap to LTX Director (Koolook v1.3.2) "
-            "to make the knobs active."
-        )
-        y = _draw_text_box(
-            draw, x, y, inner_w, "⚠ Director note",
-            warn_text, ACCENT_RUN, max_lines=8, char_per_line=42,
-        )
+    # ----- BASE · SCENE (sky) — flat layout with one indented child -----
+    # Segments parent row + indented segment list + flat coverage rows
+    # for Prompt / Audio / Keyframe. Coverage is aggregated across all
+    # visible segments — "[x]" only when every segment has that field.
+    seg_rows = min(len(segments), 6)
+    indent_seg = 18
+    body_h = 26 + 26 * seg_rows + 8 + 26 * 3 + 4
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_BASE, "Base · scene", body_h,
+    )
+    cy = _draw_kv_row(draw, cx, cy, "Segments", f"({len(segments)})", key_w)
+
+    visible = segments[:seg_rows]
+    all_have_prompt   = bool(visible) and all((s.get("prompt") or "") for s in visible)
+    all_have_audio    = bool(visible) and all(
+        _video_segment_has_audio(s, audio_segs) for s in visible
+    )
+    all_have_keyframe = bool(visible) and all(s.get("imageFile") for s in visible)
+
+    for i, seg in enumerate(visible):
+        start = seg.get("start", 0)
+        length = seg.get("length", 0)
+        start_s = start / fps if fps else 0
+        end_s = (start + length) / fps if fps else 0
+        prompt = seg.get("prompt") or ""
+        has_p = bool(prompt)
+        has_a = _video_segment_has_audio(seg, audio_segs)
+        has_k = bool(seg.get("imageFile"))
+        header_col = ACCENT_OUT if (has_p and has_a and has_k) else ACCENT_BASE
+        header = f"{i+1}) {start_s:.0f} to {end_s:.0f} seconds"
+        draw.text((cx + indent_seg, cy), header, font=F_MONO, fill=header_col)
+        cy += 26
+    cy += 8
+
+    for label, present in (
+        ("Prompt",   all_have_prompt),
+        ("Audio",    all_have_audio),
+        ("Keyframe", all_have_keyframe),
+    ):
+        mark = "[x]" if present else "[ ]"
+        mark_col = ACCENT_OUT if present else MUTED
+        draw.text((cx, cy), label, font=F_MONO, fill=MUTED)
+        draw.text((cx + key_w, cy), mark, font=F_MONO, fill=mark_col)
+        cy += 26
+    y = end_y
+
+    # ----- POST-RENDER (green) — FEEDBACK + OUTCOME -----
+    feedback_text = "\n".join(feedback_lines) if feedback_lines else "(no feedback)"
+    fb_lines = _wrap_text(feedback_text, 42)[:6]
+    body_h = (20 + max(24, 22 * len(fb_lines)) + 14 + 20 + 26)
+    cx, cy, cw, end_y = _draw_section(
+        draw, x, y, inner_w, ACCENT_OUT, "Post-render", body_h,
+    )
+    draw.text((cx, cy), "FEEDBACK", font=F_TAG, fill=ACCENT_OUT); cy += 20
+    for line in fb_lines:
+        draw.text((cx, cy), line, font=F_NOTE, fill=DIM); cy += 22
+    cy += 6
+    draw.text((cx, cy), "OUTCOME", font=F_TAG, fill=ACCENT_OUT); cy += 20
+
+    def _s(v: Any) -> str:
+        return f"{v}/5" if v is not None else "?/5"
+    draw.text(
+        (cx, cy),
+        f"Motion {_s(scores.get('motion'))}     "
+        f"Sync {_s(scores.get('sync'))}     "
+        f"Sharp {_s(scores.get('sharp'))}",
+        font=F_MONO, fill=TEXT,
+    )
+    y = end_y
 
     # ----- crop to actual content + save -----
     final_h = y + PAD_BOTTOM + inset
     img = img.crop((0, 0, W, final_h))
-    # redraw outer rounded-rect outline at the new height so the
-    # bottom curve matches the top
     out_draw = ImageDraw.Draw(img)
     out_draw.rounded_rectangle(
         [inset, inset, W - inset, final_h - inset],
@@ -362,13 +410,15 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
 
 
 def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
-    """Reconstruct enough of the loop_audio state dict to re-render
-    the card. Re-reads workflow.json + small txt artifacts already in
-    the snapshot."""
+    """Reconstruct the loop_audio state dict from an on-disk run
+    folder. Reads the run's frozen workflow.json and walks it through
+    the same extraction helpers loop_audio.py uses live."""
     from loop_audio import (  # type: ignore[import-not-found]
-        extract_director_state, extract_multilines, extract_scheduler_chain,
-        parse_feedback, read_dev_build_json, short_sha, fork_dir_status,
-        load_config, DEFAULT_CONFIG_PATH,
+        DIRECTOR_TYPE, derive_audio_state, director_widget,
+        extract_director, extract_multilines, find_dotenv,
+        first_multiline, load_config, load_dotenv,
+        parse_feedback, parse_timeline, pick_existing_path,
+        DEFAULT_CONFIG_PATH, REPO_ROOT,
     )
 
     wf_path = run_dir / "workflow.json"
@@ -379,12 +429,19 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         wf = json.load(f)
     nodes = wf.get("nodes") or []
 
+    # Load env so any env-var lookups inside the helpers (none right
+    # now, but a defensive match for make_card.py's pattern) work.
+    env_file = find_dotenv()
+    if env_file is not None:
+        load_dotenv(env_file)
+
     cfg = load_config(DEFAULT_CONFIG_PATH)
     multilines = extract_multilines(nodes, cfg["tracked_multilines"])
-    director = extract_director_state(nodes)
-    scheduler = extract_scheduler_chain(nodes)
+    director_node = extract_director(nodes)
+    timeline = parse_timeline(director_node)
+    audio_src = derive_audio_state(director_node, timeline)
     scores, feedback_lines = parse_feedback(
-        multilines.get("overlay - feedback", "")
+        first_multiline(multilines, "overlay - feedback")
     )
 
     name_parts = run_dir.name.split("_", 1)
@@ -396,17 +453,24 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "run_number": nnn,
         "run_label": label,
         "date": date.today().isoformat(),
-        "name": multilines.get("name", "(unnamed)"),
         "workflow_name": "workflow.json",
-        "relay_overrides_raw": multilines.get("relay_overrides", ""),
-        "director": director,
-        "scheduler": scheduler,
-        "scores": scores,
+        "name": first_multiline(multilines, "name").strip() or "(unnamed)",
+        "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
+        "info_body": first_multiline(multilines, "overlay - info").rstrip(),
         "feedback_lines": feedback_lines,
-        "info_body": multilines.get("overlay - info", ""),
-        "build": read_dev_build_json(),
-        "main_sha": short_sha(),
-        "fork_dir_status": fork_dir_status(cfg["fork_to_track"]),
+        "scores": scores,
+        "work_folder": pick_existing_path(
+            multilines.get("working_folder") or []
+        ),
+        "director_node": director_node,
+        "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
+        "audio_src": audio_src,
+        "epsilon": director_widget(director_node, "epsilon"),
+        "duration_frames": director_widget(director_node, "duration_frames"),
+        "duration_seconds": director_widget(director_node, "duration_seconds"),
+        "frame_rate": director_widget(director_node, "frame_rate"),
+        "segments": timeline.get("segments") or [],
+        "audio_segments": timeline.get("audioSegments") or [],
     }
 
 
@@ -422,13 +486,6 @@ def main() -> int:
         return 2
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    # Load the repo's .env so the standalone re-render gets the same
-    # KOLOOK_COMFYUI_DEV_PATH the live loop_audio run had — otherwise
-    # the rebuilt state has an empty `build` dict and the FORK STATE
-    # rows show `—` placeholders.
-    from loop_audio import load_dotenv, REPO_ROOT  # type: ignore[import-not-found]
-    load_dotenv(REPO_ROOT / ".env")
-
     state = _rebuild_state_from_run_dir(run_dir)
 
     out = run_dir / "card.png"
