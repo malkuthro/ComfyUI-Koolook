@@ -17,6 +17,9 @@ try:
     from .k_easy_pattern import NODE_CLASS_MAPPINGS as pattern_mappings
     from .k_easy_pattern import NODE_DISPLAY_NAME_MAPPINGS as pattern_display
 
+    from .k_easy_utility import NODE_CLASS_MAPPINGS as utility_mappings
+    from .k_easy_utility import NODE_DISPLAY_NAME_MAPPINGS as utility_display
+
     # Easy_VideoCombine self-skips registration when VHS isn't installed
     # (its inner try/import returns empty mappings), so importing here is
     # always safe even on workstations without ComfyUI-VideoHelperSuite.
@@ -69,6 +72,7 @@ else:
         **batch_mappings,
         **cam_loader_mappings,
         **pattern_mappings,
+        **utility_mappings,
         **video_combine_mappings,
         **radiance_koolook_mappings,
         **whatdreamscost_koolook_mappings,
@@ -81,6 +85,7 @@ else:
         **batch_display,
         **cam_loader_display,
         **pattern_display,
+        **utility_display,
         **video_combine_display,
         **radiance_koolook_display,
         **whatdreamscost_koolook_display,
