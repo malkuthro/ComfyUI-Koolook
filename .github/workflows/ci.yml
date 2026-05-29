@@ -20,6 +20,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install lint tools
         run: pip install ruff==0.6.9
 
@@ -28,6 +32,9 @@ jobs:
 
       - name: Compile all (syntax smoke)
         run: python -m compileall -q -x '(\.venv|forks|upscaler_FIX/github_repos|nuke_CAM_exporter)' .
+
+      - name: Run JS smoke tests
+        run: node tests/js/test_ai_pipeline_preview.mjs
 
   security-gate:
     name: Security Gate

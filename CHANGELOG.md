@@ -6,6 +6,39 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **`EasyAIPipeline`: preview resolves connected text-name builders.**
+  The path preview buttons now evaluate common connected text nodes such as
+  `Text Multiline` and `Text Concatenate` instead of reading the concatenate
+  node's delimiter widget (`_`) as the whole shot name. This fixes previews
+  like `.../_/v003/__v003.%04d.exr` when `shot_name` is wired, and the
+  preview version formatter now matches Python: `003` becomes `v003`, while
+  an existing `v003` stays `v003`.
+- **`EasyAIPipeline`: path preview follows subgraph-routed version inputs.**
+  The "Get output directory/file path" buttons no longer reuse a stale
+  converted-widget `version` value when the live value is wired through
+  KJ Set/Get nodes and a ComfyUI subgraph. The browser preview resolver
+  now crosses subgraph outputs, maps subgraph inputs back to their host
+  node widgets/links, evaluates `Easy_Utility`'s `int_to_padded_string`
+  output, and reports "Cannot preview" instead of silently falling back
+  to stale local widget state when a connected value is too complex.
+- **`EasyAIPipeline` / `Easy_VideoCombine`: Run no-op when `version` widget
+  is wired or carries a stale value.** PR #180 introduced a new STRING
+  `version` widget in the same widget-slot the old INT lived in. Workflows
+  saved before #180 replay an INT into the new slot; widgets converted to
+  inputs leave the widget object with `value: undefined`; dict-serialized
+  Easy_VideoCombine workflows simply omit the new key. Any of those states
+  combined with ComfyUI-Custom-Scripts (pysssss) installed crashed
+  `graphToPrompt` — pysssss's `presetText.js` patches every STRING widget's
+  `serializeValue` to run `value.replace(...)` for `{variable}` substitution,
+  and `.replace` on `undefined` aborts the whole queue ("Cannot read
+  properties of undefined (reading 'replace')"; Run does nothing). Fixed by
+  trapping `widget.value` reads/writes on the `version` widget via a
+  property descriptor so the value is always coerced to a string
+  ([`web/ai_pipeline.js`](web/ai_pipeline.js),
+  [`web/easy_video_combine.js`](web/easy_video_combine.js)). Survives
+  widget-to-input conversion, stale workflows, and downstream widget patches.
+
 ### Changed
 - **Automations restructured around modules instead of models.**
   `docs/automations/` now pivots on one folder per *task* (each its own
@@ -30,6 +63,17 @@ The format is inspired by Keep a Changelog and SemVer.
   *Loop* and *Run* entries are rewritten to point at the new structure.
 
 ### Added
+- **Easy Load Video (`Easy_LoadVideo`).** Path-aware sibling of VHS's
+  `Load Video Path` node. It exposes a split `input_path` + `video`
+  field layout so a workflow can keep the source folder fixed while
+  changing only the clip name. Absolute `input_path` values load
+  directly from disk; relative values resolve under ComfyUI's `input/`
+  directory. Leaving `input_path` empty passes `video` through to VHS
+  unchanged, preserving full-path/URL workflows. Implemented as a thin
+  subclass in [`k_video_load.py`](k_video_load.py), with pure helper
+  coverage in [`tests/nodes/test_easy_video_load.py`](tests/nodes/test_easy_video_load.py)
+  and usage docs in
+  [`docs/user_guide/nodes/koolook_video/easy_load_video.md`](docs/user_guide/nodes/koolook_video/easy_load_video.md).
 - **`forks/whatdreamscost_koolook/v1_3_2/` — Koolook fork of WhatDreamsCost-ComfyUI's
   `LTXDirector`** (upstream `e81223a`, GPL-3.0). Two upstream files modified
   (`ltx_director.py` adds a `relay_overrides` multiline-JSON widget;
@@ -48,7 +92,6 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [0.3.7] - 2026-05-23
 
-### Added
 - **Workflow validator (`scripts/validate_workflow.py`).** stdlib-only CLI
   that checks a ComfyUI workflow JSON for internal consistency: declared-
   vs-referenced links, slot index bounds and type matches, endpoint cross-

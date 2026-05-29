@@ -46,6 +46,7 @@ py-modules = [
     "k_easy_track",
     "k_easy_wan22_prompt",
     "k_video_combine",
+    "k_video_load",
     "koolook_routes",
     "koolook_versioning",
 ]

@@ -113,6 +113,24 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   can be deprecated in favour of `VHS_VideoCombine` directly.
 - **Last reviewed:** 2026-05-28
 
+### Kosinkadink/ComfyUI-VideoHelperSuite — LoadVideoPath subclass (runtime composition)
+
+- **Upstream:** https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
+- **License:** GPL-3.0 (same upstream package/license already verified
+  for `Easy_VideoCombine`)
+- **Local path(s):** [`k_video_load.py`](../k_video_load.py)
+  — exposed as the `Easy_LoadVideo` ComfyUI node ID (display name
+  `Easy Load Video (Koolook)`).
+- **What is incorporated:** runtime composition only. Koolook subclasses
+  VHS `Load Video Path`, adds a split `input_path` + `video` field
+  layout, composes those fields into the single path string upstream
+  already accepts, then delegates loading to VHS unchanged.
+- **Why a subclass rather than a fork:** same rationale as
+  `Easy_VideoCombine`: keep VHS source unvendored, keep upstream loader
+  fixes flowing through, and make the path ergonomics available from a
+  Koolook node without patching a workstation-local VHS install.
+- **Last reviewed:** 2026-05-19
+
 ### fxtdstudios/radiance — v2.3.3 VAE subset (Koolook fork)
 
 - **Name:** Radiance (FXTD Studios)

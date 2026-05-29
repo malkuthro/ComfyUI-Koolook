@@ -22,6 +22,7 @@
 
 import { app } from "../../scripts/app.js";
 import { setWidgetConfig } from "../../extensions/core/widgetInputs.js";
+import { bulletproofStringWidget } from "./widget_utils.js";
 
 function chainCallback(object, property, callback) {
     if (object == undefined) {
@@ -160,12 +161,26 @@ function addFormatWidgets(nodeType) {
     });
 }
 
+function bulletproofVersionWidget(nodeType) {
+    chainCallback(nodeType.prototype, "onNodeCreated", function () {
+        // Run after onConfigure replays widgets_values. Linked-input version
+        // widgets get value=undefined from LiteGraph; pre-PR#180 workflows
+        // have no entry for version in the dict at all. Either trips pysssss.
+        chainCallback(this, "onConfigure", function () {
+            bulletproofStringWidget(this.widgets?.find((w) => w.name === "version"), "");
+        });
+        // Also bulletproof on plain creation (new node, no onConfigure).
+        bulletproofStringWidget(this.widgets?.find((w) => w.name === "version"), "");
+    });
+}
+
 app.registerExtension({
     name: "Koolook.EasyVideoCombine",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData?.name === "Easy_VideoCombine") {
             useNamedWidgetState(nodeType);
             addFormatWidgets(nodeType);
+            bulletproofVersionWidget(nodeType);
         }
     },
 });

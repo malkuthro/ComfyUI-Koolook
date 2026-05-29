@@ -3,6 +3,7 @@
 
 import { app } from "../../../scripts/app.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
+import { bulletproofStringWidget } from "./widget_utils.js";
 
 globalThis.__KOLOOK_AI_PIPELINE_PREVIEW_RESOLVER__ = "easyuse-getset-v2";
 
@@ -15,6 +16,11 @@ app.registerExtension({
                 if (originalOnNodeCreated) {
                     originalOnNodeCreated.call(this);
                 }
+
+                // Guard the version STRING widget. Pre-PR#180 workflows save
+                // an INT here; widget-to-input conversion can void the value
+                // to undefined. Either trips pysssss's .replace callback.
+                bulletproofStringWidget(this.widgets.find(w => w.name === "version"), "v001");
 
                 // Make instruction widget read-only and dimmed
                 const instructionWidget = this.widgets.find(w => w.name === "instruction");
@@ -59,6 +65,16 @@ app.registerExtension({
                 // in .exr" — splitext returns ".exr " with the space, which doesn't match.
                 const cleanExtension = (s) => String(s ?? "").replace(/\s/g, "");
 
+                const resolveVersionToken = (version, disableVersioning) => {
+                    if (disableVersioning) return "";
+                    const token = normalizeTextInput(version).replace(/[\/\\]/g, "_");
+                    if (!token) return "";
+                    if (/^\d+$/.test(token)) {
+                        return `v${String(Number.parseInt(token, 10)).padStart(3, "0")}`;
+                    }
+                    return token;
+                };
+
                 const getNodeWidgetValue = (node, slot) => {
                     const output = node.outputs?.[slot];
                     const candidateWidgets = [
@@ -79,20 +95,60 @@ app.registerExtension({
                     return null;
                 };
 
+                const getWidgetValueByName = (node, name, fallback = null) => {
+                    const widget = node?.widgets?.find(w => w.name === name);
+                    if (widget && "value" in widget) return widget.value;
+                    if (Array.isArray(node?.widgets_values)) {
+                        const inputIndex = node.inputs?.findIndex(input => input.name === name);
+                        if (inputIndex >= 0 && node.widgets_values[inputIndex] !== undefined) {
+                            return node.widgets_values[inputIndex];
+                        }
+                    }
+                    return fallback;
+                };
+
+                const getLink = (graph, linkId) => {
+                    if (!graph || linkId === null || linkId === undefined) return null;
+                    if (typeof graph.getLink === "function") return graph.getLink(linkId);
+                    const links = graph.links ?? graph._links;
+                    if (links instanceof Map) return links.get(linkId) ?? null;
+                    return links?.[linkId] ?? null;
+                };
+
+                const getGraphNodeById = (graph, nodeId) => {
+                    if (!graph || nodeId === null || nodeId === undefined) return null;
+                    if (typeof graph.getNodeById === "function") return graph.getNodeById(nodeId);
+                    return graph._nodes?.find(n => n.id === nodeId) ?? null;
+                };
+
+                const linkOriginId = (link) => link?.origin_id ?? link?.[1];
+                const linkOriginSlot = (link) => link?.origin_slot ?? link?.[2];
+                const graphIds = new WeakMap();
+                let nextGraphId = 1;
+                const graphSeenKey = (graph, linkId) => {
+                    if (!graph || (typeof graph !== "object" && typeof graph !== "function")) {
+                        return `graph:${linkId}`;
+                    }
+                    if (!graphIds.has(graph)) {
+                        graphIds.set(graph, nextGraphId++);
+                    }
+                    return `${graphIds.get(graph)}:${linkId}`;
+                };
+
                 const isEasyUseGetNode = (node) => {
                     return node?.type === "easy getNode"
                         || node?.comfyClass === "easy getNode"
                         || (String(node?.title ?? "").startsWith("Get_") && node?.widgets?.[0]?.name === "Constant");
                 };
 
-                const findEasyUseSetter = (getNode) => {
+                const findEasyUseSetter = (getNode, graph) => {
                     if (typeof getNode.findSetter === "function") {
-                        const setter = getNode.findSetter(getNode.graph || app.graph);
+                        const setter = getNode.findSetter(graph || getNode.graph || app.graph);
                         if (setter) return setter;
                     }
                     const key = getNode.widgets?.[0]?.value;
                     if (!key) return null;
-                    return (getNode.graph || app.graph)?._nodes?.find(otherNode => {
+                    return (graph || getNode.graph || app.graph)?._nodes?.find(otherNode => {
                         return (otherNode.type === "easy setNode"
                                 || otherNode.comfyClass === "easy setNode"
                                 || String(otherNode.title ?? "").startsWith("Set_"))
@@ -100,28 +156,116 @@ app.registerExtension({
                     }) ?? null;
                 };
 
-                const resolveLinkValue = (linkId, fallback, seen = new Set()) => {
-                    if (linkId === null || linkId === undefined || seen.has(linkId)) {
+                const resolveSubgraphInputValue = (hostNode, inputSlot, seen) => {
+                    if (!hostNode) return null;
+                    const hostInput = hostNode.inputs?.[inputSlot];
+                    if (!hostInput) return null;
+                    if (hostInput.link !== null && hostInput.link !== undefined) {
+                        return resolveLinkValue(hostInput.link, null, seen, hostNode.graph || app.graph, null);
+                    }
+                    const widgetName = hostInput.widget?.name ?? hostInput.name;
+                    return getWidgetValueByName(hostNode, widgetName, getNodeWidgetValue(hostNode, inputSlot));
+                };
+
+                const resolveSubgraphOutputValue = (hostNode, outputSlot, seen) => {
+                    const subgraph = hostNode?.subgraph;
+                    const output = subgraph?.outputs?.[outputSlot];
+                    const linkIds = output?.linkIds ?? output?.links;
+                    const innerLinkId = Array.isArray(linkIds) ? linkIds[0] : linkIds;
+                    if (innerLinkId === null || innerLinkId === undefined) return null;
+                    return resolveLinkValue(innerLinkId, null, seen, subgraph, hostNode);
+                };
+
+                const evaluateTextConcatenate = (node, graph, seen, subgraphHost) => {
+                    // WAS-NodeSuite currently serializes delimiter, clean-whitespace
+                    // in that widget order. If upstream reorders, prefer named widgets.
+                    const delimiter = getWidgetValueByName(node, "delimiter", node.widgets_values?.[0] ?? "");
+                    const cleanWhitespace = getWidgetValueByName(node, "clean_whitespace", node.widgets_values?.[1] ?? true);
+                    const parts = [];
+                    for (const input of node.inputs ?? []) {
+                        if (!/^text_[a-z]$/i.test(input.name ?? "")) continue;
+                        let value = null;
+                        if (input.link !== null && input.link !== undefined) {
+                            value = resolveLinkValue(input.link, null, seen, graph, subgraphHost);
+                        }
+                        value = normalizeTextInput(value);
+                        if (cleanWhitespace === true || cleanWhitespace === "true") {
+                            value = value.trim();
+                        }
+                        if (value) parts.push(value);
+                    }
+                    return parts.join(String(delimiter ?? ""));
+                };
+
+                const evaluateKnownNodeOutput = (node, slot, graph, seen, subgraphHost) => {
+                    if (slot !== 0) return null;
+                    if (node?.type === "Text Multiline") {
+                        return getWidgetValueByName(node, "text", node.widgets_values?.[0] ?? "");
+                    }
+                    if (node?.type === "Text Concatenate") {
+                        return evaluateTextConcatenate(node, graph, seen, subgraphHost);
+                    }
+                    if (node?.type === "Easy_Utility") {
+                        const mode = getWidgetValueByName(node, "mode", node.widgets_values?.[0] ?? "int_to_padded_string");
+                        if (mode !== "int_to_padded_string") return null;
+
+                        const intInput = node.inputs?.find(input => input.name === "int_value");
+                        let intValue;
+                        if (intInput?.link !== null && intInput?.link !== undefined) {
+                            intValue = resolveLinkValue(intInput.link, null, seen, graph, subgraphHost);
+                        }
+                        if (intValue === null || intValue === undefined) {
+                            intValue = getWidgetValueByName(node, "int_value", node.widgets_values?.[1] ?? 1);
+                        }
+                        const prefix = getWidgetValueByName(node, "prefix", node.widgets_values?.[2] ?? "");
+                        const padWidth = getWidgetValueByName(node, "pad_width", node.widgets_values?.[3] ?? 3);
+                        const n = Number.parseInt(intValue, 10);
+                        const w = Math.max(0, Number.parseInt(padWidth, 10) || 0);
+                        if (Number.isNaN(n)) return null;
+                        return `${prefix ?? ""}${String(n).padStart(w, "0")}`;
+                    }
+                    return null;
+                };
+
+                const resolveLinkValue = (linkId, fallback, seen = new Set(), graph = app.graph, subgraphHost = null) => {
+                    const seenKey = graphSeenKey(graph, linkId);
+                    if (linkId === null || linkId === undefined || seen.has(seenKey)) {
                         return fallback;
                     }
-                    seen.add(linkId);
-                    const link = app.graph.links[linkId];
+                    seen.add(seenKey);
+                    const link = getLink(graph, linkId);
                     if (!link) return fallback;
-                    const originNode = app.graph.getNodeById(link.origin_id);
+
+                    const originId = linkOriginId(link);
+                    const originSlot = linkOriginSlot(link);
+                    // LiteGraph uses -10 for the subgraph input boundary node.
+                    if (originId === -10) {
+                        const value = resolveSubgraphInputValue(subgraphHost, originSlot, seen);
+                        return value ?? fallback;
+                    }
+
+                    const originNode = getGraphNodeById(graph, originId);
                     if (!originNode) return fallback;
+
+                    const subgraphValue = resolveSubgraphOutputValue(originNode, originSlot, seen);
+                    if (subgraphValue !== null && subgraphValue !== undefined) return subgraphValue;
+
+                    const knownValue = evaluateKnownNodeOutput(originNode, originSlot, graph, seen, subgraphHost);
+                    if (knownValue !== null && knownValue !== undefined) return knownValue;
 
                     // EasyUse GET nodes are virtual tunnels. The visible widget is the
                     // key name ("OUT-folder"), not the value. Follow GET -> matching SET
                     // -> SET input link so preview buttons mirror render-time execution.
                     if (isEasyUseGetNode(originNode)) {
-                        const setter = findEasyUseSetter(originNode);
+                        const setter = findEasyUseSetter(originNode, graph);
                         const setterLink = setter?.inputs?.[0]?.link;
                         if (setterLink !== null && setterLink !== undefined) {
-                            return resolveLinkValue(setterLink, fallback, seen);
+                            const resolved = resolveLinkValue(setterLink, null, seen, graph, subgraphHost);
+                            if (resolved !== null && resolved !== undefined) return resolved;
                         }
                     }
 
-                    return getNodeWidgetValue(originNode, link.origin_slot);
+                    return getNodeWidgetValue(originNode, originSlot);
                 };
 
                 // Helper function to get effective value (from widget or upstream if connected and simple)
@@ -131,7 +275,7 @@ app.registerExtension({
                     if (!input || input.link === null) {
                         return widget?.value;
                     }
-                    return resolveLinkValue(input.link, widget?.value);
+                    return resolveLinkValue(input.link, null);
                 };
 
                 // Mirror of _normalize_base_path in k_ai_pipeline.py — must stay in sync.
@@ -209,7 +353,7 @@ app.registerExtension({
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const version_str = resolveVersionToken(values.version, values.disable_versioning);
                         displayWidget.value = buildOutputDirectory(values, version_str);
                     }
                     this.setDirtyCanvas(true, true);
@@ -229,7 +373,7 @@ app.registerExtension({
                     if (Object.values(values).some(v => v === null)) {
                         displayWidget.value = "Cannot preview: complex inputs - execute node for accurate path.";
                     } else {
-                        const version_str = values.disable_versioning ? "" : `v${values.version.toString().padStart(3, '0')}`;
+                        const version_str = resolveVersionToken(values.version, values.disable_versioning);
                         const output_directory = buildOutputDirectory(values, version_str);
                         // Filenames can't contain / or \ on any OS, so flatten any internal
                         // separators in shot_name / ai_method to `_`. Mirror of the Python
