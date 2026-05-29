@@ -416,7 +416,7 @@ segments · audio_segments
           <tr>
             <td><code>dev-sync-audio</code></td>
             <td><code>scripts/sync_to_dev_audio.py</code></td>
-            <td>Copies <code>forks/whatdreamscost_koolook/</code> into the live ComfyUI install (<code>$KOLOOK_COMFYUI_DEV_PATH</code>), auto-restarts. Required after editing fork source. <em>Not</em> required for widget-only changes on the canvas.</td>
+            <td>Copies <code>forks/whatdreamscost_koolook/</code>, <code>web/whatdreamscost_koolook/</code>, and root <code>__init__.py</code> into the live ComfyUI install (<code>$KOLOOK_COMFYUI_DEV_PATH</code>), removes stale pre-v1.3.9 web extension folders, auto-restarts. Required after editing fork source. <em>Not</em> required for widget-only changes on the canvas.</td>
           </tr>
         </tbody>
       </table>
