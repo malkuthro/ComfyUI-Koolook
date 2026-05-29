@@ -18,12 +18,16 @@ except ImportError:  # pragma: no cover - tests run outside ComfyUI.
 
 
 DEFAULT_PROMPT_TEMPLATE = (
-    'A brown grizzly bear faces the camera and says "{text}". '
-    "The bear clearly forms the words with its mouth, jaw, and lips."
+    '[Audio timing, frames {start_frame:03d}-{end_frame:03d}, '
+    '{start_seconds:.2f}-{end_seconds:.2f}s]: '
+    'The bear says exactly "{text}". '
+    "The mouth, jaw, and lips form the spoken words within this frame range."
 )
 DEFAULT_PAUSE_TEMPLATE = (
-    "The brown grizzly bear pauses between spoken words. "
-    "Its mouth closes naturally while it keeps facing the camera."
+    "[Audio timing, frames {start_frame:03d}-{end_frame:03d}, "
+    "{start_seconds:.2f}-{end_seconds:.2f}s]: "
+    "Silence/reaction pause. The bear does not speak; mouth closes naturally "
+    "while the face stays alive and attentive."
 )
 
 
@@ -67,6 +71,75 @@ def _phrase_text(words: list[Word]) -> str:
 
 def _frame(value: float, fps: float) -> int:
     return max(0, int(round(value * fps)))
+
+
+def _timeline_defaults(timeline_data: str) -> dict:
+    if not str(timeline_data or "").strip():
+        return {}
+    data = json.loads(timeline_data)
+    if not isinstance(data, dict):
+        return {}
+    first_image = next(
+        (
+            seg
+            for seg in data.get("segments", [])
+            if isinstance(seg, dict) and seg.get("imageFile")
+        ),
+        {},
+    )
+    first_audio = next(
+        (
+            seg
+            for seg in data.get("audioSegments", [])
+            if isinstance(seg, dict) and seg.get("audioFile")
+        ),
+        {},
+    )
+    return {
+        "image_file": first_image.get("imageFile", ""),
+        "audio_file": first_audio.get("audioFile", ""),
+        "audio_start_frames": int(float(first_audio.get("start", 0) or 0)),
+        "audio_trim_start_frames": int(float(first_audio.get("trimStart", 0) or 0)),
+        "audio_length_frames": int(float(first_audio.get("length", 0) or 0)),
+    }
+
+
+def shift_phrases_to_timeline(
+    phrases: list[Phrase],
+    *,
+    frame_rate: float,
+    audio_start_frames: int,
+    audio_trim_start_frames: int,
+    duration_frames: int,
+) -> list[Phrase]:
+    offset_seconds = (audio_start_frames - audio_trim_start_frames) / frame_rate
+    shifted: list[Phrase] = []
+    for phrase in phrases:
+        start = phrase.start + offset_seconds
+        end = phrase.end + offset_seconds
+        if end <= 0 or start >= duration_frames / frame_rate:
+            continue
+        shifted.append(Phrase(max(0.0, start), max(0.0, end), phrase.text))
+    return shifted
+
+
+def _format_prompt(
+    template: str,
+    *,
+    text: str = "",
+    start: int,
+    end: int,
+    fps: float,
+) -> str:
+    return template.format(
+        text=text,
+        start_frame=start,
+        end_frame=max(start, end - 1),
+        end_exclusive_frame=end,
+        length_frames=max(1, end - start),
+        start_seconds=start / fps,
+        end_seconds=end / fps,
+    )
 
 
 def transcribe_words(audio_path: Path, model_size_or_path: str, device: str) -> list[Word]:
@@ -146,15 +219,38 @@ def build_prompt_spans(
         start = _frame(phrase.start, fps)
         end = max(start + 1, _frame(phrase.end, fps))
         if start - cursor >= _frame(pause_threshold_seconds, fps):
-            spans.append((cursor, start, pause_template))
+            spans.append((
+                cursor,
+                start,
+                _format_prompt(pause_template, start=cursor, end=start, fps=fps),
+            ))
         elif start > cursor and spans:
             prev_start, _prev_end, prev_prompt = spans[-1]
             spans[-1] = (prev_start, start, prev_prompt)
-        spans.append((start, end, prompt_template.format(text=phrase.text)))
+        spans.append((
+            start,
+            end,
+            _format_prompt(
+                prompt_template,
+                text=phrase.text,
+                start=start,
+                end=end,
+                fps=fps,
+            ),
+        ))
         cursor = end
 
     if duration_frames > cursor:
-        spans.append((cursor, duration_frames, pause_template))
+        spans.append((
+            cursor,
+            duration_frames,
+            _format_prompt(
+                pause_template,
+                start=cursor,
+                end=duration_frames,
+                fps=fps,
+            ),
+        ))
 
     return [(start, max(start + 1, end), prompt) for start, end, prompt in spans]
 
@@ -213,12 +309,12 @@ class KoolookAudioTranscriptTimeline:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio_file": ("STRING", {"default": "", "tooltip": "Audio filename in ComfyUI input/, or an absolute path."}),
+                "audio_file": ("STRING", {"default": "", "multiline": True, "tooltip": "Audio filename in ComfyUI input/, or an absolute path."}),
                 "image_file": ("STRING", {"default": "", "tooltip": "Source image filename in ComfyUI input/."}),
                 "duration_frames": ("INT", {"default": 120, "min": 1, "max": 10000, "step": 1}),
                 "frame_rate": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 1.0}),
                 "audio_length_frames": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
-                "model_size_or_path": ("STRING", {"default": "base.en", "tooltip": "faster-whisper model name, or a local model folder."}),
+                "model_size_or_path": ("STRING", {"default": "base.en", "multiline": True, "tooltip": "faster-whisper model name, or a local model folder."}),
                 "device": (["cpu", "cuda"], {"default": "cpu"}),
                 "prompt_template": ("STRING", {"default": DEFAULT_PROMPT_TEMPLATE, "multiline": True}),
                 "pause_template": ("STRING", {"default": DEFAULT_PAUSE_TEMPLATE, "multiline": True}),
@@ -226,6 +322,9 @@ class KoolookAudioTranscriptTimeline:
                 "max_words": ("INT", {"default": 6, "min": 1, "max": 30, "step": 1}),
                 "gap_seconds": ("FLOAT", {"default": 0.45, "min": 0.0, "max": 5.0, "step": 0.05}),
                 "pause_threshold_seconds": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 5.0, "step": 0.05}),
+            },
+            "optional": {
+                "timeline_data": ("STRING", {"default": "", "multiline": True, "tooltip": "Optional timeline JSON from Koolook Timeline Editor. When set, the first audio/image segment fills audio_file, image_file, trim, and timeline offset."}),
             },
         }
 
@@ -249,7 +348,16 @@ class KoolookAudioTranscriptTimeline:
         max_words: int,
         gap_seconds: float,
         pause_threshold_seconds: float,
+        timeline_data: str = "",
     ):
+        timeline = _timeline_defaults(timeline_data)
+        if timeline.get("audio_file"):
+            audio_file = timeline["audio_file"]
+        if timeline.get("image_file"):
+            image_file = timeline["image_file"]
+        if timeline.get("audio_length_frames"):
+            audio_length_frames = timeline["audio_length_frames"]
+
         audio_path = _resolve_input_file(audio_file)
         if not audio_path.is_file():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
@@ -260,6 +368,13 @@ class KoolookAudioTranscriptTimeline:
             max_phrase_seconds=float(max_phrase_seconds),
             max_words=int(max_words),
             gap_seconds=float(gap_seconds),
+        )
+        phrases = shift_phrases_to_timeline(
+            phrases,
+            frame_rate=float(frame_rate),
+            audio_start_frames=int(timeline.get("audio_start_frames", 0)),
+            audio_trim_start_frames=int(timeline.get("audio_trim_start_frames", 0)),
+            duration_frames=int(duration_frames),
         )
         timeline = build_timeline_data(
             phrases,

@@ -23,6 +23,9 @@ try:
     from .k_audio_timeline import NODE_CLASS_MAPPINGS as audio_timeline_mappings
     from .k_audio_timeline import NODE_DISPLAY_NAME_MAPPINGS as audio_timeline_display
 
+    from .k_timeline_editor import NODE_CLASS_MAPPINGS as timeline_editor_mappings
+    from .k_timeline_editor import NODE_DISPLAY_NAME_MAPPINGS as timeline_editor_display
+
     from .forks.radiance_koolook import NODE_CLASS_MAPPINGS as radiance_koolook_mappings
     from .forks.radiance_koolook import NODE_DISPLAY_NAME_MAPPINGS as radiance_koolook_display
 
@@ -89,6 +92,7 @@ else:
         **pattern_mappings,
         **utility_mappings,
         **audio_timeline_mappings,
+        **timeline_editor_mappings,
         **video_load_mappings,
         **video_combine_mappings,
         **radiance_koolook_mappings,
@@ -104,6 +108,7 @@ else:
         **pattern_display,
         **utility_display,
         **audio_timeline_display,
+        **timeline_editor_display,
         **video_load_display,
         **video_combine_display,
         **radiance_koolook_display,

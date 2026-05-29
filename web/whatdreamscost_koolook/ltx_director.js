@@ -3784,7 +3784,11 @@ const APPENDED_WIDGET_DEFAULTS = [
 app.registerExtension({
   name: "LTXDirector_Koolook",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
-    if (nodeData.name === "LTXDirector__koolook" || nodeData.name === "LTXDirector__koolook_v1_3_2") {
+    if (
+      nodeData.name === "LTXDirector__koolook" ||
+      nodeData.name === "LTXDirector__koolook_v1_3_2" ||
+      nodeData.name === "KoolookTimelineEditor"
+    ) {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
       nodeType.prototype.onNodeCreated = function () {

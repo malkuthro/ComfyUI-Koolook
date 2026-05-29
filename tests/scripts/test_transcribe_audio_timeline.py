@@ -62,6 +62,71 @@ def test_build_prompt_spans_includes_silence_gaps_and_tail():
     ]
 
 
+def test_build_prompt_spans_supports_precise_timing_template_fields():
+    phrases = [Phrase(1.0, 1.5, "What?")]
+
+    spans = k_audio_timeline.build_prompt_spans(
+        phrases,
+        fps=24.0,
+        duration_frames=48,
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_seconds:.2f}-{end_seconds:.2f}s",
+        pause_threshold_seconds=0.2,
+    )
+
+    assert spans == [
+        (0, 24, "pause 0.00-1.00s"),
+        (24, 36, 'frames 024-035: "What?"'),
+        (36, 48, "pause 1.50-2.00s"),
+    ]
+
+
+def test_timeline_data_offsets_transcript_timing(monkeypatch, tmp_path: Path):
+    audio = tmp_path / "line.mp3"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(k_audio_timeline, "_resolve_input_file", lambda _name: audio)
+    monkeypatch.setattr(
+        k_audio_timeline,
+        "transcribe_words",
+        lambda *_args, **_kwargs: [Word(0.0, 0.5, "What?")],
+    )
+    timeline_data = json.dumps(
+        {
+            "segments": [{"imageFile": "bear.png", "start": 0, "length": 120}],
+            "audioSegments": [
+                {
+                    "audioFile": "line.mp3",
+                    "start": 24,
+                    "trimStart": 0,
+                    "length": 65,
+                }
+            ],
+        }
+    )
+
+    node = k_audio_timeline.KoolookAudioTranscriptTimeline()
+    _timeline_data, local_prompts, segment_lengths, transcript_json = node.run(
+        audio_file="ignored.mp3",
+        image_file="ignored.png",
+        duration_frames=120,
+        frame_rate=24.0,
+        audio_length_frames=0,
+        model_size_or_path="base.en",
+        device="cpu",
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_frame:03d}-{end_frame:03d}",
+        max_phrase_seconds=1.2,
+        max_words=6,
+        gap_seconds=0.45,
+        pause_threshold_seconds=0.2,
+        timeline_data=timeline_data,
+    )
+
+    assert 'frames 024-035: "What?"' in local_prompts
+    assert segment_lengths == "24,12,84"
+    assert json.loads(transcript_json)["phrases"][0]["start"] == 1.0
+
+
 def test_build_timeline_data_builds_comfy_director_fields():
     phrases = [Phrase(0.0, 0.5, "Hello.")]
 
