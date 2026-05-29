@@ -24,15 +24,16 @@ custom-node list you also need:
   [`../../../../forks/whatdreamscost_koolook/`](../../../../forks/whatdreamscost_koolook/)
   and is wired into [`../../../../__init__.py`](../../../../__init__.py). On
   ComfyUI startup you should see both `LTX Director` (upstream) and
-  `LTX Director (Koolook v1.3.2)` in the node picker.
+  `LTX Director (Koolook)` in the node picker.
 
 ## 2. Workflow file
 
 - [ ] Save the audio-lipsync workflow as
   `<workflow root>/LTX-23-audio_tests_v01.json` (or whatever filename your
   working folder uses). The Director node must be
-  **`LTX Director (Koolook v1.3.2)`** (registered ID
-  `LTXDirector__koolook_v1_3_2`), not the upstream `LTX Director`.
+  **`LTX Director (Koolook)`** (registered ID
+  `LTXDirector__koolook`), not the upstream `LTX Director`. Workflows
+  saved with `LTXDirector__koolook_v1_3_2` still load as a legacy alias.
 - [ ] On the Koolook Director, the `relay_overrides` widget sits at the
   bottom of the node. Start with an empty string for a regression check
   against upstream-default behaviour, then iterate.

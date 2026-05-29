@@ -12,8 +12,15 @@ Prompt-Relay implementation).
 
 Current active version:
 
+- `v1_3_9` — current audio-lipsync loop target. Based on upstream
+  WhatDreamsCost-ComfyUI commit `3b65410` (pyproject/README version
+  `1.3.9`; no `v1.3.9` git tag at fork time), with the Koolook
+  `relay_overrides` and per-segment-sigma patches carried forward. New
+  workflows use stable node ID `LTXDirector__koolook`; older
+  `LTXDirector__koolook_v1_3_2` workflows load through an alias.
 - `v1_3_2` — see [`forks/THIRD_PARTY.md`](../THIRD_PARTY.md) for upstream
-  attribution and what changed locally. Tracks
+  attribution and what changed locally. Kept registered for saved-workflow
+  compatibility. Tracks
   [WhatDreamsCost/WhatDreamsCost-ComfyUI](https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI)
   at commit `e81223a`. License: GPL-3.0 (compatible with this pack).
 

@@ -62,9 +62,11 @@ Two upstream files modified, one vendored verbatim:
 | `ltx_director.py` | Adds a `relay_overrides` multiline JSON input on the LTXDirector node. Underscore-prefixed keys ignored (inline JSON comments). | Per-render knob sweeps without editing the fork file. Workflow JSON carries the override; reproducible across machines. |
 | `patches.py` | **Unmodified**. Vendored verbatim because `ltx_director.py` imports `detect_model_type, apply_patches` from it. | Self-contained fork; no runtime dependency on the user's upstream WhatDreamsCost install for these two functions. |
 
-The fork is loaded as `LTXDirector__koolook_v1_3_2` (display name
-*"LTX Director (Koolook v1.3.2)"*). Upstream `LTXDirector` continues to
-exist in the node picker for A/B comparison.
+The fork is loaded as `LTXDirector__koolook` (display name
+*"LTX Director (Koolook)"*). Older workflows saved as
+`LTXDirector__koolook_v1_3_2` still load through a compatibility alias.
+Upstream `LTXDirector` continues to exist in the node picker for A/B
+comparison.
 
 ## Hypothesis space being swept
 

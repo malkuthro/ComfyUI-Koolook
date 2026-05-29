@@ -12,9 +12,9 @@ Two — and only two — source families feed this card:
   1. The five ``Text Multiline`` nodes tracked by the loop config
      (name / relay_overrides / overlay - info / overlay - feedback /
      working_folder).
-  2. The ``LTXDirector__koolook_v1_3_2`` node's own widget values and
-     input-socket wiring (epsilon, frame_rate, duration_frames/seconds,
-     timeline_data segments + audioSegments, use_custom_audio toggle,
+  2. The ``LTXDirector__koolook`` node's own widget values and
+     input-socket wiring (epsilon, frame_rate, timeline_data segments +
+     audioSegments, use_custom_audio toggle,
      audio_vae link state).
 
 Notably absent: BasicScheduler / KSamplerSelect / RandomNoise /

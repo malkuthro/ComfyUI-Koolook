@@ -704,7 +704,7 @@ class TimelineEditor {
     }
 
     // Polling is much more reliable in Comfy than ResizeObserver due to scale transforms
-    this._renderLoop = requestAnimationFrame(this.checkResize.bind(this));
+    this._renderLoop = requestAnimationFrame(() => this.checkResize());
   }
 
   destroy() {
@@ -1014,8 +1014,8 @@ class TimelineEditor {
 
     this.viewport.appendChild(this.canvas);
 
-    this.canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
-    this.canvas.addEventListener("contextmenu", this.onContextMenu.bind(this));
+    this.canvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
+    this.canvas.addEventListener("contextmenu", (e) => this.onContextMenu(e));
     this.canvas.style.height = `${CANVAS_HEIGHT}px`;
 
     // --- Content Area Container ---
@@ -1139,8 +1139,8 @@ class TimelineEditor {
       }
     });
 
-    window.addEventListener("mousemove", this.onMouseMove.bind(this));
-    window.addEventListener("mouseup", this.onMouseUp.bind(this));
+    window.addEventListener("mousemove", (e) => this.onMouseMove(e));
+    window.addEventListener("mouseup", (e) => this.onMouseUp(e));
 
     // --- Player Controls ---
     const playerControls = document.createElement("div");
@@ -1370,7 +1370,7 @@ class TimelineEditor {
       this.canvas.style.width = newCanvasWidth + "px";
       this.resizeCanvas(newCanvasWidth);
     }
-    this._renderLoop = requestAnimationFrame(this.checkResize.bind(this));
+    this._renderLoop = requestAnimationFrame(() => this.checkResize());
   }
 
   getRenderScale() {
@@ -1642,34 +1642,20 @@ class TimelineEditor {
     const mode = this.displayModeWidget ? this.displayModeWidget.value : "seconds";
 
     if (this.durationFramesWidget) {
-      const isVisible = mode === "frames";
-      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
-      // We keep the type as "INT" and use computeSize to hide it.
+      // Always visible regardless of display mode
       this.durationFramesWidget.type = "INT";
       if (!this.durationFramesWidget.options) this.durationFramesWidget.options = {};
-      this.durationFramesWidget.options.hidden = !isVisible;
-      this.durationFramesWidget.hidden = !isVisible;
-
-      if (isVisible) {
-        delete this.durationFramesWidget.computeSize;
-      } else {
-        this.durationFramesWidget.computeSize = () => [0, 0];
-      }
+      this.durationFramesWidget.options.hidden = false;
+      this.durationFramesWidget.hidden = false;
+      delete this.durationFramesWidget.computeSize;
     }
     if (this.durationSecondsWidget) {
-      const isVisible = mode === "seconds";
-      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
-      // We keep the type as "FLOAT" and use computeSize to hide it.
+      // Always visible regardless of display mode
       this.durationSecondsWidget.type = "FLOAT";
       if (!this.durationSecondsWidget.options) this.durationSecondsWidget.options = {};
-      this.durationSecondsWidget.options.hidden = !isVisible;
-      this.durationSecondsWidget.hidden = !isVisible;
-
-      if (isVisible) {
-        delete this.durationSecondsWidget.computeSize;
-      } else {
-        this.durationSecondsWidget.computeSize = () => [0, 0];
-      }
+      this.durationSecondsWidget.options.hidden = false;
+      this.durationSecondsWidget.hidden = false;
+      delete this.durationSecondsWidget.computeSize;
     }
 
     // Force node resize and redraw deferred to next tick
@@ -3717,14 +3703,14 @@ class TimelineEditor {
 
         if (playDurationSec <= 0) continue;
 
-        const source = this.audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(this.audioContext.destination);
+        const bufferNode = this.audioContext.createBufferSource();
+        bufferNode.buffer = audioBuffer;
+        bufferNode["connect"](this.audioContext.destination);
 
         const startTime = this.audioContext.currentTime + waitTimeSec;
-        source.start(startTime, fileOffsetSec, playDurationSec);
+        bufferNode.start(startTime, fileOffsetSec, playDurationSec);
 
-        this.activeAudioNodes.push(source);
+        this.activeAudioNodes.push(bufferNode);
       } catch (err) {
         console.error("Playback decode error for segment:", err);
       }
@@ -3795,20 +3781,10 @@ const APPENDED_WIDGET_DEFAULTS = [
   ["segment_lengths", ""],
 ];
 
-// KOOLOOK FORK (v1.3.2): mounts the upstream LTX Director timeline-editor
-// widget on the Koolook variant of the node (node_id
-// `LTXDirector__koolook_v1_3_2`, display "LTX Director (Koolook v1.3.2)").
-// Two string changes vs upstream:
-//   - extension name suffixed `_Koolook_v1_3_2` so it doesn't collide
-//     with the upstream extension (both load in parallel)
-//   - the node-name match now targets the Koolook-suffixed registry ID
-// Everything else (canvas, timeline, image strip, audio strip,
-// image-compression handling, segment editing) is byte-identical to
-// upstream e81223a.
 app.registerExtension({
-  name: "LTXDirector_Koolook_v1_3_2",
+  name: "LTXDirector_Koolook",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
-    if (nodeData.name === "LTXDirector__koolook_v1_3_2") {
+    if (nodeData.name === "LTXDirector__koolook" || nodeData.name === "LTXDirector__koolook_v1_3_2") {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
       nodeType.prototype.onNodeCreated = function () {

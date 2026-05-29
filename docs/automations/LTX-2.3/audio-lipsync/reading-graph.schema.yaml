@@ -33,9 +33,10 @@ source_families:
     description: >
       The Koolook fork of LTXDirector. Card reads both widget values AND
       input-socket wiring (audio_vae link is what gates audio production
-      at runtime — see forks/whatdreamscost_koolook/versions/v1_3_2/
-      ltx_director.py:610-622).
-    type: LTXDirector__koolook_v1_3_2
+      at runtime — see forks/whatdreamscost_koolook/versions/v1_3_9/
+      ltx_director.py).
+    type: LTXDirector__koolook
+    legacy_type: LTXDirector__koolook_v1_3_2
     upstream: WhatDreamsCost-ComfyUI LTXDirector at e81223a
     widget_order:
       # Empirical — frontend serialises widgets in legacy upstream order;
@@ -100,7 +101,8 @@ audio_state_machine:
     - label: "(no director)"
       condition: director_present == false
       runtime_behavior: >
-        No `LTXDirector__koolook_v1_3_2` node on the canvas. Loop runs
+        No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2`
+        node on the canvas. Loop runs
         but the relay_overrides / per-segment σ patches are unreachable —
         whatever produced the render did so through a different node.
         Surfaced distinctly so a missing-Director workflow doesn't
@@ -149,7 +151,7 @@ state_dict:
     work_folder:         { source: "pick_existing_path(multilines.working_folder)" }
   director_derived:
     director_node:       { source: "extract_director(nodes)" }
-    director_variant:    { source: "LTXDirector__koolook_v1_3_2 OR '(missing)'" }
+    director_variant:    { source: "actual Director node type OR '(missing)'" }
     audio_src:           { source: "derive_audio_state(director_node, timeline)" }
     epsilon:             { source: "director.widgets_values[6]" }
     frame_rate:          { source: "director.widgets_values[9]" }
@@ -313,8 +315,8 @@ related_files:
     - scripts/make_card.py            # sibling renderer for base-1step
     - scripts/sync_to_dev_audio.py    # dev-sync-audio chat phrase
   fork:
-    - forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py
-    - forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py
+    - forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py
+    - forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py
   module_docs:
     - docs/automations/LTX-2.3/audio-lipsync/README.md
     - docs/automations/LTX-2.3/audio-lipsync/CHEATSHEET.md

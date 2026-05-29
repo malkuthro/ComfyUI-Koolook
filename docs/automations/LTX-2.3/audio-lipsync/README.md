@@ -15,8 +15,8 @@ that preserves video coherence with the external audio.
 
 ## What the Koolook fork ships
 
-Lives at [`../../../../forks/whatdreamscost_koolook/versions/v1_3_2/`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/),
-loaded by ComfyUI as `LTX Director (Koolook v1.3.2)` in the picker. Two upstream
+Lives at [`../../../../forks/whatdreamscost_koolook/versions/v1_3_9/`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/),
+loaded by ComfyUI as `LTX Director (Koolook)` in the picker. Two upstream
 modifications:
 
 ### Modification 1 — per-segment σ in `prompt_relay.py`
@@ -73,46 +73,50 @@ audio-lipsync/
 └── runs/                ← iteration log + per-render snapshots
     ├── LOOP.md          ← the iteration protocol
     ├── log.md           ← rolling table — one row per render, always
-    └── run-NNN_<label>/  ← only created when maintainer says "keep" / "save run"
+    └── run-NNN_<label>/  ← created by each `loop-audio` capture
         ├── workflow.json
         ├── relay_overrides.txt
         ├── patch_state.txt
         └── notes.md
 ```
 
-Every render adds a row to `log.md`. The heavier `run-NNN/` snapshot
-folders are created **only on request** — when the maintainer asks to
-"keep", "save run", or "save this" in chat. Renders during a fast knob
-sweep don't accumulate folder noise.
+Each `loop-audio` capture adds a row to `log.md` and creates a matching
+`run-NNN/` snapshot folder. The folder number is derived from both
+existing folders and `log.md`, so a missing folder cannot make the next
+capture reuse an already logged number.
 
 ## Iteration loop
 
 1. **Edit a knob.** Either:
    - **Widget-only swap** — change `relay_overrides` JSON on the LTXDirector node in ComfyUI. No sync, no restart; just queue.
    - **Code-level change** — edit
-     [`../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/prompt_relay.py)
-     or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py)
+     [`../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py)
+     or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py)
      in this repo. Then run **`dev-sync-audio`** (chat phrase or directly
      [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) — a scoped variant of `dev-sync` that copies just the fork dir + the root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, leaves `forks/radiance_koolook/` and the rest of the tree alone, then triggers a ComfyUI-Manager reboot so the Python module re-imports. User-initiated only — same rule as `dev-sync`; see project `CLAUDE.md`.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
-5. **Agent appends a row** to [`runs/log.md`](runs/log.md). If you say **"keep"**, **"save run"**, or **"save this"**, it also creates `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + notes). Without that trigger, no folder.
+5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + notes).
 
 See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
 
 ## Workflow JSON — Koolook node ID
 
-The test workflow uses `LTXDirector__koolook_v1_3_2` (display name *"LTX
-Director (Koolook v1.3.2)"*), not the upstream `LTXDirector`. Both appear
-in ComfyUI's node picker side-by-side — upstream stays vanilla, the Koolook
-variant carries our two modifications.
+New workflows should use the stable node ID `LTXDirector__koolook` (display
+name *"LTX Director (Koolook)"*), not the upstream `LTXDirector`. Old
+workflows saved with `LTXDirector__koolook_v1_3_2` still load through a
+compatibility alias backed by the same v1.3.9 implementation, so future
+fork upgrades do not require repeated node replacement.
+
+The upstream node and the Koolook variant still appear side-by-side —
+upstream stays vanilla, the Koolook variant carries our two modifications.
 
 If you're starting from an existing workflow that wires the upstream
 `LTXDirector`:
 
 1. Open the workflow in ComfyUI.
-2. Right-click the `LTX Director` node → **Convert / Replace** with `LTX Director (Koolook v1.3.2)`. Same input/output socket layout — wires are preserved.
+2. Right-click the `LTX Director` node → **Convert / Replace** with `LTX Director (Koolook)`. Same input/output socket layout — wires are preserved.
 3. The new `relay_overrides` widget appears at the bottom of the node — paste your JSON there (empty field is fine).
 4. `Workflow → Save (API Format)` into the working folder.
 
@@ -123,7 +127,7 @@ install is untouched.
 
 ## Reverting changes to the fork
 
-Edits to `forks/whatdreamscost_koolook/versions/v1_3_2/*.py` are normal
+Edits to `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` are normal
 git-tracked changes — `git restore` / `git stash` work as usual. Once
 `dev-sync-audio` is run, the running ComfyUI install is updated; the
 auto-restart triggered at the end of the sync re-imports the Python

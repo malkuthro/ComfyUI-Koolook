@@ -34,6 +34,7 @@ _spec.loader.exec_module(loop_audio)
 
 def _director(
     *,
+    node_type: str = "LTXDirector__koolook",
     use_custom_audio: bool = False,
     audio_vae_link: int | None = None,
     timeline: dict | None = None,
@@ -65,13 +66,25 @@ def _director(
         "",                # 16 relay_overrides
     ]
     return {
-        "type": "LTXDirector__koolook_v1_3_2",
+        "type": node_type,
         "widgets_values": wv,
         "inputs": [
             {"name": "audio_vae", "link": audio_vae_link},
             {"name": "use_custom_audio", "link": None},
         ],
     }
+
+
+# --- extract_director — stable ID plus legacy alias -------------------------
+
+
+@pytest.mark.parametrize(
+    "node_type",
+    ["LTXDirector__koolook", "LTXDirector__koolook_v1_3_2"],
+)
+def test_extract_director_accepts_stable_and_legacy_ids(node_type):
+    node = _director(node_type=node_type)
+    assert loop_audio.extract_director([{"type": "LTXDirector"}, node]) is node
 
 
 # --- derive_audio_state — 5 distinct states --------------------------------
@@ -162,14 +175,14 @@ def test_extract_multilines_first_match_wins_per_node():
     """A node's title can match multiple needles. The loop should
     record at most one match per node (the longest) to avoid
     double-counting."""
-    nodes = [_multiline("NAME_OVERLAY", "shouldn't match overlay")]
+    nodes = [_multiline("NAME overlay - info combined", "one node")]
     out = loop_audio.extract_multilines(
         nodes, ["name", "overlay - info"]
     )
-    # "name" matches; "overlay - info" doesn't (substring "overlay"
-    # alone isn't enough — the needle is "overlay - info").
-    assert out["name"] == ["shouldn't match overlay"]
-    assert out["overlay - info"] == []
+    # Both needles match the title, but the longer one wins and the
+    # per-node break keeps the same node from being counted twice.
+    assert out["name"] == []
+    assert out["overlay - info"] == ["one node"]
 
 
 def test_extract_multilines_ignores_non_text_multiline_nodes():
@@ -317,6 +330,19 @@ def test_parse_feedback_preserves_zero_as_score():
     assert scores == {"motion": 0, "sync": 0, "sharp": 0}
 
 
+def test_render_log_row_preserves_zero_scores():
+    row = loop_audio.render_log_row(
+        3,
+        _director(),
+        "",
+        "model-gen",
+        {"segments": [], "audioSegments": []},
+        {"motion": 0, "sync": 0, "sharp": 0},
+        [],
+    )
+    assert "M0·S0·Sh0" in row
+
+
 def test_parse_feedback_accepts_sharpness_alias():
     """Both 'sharp' and 'sharpness' are accepted axis names. Both map
     to the 'sharp' key."""
@@ -434,3 +460,16 @@ def test_autogen_label_when_director_present():
     assert "koolook" in label
     assert "audio-on" in label
     assert "vstr10.0" in label
+
+
+def test_next_run_number_reads_folders_and_log(tmp_path):
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "run-001_alpha").mkdir()
+    (runs / "log.md").write_text(
+        "| Run | Date |\n"
+        "|---|---|\n"
+        "| 002 | 2026-05-29 |\n",
+        encoding="utf-8",
+    )
+    assert loop_audio.next_run_number(runs) == 3
