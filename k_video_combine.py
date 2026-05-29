@@ -32,8 +32,14 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional, Tuple
+
+try:
+    from .koolook_versioning import resolve_version_token
+except ImportError:  # pragma: no cover - standalone (pytest / tooling)
+    from koolook_versioning import resolve_version_token
 
 try:
     import folder_paths  # ComfyUI core; always present at runtime.
@@ -335,6 +341,205 @@ def _remove_audio_suffix_from_result(result, keep_silent_intermediate: bool):
     return result
 
 
+# VHS appends a zero-padded counter to every output (e.g. ``clip_00001.mp4``).
+# Strict-version mode strips it so the filename is exactly ``<root>_<token>``.
+_COUNTER_RE = re.compile(r"_\d{5}$")
+
+
+def _build_sidecar_workflow(prompt, extra_pnginfo, creation_time):
+    """Build the JSON sidecar as a **drag-loadable ComfyUI workflow**.
+
+    ComfyUI restores a workflow from the litegraph graph at the TOP LEVEL of
+    the JSON (``nodes`` / ``links`` / ``last_node_id`` ...). That graph is
+    carried in ``extra_pnginfo['workflow']``, so we write it directly —
+    dropping the sidecar onto the canvas reloads the graph, exactly like
+    ComfyUI's own "Save". ``CreationTime`` is tucked into the graph's
+    ``extra`` so it is preserved without breaking loadability.
+
+    Falls back to ``{CreationTime, prompt}`` when no litegraph graph is
+    available (e.g. the headless / API ``/prompt`` path, which carries only
+    the API-format prompt, not a positioned graph) so the sidecar is never
+    empty — just not drag-loadable in that case.
+    """
+    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+    if isinstance(workflow, dict) and "nodes" in workflow:
+        graph = dict(workflow)
+        extra = dict(graph.get("extra") or {})
+        extra.setdefault("CreationTime", creation_time)
+        graph["extra"] = extra
+        return graph
+    payload = {"CreationTime": creation_time}
+    if prompt is not None:
+        payload["prompt"] = prompt
+    return payload
+
+
+def _append_version_to_prefix(prefix: str, token: str) -> str:
+    """Suffix the path-prefix's filename root with ``_<token>``.
+
+    ``effective_prefix`` always ends in a filename component at the call site
+    (``_compose_prefix`` guarantees a name root, never a bare directory), so the
+    token attaches directly to the end — e.g. ``E:/renders/clip`` ->
+    ``E:/renders/clip_v001``.
+    """
+    if not token:
+        return prefix
+    return f"{prefix}_{token}"
+
+
+def _coerce_version_input(raw):
+    """Defend the ``version`` field against a stale boolean.
+
+    Removing the old ``keep_silent_intermediate`` BOOLEAN widget shifts a saved
+    workflow's stored value into the new same-position ``version`` STRING slot
+    (widgets serialize by index — see docs/maintainers/node-versioning.md). A
+    leftover bool would otherwise become the literal token ``"False"`` / ``"True"``
+    and silently force strict mode (``clip_False.mp4``). Treat any boolean — or
+    its string form — as "no version" so old workflows fall back to the legacy
+    counter, exactly as before.
+    """
+    if isinstance(raw, bool):
+        return ""
+    if str(raw).strip().lower() in ("true", "false"):
+        return ""
+    return raw
+
+
+def _write_sidecar(json_path: str, metadata_payload: dict) -> bool:
+    """Write the metadata JSON sidecar to ``json_path``. True on success."""
+    try:
+        Path(json_path).write_text(
+            json.dumps(metadata_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return True
+    except Exception as exc:
+        print(f"[Easy_VideoCombine] metadata JSON sidecar skipped: {exc!r}")
+        return False
+
+
+def _strip_counter_path(path_str: str, enable_overwrite: bool) -> str:
+    """Rename a rendered video to drop VHS's trailing ``_NNNNN`` counter.
+
+    Collision: if the counter-free name already exists and ``enable_overwrite``
+    is False, keep the counter (return the original path) so nothing is
+    clobbered; if True, replace it. Returns the resulting path string.
+    """
+    p = Path(path_str)
+    stripped = _COUNTER_RE.sub("", p.stem)
+    if stripped == p.stem:
+        return path_str
+    candidate = p.with_name(stripped + p.suffix)
+    if candidate == p:
+        return path_str
+    if candidate.exists():
+        if not enable_overwrite:
+            print(
+                f"[Easy_VideoCombine] {candidate.name} exists; kept counter "
+                f"suffix to avoid overwrite (enable_overwrite to replace)."
+            )
+            return path_str
+        candidate.unlink()
+        print(f"[Easy_VideoCombine] replaced existing {candidate.name}.")
+    p.replace(candidate)
+    return str(candidate)
+
+
+def _finalize_strict_version_output(
+    result,
+    enable_overwrite: bool,
+    metadata_payload: dict,
+    save_metadata_json: bool,
+    save_metadata_png: bool = False,
+):
+    """Strict-version finalize: strip VHS's ``_NNNNN`` counter from the final
+    video so the name is exactly ``<root>_<token>.<ext>``, align a kept
+    metadata PNG to the same stem, and write the JSON sidecar beside them.
+
+    Collision is handled in :func:`_strip_counter_path` (lossless unless
+    ``enable_overwrite``); the sidecar always matches the video's final name.
+    """
+    if not isinstance(result, dict):
+        return result
+    try:
+        output_files = result.get("result", ((None, []),))[0][1]
+        if not isinstance(output_files, list) or not output_files:
+            return result
+
+        new_video = _strip_counter_path(output_files[-1], enable_overwrite)
+        if new_video != output_files[-1]:
+            output_files[-1] = new_video
+            ui = result.get("ui", {})
+            gifs = ui.get("gifs", [])
+            if gifs and isinstance(gifs[0], dict):
+                gifs[0]["filename"] = os.path.basename(new_video)
+                gifs[0]["fullpath"] = new_video
+        video_stem_path = os.path.splitext(new_video)[0]
+
+        # Keep the metadata PNG (when requested) under the video's stem so the
+        # PNG/JSON/video trio share one name; otherwise it's dropped below.
+        if (
+            save_metadata_png
+            and isinstance(output_files[0], str)
+            and output_files[0].lower().endswith(".png")
+            and output_files[0] != new_video
+        ):
+            png = Path(output_files[0])
+            aligned = png.with_name(os.path.basename(video_stem_path) + png.suffix)
+            if aligned != png:
+                try:
+                    if aligned.exists():
+                        aligned.unlink()
+                    png.replace(aligned)
+                    output_files[0] = str(aligned)
+                except OSError as exc:
+                    print(f"[Easy_VideoCombine] metadata PNG rename skipped: {exc!r}")
+
+        if save_metadata_json:
+            json_path = video_stem_path + ".json"
+            if _write_sidecar(json_path, metadata_payload):
+                if save_metadata_png:
+                    if json_path not in output_files:
+                        output_files.append(json_path)
+                elif (
+                    isinstance(output_files[0], str)
+                    and output_files[0].lower().endswith(".png")
+                ):
+                    output_files[0] = json_path
+                elif json_path not in output_files:
+                    output_files.insert(0, json_path)
+                ui = result.get("ui", {})
+                gifs = ui.get("gifs", [])
+                if (
+                    gifs
+                    and isinstance(gifs[0], dict)
+                    and str(gifs[0].get("workflow", "")).endswith(".png")
+                ):
+                    gifs[0]["workflow"] = os.path.basename(json_path)
+    except Exception as exc:
+        print(f"[Easy_VideoCombine] strict-version finalize skipped: {exc!r}")
+    return result
+
+
+def _finalize_output(
+    result,
+    version_token: str,
+    enable_overwrite: bool,
+    metadata_payload: dict,
+    save_metadata_json: bool,
+    save_metadata_png: bool,
+):
+    """Route to strict-version finalize (token set -> counter stripped) or the
+    legacy sidecar attach (token empty -> VHS counter kept)."""
+    if version_token:
+        return _finalize_strict_version_output(
+            result, enable_overwrite, metadata_payload, save_metadata_json, save_metadata_png
+        )
+    return _add_metadata_json_sidecar(
+        result, metadata_payload, save_metadata_json, save_metadata_png
+    )
+
+
 if _VHS_AVAILABLE:
     class Easy_VideoCombine(_VHS_VideoCombine):
         """Video Combine variant with absolute-path output."""
@@ -403,11 +608,28 @@ if _VHS_AVAILABLE:
                     "tooltip": "Save workflow metadata as a JSON sidecar.",
                 },
             )
-            types["optional"]["keep_silent_intermediate"] = (
+            types["optional"]["version"] = (
+                "STRING",
+                {
+                    "default": "",
+                    "tooltip": (
+                        "Strict version token (e.g. 'v001'), typically wired "
+                        "from a global version node. When set, the output is "
+                        "named exactly <prefix>_<version>.<ext> with NO automatic "
+                        "_NNNNN counter. Leave empty to keep VHS's automatic "
+                        "counter (the casual default)."
+                    ),
+                },
+            )
+            types["optional"]["enable_overwrite"] = (
                 "BOOLEAN",
                 {
                     "default": False,
-                    "tooltip": "Keep the audio-less intermediate video when audio is muxed in.",
+                    "tooltip": (
+                        "Strict-version mode only. If the versioned filename "
+                        "already exists: on = replace it; off = keep VHS's "
+                        "counter for this render so nothing is overwritten."
+                    ),
                 },
             )
             return types
@@ -447,13 +669,21 @@ if _VHS_AVAILABLE:
                 kwargs.pop("keep_silent_intermediate", False),
                 default=False,
             )
-            metadata_payload = {
-                "CreationTime": datetime.datetime.now().isoformat(" ")[:19],
-            }
-            if kwargs.get("prompt") is not None:
-                metadata_payload["prompt"] = kwargs.get("prompt")
-            if kwargs.get("extra_pnginfo") is not None:
-                metadata_payload.update(kwargs.get("extra_pnginfo") or {})
+            enable_overwrite = _normalize_bool_input(
+                kwargs.pop("enable_overwrite", False),
+                default=False,
+            )
+            # Strict versioning: a wired/typed token replaces VHS's automatic
+            # _NNNNN counter with a deterministic <prefix>_<token>.<ext> name.
+            # Empty -> the counter stays (the casual, non-professional default).
+            version_token = resolve_version_token(
+                _coerce_version_input(kwargs.pop("version", ""))
+            )
+            metadata_payload = _build_sidecar_workflow(
+                kwargs.get("prompt"),
+                kwargs.get("extra_pnginfo"),
+                datetime.datetime.now().isoformat(" ")[:19],
+            )
 
             # Inject VHS's hidden extra_options flags so upstream handles
             # metadata PNG and silent-intermediate cleanup according to
@@ -476,6 +706,10 @@ if _VHS_AVAILABLE:
             # slipped past per-field normalization (e.g. a path that
             # already carried `\undefined\` as a literal segment).
             effective_prefix = _strip_sentinel_components(effective_prefix)
+            # Strict versioning bakes the token into the filename root; VHS
+            # then appends its counter, which _finalize_output strips back off.
+            if version_token:
+                effective_prefix = _append_version_to_prefix(effective_prefix, version_token)
             if effective_prefix != filename_prefix:
                 kwargs["filename_prefix"] = effective_prefix
                 filename_prefix = effective_prefix
@@ -487,8 +721,10 @@ if _VHS_AVAILABLE:
                     result,
                     keep_silent_intermediate,
                 )
-                return _add_metadata_json_sidecar(
+                return _finalize_output(
                     result,
+                    version_token,
+                    enable_overwrite,
                     metadata_payload,
                     save_metadata_json,
                     save_metadata_png,
@@ -524,8 +760,10 @@ if _VHS_AVAILABLE:
                     result,
                     keep_silent_intermediate,
                 )
-                return _add_metadata_json_sidecar(
+                return _finalize_output(
                     result,
+                    version_token,
+                    enable_overwrite,
                     metadata_payload,
                     save_metadata_json,
                     save_metadata_png,

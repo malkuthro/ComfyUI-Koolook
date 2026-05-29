@@ -69,6 +69,7 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 
 - **Name:** ComfyUI-VideoHelperSuite (Kosinkadink)
 - **Upstream repo URL:** https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
+- **Upstream version/commit used:** v1.7.7 — commit `0edce8ef7ce173ac97a3ed3d6f4636029d1a4530` (VHS has no git tags; pinned by commit)
 - **License:** GPL-3.0 (verified 2026-05-16 via raw `LICENSE` fetch)
 - **Local path(s):** [`k_video_combine.py`](../k_video_combine.py)
   — exposed as the `Easy_VideoCombine` ComfyUI node ID (display name
@@ -110,7 +111,7 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 - **Upstream PR plan:** the same `isabs` discrimination is a candidate
   to upstream into VHS proper. If/when accepted, `Easy_VideoCombine`
   can be deprecated in favour of `VHS_VideoCombine` directly.
-- **Last reviewed:** 2026-05-16
+- **Last reviewed:** 2026-05-28
 
 ### fxtdstudios/radiance — v2.3.3 VAE subset (Koolook fork)
 

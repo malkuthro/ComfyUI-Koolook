@@ -1,6 +1,11 @@
 import ntpath
 import os
 
+try:
+    from .koolook_versioning import resolve_version_token
+except ImportError:  # pragma: no cover - standalone (pytest / tooling)
+    from koolook_versioning import resolve_version_token
+
 
 _SENTINEL_STRINGS = ("undefined", "null", "none")
 
@@ -164,13 +169,9 @@ class EasyAIPipeline:
                     "multiline": False,
                     "tooltip": "Free-form method tag (e.g. v2v, upscale, denoise). When set, joined into the filename with underscores. Also added as a subfolder unless no_subfolders is on. Leave blank to skip — no dangling _ in the filename, no empty subfolder.",
                 }),
-                "version": ("INT", {
-                    "default": 1,
-                    "min": 0,
-                    "max": 999,
-                    "step": 1,
-                    "display": "number",
-                    "tooltip": "Integer version, formatted as v### in the path/filename. Ignored when disable_versioning is on.",
+                "version": ("STRING", {
+                    "default": "v001",
+                    "tooltip": "Version stamped as v###/<token> in the path and filename. Type it here, or convert this field to an input and wire a STRING (e.g. from a global version node). A bare number like '2' becomes v002; anything else (v001, final) is used verbatim. Ignored when disable_versioning is on.",
                 }),
                 "disable_versioning": ("BOOLEAN", {
                     "default": False,
@@ -184,7 +185,7 @@ class EasyAIPipeline:
                     "default": False,
                     "tooltip": "Don't add shot_name / ai_method as subfolders — both go into the filename only. The version folder (v###) is still added when disable_versioning is off, so versioned outputs stay organised under base/v###/. The base folder itself is created on the fly if missing.",
                 }),
-            }
+            },
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT", "STRING")
@@ -201,7 +202,7 @@ class EasyAIPipeline:
         # splitext returns ".exr " with the space, which doesn't match ".exr".
         # Strip all whitespace (internal + surrounding), not just control chars.
         extension = "".join(extension.split())
-        version_str = "" if disable_versioning else f"v{version:03d}"
+        version_str = resolve_version_token(version, disable_versioning)
 
         # Sanitize the segments that get joined onto base_directory_path. Without this an
         # absolute-looking shot_name like "/oops" or "C:/Windows" would escape the base via

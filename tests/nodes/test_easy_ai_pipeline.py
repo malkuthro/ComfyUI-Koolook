@@ -672,3 +672,102 @@ def test_shot_name_surrounding_whitespace_stripped(tmp_path: Path, dirty: str, c
 
     assert name == f"{clean}.%04d.exr"
     assert output_directory == f"{canonical}/{clean}"
+
+
+# ---------------------------------------------------------------------------
+# version — single STRING field (typed, or wired from a global version node)
+# ---------------------------------------------------------------------------
+#
+# The version field is a STRING: a bare number becomes vNNN (back-compat with
+# the old integer widget), any other token is used verbatim, and
+# disable_versioning is the master off-switch. A global version node wires
+# straight into this one field — there is no second input.
+
+
+class TestStringVersionField:
+    def test_string_token_used_verbatim(self, tmp_path: Path):
+        """A non-numeric token like ``final`` passes through verbatim into BOTH
+        output_directory and filename — not coerced into vNNN."""
+        base = tmp_path / "bear"
+        base.mkdir()
+        canonical = str(base).replace("\\", "/")
+
+        file_path, name, version_string, output_directory = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version="final", disable_versioning=False,
+        )
+
+        assert version_string == "final"
+        assert output_directory == f"{canonical}/shot/final"
+        assert name == "shot_final.exr"
+        assert file_path == f"{canonical}/shot/final/shot_final.exr"
+
+    def test_explicit_vnnn_token_used_verbatim(self, tmp_path: Path):
+        base = tmp_path / "bear"
+        base.mkdir()
+        canonical = str(base).replace("\\", "/")
+
+        _, name, version_string, output_directory = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version="v007", disable_versioning=False,
+        )
+
+        assert version_string == "v007"
+        assert output_directory == f"{canonical}/shot/v007"
+        assert name == "shot_v007.exr"
+
+    def test_bare_number_becomes_vnnn(self, tmp_path: Path):
+        """Convenience + back-compat: a bare integer string formats as vNNN."""
+        base = tmp_path / "bear"
+        base.mkdir()
+
+        _, name, version_string, _ = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version="2", disable_versioning=False,
+        )
+
+        assert version_string == "v002"
+        assert name == "shot_v002.exr"
+
+    def test_integer_value_still_supported(self, tmp_path: Path):
+        """A pre-existing workflow stored version as an INT; it arrives as a
+        number and must still format as vNNN despite the INT->STRING change."""
+        base = tmp_path / "bear"
+        base.mkdir()
+
+        _, name, version_string, _ = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version=5, disable_versioning=False,
+        )
+
+        assert version_string == "v005"
+        assert name == "shot_v005.exr"
+
+    def test_disable_versioning_is_master_off(self, tmp_path: Path):
+        """disable_versioning drops the version regardless of the field value."""
+        base = tmp_path / "bear"
+        base.mkdir()
+        canonical = str(base).replace("\\", "/")
+
+        _, name, version_string, output_directory = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version="v007", disable_versioning=True,
+        )
+
+        assert version_string == ""
+        assert output_directory == f"{canonical}/shot"
+        assert name == "shot.exr"
+
+    def test_empty_version_yields_no_token(self, tmp_path: Path):
+        base = tmp_path / "bear"
+        base.mkdir()
+        canonical = str(base).replace("\\", "/")
+
+        _, name, version_string, output_directory = _run(
+            str(base), shot_name="shot", ai_method="", extension=".exr",
+            version="", disable_versioning=False,
+        )
+
+        assert version_string == ""
+        assert output_directory == f"{canonical}/shot"
+        assert name == "shot.exr"

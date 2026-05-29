@@ -20,8 +20,12 @@ import pytest
 
 from k_video_combine import (
     _add_metadata_json_sidecar,
+    _append_version_to_prefix,
+    _build_sidecar_workflow,
+    _coerce_version_input,
     _compose_prefix,
     _display_format_name,
+    _finalize_strict_version_output,
     _metadata_sidecar_path,
     _normalize_bool_input,
     _normalize_text_input,
@@ -309,3 +313,158 @@ def test_koolook_format_display_hides_json_suffix() -> None:
 def test_koolook_format_runtime_restores_json_suffix() -> None:
     assert _runtime_format_name("video/koolook-ASTRA-h264") == "video/koolook-ASTRA-h264.json"
     assert _runtime_format_name("video/ProRes") == "video/ProRes"
+
+
+# =============================================================================
+# Strict versioning: a wired/typed version token replaces VHS's _NNNNN counter
+# with a deterministic <root>_<token>.<ext> name (the "professional" mode the
+# maintainer asked for). Empty token keeps the legacy counter.
+# =============================================================================
+
+def test_append_version_to_filename_root() -> None:
+    assert _append_version_to_prefix("AnimateDiff", "v001") == "AnimateDiff_v001"
+    assert _append_version_to_prefix("E:/renders/clip", "v001") == "E:/renders/clip_v001"
+    assert _append_version_to_prefix("E:\\renders\\clip", "v001") == "E:\\renders\\clip_v001"
+
+
+def test_append_version_no_token_is_noop() -> None:
+    assert _append_version_to_prefix("clip", "") == "clip"
+
+
+def test_strict_version_strips_counter_and_writes_matching_sidecar(tmp_path: Path) -> None:
+    """The headline contract: <root>_v001_00001.mp4 -> <root>_v001.mp4 with a
+    matching <root>_v001.json beside it."""
+    video = tmp_path / "clip_v001_00001.mp4"
+    video.write_bytes(b"render")
+    result = {
+        "ui": {"gifs": [{"filename": video.name, "fullpath": str(video)}]},
+        "result": ((True, [str(video)]),),
+    }
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=False,
+        metadata_payload={"CreationTime": "t", "prompt": {"1": {}}},
+        save_metadata_json=True,
+    )
+
+    clean = tmp_path / "clip_v001.mp4"
+    sidecar = tmp_path / "clip_v001.json"
+    assert clean.exists() and not video.exists()
+    assert sidecar.exists()
+    files = out["result"][0][1]
+    assert files[-1] == str(clean)
+    assert str(sidecar) in files
+    assert out["ui"]["gifs"][0]["filename"] == clean.name
+
+
+def test_strict_version_keeps_counter_on_collision_without_overwrite(tmp_path: Path) -> None:
+    """Lossless default: re-rendering an existing version keeps the counter so
+    the prior file is never clobbered; the sidecar matches the kept name."""
+    existing = tmp_path / "clip_v001.mp4"
+    existing.write_bytes(b"old")
+    video = tmp_path / "clip_v001_00002.mp4"
+    video.write_bytes(b"new")
+    result = {"result": ((True, [str(video)]),)}
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=False,
+        metadata_payload={"CreationTime": "t"},
+        save_metadata_json=True,
+    )
+
+    assert existing.read_bytes() == b"old"
+    assert video.exists()
+    assert (tmp_path / "clip_v001_00002.json").exists()
+    assert out["result"][0][1][-1] == str(video)
+
+
+def test_strict_version_replaces_on_collision_with_overwrite(tmp_path: Path) -> None:
+    """Deterministic by opt-in: enable_overwrite replaces the existing version."""
+    existing = tmp_path / "clip_v001.mp4"
+    existing.write_bytes(b"old")
+    video = tmp_path / "clip_v001_00002.mp4"
+    video.write_bytes(b"new")
+    result = {"result": ((True, [str(video)]),)}
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=True,
+        metadata_payload={"CreationTime": "t"},
+        save_metadata_json=True,
+    )
+
+    clean = tmp_path / "clip_v001.mp4"
+    assert clean.read_bytes() == b"new"
+    assert not video.exists()
+    assert out["result"][0][1][-1] == str(clean)
+
+
+def test_sidecar_is_drag_loadable_workflow_on_canvas() -> None:
+    """Canvas run: the sidecar IS the litegraph graph at top level, so dropping
+    it into ComfyUI reloads the workflow (not a metadata wrapper)."""
+    wf = {"last_node_id": 5, "nodes": [{"id": 1}], "links": []}
+    out = _build_sidecar_workflow({"1": {"class_type": "X"}}, {"workflow": wf}, "2026-05-29 01:00:00")
+    assert out["nodes"] == [{"id": 1}]
+    assert out["links"] == []
+    assert out["last_node_id"] == 5
+    assert out["extra"]["CreationTime"] == "2026-05-29 01:00:00"
+
+
+def test_sidecar_preserves_existing_workflow_extra() -> None:
+    wf = {"nodes": [], "extra": {"foo": "bar"}}
+    out = _build_sidecar_workflow(None, {"workflow": wf}, "t")
+    assert out["extra"] == {"foo": "bar", "CreationTime": "t"}
+
+
+def test_sidecar_falls_back_when_no_graph_available() -> None:
+    """Headless/API: no litegraph graph -> keep prompt + timestamp so the
+    sidecar is never empty (just not drag-loadable in that case)."""
+    out = _build_sidecar_workflow({"1": {"class_type": "X"}}, None, "2026-05-29 01:00:00")
+    assert out == {"CreationTime": "2026-05-29 01:00:00", "prompt": {"1": {"class_type": "X"}}}
+
+
+def test_sidecar_empty_inputs_still_timestamped() -> None:
+    out = _build_sidecar_workflow(None, None, "2026-05-29 01:00:00")
+    assert out == {"CreationTime": "2026-05-29 01:00:00"}
+
+
+def test_coerce_version_input_drops_stale_boolean() -> None:
+    """Back-compat guard: the removed keep_silent_intermediate BOOL must never
+    become a version token via the positional widget shift."""
+    assert _coerce_version_input(False) == ""
+    assert _coerce_version_input(True) == ""
+    assert _coerce_version_input("false") == ""
+    assert _coerce_version_input("True") == ""
+    assert _coerce_version_input("v001") == "v001"
+    assert _coerce_version_input("") == ""
+
+
+def test_strict_version_with_metadata_png_aligns_and_keeps_png(tmp_path: Path) -> None:
+    """strict + save_metadata_png: the PNG is renamed to the video's stem and
+    kept (not dropped), so video/png/json share one name."""
+    png = tmp_path / "clip_v001_00001.png"
+    png.write_bytes(b"img")
+    video = tmp_path / "clip_v001_00001.mp4"
+    video.write_bytes(b"vid")
+    result = {
+        "ui": {"gifs": [{"workflow": png.name}]},
+        "result": ((True, [str(png), str(video)]),),
+    }
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=False,
+        metadata_payload={"CreationTime": "t"},
+        save_metadata_json=True,
+        save_metadata_png=True,
+    )
+
+    files = out["result"][0][1]
+    assert (tmp_path / "clip_v001.mp4").exists()
+    assert (tmp_path / "clip_v001.png").exists()
+    assert (tmp_path / "clip_v001.json").exists()
+    assert str(tmp_path / "clip_v001.mp4") in files
+    assert str(tmp_path / "clip_v001.png") in files
+    assert str(tmp_path / "clip_v001.json") in files
