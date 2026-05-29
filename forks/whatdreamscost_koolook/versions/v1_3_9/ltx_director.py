@@ -32,6 +32,129 @@ log = logging.getLogger(__name__)
 GuideData = io.Custom("GUIDE_DATA")
 
 
+DEFAULT_AUDIO_TRANSCRIPT_PROMPT_TEMPLATE = (
+    'The character faces the camera and says "{text}". '
+    "The mouth, jaw, and lips clearly form the spoken words."
+)
+DEFAULT_AUDIO_TRANSCRIPT_PAUSE_PROMPT = (
+    "The character pauses between spoken words. "
+    "The mouth closes naturally while the face stays alive and attentive."
+)
+
+
+def _frame_from_seconds(value: float, frame_rate: float) -> int:
+    return max(0, int(round(float(value) * float(frame_rate))))
+
+
+def _first_timeline_image_file(timeline: dict) -> str:
+    for seg in timeline.get("segments", []):
+        image_file = seg.get("imageFile")
+        if image_file:
+            return image_file
+    return ""
+
+
+def _build_audio_transcript_spans(
+    phrases: list[dict],
+    *,
+    duration_frames: int,
+    frame_rate: float,
+    prompt_template: str = DEFAULT_AUDIO_TRANSCRIPT_PROMPT_TEMPLATE,
+    pause_prompt: str = DEFAULT_AUDIO_TRANSCRIPT_PAUSE_PROMPT,
+    pause_threshold_seconds: float = 0.2,
+) -> list[dict]:
+    clean_phrases = []
+    for phrase in phrases:
+        text = str(phrase.get("text", "")).strip()
+        if not text:
+            continue
+        try:
+            start = float(phrase.get("start", 0.0))
+            end = float(phrase.get("end", start))
+        except (TypeError, ValueError):
+            continue
+        clean_phrases.append({"start": start, "end": max(start, end), "text": text})
+
+    clean_phrases.sort(key=lambda item: item["start"])
+
+    spans = []
+    cursor = 0
+    pause_threshold = _frame_from_seconds(pause_threshold_seconds, frame_rate)
+    for phrase in clean_phrases:
+        start = min(duration_frames, _frame_from_seconds(phrase["start"], frame_rate))
+        end = min(duration_frames, max(start + 1, _frame_from_seconds(phrase["end"], frame_rate)))
+        if start >= duration_frames:
+            continue
+        if start - cursor >= pause_threshold:
+            spans.append({"start": cursor, "length": start - cursor, "prompt": pause_prompt})
+        elif start > cursor and spans:
+            spans[-1]["length"] += start - cursor
+        spans.append(
+            {
+                "start": start,
+                "length": max(1, end - start),
+                "prompt": prompt_template.format(text=phrase["text"]),
+            }
+        )
+        cursor = end
+
+    if duration_frames > cursor:
+        spans.append({"start": cursor, "length": duration_frames - cursor, "prompt": pause_prompt})
+
+    return [span for span in spans if int(span["length"]) > 0]
+
+
+def _apply_audio_transcript_json(
+    timeline_data: str,
+    local_prompts: str,
+    segment_lengths: str,
+    audio_transcript_json: str,
+    *,
+    duration_frames: int,
+    frame_rate: float,
+) -> tuple[str, str, str]:
+    if not str(audio_transcript_json or "").strip():
+        return timeline_data, local_prompts, segment_lengths
+
+    try:
+        transcript = json.loads(audio_transcript_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"audio_transcript_json is not valid JSON: {exc}") from exc
+
+    phrases = transcript.get("phrases")
+    if not isinstance(phrases, list):
+        raise ValueError("audio_transcript_json must contain a phrases list.")
+
+    timeline = json.loads(timeline_data) if str(timeline_data or "").strip() else {}
+    if not isinstance(timeline, dict):
+        timeline = {}
+
+    spans = _build_audio_transcript_spans(
+        phrases,
+        duration_frames=int(duration_frames),
+        frame_rate=float(frame_rate),
+    )
+    image_file = _first_timeline_image_file(timeline)
+    timeline["segments"] = [
+        {
+            "id": f"speech_{idx + 1:03d}",
+            "type": "image",
+            "start": int(span["start"]),
+            "length": int(span["length"]),
+            "prompt": span["prompt"],
+            **({"imageFile": image_file} if image_file else {}),
+        }
+        for idx, span in enumerate(spans)
+    ]
+    timeline.setdefault("audioSegments", [])
+
+    return (
+        json.dumps(timeline, ensure_ascii=False, separators=(",", ":")),
+        " | ".join(str(span["prompt"]) for span in spans),
+        ",".join(str(int(span["length"])) for span in spans),
+    )
+
+
 def _load_image_tensor(seg: dict) -> torch.Tensor:
     """Decode an image from the ComfyUI input folder (if imageFile provided) or fallback to base64
     to a ComfyUI-style image tensor of shape [1, H, W, 3], float32 in [0, 1]."""
@@ -471,6 +594,16 @@ class LTXDirector(io.ComfyNode):
                         "{\"video_strength\": 10.0}. Underscore-prefixed keys are ignored."
                     ),
                 ),
+                io.String.Input(
+                    "audio_transcript_json", multiline=True, default="",
+                    optional=True,
+                    tooltip=(
+                        "Koolook: optional timed speech transcript JSON. Paste or link "
+                        "{\"phrases\":[{\"start\":0,\"end\":0.5,\"text\":\"What?\"}]} "
+                        "to auto-build local_prompts, segment_lengths, and timeline_data "
+                        "before Prompt Relay conditioning runs."
+                    ),
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -489,7 +622,16 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False, relay_overrides="") -> io.NodeOutput:
+                use_custom_audio=False, relay_overrides="", audio_transcript_json="") -> io.NodeOutput:
+
+        timeline_data, local_prompts, segment_lengths = _apply_audio_transcript_json(
+            timeline_data,
+            local_prompts,
+            segment_lengths,
+            audio_transcript_json,
+            duration_frames=int(duration_frames),
+            frame_rate=float(frame_rate),
+        )
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}

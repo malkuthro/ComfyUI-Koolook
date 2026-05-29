@@ -113,10 +113,12 @@ has an optional helper for that gap.
 
 Inside ComfyUI, add `Koolook Audio Transcript Timeline`, set the same
 `audio_file`, `image_file`, duration, and FPS as the Director, then link
-its `timeline_data`, `local_prompts`, and `segment_lengths` outputs into
-the matching Koolook Director inputs. Keep `use_custom_audio=True`; use the
-node's `transcript_json` output with a text preview node to inspect what
-Whisper recognized.
+its `transcript_json` output into the Koolook Director's
+`audio_transcript_json` input. Keep `use_custom_audio=True`; use the same
+`transcript_json` output with a text preview node to inspect what Whisper
+recognized. The Director converts the phrase timings into its internal
+`timeline_data`, `local_prompts`, and `segment_lengths` immediately before
+Prompt Relay conditioning runs.
 
 The same helper can also run from a script when an export file is useful:
 
@@ -128,8 +130,9 @@ The same helper can also run from a script when an export file is useful:
 The helper uses `faster-whisper` to transcribe speech into timestamped
 phrases, inserts closed-mouth pause segments for silence, and emits
 Director-shaped `timeline_data`, `local_prompts`, and `segment_lengths`.
-Use `--patched-workflow` to write a loadable workflow JSON with those
-fields already applied to the Koolook Director. Render it with
+Those fields remain useful for debugging or patched-workflow exports. Use
+`--patched-workflow` to write a loadable workflow JSON with those fields
+already applied to the Koolook Director. Render it with
 `use_custom_audio=True` to test whether LTX needs semantic speech timing
 in addition to the raw audio latent.
 

@@ -116,12 +116,19 @@ speech prompts from the audio and feed those back into the Director:
 **Inside ComfyUI:** add `Koolook Audio Transcript Timeline`, set the same
 `audio_file`, `image_file`, duration, and FPS as the Director, then link:
 
+- `transcript_json` -> Director `audio_transcript_json`
+
+Keep `use_custom_audio=True`. The node emits `transcript_json` so the
+recognized phrase timing can also be inspected with a text-preview node.
+The Koolook Director converts that JSON into its own `timeline_data`,
+`local_prompts`, and `segment_lengths` immediately before Prompt Relay
+conditioning runs.
+
+The older manual hook still works for debugging:
+
 - `timeline_data` -> Director `timeline_data`
 - `local_prompts` -> Director `local_prompts`
 - `segment_lengths` -> Director `segment_lengths`
-
-Keep `use_custom_audio=True`. The node emits `transcript_json` so the
-recognized phrase timing can be inspected with a text-preview node.
 
 **Script/export path:**
 
