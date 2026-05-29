@@ -19,7 +19,8 @@ look as clean as baseline.
 | Phrase | Script | What it does |
 |---|---|---|
 | `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (workflow.json + relay_overrides.txt + patch_state.txt + notes.md + card.png) and appends a row to [`runs/log.md`](runs/log.md). |
-| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`; removes stale pre-v1.3.9 web extension folder; auto-restarts Comfy. Use after editing fork source. Widget-only changes on the canvas don't need it. |
+| `transcribe-audio` | [`scripts/transcribe_audio_timeline.py`](../../../../scripts/transcribe_audio_timeline.py) or the `Koolook Audio Transcript Timeline` Comfy node | Uses the optional Whisper helper to turn the current speech file into timed Director prompts (`timeline_data`, `local_prompts`, `segment_lengths`). Install with `.[audio]` first. |
+| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`. Restart ComfyUI manually after Python changes need to be re-imported. Widget-only changes on the canvas don't need it. |
 
 Config lives in `<script>.config.json` next to each script — edit the
 config, not the Python, when paths or node titles change.
@@ -106,6 +107,41 @@ runs**:
 2. Add a one-paragraph "why" and link the confirming run folders.
 3. Remove the corresponding hypothesis from [`README.md`](README.md) or
    [`backstory/audio-lipsync-rationale.md`](backstory/audio-lipsync-rationale.md).
+
+## Timed transcript experiment
+
+When raw custom audio is not enough to drive mouth timing, generate timed
+speech prompts from the audio and feed those back into the Director:
+
+**Inside ComfyUI:** add `Koolook Audio Transcript Timeline`, set the same
+`audio_file`, `image_file`, duration, and FPS as the Director, then link:
+
+- `timeline_data` -> Director `timeline_data`
+- `local_prompts` -> Director `local_prompts`
+- `segment_lengths` -> Director `segment_lengths`
+
+Keep `use_custom_audio=True`. The node emits `transcript_json` so the
+recognized phrase timing can be inspected with a text-preview node.
+
+**Script/export path:**
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[audio]"
+.\.venv\Scripts\python scripts\transcribe_audio_timeline.py <audio.mp3> --workflow <workflow.json> --out timed-prompts.json --patched-workflow timed-workflow.json
+```
+
+The output JSON contains:
+
+- `phrases` - timestamped transcript chunks for review.
+- `timeline_data` - Director timeline JSON with one prompt segment per
+  phrase, preserving the source image and audio segments from the workflow.
+- `local_prompts` and `segment_lengths` - the matching Director fields.
+- `--patched-workflow` - optional loadable workflow JSON with those fields
+  already written onto the Koolook Director node.
+
+Paste the generated prompt/timeline fields into the Director, keep
+`use_custom_audio=True`, and render. This tests whether the model needs
+semantic speech timing in addition to the raw audio latent.
 
 ## Where settings live (no code edits for the common cases)
 

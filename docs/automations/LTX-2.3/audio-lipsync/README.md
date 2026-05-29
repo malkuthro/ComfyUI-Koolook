@@ -105,6 +105,34 @@ renders should be skipped with "no log" / "don't log this" before capture.
 
 See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
 
+## Timed transcript experiment
+
+Raw custom audio alone can fail to produce usable mouth timing even when
+the same words improve the render when typed into the prompt. The loop now
+has an optional helper for that gap.
+
+Inside ComfyUI, add `Koolook Audio Transcript Timeline`, set the same
+`audio_file`, `image_file`, duration, and FPS as the Director, then link
+its `timeline_data`, `local_prompts`, and `segment_lengths` outputs into
+the matching Koolook Director inputs. Keep `use_custom_audio=True`; use the
+node's `transcript_json` output with a text preview node to inspect what
+Whisper recognized.
+
+The same helper can also run from a script when an export file is useful:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[audio]"
+.\.venv\Scripts\python scripts\transcribe_audio_timeline.py <audio.mp3> --workflow <workflow.json> --out timed-prompts.json --patched-workflow timed-workflow.json
+```
+
+The helper uses `faster-whisper` to transcribe speech into timestamped
+phrases, inserts closed-mouth pause segments for silence, and emits
+Director-shaped `timeline_data`, `local_prompts`, and `segment_lengths`.
+Use `--patched-workflow` to write a loadable workflow JSON with those
+fields already applied to the Koolook Director. Render it with
+`use_custom_audio=True` to test whether LTX needs semantic speech timing
+in addition to the raw audio latent.
+
 ## Workflow JSON — Koolook node ID
 
 New workflows should use the stable node ID `LTXDirector__koolook` (display

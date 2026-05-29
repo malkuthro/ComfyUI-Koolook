@@ -11,6 +11,7 @@ Copies only what that automation's iteration loop touches:
                                        node mappings; needs to be re-synced
                                        when the fork's NODE_CLASS_MAPPINGS
                                        set changes)
+    - k_audio_timeline.py              transcript-to-Director prompt node
     - web/whatdreamscost_koolook/      Director timeline-editor extension
 
 Everything else in the live install — ``forks/radiance_koolook/``, the
@@ -72,6 +73,7 @@ import sync_to_dev as _dev  # noqa: E402
 
 AUDIO_PATHS: tuple[str, ...] = (
     "__init__.py",
+    "k_audio_timeline.py",
     "forks/whatdreamscost_koolook",
     "web/whatdreamscost_koolook",
 )
@@ -117,6 +119,28 @@ def remove_stale_paths(target: Path, *, dry_run: bool, verbose: bool) -> int:
             print(f"removed stale: {rel}")
         removed += 1
     return removed
+
+
+def _find_dotenv() -> Path | None:
+    direct = _dev.REPO_ROOT / ".env"
+    if direct.exists():
+        return direct
+    git_marker = _dev.REPO_ROOT / ".git"
+    if not git_marker.is_file():
+        return None
+    try:
+        content = git_marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.split(":", 1)[1].strip())
+    if "worktrees" not in gitdir.parts:
+        return None
+    idx = gitdir.parts.index("worktrees")
+    main_repo_root = Path(*gitdir.parts[:idx]).parent
+    candidate = main_repo_root / ".env"
+    return candidate if candidate.exists() else None
 
 
 def main() -> int:
@@ -172,7 +196,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    _dev.load_dotenv(_dev.REPO_ROOT / ".env")
+    env_path = _find_dotenv()
+    if env_path is not None:
+        _dev.load_dotenv(env_path)
 
     target_str = os.environ.get("KOLOOK_COMFYUI_DEV_PATH")
     if not target_str:

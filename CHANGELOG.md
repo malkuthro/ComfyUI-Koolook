@@ -100,6 +100,15 @@ The format is inspired by Keep a Changelog and SemVer.
   *Loop* and *Run* entries are rewritten to point at the new structure.
 
 ### Added
+- **Koolook Audio Transcript Timeline node for custom-audio sync tests.**
+  New optional `.[audio]` dependency group installs `faster-whisper`, and
+  the new `Koolook Audio Transcript Timeline` Comfy node converts a speech
+  file into Director-shaped `timeline_data`, `local_prompts`, and
+  `segment_lengths` with explicit closed-mouth pause segments. The
+  companion `scripts/transcribe_audio_timeline.py` produces the same data
+  from the command line. This gives the audio-lipsync loop a repeatable way
+  to test whether LTX needs semantic speech timing in addition to the raw
+  custom-audio latent.
 - **`forks/whatdreamscost_koolook/v1_3_9/` — updated Koolook LTX Director
   fork.** Upgrades the Koolook Director to upstream WhatDreamsCost-ComfyUI `3b65410`
   (pyproject/README version `1.3.9`; no `v1.3.9` git tag at fork time).
