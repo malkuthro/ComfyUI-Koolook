@@ -408,6 +408,27 @@ def _parse_int(value: str) -> Optional[int]:
         return None
 
 
+def widget_value_by_name(node: dict, name: str) -> str:
+    values = node.get("widgets_values")
+    if isinstance(values, dict):
+        value = values.get(name)
+        return "" if value is None else str(value)
+    if not isinstance(values, list):
+        return ""
+
+    index = 0
+    for inp in node.get("inputs") or []:
+        if not isinstance(inp, dict) or "widget" not in inp:
+            continue
+        widget = inp.get("widget") or {}
+        widget_name = widget.get("name") if isinstance(widget, dict) else None
+        if widget_name == name and index < len(values):
+            value = values[index]
+            return "" if value is None else str(value)
+        index += 1
+    return ""
+
+
 def output_suffix_from_workflow(nodes: list[dict]) -> str:
     """Best-effort QuickTime suffix from the active VideoCombine format.
 
@@ -418,11 +439,9 @@ def output_suffix_from_workflow(nodes: list[dict]) -> str:
     for n in nodes:
         if n.get("type") != "Easy_VideoCombine":
             continue
+        fmt = widget_value_by_name(n, "format")
         values = n.get("widgets_values")
-        fmt = ""
-        if isinstance(values, dict):
-            fmt = str(values.get("format") or "")
-        elif isinstance(values, list) and len(values) > 3:
+        if not fmt and isinstance(values, list) and len(values) > 3:
             fmt = str(values[3] or "")
         fmt_l = fmt.lower()
         if "prores" in fmt_l:
@@ -466,6 +485,18 @@ def delivery_card_path(output_tracking: dict[str, str]) -> Optional[Path]:
     if not folder or not name:
         return None
     return Path(folder) / "cards" / f"{name}_card.png"
+
+
+def copy_delivery_card(card_path: Path, output_tracking: dict[str, str]) -> str:
+    delivery_path = delivery_card_path(output_tracking)
+    if delivery_path is None:
+        return "(not configured)"
+    try:
+        delivery_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(card_path, delivery_path)
+    except OSError as exc:
+        return f"failed ({exc})"
+    return str(delivery_path)
 
 
 def pick_existing_path(candidates: list[str]) -> str:
@@ -1237,15 +1268,11 @@ def main() -> int:
             )
             card_path = render_audio_card(state, run_dir / "card.png")
             card_status = "rendered"
-            delivery_path = delivery_card_path(output_tracking)
-            if delivery_path is not None:
-                delivery_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(card_path, delivery_path)
-                delivery_status = str(delivery_path)
+            delivery_status = copy_delivery_card(card_path, output_tracking)
         except ImportError as exc:
             card_status = f"skipped ({exc})"
         except OSError as exc:
-            delivery_status = f"failed ({exc})"
+            card_status = f"failed ({exc})"
 
     if not args.no_log:
         row = render_log_row(

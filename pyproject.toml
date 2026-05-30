@@ -66,8 +66,9 @@ pythonpath = ["."]
 addopts = ["--import-mode=importlib"]
 
 [project.optional-dependencies]
-# Test deps for ``pytest`` runs. CI installs via ``pip install .[test]``;
-# locally use ``.venv/bin/pip install -e '.[test]'`` from the repo root.
+# Test deps for ``pytest`` runs. CI mirrors this list directly because this
+# ComfyUI custom node is not installed as a package in the workflow.
+# Locally use ``.venv/bin/pip install -e '.[test]'`` from the repo root.
 # ``aiohttp`` is a runtime dep of ``koolook_routes`` and must be importable
 # even when only a pure helper is under test.
 test = ["pytest>=8", "aiohttp>=3.9", "pip-audit>=2.7", "Pillow>=10"]

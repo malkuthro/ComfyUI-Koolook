@@ -86,8 +86,9 @@ jobs:
         # ``forks/``. The pyproject's ``[project.optional-dependencies]
         # test`` block is the spec; CI mirrors it explicitly. ``aiohttp`` is
         # a runtime dep of ``koolook_routes`` and must be importable even
-        # when only a pure helper is under test.
-        run: pip install "pytest>=8" "aiohttp>=3.9"
+        # when only a pure helper is under test. ``Pillow`` backs the
+        # audio-card metadata tests.
+        run: pip install "pytest>=8" "aiohttp>=3.9" "Pillow>=10"
 
       - name: Run pytest
         run: pytest -q

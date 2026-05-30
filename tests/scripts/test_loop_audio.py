@@ -290,6 +290,31 @@ def test_expected_output_tracking_uses_current_setup_values():
     assert out["name"] == "Bear_2x-FR_AudioFile-K_Dir_h264_v002"
 
 
+def test_output_suffix_uses_named_widget_before_positional_fallback():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "inputs": [
+                {"name": "frame_rate", "widget": {"name": "frame_rate"}},
+                {"name": "format", "widget": {"name": "format"}},
+                {"name": "version", "widget": {"name": "version"}},
+            ],
+            "widgets_values": [24, "video/ProRes", "999"],
+        },
+    ]
+    assert loop_audio.output_suffix_from_workflow(nodes) == "ProRes"
+
+
+def test_output_suffix_keeps_legacy_positional_fallback():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "widgets_values": [24, 0, "upscaled", "video/koolook-ASTRA-h264"],
+        },
+    ]
+    assert loop_audio.output_suffix_from_workflow(nodes) == "h264"
+
+
 def test_delivery_card_path_uses_output_folder_and_name():
     out = loop_audio.delivery_card_path({
         "folder": "E:/current/renders",
@@ -300,6 +325,20 @@ def test_delivery_card_path_uses_output_folder_and_name():
 
 def test_delivery_card_path_skips_when_output_is_unknown():
     assert loop_audio.delivery_card_path({"folder": "E:/renders"}) is None
+
+
+def test_copy_delivery_card_reports_failure_without_raising(monkeypatch, tmp_path: Path):
+    def fail_copy(_src, _dst):
+        raise OSError("drive unavailable")
+
+    monkeypatch.setattr(loop_audio.shutil, "copy2", fail_copy)
+
+    status = loop_audio.copy_delivery_card(
+        tmp_path / "card.png",
+        {"folder": str(tmp_path), "name": "Bear_h264_v002"},
+    )
+
+    assert status == "failed (drive unavailable)"
 
 
 def test_audio_card_embeds_metadata_payload(tmp_path: Path):
