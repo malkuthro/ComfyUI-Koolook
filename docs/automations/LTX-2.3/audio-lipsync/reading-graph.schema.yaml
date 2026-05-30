@@ -16,28 +16,60 @@ companion_docs:
 source_families:
   multilines:
     description: >
-      Five Text Multiline nodes on the canvas. Tracked by case-insensitive
-      substring match against the node title. Body = widgets_values[0].
-      Some needles may match multiple nodes (Working_Folder_PATH ships in
-      duplicate — project mount + local mirror); extract_multilines() keeps
-      all hits and the caller picks the one that resolves on disk.
-    needles:
-      - working_folder
-      - name
-      - relay_overrides
-      - "overlay - info"
-      - "overlay - feedback"
+      Five semantic Text Multiline captures on the canvas. tracked_multilines
+      maps each stable capture key to a prioritized list of case-insensitive
+      title aliases. Body = widgets_values[0]. Some keys may match multiple
+      nodes (working_folder can ship in duplicate — project mount + local
+      mirror); extract_multilines() keeps all hits and the caller picks the
+      one that resolves on disk.
+    aliases:
+      working_folder:
+        - "global [ path ] - working folder"
+        - working_folder
+        - "working folder"
+      name:
+        - "global [ base name ]"
+        - name
+      relay_overrides:
+        - relay_overrides
+      "overlay - info":
+        - "overlay - info"
+      "overlay - feedback":
+        - "overlay - feedback"
     config_key: scripts/loop_audio.config.json::tracked_multilines
+
+  setup_variables:
+    description: >
+      Extra variables from the canvas SETUP variables note. These are captured
+      into notes.md for audit rather than rendered on the card. Version and
+      run offset are PrimitiveInt nodes in v02, so this source family reads
+      only source value nodes (Text Multiline and Primitive*) and deliberately
+      ignores GetNode / SetNode relay plumbing. GLOBAL [ run ] is calculated
+      inside the workflow from version + offset; the capture records the
+      inputs instead of reimplementing that graph math. The BASE note is a
+      checklist/reminder, not a value; its [ai] placeholders are replaced by
+      derived facts from the Director timeline and repo state.
+    aliases:
+      input_path_exr:
+        - "input path [ exr ]"
+      version:
+        - "global [ version ]"
+        - "version [ global ]"
+      run_offset:
+        - "global [ run offset ]"
+    config_key: scripts/loop_audio.config.json::tracked_setup_variables
 
   director_node:
     description: >
-      The Koolook fork of LTXDirector. Card reads both widget values AND
-      input-socket wiring (audio_vae link is what gates audio production
-      at runtime — see forks/whatdreamscost_koolook/versions/v1_3_9/
-      ltx_director.py).
+      The active LTXDirector node. Koolook variants are used for modified
+      runs; upstream `LTXDirector` is accepted for A/B comparison and is
+      labeled as original upstream on the card. Card reads both widget
+      values AND input-socket wiring (audio_vae link is what gates audio
+      production at runtime).
     type: LTXDirector__koolook
     legacy_type: LTXDirector__koolook_v1_3_2
-    upstream: WhatDreamsCost-ComfyUI LTXDirector at e81223a
+    upstream_type: LTXDirector
+    upstream: WhatDreamsCost-ComfyUI LTXDirector
     widget_order:
       # Empirical — frontend serialises widgets in legacy upstream order;
       # the Koolook fork only appends relay_overrides at the end.
@@ -101,10 +133,8 @@ audio_state_machine:
     - label: "(no director)"
       condition: director_present == false
       runtime_behavior: >
-        No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2`
-        node on the canvas. Loop runs
-        but the relay_overrides / per-segment σ patches are unreachable —
-        whatever produced the render did so through a different node.
+        No Koolook or upstream Director node on the canvas. Loop runs
+        but the Director structural state is unavailable.
         Surfaced distinctly so a missing-Director workflow doesn't
         silently collapse into the "VAE unwired" state (the pre-fix bug
         the multi-agent review caught).
@@ -152,12 +182,18 @@ state_dict:
   director_derived:
     director_node:       { source: "extract_director(nodes)" }
     director_variant:    { source: "actual Director node type OR '(missing)'" }
+    director_flavor:     { source: "director_flavor(director_node): Koolook v1.3.9 / Original upstream / (missing)" }
     audio_src:           { source: "derive_audio_state(director_node, timeline)" }
     epsilon:             { source: "director.widgets_values[6]" }
     frame_rate:          { source: "director.widgets_values[9]" }
     segments:            { source: "parse_timeline(director).segments (numeric fields coerced via _coerce_segment_numeric)" }
     audio_segments:      { source: "parse_timeline(director).audioSegments (numeric fields coerced)" }
+    segment_prompt_mode: { source: "segment_prompt_mode(segments): none / single / same / per-segment / missing" }
+    output_folder:       { source: "expected_output_tracking(nodes, multilines, setup_variables).folder" }
+    output_name:         { source: "expected_output_tracking(nodes, multilines, setup_variables).name" }
+    metadata:            { source: "card_metadata(...)", consumer: "PNG text chunk koolook_audio_loop" }
   notes_only:
+    setup_variables:   { source: "extract_setup_variables(nodes, tracked_setup_variables)", consumer: "render_notes_md" }
     # These flow to notes.md but NOT through the state dict — the
     # renderer dropped the Duration row in favour of per-segment time
     # ranges, so keeping them in state would document a contract the
@@ -192,9 +228,12 @@ card_sections:
     accent: sky
     rule: stable across the iteration (frozen)
     rows:
+      - { label: "Director",       field: "director_flavor" }
       - { label: "epsilon",        field: "epsilon" }
       - { label: "Audio src",      field: "audio_src" }
       - { label: "Working folder", field: "wrap_path(work_folder, max_chars=40)" }
+      - { label: "Output name",    field: "output_name (trimmed visually, full value in PNG metadata)" }
+      - { label: "Output folder",  field: "wrap_path(output_folder, max_chars=40)" }
 
   - name: BASE · SCENE
     accent: sky
@@ -202,6 +241,8 @@ card_sections:
     layout: flat-left labels; only the segment list is indented
     rows:
       - { label: "Segments", field: "(len(segments))" }
+      - { label: "Audio segments", field: "(len(audio_segments))" }
+      - { label: "Prompt mode", field: "segment_prompt_mode" }
       - {
           repeating: true,
           template: "{i+1}) {start_s:.0f} to {end_s:.0f} seconds",
@@ -226,6 +267,10 @@ segment_coverage:
   Prompt:
     check: "bool(segment.prompt)"
     note: "Empty prompt → [ ]. Substring content (e.g. '[Audio]:') is NOT examined."
+  Prompt mode:
+    check: "Normalize whitespace in every timeline_data.segments[].prompt, then classify as none / single / same / per-segment / missing."
+    function: "segment_prompt_mode()"
+    note: "Small image-sequence prompt check for whether every segment uses the same prompt or each segment differs."
   Audio:
     check: "any audioSegments[].overlap(segment.start, segment.length)"
     function: "video_segment_has_audio()"
@@ -250,15 +295,19 @@ outputs:
   per_run_folder:
     path: runs/run-NNN_<label>/
     files:
-      workflow.json:       Copy of the saved workflow at submission. Ground truth.
-      card.png:            Rendered card matching this graph.
-      notes.md:            OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + director's structural state.
+      runNNN_workflow.json: Copy of the saved workflow at submission. Ground truth.
+      card.png:            Rendered card matching this graph plus embedded koolook_audio_loop JSON metadata.
+      notes.md:            OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + captured SETUP variables + director's structural state.
       relay_overrides.txt: RELAY_OVERRIDES body in plain text (diff-friendly copy of the multiline).
-      patch_state.txt:     MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. Audit trail; NOT on the card.
+      patch_state.txt:     MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. Also embedded in card.png metadata.
+  delivery_copy:
+    path: "<Output folder>/cards/<Output name>_card.png"
+    purpose: Stable external card path for manual QuickTime/NLE compositing beside the rendered video.
   rolling_log:
     path: runs/log.md
     schema:
       columns: [Run, Date, Director, relay_overrides, Audio src, Segments, Scores, Notes]
+      segments_cell: "Nv/Na (video segments / audio segments)"
       rule: Same source families as the card. No scheduler/sampler columns.
 
 # ----------------------------------------------------------------------------
@@ -295,12 +344,13 @@ invariants:
   - Every value displayed on the card traces to one of the two source families.
   - Audio src is derived structurally from director wiring; never from prompt text.
   - "(no director)" is its own audio_src state — a missing Koolook Director node never silently collapses into "off (no VAE)".
-  - notes.md mirrors only the multilines + director's structural state.
-  - The per-render folder is identified by (NNN, label) and is independently re-renderable from workflow.json alone.
+  - notes.md mirrors only the configured multilines, configured SETUP variables, and director's structural state.
+  - SETUP variables from the canvas setup note are captured to notes.md as audit context; they do not expand the card surface by default.
+  - The per-render folder is identified by (NNN, label) and is independently re-renderable from runNNN_workflow.json alone.
   - The log.md schema mirrors the card's source rule — no scheduler/sampler columns.
-  - Widget indices in DIRECTOR_WIDX match the saved workflow.json order, NOT the schema order in ltx_director.py.
+  - Widget indices in DIRECTOR_WIDX match the saved workflow JSON order, NOT the schema order in ltx_director.py.
   - parse_timeline coerces per-segment numeric fields (start/length/trimStart) to int so downstream arithmetic stays type-safe regardless of what shape the Comfy frontend saved into the JSON.
-  - extract_multilines matches needles longest-first so adding a shorter substring to the tracked list never silently shadows a longer one.
+  - extract_multilines accepts either the legacy flat list or the semantic alias map; alias-map order decides preferred matches, with longest aliases checked first inside the same priority.
   - 0 is a legitimate score value, never coerced to '?' on either the card or the log row.
   - find_dotenv walks up to the main repo when run from a worktree — same as scripts/make_card.py.
 

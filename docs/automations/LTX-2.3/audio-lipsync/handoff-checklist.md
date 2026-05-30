@@ -30,10 +30,10 @@ custom-node list you also need:
 
 - [ ] Save the audio-lipsync workflow as
   `<workflow root>/LTX-23-audio_tests_v01.json` (or whatever filename your
-  working folder uses). The Director node must be
-  **`LTX Director (Koolook)`** (registered ID
-  `LTXDirector__koolook`), not the upstream `LTX Director`. Workflows
-  saved with `LTXDirector__koolook_v1_3_2` still load as a legacy alias.
+  working folder uses). Use **`LTX Director (Koolook)`** (registered ID
+  `LTXDirector__koolook`) for modified runs, or upstream `LTX Director`
+  for an original-vs-Koolook comparison. Workflows saved with
+  `LTXDirector__koolook_v1_3_2` still load as a legacy alias.
 - [ ] On the Koolook Director, the `relay_overrides` widget sits at the
   bottom of the node. Start with an empty string for a regression check
   against upstream-default behaviour, then iterate.

@@ -17,12 +17,15 @@ can't silently regress.
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 import pytest
 
 # Load the script directly — it lives under scripts/, not under a package.
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "loop_audio.py"
+sys.path.insert(0, str(_SCRIPT.parent))
 _spec = importlib.util.spec_from_file_location("loop_audio", _SCRIPT)
 assert _spec is not None and _spec.loader is not None
 loop_audio = importlib.util.module_from_spec(_spec)
@@ -75,16 +78,54 @@ def _director(
     }
 
 
-# --- extract_director — stable ID plus legacy alias -------------------------
+# --- extract_director — stable, legacy, and upstream IDs --------------------
 
 
 @pytest.mark.parametrize(
     "node_type",
-    ["LTXDirector__koolook", "LTXDirector__koolook_v1_3_2"],
+    ["LTXDirector__koolook", "LTXDirector__koolook_v1_3_2", "LTXDirector"],
 )
-def test_extract_director_accepts_stable_and_legacy_ids(node_type):
+def test_extract_director_accepts_supported_director_ids(node_type):
     node = _director(node_type=node_type)
-    assert loop_audio.extract_director([{"type": "LTXDirector"}, node]) is node
+    assert loop_audio.extract_director([node]) is node
+
+
+def test_extract_director_prefers_koolook_over_upstream():
+    upstream = _director(node_type="LTXDirector")
+    koolook = _director(node_type="LTXDirector__koolook")
+    assert loop_audio.extract_director([upstream, koolook]) is koolook
+
+
+def test_director_widget_uses_named_widget_before_positional_fallback():
+    node = {
+        "type": "LTXDirector__koolook",
+        "inputs": [
+            {"name": "duration_frames", "widget": {"name": "duration_frames"}},
+            {"name": "epsilon", "widget": {"name": "epsilon"}},
+            {"name": "use_custom_audio", "widget": {"name": "use_custom_audio"}},
+        ],
+        "widgets_values": [144, 0.004, True],
+    }
+
+    assert loop_audio.director_widget(node, "epsilon") == 0.004
+    assert loop_audio.director_widget(node, "use_custom_audio") is True
+
+
+def test_director_widget_keeps_legacy_positional_fallback():
+    node = _director(epsilon=0.002)
+    assert loop_audio.director_widget(node, "epsilon") == 0.002
+
+
+@pytest.mark.parametrize(
+    "node_type, expected",
+    [
+        ("LTXDirector__koolook", "Koolook v1.3.9"),
+        ("LTXDirector__koolook_v1_3_2", "Koolook v1.3.9"),
+        ("LTXDirector", "Original upstream"),
+    ],
+)
+def test_director_flavor_labels_supported_directors(node_type, expected):
+    assert loop_audio.director_flavor(_director(node_type=node_type)) == expected
 
 
 # --- derive_audio_state — 5 distinct states --------------------------------
@@ -183,6 +224,240 @@ def test_extract_multilines_first_match_wins_per_node():
     # per-node break keeps the same node from being counted twice.
     assert out["name"] == []
     assert out["overlay - info"] == ["one node"]
+
+
+def test_extract_multilines_accepts_prioritized_alias_map():
+    nodes = [
+        _multiline("NAME", "old setup name"),
+        _multiline("GLOBAL [ base name ]", "new base name"),
+        _multiline("GLOBAL [ path ] - working folder", "E:/runs"),
+    ]
+    out = loop_audio.extract_multilines(
+        nodes,
+        {
+            "name": ["global [ base name ]", "name"],
+            "working_folder": [
+                "global [ path ] - working folder",
+                "working_folder",
+            ],
+        },
+    )
+    assert out["name"] == ["new base name", "old setup name"]
+    assert out["working_folder"] == ["E:/runs"]
+
+
+def test_extract_setup_variables_reads_text_and_primitive_source_nodes():
+    nodes = [
+        _multiline("INPUT Path [ EXR ]", "W:/plates"),
+        {
+            "type": "PrimitiveInt",
+            "title": "GLOBAL [ version ]",
+            "widgets_values": [1, "fixed"],
+        },
+        {
+            "type": "PrimitiveInt",
+            "title": "GLOBAL [ run offset ]",
+            "widgets_values": [7, "fixed"],
+        },
+        {
+            "type": "GetNode",
+            "title": "Get_GLOBAL [ version ]",
+            "widgets_values": ["GLOBAL [ version ]"],
+        },
+        {
+            "type": "SetNode",
+            "title": "Set_GLOBAL [ run ]",
+            "widgets_values": ["GLOBAL [ run ]"],
+        },
+    ]
+    out = loop_audio.extract_setup_variables(
+        nodes,
+        {
+            "input_path_exr": ["input path [ exr ]"],
+            "version": ["global [ version ]"],
+            "run_offset": ["global [ run offset ]"],
+        },
+    )
+    assert out["input_path_exr"] == ["W:/plates"]
+    assert out["version"] == ["1"]
+    assert out["run_offset"] == ["7"]
+
+
+def test_expected_output_tracking_uses_current_setup_values():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "widgets_values": {
+                "format": "video/koolook-ASTRA-h264",
+            },
+        },
+        {
+            "type": "easy showAnything",
+            "widgets_values": [
+                '[true, ["E:/old/Previous_h264_v001.mp4"]]',
+            ],
+        },
+    ]
+    out = loop_audio.expected_output_tracking(
+        nodes,
+        {
+            "working_folder": ["E:/current/renders"],
+            "name": ["Bear_2x-FR_AudioFile-K_Dir"],
+        },
+        {"version": ["2"]},
+    )
+    assert out["folder"] == "E:/current/renders"
+    assert out["name"] == "Bear_2x-FR_AudioFile-K_Dir_h264_v002"
+
+
+def test_output_suffix_uses_named_widget_before_positional_fallback():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "inputs": [
+                {"name": "frame_rate", "widget": {"name": "frame_rate"}},
+                {"name": "format", "widget": {"name": "format"}},
+                {"name": "version", "widget": {"name": "version"}},
+            ],
+            "widgets_values": [24, "video/ProRes", "999"],
+        },
+    ]
+    assert loop_audio.output_suffix_from_workflow(nodes) == "ProRes"
+
+
+def test_output_suffix_keeps_legacy_positional_fallback():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "widgets_values": [24, 0, "upscaled", "video/koolook-ASTRA-h264"],
+        },
+    ]
+    assert loop_audio.output_suffix_from_workflow(nodes) == "h264"
+
+
+def test_delivery_card_path_uses_output_folder_and_name():
+    out = loop_audio.delivery_card_path({
+        "folder": "E:/current/renders",
+        "name": "Bear_h264_v002",
+    })
+    assert out == Path("E:/current/renders") / "cards" / "Bear_h264_v002_card.png"
+
+
+def test_delivery_card_path_skips_when_output_is_unknown():
+    assert loop_audio.delivery_card_path({"folder": "E:/renders"}) is None
+
+
+def test_copy_delivery_card_reports_failure_without_raising(monkeypatch, tmp_path: Path):
+    def fail_copy(_src, _dst):
+        raise OSError("drive unavailable")
+
+    monkeypatch.setattr(loop_audio.shutil, "copy2", fail_copy)
+
+    status = loop_audio.copy_delivery_card(
+        tmp_path / "card.png",
+        {"folder": str(tmp_path), "name": "Bear_h264_v002"},
+    )
+
+    assert status == "failed (drive unavailable)"
+
+
+def test_copy_delivery_card_leaves_existing_file_in_place(tmp_path: Path):
+    card = tmp_path / "source.png"
+    folder = tmp_path / "renders"
+    existing = folder / "cards" / "Bear_h264_v002_card.png"
+    card.write_text("new", encoding="utf-8")
+    existing.parent.mkdir(parents=True)
+    existing.write_text("old", encoding="utf-8")
+
+    status = loop_audio.copy_delivery_card(
+        card,
+        {"folder": str(folder), "name": "Bear_h264_v002"},
+    )
+
+    assert status.startswith("exists (left in place:")
+    assert existing.read_text(encoding="utf-8") == "old"
+
+
+def test_card_metadata_scrubs_path_bearing_fields():
+    metadata = loop_audio.card_metadata(
+        4,
+        "label",
+        Path("run004_workflow.json"),
+        {"name": ["Bear"], "relay_overrides": ["{}"]},
+        {"input_path_exr": ["W:/projects/client_codename/shot/v003"]},
+        {
+            "folder": "E:/Jobs/Client/Comfy/Runs",
+            "name": "Bear_h264_v002",
+            "version_tag": "v002",
+            "format_suffix": "h264",
+        },
+        _director(),
+        {"segments": [], "audioSegments": []},
+        "custom",
+        {},
+        "clean",
+    )
+
+    encoded = json.dumps(metadata)
+    assert "W:/projects" not in encoded
+    assert "client_codename" not in encoded
+    assert "E:/Jobs" not in encoded
+    assert "path-sha256:" in encoded
+
+
+def test_audio_card_embeds_metadata_payload(tmp_path: Path):
+    from PIL import Image
+
+    from make_card_audio import render_audio_card
+
+    metadata = {
+        "schema": "koolook.audio_loop.card_metadata.v1",
+        "repo": {"main_sha": "abc1234"},
+        "output": {"name": "Bear_h264_v002"},
+    }
+    out = tmp_path / "card.png"
+    render_audio_card(
+        {
+            "run_number": 3,
+            "date": "2026-05-30",
+            "workflow_name": "workflow.json",
+            "name": "Bear",
+            "relay_overrides_raw": "{}",
+            "info_body": "",
+            "feedback_lines": [],
+            "scores": {},
+            "work_folder": "E:/renders",
+            "output_folder": "E:/renders",
+            "output_name": "Bear_h264_v002",
+            "director_flavor": "Koolook v1.3.9",
+            "audio_src": "custom",
+            "epsilon": 0.001,
+            "frame_rate": 24,
+            "segments": [],
+            "audio_segments": [],
+            "segment_prompt_mode": "none",
+            "metadata": metadata,
+        },
+        out,
+    )
+    embedded = json.loads(Image.open(out).info["koolook_audio_loop"])
+    assert embedded == metadata
+
+
+def test_rebuild_state_handles_non_numeric_run_dir_and_bom_workflow(tmp_path: Path):
+    from make_card_audio import _rebuild_state_from_run_dir
+
+    run_dir = tmp_path / "run-foo_label"
+    run_dir.mkdir()
+    (run_dir / "workflow.json").write_text(
+        json.dumps({"nodes": []}),
+        encoding="utf-8-sig",
+    )
+
+    state = _rebuild_state_from_run_dir(run_dir)
+
+    assert state["run_number"] == 0
+    assert state["run_label"] == "label"
 
 
 def test_extract_multilines_ignores_non_text_multiline_nodes():
@@ -305,6 +580,32 @@ def test_video_segment_has_audio_boundaries(video, audio_segs, expected):
     assert loop_audio.video_segment_has_audio(video, audio_segs) is expected
 
 
+# --- segment_prompt_mode — same vs per-segment prompt check -----------------
+
+
+@pytest.mark.parametrize(
+    "segments, expected",
+    [
+        ([], "none"),
+        ([{"prompt": "one prompt"}], "single"),
+        (
+            [{"prompt": "same prompt"}, {"prompt": "same   prompt"}],
+            "same",
+        ),
+        (
+            [{"prompt": "wide shot"}, {"prompt": "close up"}],
+            "per-segment",
+        ),
+        (
+            [{"prompt": "wide shot"}, {"prompt": ""}],
+            "missing",
+        ),
+    ],
+)
+def test_segment_prompt_mode_classifies_prompt_sequence(segments, expected):
+    assert loop_audio.segment_prompt_mode(segments) == expected
+
+
 # --- parse_feedback — score 0 must round-trip (PR #185 review MEDIUM-9) ----
 
 
@@ -341,6 +642,19 @@ def test_render_log_row_preserves_zero_scores():
         [],
     )
     assert "M0·S0·Sh0" in row
+
+
+def test_render_log_row_records_video_and_audio_segment_counts():
+    row = loop_audio.render_log_row(
+        3,
+        _director(),
+        "",
+        "custom",
+        {"segments": [{}, {}], "audioSegments": [{}, {}]},
+        {"motion": None, "sync": None, "sharp": None},
+        [],
+    )
+    assert "| custom | 2v/2a |" in row
 
 
 def test_parse_feedback_accepts_sharpness_alias():
@@ -460,6 +774,23 @@ def test_autogen_label_when_director_present():
     assert "koolook" in label
     assert "audio-on" in label
     assert "vstr10.0" in label
+
+
+def test_autogen_label_when_director_is_upstream():
+    label = loop_audio.autogen_label(
+        "Bear_3x", _director(node_type="LTXDirector"), ""
+    )
+    assert "upstream" in label
+    assert "audio-off" in label
+
+
+def test_relay_overrides_txt_marks_upstream_director_inert():
+    txt = loop_audio.render_relay_overrides_txt(
+        '{"video_strength": 10.0}',
+        _director(node_type="LTXDirector"),
+    )
+    assert "INERT" in txt
+    assert "LTXDirector" in txt
 
 
 def test_next_run_number_reads_folders_and_log(tmp_path):

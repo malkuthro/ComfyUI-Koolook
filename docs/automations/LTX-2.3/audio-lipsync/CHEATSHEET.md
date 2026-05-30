@@ -18,26 +18,50 @@ look as clean as baseline.
 
 | Phrase | Script | What it does |
 |---|---|---|
-| `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (workflow.json + relay_overrides.txt + patch_state.txt + notes.md + card.png) and appends a row to [`runs/log.md`](runs/log.md). |
+| `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (runNNN_workflow.json + relay_overrides.txt + patch_state.txt + notes.md + card.png) and appends a row to [`runs/log.md`](runs/log.md). |
 | `transcribe-audio` | [`scripts/transcribe_audio_timeline.py`](../../../../scripts/transcribe_audio_timeline.py) or the `Koolook Audio Transcript Timeline` Comfy node | Uses the optional Whisper helper to turn the current speech file into timed Director prompts (`timeline_data`, `local_prompts`, `segment_lengths`). Install with `.[audio]` first. |
-| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`. Restart ComfyUI manually after Python changes need to be re-imported. Widget-only changes on the canvas don't need it. |
+| `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`; removes stale pre-v1.3.9 web extension folder. Restart ComfyUI manually after Python changes need to be re-imported. Widget-only changes on the canvas don't need it. |
 
 Config lives in `<script>.config.json` next to each script — edit the
 config, not the Python, when paths or node titles change.
 
 ## Required canvas shape
 
-Five `Text Multiline` nodes (case-insensitive `contains` match against
-the title) + the Koolook Director node:
+Five semantic `Text Multiline` captures (case-insensitive alias match
+against the title) + one Director node:
 
-| Title contains | Used for |
-|---|---|
-| `NAME` | Run identifier — feeds snapshot folder + card title |
-| `RELAY_OVERRIDES` | JSON dict of Prompt-Relay knob overrides. **Wired** into the Director's `relay_overrides` input |
-| `OVERLAY - INFO` | Free-form Δ-this-run note. Card renders verbatim |
-| `OVERLAY - FEEDBACK` | Observations + `motion: N/5 · sync: N/5 · sharp: N/5` score lines |
-| `Working_Folder_PATH` | Per-project working folder. Duplicates allowed (mount + mirror); first existing wins |
-| **node** `LTX Director (Koolook)` | Registered as `LTXDirector__koolook`. Required — upstream `LTXDirector` won't have the `relay_overrides` input and the per-segment σ formula is also absent. Older workflows saved as `LTXDirector__koolook_v1_3_2` still load through a compatibility alias |
+| Capture key | Preferred title alias | Used for |
+|---|---|---|
+| `name` | `GLOBAL [ base name ]`, fallback `NAME` | Run identifier — feeds snapshot folder + card title |
+| `relay_overrides` | `RELAY_OVERRIDES` | JSON dict of Prompt-Relay knob overrides. **Wired** into the Director's `relay_overrides` input |
+| `overlay - info` | `OVERLAY - INFO` | Free-form Δ-this-run note. Card renders verbatim |
+| `overlay - feedback` | `OVERLAY - FEEDBACK` | Observations + `motion: N/5 · sync: N/5 · sharp: N/5` score lines |
+| `working_folder` | `GLOBAL [ path ] - working folder`, fallbacks `working_folder` / `working folder` | Per-project working folder. Duplicates allowed (mount + mirror); first existing wins |
+| director node | `LTX Director (Koolook)` or upstream `LTX Director` | Koolook is registered as `LTXDirector__koolook`; legacy `LTXDirector__koolook_v1_3_2` still loads through a compatibility alias. Upstream `LTXDirector` is accepted for A/B comparison and is labeled on the card as original upstream, but `relay_overrides` + the per-segment sigma patch are inert on that path. |
+
+The alias list lives in `scripts/loop_audio.config.json` →
+`tracked_multilines`. Earlier aliases win, so the v02 card structure can
+prefer `GLOBAL [ base name ]` without losing compatibility with older
+`NAME` setups.
+
+The v02 setup note also lists audit variables that are captured into
+`notes.md` under `SETUP variables (captured)`. These live in
+`tracked_setup_variables` because some are not multiline nodes:
+
+| Capture key | Preferred title alias | Used for |
+|---|---|---|
+| `input_path_exr` | `INPUT Path [ EXR ]` | Source EXR directory |
+| `version` | `GLOBAL [ version ]`, fallback `Version [ Global ]` | Version integer from the setup primitive |
+| `run_offset` | `GLOBAL [ run offset ]` | Offset used by the workflow's calculated run number |
+
+The `BASE` setup note is treated as a checklist, not as data. Rows such
+as `Image Segments = [ai]`, prompt similarity, commit number, and
+Director flavour are filled from the Director timeline and repo state.
+
+The capture run number is not read from the canvas. `loop-audio`
+calculates it from the next available `runs/run-NNN_*` folder/log row,
+so it keeps incrementing correctly even when the Comfy setup name or
+internal naming offset changes.
 
 Save the workflow as `LTX-23-audio_tests_v01.json` in ComfyUI's
 `user/default/workflows/` (or whatever filename matches `workflow_pattern`
@@ -60,8 +84,8 @@ in [`loop_audio.config.json`](../../../../scripts/loop_audio.config.json)).
 The card draws **only** from two source families:
 
 1. The five `Text Multiline` nodes above (the per-render notes).
-2. The `LTXDirector__koolook` node's own widget values and
-   input wiring.
+2. The active Director node's own widget values and input wiring
+   (`LTXDirector__koolook` / legacy Koolook / upstream `LTXDirector`).
 
 Forbidden on the card: `BasicScheduler` / `KSamplerSelect` / `RandomNoise` /
 `CFGGuider` widgets, `_dev_build.json`, `git status` output, hardcoded
@@ -77,21 +101,51 @@ does at runtime
 
 | Label | Conditions |
 |---|---|
-| `(no director)` | No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2` node on the canvas |
+| `(no director)` | No Koolook or upstream Director node on the canvas |
 | `off (no VAE)` | Director present · audio_vae not wired |
 | `model-gen` | audio_vae wired · use_custom_audio = False |
 | `custom` | audio_vae wired · use_custom_audio = True · audioSegments non-empty |
 | `custom (empty)` | audio_vae wired · use_custom_audio = True · audioSegments empty |
 
+## Segment prompt check
+
+`BASE · SCENE` includes `Prompt mode`, derived from
+`timeline_data.segments[].prompt`:
+
+| Label | Meaning |
+|---|---|
+| `none` | No video segments found |
+| `single` | One segment with a prompt |
+| `same` | Multiple segments, same prompt after whitespace normalization |
+| `per-segment` | Multiple segments with different prompts |
+| `missing` | At least one segment has no prompt |
+
+The card also shows `Audio segments`, the count of
+`timeline_data.audioSegments`. In the current v02 comparison setup this
+is expected to be `2` when both edited audio clips are present on the
+Director timeline.
+
 ## What lands in `runs/run-NNN_<label>/`
 
 ```
-workflow.json          ← copy of the Comfy file at submission (ground truth)
+runNNN_workflow.json   ← copy of the Comfy file at submission (ground truth)
 relay_overrides.txt    ← RELAY_OVERRIDES body (diff-friendly plain text)
 patch_state.txt        ← MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty (audit trail; NOT on the card)
-notes.md               ← OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + director's structural state
-card.png               ← side-by-side card for the NLE
+notes.md               ← OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + SETUP variables + director's structural state
+card.png               ← visual card for the NLE + embedded `koolook_audio_loop` JSON metadata
 ```
+
+The PNG metadata includes the technical report as portable card data:
+run number, setup values, expected output folder/name/version,
+Director structure, MAIN SHA, last `dev-sync-audio`, sync scope, and
+fork-dir status.
+
+For compositing beside the rendered QuickTime, `loop-audio` also copies
+the card into the setup's stable output folder under `cards/` as
+`cards/<Output name>_card.png` (for example
+`cards/Bear_2x-FR_AudioFile_K-Dir_h264_v002_card.png`). That delivery
+copy is the path to use in manual NLE/QuickTime assembly; the run-folder
+`card.png` remains the archive copy.
 
 Each render also appends a row to [`runs/log.md`](runs/log.md) with the
 same source rule (no scheduler/sampler columns).
@@ -165,7 +219,8 @@ semantic speech timing in addition to the raw audio latent.
 |---|---|
 | Workflow filename pattern | [`scripts/loop_audio.config.json`](../../../../scripts/loop_audio.config.json) → `workflow_pattern` |
 | ComfyUI workflows dir | Derived from `KOLOOK_COMFYUI_DEV_PATH` in `.env`, or `KOLOOK_COMFYUI_WORKFLOWS_DIR` override |
-| Tracked multiline titles | `loop_audio.config.json` → `tracked_multilines` |
+| Tracked multiline capture keys + title aliases | `loop_audio.config.json` → `tracked_multilines` |
+| Tracked setup variables for `notes.md` | `loop_audio.config.json` → `tracked_setup_variables` |
 | Fork dir to pin in `patch_state.txt` | `loop_audio.config.json` → `fork_to_track` |
 | Whether to render the card | `loop_audio.config.json` → `render_card` |
 | ComfyUI dev install target (`dev-sync-audio`) | `.env` → `KOLOOK_COMFYUI_DEV_PATH` |

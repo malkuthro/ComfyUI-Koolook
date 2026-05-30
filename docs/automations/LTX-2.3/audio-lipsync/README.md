@@ -74,7 +74,7 @@ audio-lipsync/
     ├── LOOP.md          ← the iteration protocol
     ├── log.md           ← rolling table — one row per render, always
     └── run-NNN_<label>/  ← created by each `loop-audio` capture
-        ├── workflow.json
+        ├── runNNN_workflow.json
         ├── relay_overrides.txt
         ├── patch_state.txt
         └── notes.md
@@ -147,12 +147,13 @@ in addition to the raw audio latent.
 
 ## Workflow JSON — Koolook node ID
 
-New workflows should use the stable node ID `LTXDirector__koolook` (display
-name *"LTX Director (Koolook)"*), not the upstream `LTXDirector`. Old
-workflows saved with `LTXDirector__koolook_v1_3_2` still load through a
-compatibility alias backed by the same v1.3.9 implementation, not the
-byte-identical v1.3.2 class, so future fork upgrades do not require repeated
-node replacement.
+New modified runs should use the stable node ID `LTXDirector__koolook`
+(display name *"LTX Director (Koolook)"*). Upstream `LTXDirector` is still
+accepted for original-vs-Koolook comparison captures; the card labels it as
+original upstream and marks `relay_overrides` inert. Old workflows saved with
+`LTXDirector__koolook_v1_3_2` still load through a compatibility alias backed
+by the same v1.3.9 implementation, not the byte-identical v1.3.2 class, so
+future fork upgrades do not require repeated node replacement.
 
 The upstream node and the Koolook variant still appear side-by-side —
 upstream stays vanilla, the Koolook variant carries our two modifications.

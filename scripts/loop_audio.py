@@ -25,7 +25,7 @@ Discovery chain:
 Snapshot folder layout (always created):
 
   <module_path>/runs/run-NNN_<auto-label>/
-    ├── workflow.json        copy of the workflow at submission
+    ├── runNNN_workflow.json copy of the workflow at submission
     ├── relay_overrides.txt  RELAY_OVERRIDES multiline body
     ├── patch_state.txt      MAIN sha + last dev-sync-audio + fork-dir status
     ├── notes.md             feedback + scores + mechanical interp
@@ -53,6 +53,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -97,7 +98,7 @@ def load_config(path: Path) -> dict[str, Any]:
         )
         sys.exit(2)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         print(f"Malformed config {path}: {exc}", file=sys.stderr)
         sys.exit(4)
@@ -224,7 +225,8 @@ def find_workflow(workflows_dir: Path, cfg: dict[str, Any]) -> Path:
 
 DIRECTOR_TYPE = "LTXDirector__koolook"
 LEGACY_DIRECTOR_TYPES = ("LTXDirector__koolook_v1_3_2",)
-DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES)
+UPSTREAM_DIRECTOR_TYPE = "LTXDirector"
+DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES, UPSTREAM_DIRECTOR_TYPE)
 
 # Koolook Director widget order — verified empirically against saved
 # workflow JSON. The Comfy frontend serialises widgets in their original
@@ -259,34 +261,257 @@ DIRECTOR_WIDX = {
 }
 
 
-def extract_multilines(
-    nodes: list[dict], tracked_titles: list[str]
+def _normalize_title(s: str) -> str:
+    return " ".join(s.replace("_", " ").lower().split())
+
+
+def _normalize_capture_key(s: str) -> str:
+    return s.strip().lower()
+
+
+def _normalize_alias_map(
+    tracked_titles: list[str] | dict[str, Any],
 ) -> dict[str, list[str]]:
-    """Collect every body matching each needle. The canvas legitimately
-    ships duplicates for some needles — Working_Folder_PATH has both a
-    project-mount and a local-mirror copy, for example — so we keep
-    all hits keyed by needle and let the caller pick which to use."""
-    out: dict[str, list[str]] = {n.lower(): [] for n in tracked_titles}
-    # Longest-needle-wins for the per-node `break`. The current five
-    # needles don't collide, but as the canvas grows a shorter substring
-    # (e.g. "relay") in the same config could shadow a longer one
-    # ("relay_overrides") just because of declaration order. Sorting
-    # longest-first removes that footgun.
-    needles_by_length = sorted(out.keys(), key=len, reverse=True)
-    for n in nodes:
+    if isinstance(tracked_titles, dict):
+        out: dict[str, list[str]] = {}
+        for key, aliases in tracked_titles.items():
+            if isinstance(aliases, str):
+                alias_list = [aliases]
+            else:
+                alias_list = list(aliases or [])
+            out[_normalize_capture_key(str(key))] = [
+                _normalize_title(str(alias))
+                for alias in alias_list
+                if str(alias).strip()
+            ]
+        return out
+    return {
+        _normalize_capture_key(str(needle)): [_normalize_title(str(needle))]
+        for needle in tracked_titles
+    }
+
+
+def normalize_tracked_multilines(
+    tracked_titles: list[str] | dict[str, Any],
+) -> dict[str, list[str]]:
+    """Return semantic capture keys mapped to title aliases.
+
+    Older configs used a flat list where key == title substring. Newer
+    configs use {"semantic_key": ["preferred title", "fallback title"]}.
+    """
+    return _normalize_alias_map(tracked_titles)
+
+
+def extract_multilines(
+    nodes: list[dict], tracked_titles: list[str] | dict[str, Any]
+) -> dict[str, list[str]]:
+    """Collect bodies by semantic key.
+
+    The canvas legitimately ships duplicates for some keys — working-folder
+    paths can have a project-mount and a local-mirror copy, for example — so
+    we keep all hits and let the caller pick which to use. Alias lists are
+    priority ordered; if two aliases for the same semantic key match
+    different nodes, preferred aliases appear first in the captured list.
+    """
+    tracked = normalize_tracked_multilines(tracked_titles)
+    captured: dict[str, list[tuple[int, int, str]]] = {
+        key: [] for key in tracked
+    }
+    candidates: list[tuple[int, int, str, str]] = []
+    for key, aliases in tracked.items():
+        for priority, alias in enumerate(aliases):
+            # Sort longest-first within the same priority so a future short
+            # alias cannot shadow a more specific one.
+            candidates.append((priority, -len(alias), key, alias))
+    candidates.sort()
+
+    for order, n in enumerate(nodes):
         if n.get("type") != "Text Multiline":
             continue
-        title = (n.get("title") or "").strip().lower()
+        title = _normalize_title(n.get("title") or "")
         body = (n.get("widgets_values") or [""])[0] or ""
-        for needle in needles_by_length:
-            if needle in title:
-                out[needle].append(body)
+        for priority, _, key, alias in candidates:
+            if alias in title:
+                captured[key].append((priority, order, body))
                 break
-    return out
+    return {
+        key: [body for _, _, body in sorted(values)]
+        for key, values in captured.items()
+    }
+
+
+SETUP_VALUE_NODE_TYPES = {
+    "Text Multiline",
+    "PrimitiveBoolean",
+    "PrimitiveFloat",
+    "PrimitiveInt",
+    "PrimitiveString",
+}
+
+
+def node_widget_value(n: dict) -> str:
+    values = n.get("widgets_values")
+    if values is None:
+        return ""
+    if isinstance(values, list):
+        if not values:
+            return ""
+        value = values[0]
+    else:
+        value = values
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def extract_setup_variables(
+    nodes: list[dict], tracked_titles: list[str] | dict[str, Any]
+) -> dict[str, list[str]]:
+    """Collect setup-card variable values from source nodes.
+
+    This deliberately ignores GetNode/SetNode relay plumbing. For v02,
+    version/run are PrimitiveInt nodes while the other setup values are
+    Text Multiline nodes.
+    """
+    tracked = _normalize_alias_map(tracked_titles)
+    captured: dict[str, list[tuple[int, int, str]]] = {
+        key: [] for key in tracked
+    }
+    candidates: list[tuple[int, int, str, str]] = []
+    for key, aliases in tracked.items():
+        for priority, alias in enumerate(aliases):
+            candidates.append((priority, -len(alias), key, alias))
+    candidates.sort()
+
+    for order, n in enumerate(nodes):
+        if n.get("type") not in SETUP_VALUE_NODE_TYPES:
+            continue
+        title = _normalize_title(n.get("title") or "")
+        value = node_widget_value(n)
+        for priority, _, key, alias in candidates:
+            if alias == title:
+                captured[key].append((priority, order, value))
+                break
+    return {
+        key: [value for _, _, value in sorted(values)]
+        for key, values in captured.items()
+    }
 
 
 def first_multiline(ml: dict[str, list[str]], needle: str) -> str:
     return (ml.get(needle) or [""])[0]
+
+
+def _parse_int(value: str) -> Optional[int]:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def widget_value_by_name(node: dict, name: str, default: Any = "") -> Any:
+    values = node.get("widgets_values")
+    if isinstance(values, dict):
+        value = values.get(name)
+        return default if value is None else value
+    if not isinstance(values, list):
+        return default
+
+    index = 0
+    for inp in node.get("inputs") or []:
+        if not isinstance(inp, dict) or "widget" not in inp:
+            continue
+        widget = inp.get("widget") or {}
+        widget_name = widget.get("name") if isinstance(widget, dict) else None
+        if widget_name == name and index < len(values):
+            value = values[index]
+            return default if value is None else value
+        index += 1
+    return default
+
+
+def output_suffix_from_workflow(nodes: list[dict]) -> str:
+    """Best-effort QuickTime suffix from the active VideoCombine format.
+
+    The OUT settings group builds the name stem from the base name plus
+    format suffix; the combine node then appends the version. If the
+    format is unclear, h264 is the current setup default.
+    """
+    for n in nodes:
+        if n.get("type") != "Easy_VideoCombine":
+            continue
+        fmt = str(widget_value_by_name(n, "format") or "")
+        values = n.get("widgets_values")
+        if not fmt and isinstance(values, list) and len(values) > 3:
+            fmt = str(values[3] or "")
+        fmt_l = fmt.lower()
+        if "prores" in fmt_l:
+            return "ProRes"
+        if "h264" in fmt_l or "mp4" in fmt_l:
+            return "h264"
+    return "h264"
+
+
+def expected_output_tracking(
+    nodes: list[dict],
+    multilines: dict[str, list[str]],
+    setup_variables: dict[str, list[str]],
+) -> dict[str, str]:
+    """Expected external render target for the current setup.
+
+    This deliberately uses the current setup variables rather than
+    ``easy showAnything`` readouts, which may still contain the previous
+    ComfyUI render's filenames.
+    """
+    folder = pick_existing_path(multilines.get("working_folder") or [])
+    base_name = first_multiline(multilines, "name").strip()
+    version = _parse_int(first_multiline(setup_variables, "version"))
+    suffix = output_suffix_from_workflow(nodes)
+    stem_parts = [part for part in (base_name, suffix) if part]
+    stem = "_".join(stem_parts)
+    version_tag = f"v{version:03d}" if version is not None else ""
+    if stem and version_tag:
+        stem = f"{stem}_{version_tag}"
+    return {
+        "folder": folder,
+        "name": stem,
+        "version_tag": version_tag,
+        "format_suffix": suffix,
+    }
+
+
+def delivery_card_path(output_tracking: dict[str, str]) -> Optional[Path]:
+    folder = (output_tracking.get("folder") or "").strip()
+    name = (output_tracking.get("name") or "").strip()
+    if not folder or not name:
+        return None
+    return Path(folder) / "cards" / f"{name}_card.png"
+
+
+def copy_delivery_card(card_path: Path, output_tracking: dict[str, str]) -> str:
+    delivery_path = delivery_card_path(output_tracking)
+    if delivery_path is None:
+        return "(not configured)"
+    try:
+        delivery_path.parent.mkdir(parents=True, exist_ok=True)
+        if delivery_path.exists():
+            return f"exists (left in place: {delivery_path})"
+        shutil.copy2(card_path, delivery_path)
+    except OSError as exc:
+        return f"failed ({exc})"
+    return str(delivery_path)
+
+
+def scrub_path_for_metadata(value: str) -> str:
+    """Store a portable fingerprint instead of full workstation paths."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if re.match(r"^[A-Za-z]:[/\\]", raw) or raw.startswith(("/", "\\\\")):
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+        tail = Path(raw.replace("\\", "/")).name or "(folder)"
+        return f"{tail} [path-sha256:{digest}]"
+    return raw
 
 
 def pick_existing_path(candidates: list[str]) -> str:
@@ -330,13 +555,18 @@ def wrap_path(path: str, max_chars: int = 40) -> list[str]:
 
 
 def extract_director(nodes: list[dict]) -> Optional[dict]:
-    """Return the Koolook Director node dict (or None). The full node
-    is returned so callers can read both widgets_values AND inputs[]
-    socket wiring — the audio_vae link is what decides whether audio
-    gets generated at all (see derive_audio_state)."""
-    for n in nodes:
-        if n.get("type") in DIRECTOR_TYPES:
-            return n
+    """Return the active Director node dict (or None).
+
+    Prefer the Koolook Director when both variants are on the canvas, but
+    accept upstream ``LTXDirector`` for A/B comparison runs. The full node
+    is returned so callers can read both widgets_values AND inputs[] socket
+    wiring; the audio_vae link is what decides whether audio gets generated
+    at all (see derive_audio_state).
+    """
+    for dtype in DIRECTOR_TYPES:
+        for n in nodes:
+            if n.get("type") == dtype:
+                return n
     return None
 
 
@@ -344,9 +574,25 @@ def director_type(node: Optional[dict]) -> str:
     return node.get("type") if node else "(missing)"
 
 
+def director_flavor(node: Optional[dict]) -> str:
+    dtype = director_type(node)
+    if dtype in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES):
+        return "Koolook v1.3.9"
+    if dtype == UPSTREAM_DIRECTOR_TYPE:
+        return "Original upstream"
+    return "(missing)"
+
+
+def is_koolook_director(node: Optional[dict]) -> bool:
+    return director_type(node) in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES)
+
+
 def director_widget(node: Optional[dict], key: str) -> Any:
     if not node:
         return None
+    named = widget_value_by_name(node, key, default=None)
+    if named is not None:
+        return named
     wv = node.get("widgets_values") or []
     idx = DIRECTOR_WIDX.get(key)
     if idx is None or idx >= len(wv):
@@ -464,6 +710,26 @@ def video_segment_has_audio(video_seg: dict, audio_segs: list[dict]) -> bool:
     return False
 
 
+def segment_prompt_mode(segments: list[dict]) -> str:
+    """Classify whether timeline segments share one prompt or vary.
+
+    This is a structural prompt check only. It normalizes whitespace but
+    does not inspect prompt meaning, so it stays inside the card's source
+    rule: Director timeline JSON in, small capture label out.
+    """
+    if not segments:
+        return "none"
+    prompts = [
+        " ".join(str(seg.get("prompt") or "").split())
+        for seg in segments
+    ]
+    if any(not prompt for prompt in prompts):
+        return "missing"
+    if len(prompts) == 1:
+        return "single"
+    return "same" if len(set(prompts)) == 1 else "per-segment"
+
+
 SCORE_PAT = re.compile(
     r"^\s*(?P<axis>motion|sync|sharp(?:ness)?)\s*[:=]?\s*"
     r"(?P<n>\d+)(?:\s*/\s*5)?\s*$",
@@ -526,7 +792,7 @@ def read_dev_build_json() -> dict[str, str]:
     if not p.is_file():
         return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(p.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -567,7 +833,13 @@ def autogen_label(
     relay_overrides_raw: str,
 ) -> str:
     slug = _LABEL_BAD.sub("-", name.lower()).strip("-") or "unnamed"
-    director_tag = "koolook" if director_node else "missing"
+    dtype = director_type(director_node)
+    if dtype == UPSTREAM_DIRECTOR_TYPE:
+        director_tag = "upstream"
+    elif is_koolook_director(director_node):
+        director_tag = "koolook"
+    else:
+        director_tag = "missing"
     use_custom = director_widget(director_node, "use_custom_audio")
     audio_tag = "audio-on" if use_custom is True else "audio-off"
     knob_tag = ""
@@ -596,9 +868,16 @@ def render_relay_overrides_txt(
     missing_note = ""
     if director_node is None:
         missing_note = (
-            "\n\n# WARNING: no LTXDirector__koolook node found in "
+            "\n\n# WARNING: no supported LTXDirector node found in "
             "the workflow — the relay_overrides value above isn't being "
-            "consumed by anything. Add the Koolook Director to the canvas.\n"
+            "consumed by anything. Add the Koolook Director to make it active.\n"
+        )
+    elif not is_koolook_director(director_node):
+        missing_note = (
+            "\n\n# NOTE: this value is INERT for this render — the Director "
+            f"node in the workflow is upstream `{director_type(director_node)}`, "
+            "which has no `relay_overrides` input. Swap to "
+            "`LTXDirector__koolook` to make this active.\n"
         )
     return f"{body}\n{missing_note}"
 
@@ -615,16 +894,139 @@ def render_patch_state(build: dict[str, str], fork_status: str) -> str:
     )
 
 
+def card_metadata(
+    nnn: int,
+    label: str,
+    wf_path: Path,
+    multilines: dict[str, list[str]],
+    setup_variables: dict[str, list[str]],
+    output_tracking: dict[str, str],
+    director_node: Optional[dict],
+    timeline: dict[str, list],
+    audio_src: str,
+    build: dict[str, str],
+    fork_status: str,
+) -> dict[str, Any]:
+    segments = timeline.get("segments") or []
+    audio_segments = timeline.get("audioSegments") or []
+    setup_input_path = first_multiline(setup_variables, "input_path_exr")
+    output_folder = output_tracking.get("folder", "")
+    return {
+        "schema": "koolook.audio_loop.card_metadata.v1",
+        "run": {
+            "capture_number": f"{nnn:03d}",
+            "label": label,
+            "date": date.today().isoformat(),
+            "workflow": wf_path.name,
+            "setup_name": wf_path.stem,
+        },
+        "setup": {
+            "base_name": first_multiline(multilines, "name").strip(),
+            "working_folder": scrub_path_for_metadata(output_folder),
+            "input_path_exr": scrub_path_for_metadata(setup_input_path),
+            "global_version": first_multiline(setup_variables, "version"),
+            "global_run_offset": first_multiline(setup_variables, "run_offset"),
+            "relay_overrides": first_multiline(multilines, "relay_overrides").strip(),
+        },
+        "output": {
+            "folder": scrub_path_for_metadata(output_folder),
+            "name": output_tracking.get("name", ""),
+            "version_tag": output_tracking.get("version_tag", ""),
+            "format_suffix": output_tracking.get("format_suffix", ""),
+        },
+        "director": {
+            "type": director_type(director_node),
+            "flavor": director_flavor(director_node),
+            "audio_src": audio_src,
+            "epsilon": director_widget(director_node, "epsilon"),
+            "duration_frames": director_widget(director_node, "duration_frames"),
+            "duration_seconds": director_widget(director_node, "duration_seconds"),
+            "frame_rate": director_widget(director_node, "frame_rate"),
+            "segment_prompt_mode": segment_prompt_mode(segments),
+            "video_segments": len(segments),
+            "audio_segments": len(audio_segments),
+        },
+        "repo": {
+            "main_sha": short_sha(),
+            "last_dev_sync_audio": build.get("commit", ""),
+            "last_dev_sync_at": build.get("synced_at", ""),
+            "sync_scope_tag": build.get("scope", ""),
+            "sync_worktree": build.get("worktree", ""),
+            "fork_dir_status": fork_status,
+        },
+    }
+
+
+def _notes_value(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return "`(missing)`"
+    if "\n" not in cleaned:
+        return f"`{cleaned}`"
+    indented = "\n".join(f"  {line}" for line in cleaned.splitlines())
+    return f"\n{indented}"
+
+
+def render_setup_variables_md(
+    nnn: int,
+    wf_path: Path,
+    multilines: dict[str, list[str]],
+    setup_variables: dict[str, list[str]],
+    director_node: Optional[dict],
+    timeline: dict[str, list],
+    output_tracking: dict[str, str],
+) -> str:
+    segments = timeline.get("segments") or []
+    audio_segs = timeline.get("audioSegments") or []
+    dur_f = director_widget(director_node, "duration_frames")
+    dur_s = director_widget(director_node, "duration_seconds")
+    fps = director_widget(director_node, "frame_rate")
+    epsilon = director_widget(director_node, "epsilon")
+    rows = [
+        ("Capture run number", f"{nnn:03d} (from runs folder/log)"),
+        ("Setup name", wf_path.stem),
+        ("Image segments", f"{len(segments)} video / {len(audio_segs)} audio"),
+        ("Prompts / similarity", segment_prompt_mode(segments)),
+        ("Commit No.", short_sha()),
+        ("LTX-Director (flavour)", director_flavor(director_node)),
+        ("Audio src", derive_audio_state(director_node, timeline)),
+        ("epsilon", "" if epsilon is None else str(epsilon)),
+        ("Duration", f"{dur_f} frames @ {fps} fps ({dur_s} sec)"),
+        ("RELAY_OVERRIDES", first_multiline(multilines, "relay_overrides")),
+        (
+            "GLOBAL [ path ] - working folder",
+            first_multiline(multilines, "working_folder"),
+        ),
+        ("GLOBAL [ base name ]", first_multiline(multilines, "name")),
+        ("INPUT Path [ EXR ]", first_multiline(setup_variables, "input_path_exr")),
+        ("GLOBAL [ version ]", first_multiline(setup_variables, "version")),
+        ("GLOBAL [ run offset ]", first_multiline(setup_variables, "run_offset")),
+        ("Output folder", output_tracking.get("folder", "")),
+        ("Output name", output_tracking.get("name", "")),
+        ("OVERLAY - INFO", "(captured verbatim above)"),
+        ("OVERLAY - FEEDBACK", "(captured verbatim above)"),
+    ]
+    body = "\n".join(
+        f"- {label}: {_notes_value(value)}" for label, value in rows
+    )
+    return f"## SETUP variables (captured)\n\n{body}\n\n"
+
+
 def render_notes_md(
+    nnn: int,
+    wf_path: Path,
+    multilines: dict[str, list[str]],
+    setup_variables: dict[str, list[str]],
     director_node: Optional[dict],
     timeline: dict[str, list],
     audio_src: str,
     info_body: str,
     feedback_lines: list[str],
     scores: dict[str, Optional[int]],
+    output_tracking: dict[str, str],
 ) -> str:
     """Notes pulled exclusively from the two source families the card
-    is allowed to read: the OVERLAY-* multilines and the Koolook
+    is allowed to read: the OVERLAY-* multilines and the active
     Director node. No widget-scraping of BasicScheduler / KSamplerSelect /
     RandomNoise / CFGGuider — those don't define what this loop sweeps."""
     info_indented = (
@@ -643,8 +1045,16 @@ def render_notes_md(
             "**missing** — no `LTXDirector__koolook` node on the "
             "canvas; this render didn't run through the Koolook fork."
         )
+    elif not is_koolook_director(director_node):
+        director_kind = (
+            f"**upstream** `{director_type(director_node)}` "
+            "(Koolook variant NOT wired — relay_overrides + per-segment "
+            "sigma are INERT this render)"
+        )
     else:
-        director_kind = f"Koolook variant (`{director_type(director_node)}`)"
+        director_kind = (
+            f"{director_flavor(director_node)} (`{director_type(director_node)}`)"
+        )
 
     epsilon = director_widget(director_node, "epsilon")
     dur_f = director_widget(director_node, "duration_frames")
@@ -652,6 +1062,7 @@ def render_notes_md(
     fps = director_widget(director_node, "frame_rate")
     segments = timeline.get("segments") or []
     audio_segs = timeline.get("audioSegments") or []
+    prompt_mode = segment_prompt_mode(segments)
 
     return (
         f"# Run notes\n\n"
@@ -660,6 +1071,7 @@ def render_notes_md(
         f"**Scores:** {scores_line}\n\n"
         f"## OVERLAY - INFO (verbatim)\n\n"
         f"{info_indented}\n\n"
+        f"{render_setup_variables_md(nnn, wf_path, multilines, setup_variables, director_node, timeline, output_tracking)}"
         f"## Director node — structural state\n\n"
         f"- Variant: {director_kind}\n"
         f"- Audio src: {audio_src}\n"
@@ -667,6 +1079,7 @@ def render_notes_md(
         f"- Duration: {dur_f} frames @ {fps} fps ({dur_s} sec)\n"
         f"- Segments: {len(segments)} video / "
         f"{len(audio_segs)} audio\n"
+        f"- Segment prompt mode: {prompt_mode}\n"
     )
 
 
@@ -680,7 +1093,7 @@ def render_log_row(
     feedback_lines: list[str],
 ) -> str:
     """Rolling-table row aligned with the card's data-source rule —
-    multilines + Koolook Director only. Scheduler/sampler columns are
+    multilines + active Director only. Scheduler/sampler columns are
     deliberately absent (they aren't what this loop sweeps)."""
     director_cell = director_type(director_node)
     relay_cell = (
@@ -689,7 +1102,8 @@ def render_log_row(
         else "(empty → defaults)"
     )
     segments = timeline.get("segments") or []
-    seg_cell = str(len(segments))
+    audio_segments = timeline.get("audioSegments") or []
+    seg_cell = f"{len(segments)}v/{len(audio_segments)}a"
     # `or '?'` would map a legitimate 0/5 to '?' because 0 is falsy;
     # explicit None-check preserves the score the maintainer typed.
     # Parallels render_audio_card._s(): the log uses bare digits, while
@@ -718,13 +1132,15 @@ def render_log_row(
 def _build_state_for_card(
     nnn: int, label: str, wf_path: Path,
     multilines: dict[str, list[str]],
+    output_tracking: dict[str, str],
+    metadata: dict[str, Any],
     director_node: Optional[dict],
     timeline: dict[str, list],
     audio_src: str,
     scores: dict[str, Optional[int]], feedback_lines: list[str],
 ) -> dict[str, Any]:
     """Card state — strict subset matching the agreed source families:
-    five tracked multilines + the Koolook Director node's own values.
+    five tracked multilines + the active Director node's own values.
     No git, no _dev_build.json, no scheduler scrape.
 
     Director's duration_frames / duration_seconds widgets are NOT
@@ -736,7 +1152,7 @@ def _build_state_for_card(
         "run_number": nnn,
         "run_label": label,
         "date": date.today().isoformat(),
-        "workflow_name": wf_path.name,
+        "workflow_name": f"run{nnn:03d}_workflow.json",
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
         "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
         "info_body": first_multiline(multilines, "overlay - info").rstrip(),
@@ -745,13 +1161,20 @@ def _build_state_for_card(
         "work_folder": pick_existing_path(
             multilines.get("working_folder") or []
         ),
+        "output_folder": output_tracking.get("folder", ""),
+        "output_name": output_tracking.get("name", ""),
+        "metadata": metadata,
         "director_node": director_node,
         "director_variant": director_type(director_node),
+        "director_flavor": director_flavor(director_node),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
+        "segment_prompt_mode": segment_prompt_mode(
+            timeline.get("segments") or []
+        ),
     }
 
 
@@ -788,11 +1211,15 @@ def main() -> int:
     else:
         wf_path = find_workflow(resolve_workflows_dir(cfg), cfg)
 
-    with wf_path.open(encoding="utf-8") as f:
+    with wf_path.open(encoding="utf-8-sig") as f:
         wf = json.load(f)
     nodes = wf.get("nodes") or []
 
     multilines = extract_multilines(nodes, cfg["tracked_multilines"])
+    setup_variables = extract_setup_variables(
+        nodes, cfg.get("tracked_setup_variables", {})
+    )
+    output_tracking = expected_output_tracking(nodes, multilines, setup_variables)
     director_node = extract_director(nodes)
     timeline = parse_timeline(director_node)
     audio_src = derive_audio_state(director_node, timeline)
@@ -808,6 +1235,12 @@ def main() -> int:
     )
     nnn = next_run_number(runs_dir)
     run_dir = runs_dir / f"run-{nnn:03d}_{label}"
+    build = read_dev_build_json()
+    fork_status = fork_dir_status(cfg["fork_to_track"])
+    metadata = card_metadata(
+        nnn, label, wf_path, multilines, setup_variables, output_tracking,
+        director_node, timeline, audio_src, build, fork_status,
+    )
 
     # Two-line chat-report header (matches dev-sync convention).
     print(f"{short_sha()} - {REPO_ROOT.name}")
@@ -823,24 +1256,26 @@ def main() -> int:
         return 0
 
     run_dir.mkdir(parents=True, exist_ok=False)
-    shutil.copy2(wf_path, run_dir / "workflow.json")
+    shutil.copy2(wf_path, run_dir / f"run{nnn:03d}_workflow.json")
     (run_dir / "relay_overrides.txt").write_text(
         render_relay_overrides_txt(relay_overrides_raw, director_node),
         encoding="utf-8",
     )
     (run_dir / "patch_state.txt").write_text(
-        render_patch_state(read_dev_build_json(), fork_dir_status(cfg["fork_to_track"])),
+        render_patch_state(build, fork_status),
         encoding="utf-8",
     )
     (run_dir / "notes.md").write_text(
         render_notes_md(
+            nnn, wf_path, multilines, setup_variables,
             director_node, timeline, audio_src,
-            info_body, feedback_lines, scores,
+            info_body, feedback_lines, scores, output_tracking,
         ),
         encoding="utf-8",
     )
 
     card_status = "skipped"
+    delivery_status = "skipped"
     if cfg["render_card"] and not args.no_card:
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -848,13 +1283,16 @@ def main() -> int:
 
             state = _build_state_for_card(
                 nnn, label, wf_path,
-                multilines, director_node, timeline, audio_src,
-                scores, feedback_lines,
+                multilines, output_tracking, metadata, director_node, timeline,
+                audio_src, scores, feedback_lines,
             )
-            render_audio_card(state, run_dir / "card.png")
+            card_path = render_audio_card(state, run_dir / "card.png")
             card_status = "rendered"
+            delivery_status = copy_delivery_card(card_path, output_tracking)
         except ImportError as exc:
             card_status = f"skipped ({exc})"
+        except OSError as exc:
+            card_status = f"failed ({exc})"
 
     if not args.no_log:
         row = render_log_row(
@@ -866,6 +1304,7 @@ def main() -> int:
 
     print(f"  wrote:  {run_dir.relative_to(REPO_ROOT)}")
     print(f"  card:   {card_status}")
+    print(f"  card delivery: {delivery_status}")
     if not args.no_log:
         print(f"  logged: {log_path.relative_to(REPO_ROOT)}")
     return 0
