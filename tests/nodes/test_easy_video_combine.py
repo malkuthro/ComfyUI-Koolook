@@ -20,11 +20,14 @@ import pytest
 
 from k_video_combine import (
     _add_metadata_json_sidecar,
+    _append_video_path_outputs,
     _append_version_to_prefix,
     _build_sidecar_workflow,
     _coerce_version_input,
     _compose_prefix,
     _display_format_name,
+    _final_json_path_from_result,
+    _final_video_path_from_result,
     _finalize_strict_version_output,
     _metadata_sidecar_path,
     _normalize_bool_input,
@@ -32,7 +35,9 @@ from k_video_combine import (
     _remove_audio_suffix_from_result,
     _resolve_abs_target,
     _runtime_format_name,
+    _video_path_parts,
 )
+from k_video_load import _compose_input_video_path
 
 
 def test_relative_prefix_returns_none() -> None:
@@ -468,3 +473,67 @@ def test_strict_version_with_metadata_png_aligns_and_keeps_png(tmp_path: Path) -
     assert str(tmp_path / "clip_v001.mp4") in files
     assert str(tmp_path / "clip_v001.png") in files
     assert str(tmp_path / "clip_v001.json") in files
+
+
+def test_final_video_path_prefers_video_over_sidecars(tmp_path: Path) -> None:
+    png = tmp_path / "clip_v001.png"
+    video = tmp_path / "clip_v001.mp4"
+    json_path = tmp_path / "clip_v001.json"
+    result = {"result": ((True, [str(png), str(video), str(json_path)]),)}
+
+    assert _final_video_path_from_result(result) == str(video)
+
+
+def test_final_json_path_reads_sidecar_from_output_list(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4"
+    json_path = tmp_path / "clip_v001.json"
+    result = {"result": ((True, [str(json_path), str(video)]),)}
+
+    assert _final_json_path_from_result(result, str(video)) == os.path.normpath(str(json_path))
+
+
+def test_final_json_path_falls_back_to_video_stem(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4"
+
+    assert _final_json_path_from_result({"result": ((True, [str(video)]),)}, str(video)) == str(
+        tmp_path / "clip_v001.json"
+    )
+
+
+def test_video_path_parts_returns_loader_friendly_strings(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4"
+
+    full_path, directory, name = _video_path_parts(str(video))
+
+    assert full_path == os.path.normpath(str(video))
+    assert directory == os.path.normpath(str(tmp_path))
+    assert name == "clip_v001.mp4"
+
+
+def test_append_video_path_outputs_preserves_original_filenames_output(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4"
+    json_path = tmp_path / "clip_v001.json"
+    result = {"ui": {"gifs": []}, "result": ((True, [str(json_path), str(video)]),)}
+
+    out = _append_video_path_outputs(result)
+
+    assert out["result"][0] == (True, [str(json_path), str(video)])
+    assert out["result"][1:] == (
+        os.path.normpath(str(video)),
+        os.path.normpath(str(tmp_path)),
+        "clip_v001.mp4",
+        os.path.normpath(str(json_path)),
+    )
+
+
+def test_combine_clean_outputs_round_trip_into_easy_load_video(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4"
+    json_path = tmp_path / "clip_v001.json"
+    result = {"result": ((True, [str(json_path), str(video)]),)}
+
+    out = _append_video_path_outputs(result)
+    video_path, video_directory, video_name, sidecar_path = out["result"][1:]
+
+    assert sidecar_path == os.path.normpath(str(json_path))
+    assert _compose_input_video_path(video_name, video_directory) == video_path
+    assert _compose_input_video_path(video_path, "") == video_path

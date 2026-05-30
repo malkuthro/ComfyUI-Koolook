@@ -540,12 +540,101 @@ def _finalize_output(
     )
 
 
+_VIDEO_OUTPUT_EXTENSIONS = {
+    ".avi",
+    ".gif",
+    ".m4v",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".webm",
+}
+
+
+def _final_video_path_from_result(result) -> str:
+    """Return the final video path from VHS's mixed output-file list.
+
+    VHS/Koolook sidecars can sit before or after the rendered clip. If more
+    than one video-like path appears, the later one is treated as final because
+    VHS appends muxed/renamed outputs after earlier intermediates.
+    """
+    if not isinstance(result, dict):
+        return ""
+    try:
+        output_files = result.get("result", ((None, []),))[0][1]
+    except (IndexError, TypeError):
+        return ""
+    if not isinstance(output_files, list):
+        return ""
+    string_paths = [path for path in output_files if isinstance(path, str)]
+    for path in reversed(string_paths):
+        if Path(path).suffix.lower() in _VIDEO_OUTPUT_EXTENSIONS:
+            return path
+    return string_paths[-1] if string_paths else ""
+
+
+def _final_json_path_from_result(result, video_path: str = "") -> str:
+    """Return the JSON sidecar path from VHS/Koolook's output-file list.
+
+    Normal combine runs include the JSON in ``result``. The video-stem fallback
+    matches Koolook's current sidecar convention and is only for defensive
+    best-effort output when upstream omits the JSON path from the list.
+    """
+    if isinstance(result, dict):
+        try:
+            output_files = result.get("result", ((None, []),))[0][1]
+        except (IndexError, TypeError):
+            output_files = []
+        if isinstance(output_files, list):
+            for path in output_files:
+                if isinstance(path, str) and Path(path).suffix.lower() == ".json":
+                    return os.path.normpath(path)
+    if video_path:
+        return os.path.splitext(os.path.normpath(video_path))[0] + ".json"
+    return ""
+
+
+def _video_path_parts(path: str) -> Tuple[str, str, str]:
+    """Return ``(full_path, directory, filename)`` for loader wiring."""
+    if not path:
+        return ("", "", "")
+    normed = os.path.normpath(path)
+    return (normed, os.path.dirname(normed), os.path.basename(normed))
+
+
+def _append_video_path_outputs(result):
+    """Append clean string outputs without disturbing VHS's original output."""
+    video_path, video_directory, video_name = _video_path_parts(_final_video_path_from_result(result))
+    json_path = _final_json_path_from_result(result, video_path)
+    if not isinstance(result, dict):
+        return {
+            "result": (result, video_path, video_directory, video_name, json_path),
+        }
+    existing = result.get("result", tuple())
+    if not isinstance(existing, tuple):
+        existing = (existing,)
+    result["result"] = existing + (video_path, video_directory, video_name, json_path)
+    return result
+
+
 if _VHS_AVAILABLE:
     class Easy_VideoCombine(_VHS_VideoCombine):
         """Video Combine variant with absolute-path output."""
 
         CATEGORY = "Koolook/Video"
         DESCRIPTION = "Video Combine variant with absolute-path output."
+        RETURN_TYPES = tuple(getattr(_VHS_VideoCombine, "RETURN_TYPES", ("VHS_FILENAMES",))) + (
+            "STRING",
+            "STRING",
+            "STRING",
+            "STRING",
+        )
+        RETURN_NAMES = tuple(getattr(_VHS_VideoCombine, "RETURN_NAMES", ("Filenames",))) + (
+            "video_path",
+            "video_directory",
+            "video_name",
+            "json_path",
+        )
 
         @classmethod
         def INPUT_TYPES(cls):
@@ -721,7 +810,7 @@ if _VHS_AVAILABLE:
                     result,
                     keep_silent_intermediate,
                 )
-                return _finalize_output(
+                result = _finalize_output(
                     result,
                     version_token,
                     enable_overwrite,
@@ -729,6 +818,7 @@ if _VHS_AVAILABLE:
                     save_metadata_json,
                     save_metadata_png,
                 )
+                return _append_video_path_outputs(result)
 
             abs_dir, abs_base = target
 
@@ -760,7 +850,7 @@ if _VHS_AVAILABLE:
                     result,
                     keep_silent_intermediate,
                 )
-                return _finalize_output(
+                result = _finalize_output(
                     result,
                     version_token,
                     enable_overwrite,
@@ -768,6 +858,7 @@ if _VHS_AVAILABLE:
                     save_metadata_json,
                     save_metadata_png,
                 )
+                return _append_video_path_outputs(result)
             finally:
                 folder_paths.get_save_image_path = original_get_save_path
 

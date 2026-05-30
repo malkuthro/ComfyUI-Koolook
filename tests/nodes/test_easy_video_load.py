@@ -13,6 +13,16 @@ def test_empty_input_path_passes_video_through() -> None:
     assert _compose_input_video_path("https://example.test/clip.mp4", "") == "https://example.test/clip.mp4"
 
 
+def test_empty_input_path_accepts_directory_and_filename_lines() -> None:
+    root = Path.cwd().anchor
+    absolute_dir = str(Path(root) / "projects" / "shot01")
+    composed = _compose_input_video_path(
+        f"{absolute_dir}\nplate_main.mp4",
+        "",
+    )
+    assert Path(composed) == Path(absolute_dir) / "plate_main.mp4"
+
+
 def test_absolute_input_path_joins_filename() -> None:
     # Use a real tmp_path so the absolute-path branch is platform-neutral.
     root = Path.cwd().anchor

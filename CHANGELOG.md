@@ -6,7 +6,19 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **`Easy_VideoCombine`: loader-friendly video path outputs.** The node
+  now keeps its original `Filenames` output and appends clean string
+  outputs for the final video's full path, directory, filename, and JSON
+  sidecar path, so a rendered clip can wire directly into `Easy Load Video
+  (Koolook)` for a second workflow stage without parsing VHS's mixed
+  JSON/video list.
+
 ### Fixed
+- **`Easy_LoadVideo`: two-line path/name input.** When `input_path` is
+  empty, the loader now accepts a multiline `video` string whose first
+  line is the directory and second line is the filename, matching the
+  path/name text-block pattern used in automation workflows.
 - **`dev-sync-audio`: stale Director web extension cleanup.** The scoped
   audio sync now removes the old `web/whatdreamscost_koolook_v1_3_2/`
   folder after the stable v1.3.9 web-extension rename, preventing legacy
