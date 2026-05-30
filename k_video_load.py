@@ -242,6 +242,8 @@ if _VHS_AVAILABLE:
 
         @classmethod
         def VALIDATE_INPUTS(cls, video, input_path="", **kwargs):
+            if video is None or input_path is None:
+                return True
             resolved = _compose_input_video_path(video, input_path)
             if _is_existing_local_video_path(resolved):
                 return True

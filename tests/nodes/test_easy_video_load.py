@@ -194,6 +194,60 @@ def test_easy_load_video_calls_vhs_loader_directly_for_existing_full_path(
     importlib.reload(k_video_load)
 
 
+def test_easy_load_video_validation_defers_when_input_path_is_linked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls = []
+
+    class FakeVHSLoadVideoPath:
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {"required": {"video": ("STRING", {})}, "optional": {}}
+
+        def load_video(self, **kwargs):
+            return ("loaded", kwargs["video"])
+
+        @classmethod
+        def IS_CHANGED(cls, video, **kwargs):
+            return video
+
+        @classmethod
+        def VALIDATE_INPUTS(cls, video):
+            calls.append(video)
+            return f"strict validator rejected {video}"
+
+    FakeVHSLoadVideoPath.load_video.__globals__["load_video"] = lambda **kwargs: (
+        "loaded",
+        kwargs["video"],
+    )
+    fake_nodes = types.SimpleNamespace(
+        NODE_CLASS_MAPPINGS={"VHS_LoadVideoPath": FakeVHSLoadVideoPath}
+    )
+    fake_folder_paths = types.SimpleNamespace(get_input_directory=lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, "nodes", fake_nodes)
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    loaded = importlib.reload(k_video_load)
+
+    assert loaded.Easy_LoadVideo.VALIDATE_INPUTS(
+        video="",
+        input_path=None,
+        force_rate=0,
+        custom_width=0,
+        custom_height=0,
+        frame_load_cap=0,
+        skip_first_frames=0,
+        select_every_nth=1,
+        format="AnimateDiff",
+        unique_id="627",
+    ) is True
+    assert calls == []
+
+    monkeypatch.delitem(sys.modules, "nodes")
+    monkeypatch.delitem(sys.modules, "folder_paths")
+    importlib.reload(k_video_load)
+
+
 def test_easy_load_video_rejoins_wrapped_input_path_before_direct_vhs_loader(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
