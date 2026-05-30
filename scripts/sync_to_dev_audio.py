@@ -15,12 +15,12 @@ Copies only what that automation's iteration loop touches:
     - k_timeline_editor.py             standalone Director timeline UI node
     - web/whatdreamscost_koolook/      Director timeline-editor extension
 
-Everything else in the live install — ``forks/radiance_koolook/``, the
-root ``k_*.py`` nodes, unrelated ``web/`` assets, ``video_formats/`` —
+Everything else in the live install - ``forks/radiance_koolook/``, the
+root ``k_*.py`` nodes, unrelated ``web/`` assets, ``video_formats/`` -
 is left untouched.
 
 USER-INITIATED ONLY. Same rule as plain ``dev-sync`` (see project
-``CLAUDE.md`` → ``dev-sync`` section). Never run automatically:
+``CLAUDE.md`` -> ``dev-sync`` section). Never run automatically:
 
   * after a commit
   * after a PR merge or ``/ship-pr``
@@ -33,24 +33,21 @@ Run only on the explicit user trigger phrase ``dev-sync-audio`` (or
 multiple parallel sessions across worktrees; an unsolicited sync from one
 silently destroys what another is reviewing.
 
-The target path comes from ``KOLOOK_COMFYUI_DEV_PATH`` in ``.env`` —
+The target path comes from ``KOLOOK_COMFYUI_DEV_PATH`` in ``.env`` -
 identical to plain ``dev-sync``. No new env var.
 
 Usage:
     python scripts/sync_to_dev_audio.py
     python scripts/sync_to_dev_audio.py --dry-run
     python scripts/sync_to_dev_audio.py --scope "vstr=10 trial"
-    python scripts/sync_to_dev_audio.py --no-restart
 
 Exit codes mirror ``sync_to_dev.py`` exactly:
     0  success
     2  KOLOOK_COMFYUI_DEV_PATH unset or target missing without --init
     3  --init refused
 
-After copying, the script triggers a ComfyUI-Manager reboot so the new
-Python files are actually loaded (custom-node modules load once at server
-start; a file-only sync leaves ``.py`` changes invisible). Use
-``--no-restart`` to opt out.
+After copying Python files, restart ComfyUI manually so custom nodes are
+re-imported. This scoped sync only copies files.
 """
 from __future__ import annotations
 
@@ -60,12 +57,9 @@ import shutil
 import sys
 from pathlib import Path
 
-# Reuse the dev-sync infrastructure verbatim — same ``.env`` loader,
-# same target validation, same restart, same chat-report shape — so the
-# only thing that differs between full and scoped syncs is *which paths
-# get copied*. Per-module wrappers stay small and the safety guarantees
-# (target validation, parent-directory sanity check, restart fallbacks)
-# only need to be audited in one place.
+# Reuse the dev-sync infrastructure for the .env loader, target validation,
+# and chat-report shape. This scoped wrapper differs only in which paths get
+# copied, and it never tries to manage the running ComfyUI process.
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
@@ -172,28 +166,10 @@ def main() -> int:
         type=str,
         default="audio-lipsync fork edit",
         help=(
-            "Short (≤10 word) description for the chat report's second line "
+            "Short (<=10 word) description for the chat report's second line "
             "and the in-browser footer in `web/_dev_build.json`. Defaults to "
             "'audio-lipsync fork edit' so the build identifier always names "
             "this module even when the maintainer doesn't pass a scope."
-        ),
-    )
-    parser.add_argument(
-        "--no-restart",
-        action="store_true",
-        help=(
-            "Skip the auto-restart of the live ComfyUI server. Without a "
-            "restart, the new fork code stays loaded as the previous version "
-            "(custom-node .py files load once at server start)."
-        ),
-    )
-    parser.add_argument(
-        "--restart-url",
-        type=str,
-        default=_dev.DEFAULT_RESTART_URL,
-        help=(
-            f"Override the restart endpoint. Default: {_dev.DEFAULT_RESTART_URL}. "
-            f"Ignored when --no-restart is set or --dry-run is used."
         ),
     )
     args = parser.parse_args()
@@ -235,9 +211,6 @@ def main() -> int:
     print(f"{verb} {n} entries{stale_note} -> {target}  (dev-sync-audio)")
     if not args.dry_run:
         _dev.write_build_info(target, args.scope)
-        if not args.no_restart:
-            _ok, msg = _dev.trigger_restart(args.restart_url)
-            print(msg)
     return 0
 
 

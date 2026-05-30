@@ -127,6 +127,210 @@ def test_timeline_data_offsets_transcript_timing(monkeypatch, tmp_path: Path):
     assert json.loads(transcript_json)["phrases"][0]["start"] == 1.0
 
 
+def test_timeline_data_transcribes_all_separated_audio_segments(monkeypatch, tmp_path: Path):
+    for name in ("line_a.mp3", "line_b.mp3"):
+        (tmp_path / name).write_bytes(b"fake")
+
+    monkeypatch.setattr(k_audio_timeline, "_resolve_input_file", lambda name: tmp_path / name)
+
+    def fake_transcribe(audio_path: Path, *_args, **_kwargs):
+        if audio_path.name == "line_a.mp3":
+            return [Word(0.0, 0.5, "First.")]
+        return [Word(0.0, 0.5, "Second.")]
+
+    monkeypatch.setattr(k_audio_timeline, "transcribe_words", fake_transcribe)
+    timeline_data = json.dumps(
+        {
+            "segments": [{"imageFile": "bear.png", "start": 0, "length": 120}],
+            "audioSegments": [
+                {"id": "a", "audioFile": "line_a.mp3", "start": 0, "trimStart": 0, "length": 12},
+                {"id": "b", "audioFile": "line_b.mp3", "start": 48, "trimStart": 0, "length": 12},
+            ],
+        }
+    )
+
+    node = k_audio_timeline.KoolookAudioTranscriptTimeline()
+    output_timeline, local_prompts, segment_lengths, transcript_json = node.run(
+        audio_file="ignored.mp3",
+        image_file="ignored.png",
+        duration_frames=120,
+        frame_rate=24.0,
+        audio_length_frames=0,
+        model_size_or_path="base.en",
+        device="cpu",
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_frame:03d}-{end_frame:03d}",
+        max_phrase_seconds=1.2,
+        max_words=6,
+        gap_seconds=0.45,
+        pause_threshold_seconds=0.2,
+        timeline_data=timeline_data,
+    )
+
+    assert 'frames 000-011: "First."' in local_prompts
+    assert 'frames 048-059: "Second."' in local_prompts
+    assert segment_lengths == "12,36,12,60"
+    assert [item["audioFile"] for item in json.loads(output_timeline)["audioSegments"]] == [
+        "line_a.mp3",
+        "line_b.mp3",
+    ]
+    transcript = json.loads(transcript_json)
+    assert [phrase["text"] for phrase in transcript["phrases"]] == ["First.", "Second."]
+    assert transcript["phrases"][1]["start"] == 2.0
+
+
+def test_timeline_data_respects_audio_segment_trim_and_length(monkeypatch, tmp_path: Path):
+    audio = tmp_path / "line.mp3"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(k_audio_timeline, "_resolve_input_file", lambda _name: audio)
+    monkeypatch.setattr(
+        k_audio_timeline,
+        "transcribe_words",
+        lambda *_args, **_kwargs: [
+            Word(0.0, 0.4, "Skipped."),
+            Word(1.0, 1.5, "Kept."),
+            Word(2.1, 2.5, "Past clip."),
+        ],
+    )
+    timeline_data = json.dumps(
+        {
+            "segments": [{"imageFile": "bear.png", "start": 0, "length": 120}],
+            "audioSegments": [
+                {
+                    "audioFile": "line.mp3",
+                    "start": 24,
+                    "trimStart": 24,
+                    "length": 24,
+                }
+            ],
+        }
+    )
+
+    node = k_audio_timeline.KoolookAudioTranscriptTimeline()
+    _timeline_data, local_prompts, segment_lengths, transcript_json = node.run(
+        audio_file="ignored.mp3",
+        image_file="ignored.png",
+        duration_frames=120,
+        frame_rate=24.0,
+        audio_length_frames=0,
+        model_size_or_path="base.en",
+        device="cpu",
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_frame:03d}-{end_frame:03d}",
+        max_phrase_seconds=1.2,
+        max_words=6,
+        gap_seconds=0.45,
+        pause_threshold_seconds=0.2,
+        timeline_data=timeline_data,
+    )
+
+    assert 'frames 024-035: "Kept."' in local_prompts
+    assert "Skipped." not in local_prompts
+    assert "Past clip." not in local_prompts
+    assert segment_lengths == "24,12,84"
+    assert json.loads(transcript_json)["phrases"] == [
+        {"start": 1.0, "end": 1.5, "text": "Kept."}
+    ]
+
+
+def test_timeline_data_combines_active_image_prompt_with_audio_timing(monkeypatch, tmp_path: Path):
+    audio = tmp_path / "line.mp3"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(k_audio_timeline, "_resolve_input_file", lambda _name: audio)
+    monkeypatch.setattr(
+        k_audio_timeline,
+        "transcribe_words",
+        lambda *_args, **_kwargs: [Word(2.0, 2.5, "Hello.")],
+    )
+    timeline_data = json.dumps(
+        {
+            "segments": [
+                {
+                    "imageFile": "bear_a.png",
+                    "start": 0,
+                    "length": 48,
+                    "prompt": "The bear waits in a forest.",
+                },
+                {
+                    "imageFile": "bear_b.png",
+                    "start": 48,
+                    "length": 72,
+                    "prompt": "The bear leans closer to camera.",
+                },
+            ],
+            "audioSegments": [
+                {"audioFile": "line.mp3", "start": 0, "trimStart": 0, "length": 120},
+            ],
+        }
+    )
+
+    node = k_audio_timeline.KoolookAudioTranscriptTimeline()
+    output_timeline, local_prompts, _segment_lengths, _transcript_json = node.run(
+        audio_file="ignored.mp3",
+        image_file="ignored.png",
+        duration_frames=120,
+        frame_rate=24.0,
+        audio_length_frames=0,
+        model_size_or_path="base.en",
+        device="cpu",
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_frame:03d}-{end_frame:03d}",
+        max_phrase_seconds=1.2,
+        max_words=6,
+        gap_seconds=0.45,
+        pause_threshold_seconds=0.2,
+        timeline_data=timeline_data,
+    )
+
+    assert 'The bear waits in a forest. pause 000-047' in local_prompts
+    assert 'The bear leans closer to camera. frames 048-059: "Hello."' in local_prompts
+    timeline = json.loads(output_timeline)
+    assert timeline["segments"][0]["imageFile"] == "bear_a.png"
+    assert timeline["segments"][1]["imageFile"] == "bear_b.png"
+
+
+def test_timeline_data_uses_first_non_empty_image_prompt_as_scene_fallback(monkeypatch, tmp_path: Path):
+    audio = tmp_path / "line.mp3"
+    audio.write_bytes(b"fake")
+    monkeypatch.setattr(k_audio_timeline, "_resolve_input_file", lambda _name: audio)
+    monkeypatch.setattr(
+        k_audio_timeline,
+        "transcribe_words",
+        lambda *_args, **_kwargs: [Word(0.0, 0.5, "Hello.")],
+    )
+    timeline_data = json.dumps(
+        {
+            "segments": [
+                {"imageFile": "bear_a.png", "start": 0, "length": 100, "prompt": ""},
+                {"imageFile": "bear_b.png", "start": 100, "length": 20, "prompt": "The bear faces camera."},
+            ],
+            "audioSegments": [
+                {"audioFile": "line.mp3", "start": 0, "trimStart": 0, "length": 120},
+            ],
+        }
+    )
+
+    node = k_audio_timeline.KoolookAudioTranscriptTimeline()
+    _output_timeline, local_prompts, _segment_lengths, _transcript_json = node.run(
+        audio_file="ignored.mp3",
+        image_file="ignored.png",
+        duration_frames=120,
+        frame_rate=24.0,
+        audio_length_frames=0,
+        model_size_or_path="base.en",
+        device="cpu",
+        prompt_template='frames {start_frame:03d}-{end_frame:03d}: "{text}"',
+        pause_template="pause {start_frame:03d}-{end_frame:03d}",
+        max_phrase_seconds=1.2,
+        max_words=6,
+        gap_seconds=0.45,
+        pause_threshold_seconds=0.2,
+        timeline_data=timeline_data,
+    )
+
+    assert 'The bear faces camera. frames 000-011: "Hello."' in local_prompts
+
+
 def test_build_timeline_data_builds_comfy_director_fields():
     phrases = [Phrase(0.0, 0.5, "Hello.")]
 

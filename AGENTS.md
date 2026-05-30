@@ -21,6 +21,21 @@ the exact target before acting. Dictation typos and shorthand are common; do
 not infer a sibling repository or revive old local workflows from broad
 filesystem search results without explicit user confirmation.
 
+## Disk Safety Boundary
+
+Never delete, move, rename, or edit files outside this repository. External
+paths may be read only when the user explicitly provides them for inspection
+or copying into the repository. Any destructive or modifying action outside
+the repo is forbidden; stop and ask the user to perform it manually instead.
+
+## Ambiguity Safety Boundary
+
+If an instruction is unclear, contradictory, unusually destructive, or seems
+to conflict with the user's broader intent, do not execute it literally. Stop,
+explain the ambiguity in plain language, and ask for confirmation before
+acting. This is especially important for filesystem operations, sync targets,
+workflow paths, and anything outside the repository.
+
 ## Visual QA Is Mandatory For UI Work
 
 For any change that affects rendered UI, guide pages, screenshots,

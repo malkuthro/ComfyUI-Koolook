@@ -4,7 +4,7 @@ Copy runtime-relevant Koolook files into a live ComfyUI custom_nodes
 folder so a fix can be tested without a tag-and-publish round-trip.
 
 USER-INITIATED ONLY. This script overwrites a live ComfyUI install.
-Agents must NEVER run it automatically — not after a commit, not after
+Agents must NEVER run it automatically - not after a commit, not after
 a PR merge or ship-pr, not at session end, not from any "task complete"
 cleanup. The maintainer typically has multiple parallel sessions across
 worktrees, and an unsolicited sync from one silently destroys what
@@ -13,7 +13,7 @@ full policy. Run only on the explicit user trigger phrase.
 
 The target path is read from the KOLOOK_COMFYUI_DEV_PATH environment
 variable (loaded from `.env` at the repo root if present). The variable
-is intentionally kept out of the committed tree — see `.env.example`.
+is intentionally kept out of the committed tree - see `.env.example`.
 
 `KOLOOK_COMFYUI_DEV_PATH` should point at the eventual Koolook
 subdirectory inside `custom_nodes/`, NOT at the `custom_nodes/` parent.
@@ -22,26 +22,18 @@ Example layouts:
     Windows: C:/ComfyUI_portable/ComfyUI/custom_nodes/ComfyUI-Koolook
 
 Usage:
-    python scripts/sync_to_dev.py            # copy + auto-restart ComfyUI
+    python scripts/sync_to_dev.py            # copy files
     python scripts/sync_to_dev.py --dry-run  # show what would copy
-    python scripts/sync_to_dev.py --no-restart # copy only; don't restart
     python scripts/sync_to_dev.py --init     # first-run: create the
                                              # target folder if missing
                                              # (parent custom_nodes/ must
                                              # already exist), then sync
 
-After copying, the script POSTs to ComfyUI-Manager's reboot endpoint
-(`http://127.0.0.1:8188/manager/reboot` by default) so the live server
-re-execs and picks up the new Python files. This is on by default
-because the only reason to invoke this script is to see new code —
-file-only sync without a restart leaves Python `.py` changes invisible
-(custom-node modules load once at server start). Use `--no-restart` to
-opt out, e.g. when staging files for a session you don't want to disturb.
-Restart failures (Manager not installed, ComfyUI not running, etc.)
-print a diagnostic but do NOT fail the sync.
+After copying Python files, restart ComfyUI manually so custom-node modules
+are re-imported. This script only copies files.
 
 Exit codes:
-    0  success (sync completed; restart is best-effort and won't change this)
+    0  success
     2  KOLOOK_COMFYUI_DEV_PATH unset, parent missing, or target missing
        (without --init)
     3  --init refused: parent is not an existing directory or doesn't
@@ -49,7 +41,7 @@ Exit codes:
 
 This script never reaches outside the repo, never deletes anything in
 the source, and only touches paths under the configured target. It does
-overwrite files in the target — that's the point.
+overwrite files in the target - that's the point.
 """
 from __future__ import annotations
 
@@ -59,26 +51,15 @@ import os
 import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
-
-# Default ComfyUI-Manager reboot endpoint. ComfyUI-Manager registers this
-# as a GET route; hitting it makes the server `os.execv` itself, so the
-# same terminal/process picks the new node code up without a manual kill
-# + relaunch cycle. Override via `--restart-url` or skip via
-# `--no-restart` if your install runs on a different port / has no
-# Manager / you want to stage files without disturbing the live session.
-DEFAULT_RESTART_URL = "http://127.0.0.1:8188/manager/reboot"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _get_short_sha() -> str | None:
     """Best-effort short commit SHA of the source tree being synced.
-    Returns ``None`` if git isn't reachable or the call fails — the
+    Returns ``None`` if git isn't reachable or the call fails - the
     summary line just omits the SHA in that case.
     """
     try:
@@ -99,7 +80,7 @@ def _get_short_sha() -> str | None:
 
 
 def _get_worktree_name() -> str:
-    """Returns the basename of the source tree being synced — useful when
+    """Returns the basename of the source tree being synced - useful when
     the maintainer is running multiple parallel ComfyUI installs and
     needs to know which checkout fed the most recent sync.
 
@@ -117,10 +98,10 @@ def build_line() -> str:
         <short-sha> - <worktree-name>
 
     SHA falls back to ``unknown`` if git is unreachable (we always need
-    SOMETHING in slot 1 — the line shape is part of the convention).
+    SOMETHING in slot 1 - the line shape is part of the convention).
     Worktree name comes from ``REPO_ROOT.name`` and is always present.
 
-    Public — consumed by scoped per-module wrappers like
+    Public - consumed by scoped per-module wrappers like
     ``sync_to_dev_audio.py`` so every dev-sync variant emits the same
     chat-report header.
     """
@@ -134,71 +115,14 @@ def build_line() -> str:
 _build_line = build_line
 
 
-def trigger_restart(url: str, timeout: float = 2.0) -> tuple[bool, str]:
-    """Best-effort POST/GET to ComfyUI-Manager's reboot endpoint.
-
-    Returns ``(success, human_message)``. Never raises — the sync
-    itself succeeded by the time we call this, and a failed restart
-    should never mask that with a non-zero exit. The maintainer can
-    always restart manually if the auto-restart didn't take.
-
-    Failure-mode mapping:
-        - Connection refused          → ComfyUI not running; nothing to do.
-        - HTTP 404                    → Manager not installed at this URL.
-        - HTTP 2xx                    → restart triggered cleanly.
-        - Connection reset / timeout  → the server died mid-response (the
-          restart's `os.execv` raced our read); the request still landed,
-          so we treat this as success.
-    """
-    # Restrict to http/https. `urlopen` would otherwise accept `file://`,
-    # `ftp://`, etc. — a typo in `--restart-url` could surprise the
-    # maintainer by opening a local file via the same code path that
-    # normally talks to ComfyUI-Manager. Static analyzers (Bandit B310)
-    # also flag the broader urlopen surface; this guard makes the
-    # `# nosec` annotation below truthful rather than dismissive.
-    scheme = urlparse(url).scheme.lower()
-    if scheme not in ("http", "https"):
-        return False, (
-            f"restart skipped: --restart-url must be http(s); got "
-            f"scheme '{scheme}' in {url}"
-        )
-
-    try:
-        # ComfyUI-Manager registers /manager/reboot as GET, but POST
-        # also lands harmlessly — using GET keeps it simple.
-        urllib.request.urlopen(url, timeout=timeout)  # nosec B310 - scheme validated above
-        return True, "restart triggered"
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return False, (
-                f"restart skipped: ComfyUI-Manager not detected at {url} "
-                f"(404). Install Manager or pass --no-restart."
-            )
-        return False, f"restart skipped: endpoint returned HTTP {e.code}"
-    except urllib.error.URLError as e:
-        reason = e.reason
-        if isinstance(reason, ConnectionRefusedError):
-            return False, f"restart skipped: ComfyUI not running at {url}"
-        # Read timeout / connection reset usually means the server
-        # received the request and rebooted before completing the
-        # response — desired outcome.
-        if isinstance(reason, (TimeoutError, ConnectionResetError)) or "timed out" in str(reason).lower():
-            return True, "restart triggered (server stopped responding during reboot — normal)"
-        return False, f"restart skipped: unreachable ({reason})"
-    except (ConnectionResetError, OSError):
-        # Same race as above: server began rebooting before we finished
-        # reading. The request landed; that's what matters.
-        return True, "restart triggered (connection reset during reboot)"
-
-
 def write_build_info(target: Path, scope: str | None) -> None:
     """Drop a tiny JSON next to the sidebar JS so the in-browser footer
-    can render `dev <sha> · <time>` (and an italic <scope> on a second
-    line) — same identifier the chat report quotes, but visible in the
+    can render `dev <sha> * <time>` (and an italic <scope> on a second
+    line) - same identifier the chat report quotes, but visible in the
     running ComfyUI itself. Absent on registry installs (the file is
     only written by this dev script), so the footer stays empty there.
 
-    Best-effort: missing git → omit `commit` field; no `--scope` → omit
+    Best-effort: missing git -> omit `commit` field; no `--scope` -> omit
     `scope`; the timestamp alone is still useful for the maintainer to
     eyeball "did my last sync land in this browser tab?\""""
     info: dict[str, str] = {
@@ -237,7 +161,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "web",
 )
 
-# When copying directories, exclude these subpaths — they are dev-only
+# When copying directories, exclude these subpaths - they are dev-only
 # metadata that ComfyUI doesn't need and which can churn unnecessarily.
 DIR_EXCLUDES: tuple[str, ...] = (
     "__pycache__",
@@ -277,7 +201,7 @@ def sync(
     subtree removed first; files are overwritten in place.
 
     The optional ``paths`` argument lets scoped wrappers (e.g.
-    ``sync_to_dev_audio.py``) reuse this function with a smaller set —
+    ``sync_to_dev_audio.py``) reuse this function with a smaller set -
     just the subtree their automation module touches. The default is
     the full ``RUNTIME_PATHS`` (every file ComfyUI loads at runtime).
     """
@@ -307,7 +231,7 @@ def sync(
 
 def _looks_like_custom_nodes(parent: Path) -> bool:
     """Heuristic: parent is named `custom_nodes` OR sits inside a
-    directory named `ComfyUI`. A bit conservative — saves the user from
+    directory named `ComfyUI`. A bit conservative - saves the user from
     a `KOLOOK_COMFYUI_DEV_PATH` typo that would otherwise create a fresh
     `ComfyUI-Koolook/` somewhere unexpected on disk."""
     if parent.name == "custom_nodes":
@@ -336,7 +260,7 @@ def ensure_target(target: Path, init: bool) -> int | None:
     if not parent.exists() or not parent.is_dir():
         print(
             f"--init refused: parent does not exist: {parent}\n"
-            f"check KOLOOK_COMFYUI_DEV_PATH — the *parent* (typically a "
+            f"check KOLOOK_COMFYUI_DEV_PATH - the *parent* (typically a "
             f"ComfyUI custom_nodes/ folder) must already be in place.",
             file=sys.stderr,
         )
@@ -387,38 +311,14 @@ def main() -> int:
         type=str,
         default=None,
         help=(
-            "Short (≤10 word) description of what this build is about — "
+            "Short (<=10 word) description of what this build is about - "
             "the same scope summary that goes in the chat report's second "
             "line. Persisted in `web/_dev_build.json` and rendered in the "
             "Kforge Labs sidebar footer (italic, second line, below the "
-            "`dev <sha> · <time>` identifier) so the maintainer can "
+            "`dev <sha> * <time>` identifier) so the maintainer can "
             "correlate live ComfyUI state with chat history when juggling "
-            "multiple parallel worktree sessions. Optional — when absent, "
+            "multiple parallel worktree sessions. Optional - when absent, "
             "the footer renders just identifier + timestamp."
-        ),
-    )
-    parser.add_argument(
-        "--no-restart",
-        action="store_true",
-        help=(
-            "Skip the auto-restart of the live ComfyUI server. By default "
-            "the script POSTs to ComfyUI-Manager's reboot endpoint after a "
-            "successful sync so the new Python files are actually loaded "
-            "(custom-node `.py` files load once at server start; without a "
-            "restart the maintainer's changes won't be visible). Use this "
-            "flag when you want to stage files without disturbing a live "
-            "session (rare — `dev-sync` is normally invoked precisely "
-            "because you want to see new code)."
-        ),
-    )
-    parser.add_argument(
-        "--restart-url",
-        type=str,
-        default=DEFAULT_RESTART_URL,
-        help=(
-            f"Override the restart endpoint. Default: {DEFAULT_RESTART_URL}. "
-            f"Adjust if your ComfyUI listens on a non-standard host/port. "
-            f"Ignored when --no-restart is set or --dry-run is used."
         ),
     )
     args = parser.parse_args()
@@ -441,7 +341,7 @@ def main() -> int:
 
     n = sync(target, dry_run=args.dry_run, verbose=args.verbose)
     verb = "would sync" if args.dry_run else "synced"
-    # Two-line summary — see project CLAUDE.md `dev-sync` section for the
+    # Two-line summary - see project CLAUDE.md `dev-sync` section for the
     # chat-report convention that consumes this output. Header first so
     # the maintainer's eye lands on the build identifier before the
     # mechanical sync details.
@@ -449,9 +349,6 @@ def main() -> int:
     print(f"{verb} {n} entries -> {target}")
     if not args.dry_run:
         write_build_info(target, args.scope)
-        if not args.no_restart:
-            ok, msg = trigger_restart(args.restart_url)
-            print(msg)
     return 0
 
 

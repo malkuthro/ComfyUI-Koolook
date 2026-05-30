@@ -11,6 +11,14 @@ The format is inspired by Keep a Changelog and SemVer.
   audio sync now removes the old `web/whatdreamscost_koolook_v1_3_2/`
   folder after the stable v1.3.9 web-extension rename, preventing legacy
   workflows from loading two identical timeline editors in dev installs.
+- **Audio Transcript Timeline now follows every timeline audio clip.** When
+  the node receives `timeline_data` from Koolook Timeline Editor it now
+  transcribes all `audioSegments`, applies each clip's timeline start,
+  trim start, and visible length, then merges the phrases into one ordered
+  Prompt Relay timing sequence. This fixes separated audio clips where only
+  the first file affected `local_prompts` / `segment_lengths`. Generated
+  speech/pause prompts now also include the active image segment's prompt,
+  with a first-non-empty timeline prompt fallback for empty image segments.
 - **Comfy workflow draft quota guard for large LTX timeline workflows.** The
   LTX Director frontend now strips preview-only media blobs from timeline
   serialization and catches browser quota failures on Comfy's own
@@ -60,6 +68,10 @@ The format is inspired by Keep a Changelog and SemVer.
   widget-to-input conversion, stale workflows, and downstream widget patches.
 
 ### Changed
+- **Dev-sync scripts now only copy files.** `sync_to_dev.py` and the
+  scoped `dev-sync-audio` wrapper no longer call the ComfyUI-Manager
+  reboot endpoint and no longer expose `--no-restart` / `--restart-url`;
+  restart ComfyUI manually after Python changes need to be re-imported.
 - **`loop-audio` card redesigned around a strict two-source rule** (issue
   [#177](https://github.com/malkuthro/ComfyUI-Koolook/issues/177)). The
   audio-lipsync card now only reads (a) the five tracked

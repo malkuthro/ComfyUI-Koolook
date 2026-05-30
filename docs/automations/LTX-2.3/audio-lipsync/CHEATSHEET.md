@@ -118,6 +118,15 @@ speech prompts from the audio and feed those back into the Director:
 
 - `transcript_json` -> Director `audio_transcript_json`
 
+When its `timeline_data` input is linked from `Koolook Timeline Editor`,
+the node uses all audio clips on the timeline. Each clip is transcribed
+separately, shifted by its timeline start, clipped by its trim/length, and
+then merged into one ordered prompt-timing sequence. This is the preferred
+ComfyUI path for testing separated dialogue clips. The generated speech
+and pause prompts include the active image segment prompt, so multi-image
+timelines can keep visual directions on the image clips while the transcript
+node adds exact mouth timing.
+
 Keep `use_custom_audio=True`. The node emits `transcript_json` so the
 recognized phrase timing can also be inspected with a text-preview node.
 The Koolook Director converts that JSON into its own `timeline_data`,

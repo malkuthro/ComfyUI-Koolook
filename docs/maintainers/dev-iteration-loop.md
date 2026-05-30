@@ -62,8 +62,9 @@ End-to-end: ~10–30 seconds. No tag/publish round-trip.
 | Distributed defaults — starter preset | `web/starter_preset.json` (in repo) | copied once into the user's snapshot library as `starter.json` on first ComfyUI load (replaces the legacy `curated_defaults.json` localStorage seed) |
 | Distributed defaults — workflows | `web/workflow_defaults.json` (in repo) | seeded once into `/userdata` on first ComfyUI load |
 
-dev-sync + restart never wipes user state. Only `localStorage.clear()`,
-deleting `/userdata/koolook_workflows.json`, or wiping browser data does.
+dev-sync and manual ComfyUI restarts never wipe user state. Only
+`localStorage.clear()`, deleting `/userdata/koolook_workflows.json`, or
+wiping browser data does.
 
 ## Commit / push / publish gates
 

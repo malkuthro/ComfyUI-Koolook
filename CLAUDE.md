@@ -9,6 +9,16 @@
 
 ## Hard rules
 
+- Never delete, move, rename, or edit files outside this repository. External
+  paths may be read only when the maintainer explicitly provides them for
+  inspection or copying into the repository. Any destructive or modifying
+  action outside the repo is forbidden; stop and ask the maintainer to perform
+  it manually instead.
+- If an instruction is unclear, contradictory, unusually destructive, or seems
+  to conflict with the maintainer's broader intent, do not execute it
+  literally. Stop, explain the ambiguity in plain language, and ask for
+  confirmation before acting. This is especially important for filesystem
+  operations, sync targets, workflow paths, and anything outside the repo.
 - Do not vendor/copy full third-party repositories into MAIN.
 - Install Python dev/test dependencies into a repo-local `.venv`. From a
   fresh checkout/worktree run the platform bootstrap script:
@@ -108,8 +118,9 @@ is in [`docs/maintainers/dev-iteration-loop.md`](docs/maintainers/dev-iteration-
 When an automation module under `docs/automations/` iterates on code that
 lives in a single subtree (e.g. one fork under `forks/`), a *scoped*
 dev-sync wrapper avoids churning the rest of the live install on every
-iteration. Same `KOLOOK_COMFYUI_DEV_PATH` target, same restart, same
-chat-report shape — just a smaller set of paths copied.
+iteration. Same `KOLOOK_COMFYUI_DEV_PATH` target and same chat-report
+shape — just a smaller set of paths copied. Scoped sync wrappers only
+copy files; restart ComfyUI manually when Python modules need to reload.
 
 Current per-module variants:
 
