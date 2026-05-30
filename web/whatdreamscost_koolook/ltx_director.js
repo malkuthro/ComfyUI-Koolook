@@ -192,6 +192,16 @@ function serializeTimelineSegment(seg) {
   return rest;
 }
 
+function inputImageUrl(imageFile) {
+  const normalized = String(imageFile || "").replace(/\\/g, "/");
+  if (!normalized) return "";
+  const parts = normalized.split("/");
+  const filename = parts.pop();
+  const subfolder = parts.join("/");
+  if (!filename) return "";
+  return api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+}
+
 installComfyDraftQuotaGuard();
 pruneComfyDraftCache();
 
@@ -961,10 +971,12 @@ class TimelineEditor {
 
   loadImages() {
     for (const seg of this.timeline.segments) {
-      if (seg.imageB64 && !seg.imgObj) {
+      const src = seg.imageB64 || inputImageUrl(seg.imageFile);
+      if (src && !seg.imgObj) {
+        seg.imageB64 = src;
         seg.imgObj = new Image();
         seg.imgObj.onload = () => this.render();
-        seg.imgObj.src = seg.imageB64;
+        seg.imgObj.src = src;
       }
     }
   }

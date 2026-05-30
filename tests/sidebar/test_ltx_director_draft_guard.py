@@ -34,3 +34,13 @@ def test_timeline_serialization_drops_preview_only_media() -> None:
     assert "audioB64" in source
     assert "segments: sortedSegments.map(s => serializeTimelineSegment(s))" in source
     assert "audioSegments: (this.timeline.audioSegments || []).map(s => serializeTimelineSegment(s))" in source
+
+
+def test_timeline_rehydrates_image_previews_from_saved_image_file() -> None:
+    source = LTX_DIRECTOR_JS.read_text(encoding="utf-8")
+
+    assert "function inputImageUrl(imageFile)" in source
+    assert 'replace(/\\\\/g, "/")' in source
+    assert "const src = seg.imageB64 || inputImageUrl(seg.imageFile);" in source
+    assert "seg.imageB64 = src;" in source
+    assert "seg.imgObj.src = src;" in source

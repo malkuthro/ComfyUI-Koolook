@@ -19,6 +19,11 @@ The format is inspired by Keep a Changelog and SemVer.
   the first file affected `local_prompts` / `segment_lengths`. Generated
   speech/pause prompts now also include the active image segment's prompt,
   with a first-non-empty timeline prompt fallback for empty image segments.
+- **LTX Director timeline images persist after canvas/setup switches.** The
+  timeline editor keeps saved workflow payloads light by omitting preview-only
+  image blobs, but now rebuilds image previews from the persisted `imageFile`
+  path when the node is restored. This matches audio behavior, where `audioFile`
+  was already enough to survive switching between setups.
 - **Comfy workflow draft quota guard for large LTX timeline workflows.** The
   LTX Director frontend now strips preview-only media blobs from timeline
   serialization and catches browser quota failures on Comfy's own
