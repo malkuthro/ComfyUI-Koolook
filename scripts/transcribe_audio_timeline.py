@@ -27,11 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from k_audio_timeline import (
+from k_audio_timeline import (  # noqa: E402
     DEFAULT_PAUSE_TEMPLATE,
     DEFAULT_PROMPT_TEMPLATE,
     Phrase,
-    Word,
     group_words,
     transcribe_words,
 )
