@@ -124,6 +124,8 @@ def _apply_audio_transcript_json(
     phrases = transcript.get("phrases")
     if not isinstance(phrases, list):
         raise ValueError("audio_transcript_json must contain a phrases list.")
+    if not phrases:
+        raise ValueError("audio_transcript_json.phrases must not be empty.")
 
     timeline = json.loads(timeline_data) if str(timeline_data or "").strip() else {}
     if not isinstance(timeline, dict):
@@ -135,7 +137,7 @@ def _apply_audio_transcript_json(
         frame_rate=float(frame_rate),
     )
     image_file = _first_timeline_image_file(timeline)
-    timeline["segments"] = [
+    speech_segments = [
         {
             "id": f"speech_{idx + 1:03d}",
             "type": "image",
@@ -146,6 +148,14 @@ def _apply_audio_transcript_json(
         }
         for idx, span in enumerate(spans)
     ]
+    if not timeline.get("segments"):
+        timeline["segments"] = speech_segments
+    else:
+        log.warning(
+            "[AudioTranscript] Preserving existing timeline_data segments; "
+            "audio_transcript_json updated Prompt Relay local_prompts and "
+            "segment_lengths only."
+        )
     timeline.setdefault("audioSegments", [])
 
     return (
@@ -710,6 +720,9 @@ class LTXDirector(io.ComfyNode):
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
         # --- Auto-generate LTXV latent if none was provided ---
+        # LTXV includes an extra terminal pixel frame. Prompt Relay segment
+        # lengths may sum to `duration_frames`; `_convert_to_latent_lengths`
+        # clamps near-full coverage back to the full latent-frame count.
         ltxv_length = duration_frames + 1
         if optional_latent is None:
             latent_w = max(32, (derived_w // 32) * 32)

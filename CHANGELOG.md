@@ -27,6 +27,15 @@ The format is inspired by Keep a Changelog and SemVer.
   the browser store is still full. This documents and extends the
   v0.3.6 stable-draft-ID lesson to large workflows imported directly from disk,
   which bypass the Koolook sidebar load path.
+- **LTX Director transcript timing preserves image timelines.** The
+  `audio_transcript_json` hook now rejects empty phrase lists and keeps existing
+  timeline image segments intact, using the transcript only to update Prompt
+  Relay `local_prompts` / `segment_lengths`. When no timeline image segments
+  exist, it still builds speech/pause segments for older stripped-down flows.
+- **Audio-lipsync run evidence no longer carries local machine paths.**
+  Checked-in run workflow snapshots now replace user-home, working-folder, and
+  project-drive paths with placeholders so the reproducibility evidence stays
+  useful without publishing workstation-specific paths.
 - **`loop-audio`: run numbering now respects the log.** The audio-lipsync
   loop now chooses the next run number from both existing `run-NNN_*`
   folders and `runs/log.md`, preventing a newly saved snapshot from reusing

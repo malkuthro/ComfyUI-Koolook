@@ -7,6 +7,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _install_import_stubs(monkeypatch):
     class _ComfyNode:
@@ -51,7 +53,7 @@ def _install_import_stubs(monkeypatch):
     monkeypatch.setitem(sys.modules, "comfy_api.latest", comfy_api.latest)
 
 
-def test_audio_transcript_json_overrides_director_prompt_fields(monkeypatch):
+def _load_director(monkeypatch):
     _install_import_stubs(monkeypatch)
     repo_root = Path(__file__).resolve().parents[2]
     version_dir = repo_root / "forks" / "whatdreamscost_koolook" / "versions" / "v1_3_9"
@@ -72,7 +74,11 @@ def test_audio_transcript_json_overrides_director_prompt_fields(monkeypatch):
     director = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, module_name, director)
     spec.loader.exec_module(director)
+    return director
 
+
+def test_audio_transcript_json_preserves_existing_timeline_segments(monkeypatch):
+    director = _load_director(monkeypatch)
     transcript = {
         "phrases": [
             {"start": 0.0, "end": 0.5, "text": "What?"},
@@ -109,5 +115,46 @@ def test_audio_transcript_json_overrides_director_prompt_fields(monkeypatch):
     assert 'says "What\'s going on?"' in local_prompts
     assert 'says "This is made by AI."' in local_prompts
     assert timeline["audioSegments"] == [{"id": "audio_001", "audioFile": "line.mp3"}]
-    assert [segment["imageFile"] for segment in timeline["segments"]] == ["bear.png"] * 6
-    assert [segment["start"] for segment in timeline["segments"]] == [0, 12, 25, 42, 47, 68]
+    assert timeline["segments"] == [
+        {
+            "id": "old",
+            "type": "image",
+            "start": 0,
+            "length": 120,
+            "imageFile": "bear.png",
+            "prompt": "old prompt",
+        }
+    ]
+
+
+def test_audio_transcript_json_builds_segments_when_timeline_has_none(monkeypatch):
+    director = _load_director(monkeypatch)
+    transcript = {"phrases": [{"start": 0.0, "end": 0.5, "text": "What?"}]}
+
+    timeline_data, local_prompts, segment_lengths = director._apply_audio_transcript_json(
+        json.dumps({"audioSegments": [{"id": "audio_001", "audioFile": "line.mp3"}]}),
+        "old local",
+        "120",
+        json.dumps(transcript),
+        duration_frames=24,
+        frame_rate=24.0,
+    )
+
+    timeline = json.loads(timeline_data)
+    assert segment_lengths == "12,12"
+    assert 'says "What?"' in local_prompts
+    assert [segment["start"] for segment in timeline["segments"]] == [0, 12]
+
+
+def test_audio_transcript_json_rejects_empty_phrases(monkeypatch):
+    director = _load_director(monkeypatch)
+
+    with pytest.raises(ValueError, match="phrases must not be empty"):
+        director._apply_audio_transcript_json(
+            "{}",
+            "",
+            "",
+            json.dumps({"phrases": []}),
+            duration_frames=24,
+            frame_rate=24.0,
+        )

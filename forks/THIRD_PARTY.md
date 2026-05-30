@@ -243,7 +243,10 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
     `LTXDirector__koolook` node ID, and keeps the old
     `LTXDirector__koolook_v1_3_2` workflow ID as a compatibility alias,
     while preserving upstream v1.3.9's audio latent fixes for wrapped vs
-    raw AudioVAE handling.
+    raw AudioVAE handling. Koolook also adds the optional
+    `audio_transcript_json` input: timed speech phrases can generate
+    Prompt Relay `local_prompts` / `segment_lengths` at execution time
+    while preserving existing timeline image segments.
   - **`prompt_relay.py` (modified).** Carries forward the Koolook
     per-segment sigma formula from the v1.3.2 fork.
   - **`patches.py` (verbatim vendored).** Carried unmodified from upstream

@@ -92,6 +92,64 @@ function pruneComfyDraftCache() {
   }
 }
 
+function showComfyDraftQuotaWarning(message) {
+  try {
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.cssText = [
+      "position:fixed",
+      "right:30px",
+      "bottom:30px",
+      "z-index:9999",
+      "max-width:420px",
+      "padding:10px 14px",
+      "border-radius:4px",
+      "background:rgba(180,60,60,0.95)",
+      "color:#fff",
+      "font:12px/1.4 ui-sans-serif,system-ui,sans-serif",
+      "box-shadow:0 2px 8px rgba(0,0,0,0.4)",
+    ].join(";");
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6500);
+  } catch (_err) { }
+}
+
+function evictOldestComfyDraft(originalSetItem) {
+  const rawDrafts = localStorage.getItem(COMFY_DRAFTS_KEY);
+  if (!rawDrafts) return false;
+
+  const drafts = JSON.parse(rawDrafts);
+  if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {
+    localStorage.removeItem(COMFY_DRAFTS_KEY);
+    localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+    return false;
+  }
+
+  let order = [];
+  try {
+    const parsedOrder = JSON.parse(localStorage.getItem(COMFY_DRAFT_ORDER_KEY) || "[]");
+    if (Array.isArray(parsedOrder)) order = parsedOrder.filter(path => typeof path === "string");
+  } catch (_err) {
+    order = [];
+  }
+
+  const draftKeys = Object.keys(drafts);
+  const orderedKeys = [
+    ...order.filter(path => Object.prototype.hasOwnProperty.call(drafts, path)),
+    ...draftKeys.filter(path => !order.includes(path)),
+  ];
+  const key = orderedKeys.shift();
+  if (!key) return false;
+
+  delete drafts[key];
+  const nextOrder = orderedKeys.filter(path => Object.prototype.hasOwnProperty.call(drafts, path));
+  originalSetItem(COMFY_DRAFTS_KEY, JSON.stringify(drafts));
+  originalSetItem(COMFY_DRAFT_ORDER_KEY, JSON.stringify(nextOrder));
+  console.warn(`[PromptRelay] evicted oldest Comfy workflow draft "${key}" after browser quota error.`);
+  showComfyDraftQuotaWarning("Comfy draft cache was full. Koolook removed the oldest draft only; save again if needed.");
+  return true;
+}
+
 function installComfyDraftQuotaGuard() {
   try {
     if (localStorage.__koolookDraftQuotaGuardInstalled) return;
@@ -109,22 +167,19 @@ function installComfyDraftQuotaGuard() {
           (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
         if (!isQuotaError || !WORKFLOW_DRAFT_KEYS.has(String(key))) throw err;
 
-        try {
-          originalSetItem(COMFY_DRAFTS_KEY, "{}");
-          originalSetItem(COMFY_DRAFT_ORDER_KEY, "[]");
-          console.warn("[PromptRelay] cleared Comfy workflow draft cache after browser quota error.");
-        } catch (_cleanupErr) {
-          localStorage.removeItem(COMFY_DRAFTS_KEY);
-          localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+        for (let attempt = 0; attempt < 25; attempt += 1) {
+          try {
+            if (!evictOldestComfyDraft(originalSetItem)) break;
+            return originalSetItem(key, value);
+          } catch (retryErr) {
+            const retryIsQuota =
+              retryErr instanceof DOMException &&
+              (retryErr.name === "QuotaExceededError" || retryErr.name === "NS_ERROR_DOM_QUOTA_REACHED");
+            if (!retryIsQuota) throw retryErr;
+          }
         }
-
-        try {
-          return originalSetItem(key, value);
-        } catch (_retryErr) {
-          if (String(key) === COMFY_DRAFTS_KEY) return originalSetItem(key, "{}");
-          if (String(key) === COMFY_DRAFT_ORDER_KEY) return originalSetItem(key, "[]");
-          throw err;
-        }
+        showComfyDraftQuotaWarning("Comfy draft cache is still full. Koolook did not clear all drafts; export or delete old drafts manually.");
+        throw err;
       }
     };
   } catch (err) {
