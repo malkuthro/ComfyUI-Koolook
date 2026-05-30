@@ -13,11 +13,15 @@ defined either way (only the class registration is gated).
 """
 from __future__ import annotations
 
+import importlib
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
+import k_video_combine
 from k_video_combine import (
     _add_metadata_json_sidecar,
     _append_video_path_outputs,
@@ -26,8 +30,10 @@ from k_video_combine import (
     _coerce_version_input,
     _compose_prefix,
     _display_format_name,
+    _estimate_output_paths,
     _final_json_path_from_result,
     _final_video_path_from_result,
+    _format_extension,
     _finalize_strict_version_output,
     _metadata_sidecar_path,
     _normalize_bool_input,
@@ -318,6 +324,149 @@ def test_koolook_format_display_hides_json_suffix() -> None:
 def test_koolook_format_runtime_restores_json_suffix() -> None:
     assert _runtime_format_name("video/koolook-ASTRA-h264") == "video/koolook-ASTRA-h264.json"
     assert _runtime_format_name("video/ProRes") == "video/ProRes"
+
+
+def test_koolook_format_extension_reads_preset_json() -> None:
+    assert _format_extension("video/koolook-ASTRA-h264") == "mp4"
+    assert _format_extension("video/koolook-ProRes") == "mov"
+    assert _format_extension("video/ProRes") == "mov"
+
+
+def test_estimate_output_paths_strict_version_is_deterministic(tmp_path: Path) -> None:
+    out = _estimate_output_paths(
+        "clip",
+        str(tmp_path),
+        "video/koolook-ASTRA-h264",
+        "v001",
+        False,
+    )
+
+    assert out == (
+        os.path.normpath(str(tmp_path / "clip_v001.mp4")),
+        os.path.normpath(str(tmp_path)),
+        "clip_v001.mp4",
+        os.path.normpath(str(tmp_path / "clip_v001.json")),
+        False,
+    )
+
+
+def test_estimate_output_paths_scans_next_vhs_counter(tmp_path: Path) -> None:
+    (tmp_path / "clip_00001.mp4").write_bytes(b"old")
+    (tmp_path / "clip_00003.mp4").write_bytes(b"old")
+
+    video_path, _, video_name, json_path, exists = _estimate_output_paths(
+        "clip",
+        str(tmp_path),
+        "video/koolook-ASTRA-h264",
+        "",
+        False,
+    )
+
+    assert video_path == os.path.normpath(str(tmp_path / "clip_00004.mp4"))
+    assert video_name == "clip_00004.mp4"
+    assert json_path == os.path.normpath(str(tmp_path / "clip_00004.json"))
+    assert exists is False
+
+
+def test_estimate_output_paths_strict_collision_without_overwrite_keeps_counter(tmp_path: Path) -> None:
+    (tmp_path / "clip_v001.mp4").write_bytes(b"existing")
+    (tmp_path / "clip_v001_00001.mp4").write_bytes(b"previous collision")
+
+    video_path, _, video_name, json_path, exists = _estimate_output_paths(
+        "clip",
+        str(tmp_path),
+        "video/koolook-ASTRA-h264",
+        "v001",
+        False,
+    )
+
+    assert video_path == os.path.normpath(str(tmp_path / "clip_v001_00002.mp4"))
+    assert video_name == "clip_v001_00002.mp4"
+    assert json_path == os.path.normpath(str(tmp_path / "clip_v001_00002.json"))
+    assert exists is False
+
+
+def test_estimate_output_paths_strict_collision_with_overwrite_uses_version_path(tmp_path: Path) -> None:
+    (tmp_path / "clip_v001.mp4").write_bytes(b"existing")
+
+    video_path, _, video_name, _, exists = _estimate_output_paths(
+        "clip",
+        str(tmp_path),
+        "video/koolook-ASTRA-h264",
+        "v001",
+        True,
+    )
+
+    assert video_path == os.path.normpath(str(tmp_path / "clip_v001.mp4"))
+    assert video_name == "clip_v001.mp4"
+    assert exists is True
+
+
+def test_video_path_estimate_node_has_no_render_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeVHSVideoCombine:
+        RETURN_TYPES = ("VHS_FILENAMES",)
+        RETURN_NAMES = ("Filenames",)
+
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {
+                "required": {
+                    "images": ("IMAGE", {}),
+                    "audio": ("AUDIO", {}),
+                    "format": (
+                        ["video/koolook-ASTRA-h264.json"],
+                        {
+                            "default": "video/koolook-ASTRA-h264.json",
+                            "formats": {"video/koolook-ASTRA-h264.json": []},
+                        },
+                    ),
+                    "filename_prefix": ("STRING", {}),
+                    "save_output": ("BOOLEAN", {}),
+                },
+                "optional": {},
+            }
+
+    fake_nodes = types.SimpleNamespace(
+        NODE_CLASS_MAPPINGS={"VHS_VideoCombine": FakeVHSVideoCombine}
+    )
+    fake_folder_paths = types.SimpleNamespace(
+        folder_names_and_paths={"VHS_video_formats": ((), {".json"})},
+    )
+    monkeypatch.setitem(sys.modules, "nodes", fake_nodes)
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    loaded = importlib.reload(k_video_combine)
+
+    input_types = loaded.Easy_VideoPathEstimate.INPUT_TYPES()
+    required = input_types["required"]
+    optional = input_types["optional"]
+
+    assert "images" not in required
+    assert "audio" not in required
+    assert set(required) == {"filename_prefix", "format"}
+    assert {"output_directory", "version", "enable_overwrite"} <= set(optional)
+
+    result = loaded.Easy_VideoPathEstimate().estimate_paths(
+        filename_prefix="clip",
+        format="video/koolook-ASTRA-h264",
+        output_directory=str(tmp_path),
+        version="v002",
+        enable_overwrite=False,
+    )
+
+    assert result[:4] == (
+        os.path.normpath(str(tmp_path / "clip_v002.mp4")),
+        os.path.normpath(str(tmp_path)),
+        "clip_v002.mp4",
+        os.path.normpath(str(tmp_path / "clip_v002.json")),
+    )
+    assert result[4] is False
+
+    monkeypatch.delitem(sys.modules, "nodes")
+    monkeypatch.delitem(sys.modules, "folder_paths")
+    importlib.reload(k_video_combine)
 
 
 # =============================================================================

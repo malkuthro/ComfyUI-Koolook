@@ -1,11 +1,20 @@
 """Tests for Easy_LoadVideo's split input path composition."""
 from __future__ import annotations
 
+import importlib
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from k_video_load import _compose_input_video_path, _normalize_text_input
+import k_video_load
+from k_video_load import (
+    _compose_input_video_path,
+    _is_existing_local_video_path,
+    _normalize_path_input,
+    _normalize_text_input,
+)
 
 
 def test_empty_input_path_passes_video_through() -> None:
@@ -32,6 +41,61 @@ def test_absolute_input_path_joins_filename() -> None:
         absolute_dir,
     )
     assert Path(composed) == Path(absolute_dir) / "plate_main.mp4"
+
+
+def test_input_path_accepts_full_video_path_when_video_empty() -> None:
+    root = Path.cwd().anchor
+    video_path = str(Path(root) / "projects" / "shot01" / "plate_main.mp4")
+
+    assert Path(_compose_input_video_path("", video_path)) == Path(video_path)
+
+
+def test_existing_local_video_path_detection(tmp_path: Path) -> None:
+    video = tmp_path / "plate_main.mp4"
+    video.write_bytes(b"fake")
+
+    assert _is_existing_local_video_path(str(video)) is True
+    assert _is_existing_local_video_path(str(tmp_path / "plate_main.json")) is False
+    assert _is_existing_local_video_path(str(tmp_path / "missing.mp4")) is False
+
+
+def test_relative_input_path_accepts_full_video_path_when_video_empty(tmp_path: Path) -> None:
+    composed = _compose_input_video_path(
+        "",
+        "shots/shot01/plate_main.mp4",
+        input_root=str(tmp_path),
+    )
+    assert Path(composed) == tmp_path / "shots" / "shot01" / "plate_main.mp4"
+
+
+def test_wrapped_full_video_path_in_input_path_rejoins_before_loading(tmp_path: Path) -> None:
+    folder = tmp_path / "Runs-Audio-File"
+    folder.mkdir()
+    video = folder / "Bear_2x-FR_AudioFile_K-Dir_h264_v002.mp4"
+    video.write_bytes(b"fake")
+    wrapped = str(video).replace("Runs-Audio-File", "Runs-Audio-\nFile")
+
+    composed = _compose_input_video_path("", wrapped)
+
+    assert Path(composed) == video
+
+
+def test_input_path_accepts_directory_and_filename_lines_when_video_empty(tmp_path: Path) -> None:
+    video = tmp_path / "plate_main.mp4"
+    video.write_bytes(b"fake")
+
+    composed = _compose_input_video_path("", f"{tmp_path}\nplate_main.mp4")
+
+    assert Path(composed) == video
+
+
+def test_normalize_path_input_prefers_existing_wrapped_path(tmp_path: Path) -> None:
+    folder = tmp_path / "Runs-Audio-File"
+    folder.mkdir()
+    video = folder / "clip.mov"
+    video.write_bytes(b"fake")
+
+    assert _normalize_path_input(str(video).replace("Runs-Audio-File", "Runs-Audio-\nFile")) == str(video)
 
 
 def test_relative_input_path_roots_under_comfy_input_dir(tmp_path: Path) -> None:
@@ -70,3 +134,112 @@ def test_normalize_text_input_handles_frontend_sentinels() -> None:
     assert _normalize_text_input("undefined") == ""
     assert _normalize_text_input("None") == ""
     assert _normalize_text_input("  plate_main.mp4\nundefined") == "plate_main.mp4"
+
+
+def test_easy_load_video_calls_vhs_loader_directly_for_existing_full_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls = []
+
+    def fake_shared_loader(**kwargs):
+        calls.append(kwargs)
+        return ("loaded", kwargs["video"])
+
+    class FakeVHSLoadVideoPath:
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {
+                "required": {
+                    "video": ("STRING", {}),
+                    "force_rate": ("FLOAT", {}),
+                },
+                "optional": {},
+            }
+
+        def load_video(self, **kwargs):
+            raise AssertionError("strict VHS LoadVideoPath.load_video should be bypassed")
+
+        @classmethod
+        def IS_CHANGED(cls, video, **kwargs):
+            return video
+
+        @classmethod
+        def VALIDATE_INPUTS(cls, video):
+            return f"strict validator rejected {video}"
+
+    FakeVHSLoadVideoPath.load_video.__globals__["load_video"] = fake_shared_loader
+    fake_nodes = types.SimpleNamespace(
+        NODE_CLASS_MAPPINGS={"VHS_LoadVideoPath": FakeVHSLoadVideoPath}
+    )
+    fake_folder_paths = types.SimpleNamespace(get_input_directory=lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, "nodes", fake_nodes)
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    loaded = importlib.reload(k_video_load)
+
+    video = tmp_path / "plate_main.mp4"
+    video.write_bytes(b"fake")
+    result = loaded.Easy_LoadVideo().load_video(
+        input_path=str(video),
+        video="",
+        force_rate=0,
+    )
+
+    assert result == ("loaded", str(video))
+    assert calls[-1]["video"] == str(video)
+    assert loaded.Easy_LoadVideo.VALIDATE_INPUTS("", str(video)) is True
+
+    monkeypatch.delitem(sys.modules, "nodes")
+    monkeypatch.delitem(sys.modules, "folder_paths")
+    importlib.reload(k_video_load)
+
+
+def test_easy_load_video_rejoins_wrapped_input_path_before_direct_vhs_loader(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls = []
+
+    def fake_shared_loader(**kwargs):
+        calls.append(kwargs)
+        return ("loaded", kwargs["video"])
+
+    class FakeVHSLoadVideoPath:
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {"required": {"video": ("STRING", {})}, "optional": {}}
+
+        def load_video(self, **kwargs):
+            raise AssertionError("strict VHS LoadVideoPath.load_video should be bypassed")
+
+        @classmethod
+        def IS_CHANGED(cls, video, **kwargs):
+            return video
+
+        @classmethod
+        def VALIDATE_INPUTS(cls, video):
+            return f"strict validator rejected {video}"
+
+    FakeVHSLoadVideoPath.load_video.__globals__["load_video"] = fake_shared_loader
+    fake_nodes = types.SimpleNamespace(
+        NODE_CLASS_MAPPINGS={"VHS_LoadVideoPath": FakeVHSLoadVideoPath}
+    )
+    fake_folder_paths = types.SimpleNamespace(get_input_directory=lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, "nodes", fake_nodes)
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    loaded = importlib.reload(k_video_load)
+
+    folder = tmp_path / "Runs-Audio-File"
+    folder.mkdir()
+    video = folder / "Bear_2x-FR_AudioFile_K-Dir_h264_v002.mp4"
+    video.write_bytes(b"fake")
+    wrapped = str(video).replace("Runs-Audio-File", "Runs-Audio-\nFile")
+
+    result = loaded.Easy_LoadVideo().load_video(input_path=wrapped, video="")
+
+    assert result == ("loaded", str(video))
+    assert calls[-1]["video"] == str(video)
+
+    monkeypatch.delitem(sys.modules, "nodes")
+    monkeypatch.delitem(sys.modules, "folder_paths")
+    importlib.reload(k_video_load)

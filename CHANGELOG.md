@@ -13,8 +13,22 @@ The format is inspired by Keep a Changelog and SemVer.
   sidecar path, so a rendered clip can wire directly into `Easy Load Video
   (Koolook)` for a second workflow stage without parsing VHS's mixed
   JSON/video list.
+- **`Easy Video Path Estimate (Koolook)`.** New lightweight companion node
+  calculates the expected Easy Video Combine video/json paths from the
+  same prefix, output directory, format, version, and overwrite inputs
+  without running the encoder. It also reports whether the estimated video
+  already exists, so already-rendered QuickTimes can be routed like files
+  on disk.
 
 ### Fixed
+- **`Easy_LoadVideo`: direct `video_path` handoff.** The loader now
+  accepts a complete video file path in `input_path` when `video` is
+  empty, so `Easy_VideoCombine.video_path` can wire straight into
+  `Easy_LoadVideo.input_path` without needing a separate filename field.
+  Existing local video files bypass VHS's stricter path-wrapper
+  validation and are passed directly to VHS's shared decode path. Wrapped
+  multiline full paths from text nodes are joined back together before
+  loading.
 - **`Easy_LoadVideo`: two-line path/name input.** When `input_path` is
   empty, the loader now accepts a multiline `video` string whose first
   line is the directory and second line is the filename, matching the
