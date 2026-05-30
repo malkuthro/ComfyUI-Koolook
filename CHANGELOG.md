@@ -22,8 +22,9 @@ The format is inspired by Keep a Changelog and SemVer.
 - **LTX Director timeline images persist after canvas/setup switches.** The
   timeline editor keeps saved workflow payloads light by omitting preview-only
   image blobs, but now rebuilds image previews from the persisted `imageFile`
-  path when the node is restored. This matches audio behavior, where `audioFile`
-  was already enough to survive switching between setups.
+  path when the node is restored. It also strips legacy inline preview blobs
+  from restored timeline data when a saved file path exists, preventing old
+  image-heavy setups from re-triggering Comfy's draft-quota error.
 - **Comfy workflow draft quota guard for large LTX timeline workflows.** The
   LTX Director frontend now strips preview-only media blobs from timeline
   serialization and catches browser quota failures on Comfy's own

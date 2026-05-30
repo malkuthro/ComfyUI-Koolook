@@ -188,7 +188,7 @@ function installComfyDraftQuotaGuard() {
 }
 
 function serializeTimelineSegment(seg) {
-  const { imgObj, imageB64, audioB64, _audioBuffer, _file, ...rest } = seg || {};
+  const { imgObj, imageB64, audioB64, _audioBuffer, _file, _imagePreviewSrc, ...rest } = seg || {};
   return rest;
 }
 
@@ -200,6 +200,21 @@ function inputImageUrl(imageFile) {
   const subfolder = parts.join("/");
   if (!filename) return "";
   return api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+}
+
+function imagePreviewSrc(seg) {
+  if (!seg) return "";
+  return seg.imageB64 || seg._imagePreviewSrc || inputImageUrl(seg.imageFile);
+}
+
+function scrubPersistedPreviewMedia(seg) {
+  if (!seg || typeof seg !== "object") return seg;
+  if (seg.imageFile && seg.imageB64) delete seg.imageB64;
+  if (seg.audioFile && seg.audioB64) delete seg.audioB64;
+  delete seg.imgObj;
+  delete seg._audioBuffer;
+  delete seg._file;
+  return seg;
 }
 
 installComfyDraftQuotaGuard();
@@ -726,8 +741,8 @@ function parseInitial(jsonStr) {
   try {
     if (jsonStr) {
       const p = JSON.parse(jsonStr);
-      if (Array.isArray(p.segments)) parsed.segments = p.segments;
-      if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments;
+      if (Array.isArray(p.segments)) parsed.segments = p.segments.map(scrubPersistedPreviewMedia);
+      if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments.map(scrubPersistedPreviewMedia);
     }
   } catch (e) { }
 
@@ -971,9 +986,9 @@ class TimelineEditor {
 
   loadImages() {
     for (const seg of this.timeline.segments) {
-      const src = seg.imageB64 || inputImageUrl(seg.imageFile);
+      const src = imagePreviewSrc(seg);
       if (src && !seg.imgObj) {
-        seg.imageB64 = src;
+        seg._imagePreviewSrc = src;
         seg.imgObj = new Image();
         seg.imgObj.onload = () => this.render();
         seg.imgObj.src = src;
@@ -3125,7 +3140,8 @@ class TimelineEditor {
     menu.style.left = `${clientX + 6}px`;
     menu.style.top = `${clientY - 10}px`;
 
-    const isImage = trackType !== "audio" && trackType !== "text" && seg.imageB64;
+    const previewSrc = imagePreviewSrc(seg);
+    const isImage = trackType !== "audio" && trackType !== "text" && previewSrc;
 
     if (isImage) {
       const copyBtn = document.createElement("button");
@@ -3133,7 +3149,7 @@ class TimelineEditor {
       copyBtn.innerHTML = `Copy Image`;
       copyBtn.onclick = async () => {
         try {
-          const res = await fetch(seg.imageB64);
+          const res = await fetch(previewSrc);
           const blob = await res.blob();
           await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         } catch (err) {
@@ -3148,7 +3164,7 @@ class TimelineEditor {
       saveBtn.innerHTML = `Save Image`;
       saveBtn.onclick = () => {
         const a = document.createElement("a");
-        a.href = seg.imageB64;
+        a.href = previewSrc;
         a.download = "timeline_image.jpg";
         a.click();
         this.dismissContextMenu();
@@ -3161,7 +3177,7 @@ class TimelineEditor {
       openBtn.onclick = () => {
         const win = window.open();
         if (win) {
-          win.document.write(`<body style="margin:0;display:flex;justify-content:center;align-items:center;background:#0e0e0e;height:100vh;"><img style="max-width:100%;max-height:100%;" src="${seg.imageB64}" /></body>`);
+          win.document.write(`<body style="margin:0;display:flex;justify-content:center;align-items:center;background:#0e0e0e;height:100vh;"><img style="max-width:100%;max-height:100%;" src="${previewSrc}" /></body>`);
           win.document.close();
         }
         this.dismissContextMenu();

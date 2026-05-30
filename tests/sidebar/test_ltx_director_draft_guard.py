@@ -40,7 +40,13 @@ def test_timeline_rehydrates_image_previews_from_saved_image_file() -> None:
     source = LTX_DIRECTOR_JS.read_text(encoding="utf-8")
 
     assert "function inputImageUrl(imageFile)" in source
+    assert "function imagePreviewSrc(seg)" in source
+    assert "function scrubPersistedPreviewMedia(seg)" in source
     assert 'replace(/\\\\/g, "/")' in source
-    assert "const src = seg.imageB64 || inputImageUrl(seg.imageFile);" in source
-    assert "seg.imageB64 = src;" in source
+    assert "if (seg.imageFile && seg.imageB64) delete seg.imageB64;" in source
+    assert "if (seg.audioFile && seg.audioB64) delete seg.audioB64;" in source
+    assert "p.segments.map(scrubPersistedPreviewMedia)" in source
+    assert "p.audioSegments.map(scrubPersistedPreviewMedia)" in source
+    assert "const src = imagePreviewSrc(seg);" in source
+    assert "seg._imagePreviewSrc = src;" in source
     assert "seg.imgObj.src = src;" in source
