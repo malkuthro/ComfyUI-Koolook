@@ -512,6 +512,45 @@ def test_strict_version_strips_counter_and_writes_matching_sidecar(tmp_path: Pat
     assert out["ui"]["gifs"][0]["filename"] == clean.name
 
 
+def test_strict_version_preserves_pasted_video_extension_without_duplicate(tmp_path: Path) -> None:
+    video = tmp_path / "clip_v001.mp4_00001.mp4"
+    video.write_bytes(b"render")
+    result = {"result": ((True, [str(video)]),)}
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=False,
+        metadata_payload={"CreationTime": "t"},
+        save_metadata_json=True,
+    )
+
+    clean = tmp_path / "clip_v001.mp4"
+    assert clean.exists()
+    assert not (tmp_path / "clip_v001.mp4.mp4").exists()
+    assert out["result"][0][1][-1] == str(clean)
+    assert (tmp_path / "clip_v001.json").exists()
+
+
+def test_strict_version_keeps_countered_pasted_extension_on_collision(tmp_path: Path) -> None:
+    existing = tmp_path / "clip_v001.mp4"
+    existing.write_bytes(b"old")
+    video = tmp_path / "clip_v001.mp4_00002.mp4"
+    video.write_bytes(b"new")
+    result = {"result": ((True, [str(video)]),)}
+
+    out = _finalize_strict_version_output(
+        result,
+        enable_overwrite=False,
+        metadata_payload={"CreationTime": "t"},
+        save_metadata_json=True,
+    )
+
+    assert existing.read_bytes() == b"old"
+    assert video.exists()
+    assert out["result"][0][1][-1] == str(video)
+    assert (tmp_path / "clip_v001.mp4_00002.json").exists()
+
+
 def test_strict_version_keeps_counter_on_collision_without_overwrite(tmp_path: Path) -> None:
     """Lossless default: re-rendering an existing version keeps the counter so
     the prior file is never clobbered; the sidecar matches the kept name."""

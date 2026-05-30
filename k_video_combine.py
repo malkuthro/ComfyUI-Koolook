@@ -500,7 +500,9 @@ def _strip_counter_path(path_str: str, enable_overwrite: bool) -> str:
     stripped = _COUNTER_RE.sub("", p.stem)
     if stripped == p.stem:
         return path_str
-    candidate = p.with_name(stripped + p.suffix)
+    candidate_suffix = Path(stripped).suffix.lower()
+    candidate_name = stripped if candidate_suffix in _VIDEO_OUTPUT_EXTENSIONS else stripped + p.suffix
+    candidate = p.with_name(candidate_name)
     if candidate == p:
         return path_str
     if candidate.exists():
