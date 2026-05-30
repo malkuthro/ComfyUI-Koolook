@@ -24,15 +24,31 @@ try:
             "at Koolook load time. Either ComfyUI-VideoHelperSuite isn't "
             "installed, or it loaded after Koolook."
         )
+    # VHS LoadVideoPath wraps the shared decoder with path validation that
+    # rejects absolute/local handoff paths. Existing local videos can use the
+    # same shared decoder directly; fail loudly if a future VHS refactor moves it.
+    _VHS_LOAD_VIDEO_FN = _VHS_LoadVideoPath.load_video.__globals__.get("load_video")
+    if _VHS_LOAD_VIDEO_FN is None:
+        raise RuntimeError("VHS shared load_video function not found.")
     _VHS_AVAILABLE = True
     _VHS_IMPORT_ERROR: Optional[BaseException] = None
 except (ImportError, RuntimeError) as _exc:
     _VHS_AVAILABLE = False
     _VHS_IMPORT_ERROR = _exc
     _VHS_LoadVideoPath = None  # type: ignore[assignment]
+    _VHS_LOAD_VIDEO_FN = None
 
 
 _SENTINEL_STRINGS = ("undefined", "null", "none")
+_VIDEO_EXTENSIONS = {
+    ".avi",
+    ".gif",
+    ".m4v",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".webm",
+}
 
 
 def _normalize_text_input(value) -> str:
@@ -77,6 +93,58 @@ def _basename_any_sep(path: str) -> str:
     return path.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
 
 
+def _looks_like_video_file(path: str) -> bool:
+    return os.path.splitext(_basename_any_sep(path))[1].lower() in _VIDEO_EXTENSIONS
+
+
+def _strip_outer_quotes(path: str) -> str:
+    return path.strip().strip('"').strip("'").strip()
+
+
+def _is_existing_local_video_path(path: str) -> bool:
+    clean = _strip_outer_quotes(path)
+    return _looks_like_video_file(clean) and os.path.isfile(clean)
+
+
+def _existing_local_path_candidate(path: str, input_root: str | None = None) -> str:
+    clean = _strip_outer_quotes(path)
+    if not clean:
+        return ""
+    if os.path.isabs(clean):
+        return os.path.normpath(clean)
+    root = input_root if input_root is not None else _input_root()
+    return os.path.normpath(os.path.join(root, clean))
+
+
+def _normalize_path_input(value, input_root: str | None = None) -> str:
+    """Normalize a path input while preserving wrapped full paths.
+
+    Multiline text can mean either "directory + filename" or a single path
+    wrapped by a text node. Prefer candidates that exist on disk, then candidates
+    that at least look like video files, and otherwise keep the first line.
+    """
+    lines = _clean_text_lines(value)
+    if not lines:
+        return ""
+    if len(lines) == 1:
+        return lines[0]
+
+    joined_text = "".join(lines)
+    joined_path = os.path.join(lines[0].rstrip("/\\"), *lines[1:])
+    candidates = [joined_text, joined_path]
+
+    for candidate in candidates:
+        resolved = _existing_local_path_candidate(candidate, input_root)
+        if os.path.isfile(resolved):
+            return candidate
+
+    for candidate in candidates:
+        if _looks_like_video_file(candidate):
+            return candidate
+
+    return lines[0]
+
+
 def _compose_input_video_path(
     video: str,
     input_path: str,
@@ -92,13 +160,19 @@ def _compose_input_video_path(
     Absolute directories are used directly; relative directories are rooted in
     ComfyUI's input directory.
 
+    If ``input_path`` itself points at a video file and ``video`` is empty,
+    that full file path is passed through. This lets
+    ``Easy_VideoCombine.video_path`` wire directly into ``input_path``. If a
+    multiline text node wraps that path, the lines are joined back together
+    before validation/loading.
+
     When ``input_path`` is empty and ``video`` contains multiple non-empty
     lines, the first line is treated as the directory and the second as the
     filename; later lines are ignored. This matches connected text blocks that
     package a path/name pair for loader handoff.
     """
     raw_video_lines = _clean_text_lines(video)
-    input_path = _normalize_text_input(input_path)
+    input_path = _normalize_path_input(input_path, input_root)
     if not input_path and len(raw_video_lines) >= 2:
         input_path = raw_video_lines[0]
         video = raw_video_lines[1]
@@ -107,11 +181,17 @@ def _compose_input_video_path(
     if not input_path:
         return video
 
+    clean_dir = input_path.rstrip("/\\")
+    if not video and _looks_like_video_file(clean_dir):
+        if os.path.isabs(clean_dir):
+            return os.path.normpath(clean_dir)
+        root = input_root if input_root is not None else _input_root()
+        return os.path.normpath(os.path.join(root, clean_dir))
+
     name = _basename_any_sep(video) or video
     if not name:
         raise ValueError("video must include a filename when input_path is set.")
 
-    clean_dir = input_path.rstrip("/\\")
     if os.path.isabs(clean_dir):
         return os.path.normpath(os.path.join(clean_dir, name))
 
@@ -158,6 +238,9 @@ if _VHS_AVAILABLE:
                 kwargs.get("video", ""),
                 kwargs.pop("input_path", ""),
             )
+            if _is_existing_local_video_path(kwargs["video"]):
+                kwargs["video"] = _strip_outer_quotes(kwargs["video"])
+                return _VHS_LOAD_VIDEO_FN(*args, **kwargs)
             return super().load_video(*args, **kwargs)
 
         @classmethod
@@ -167,7 +250,13 @@ if _VHS_AVAILABLE:
 
         @classmethod
         def VALIDATE_INPUTS(cls, video, input_path="", **kwargs):
+            # Linked inputs are unresolved during ComfyUI validation; execution
+            # receives the real value after the upstream text node runs.
+            if video is None or input_path is None:
+                return True
             resolved = _compose_input_video_path(video, input_path)
+            if _is_existing_local_video_path(resolved):
+                return True
             return _VHS_LoadVideoPath.VALIDATE_INPUTS(resolved)
 
     NODE_CLASS_MAPPINGS = {"Easy_LoadVideo": Easy_LoadVideo}
