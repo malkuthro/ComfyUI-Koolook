@@ -28,7 +28,7 @@ config, not the Python, when paths or node titles change.
 ## Required canvas shape
 
 Five `Text Multiline` nodes (case-insensitive `contains` match against
-the title) + the Koolook Director node:
+the title) + one Director node:
 
 | Title contains | Used for |
 |---|---|
@@ -37,7 +37,7 @@ the title) + the Koolook Director node:
 | `OVERLAY - INFO` | Free-form Δ-this-run note. Card renders verbatim |
 | `OVERLAY - FEEDBACK` | Observations + `motion: N/5 · sync: N/5 · sharp: N/5` score lines |
 | `Working_Folder_PATH` | Per-project working folder. Duplicates allowed (mount + mirror); first existing wins |
-| **node** `LTX Director (Koolook)` | Registered as `LTXDirector__koolook`. Required — upstream `LTXDirector` won't have the `relay_overrides` input and the per-segment σ formula is also absent. Older workflows saved as `LTXDirector__koolook_v1_3_2` still load through a compatibility alias |
+| **node** `LTX Director (Koolook)` or upstream `LTX Director` | Koolook is registered as `LTXDirector__koolook`; legacy `LTXDirector__koolook_v1_3_2` still loads through a compatibility alias. Upstream `LTXDirector` is accepted for A/B comparison and is labeled on the card as original upstream, but `relay_overrides` + the per-segment sigma patch are inert on that path. |
 
 Save the workflow as `LTX-23-audio_tests_v01.json` in ComfyUI's
 `user/default/workflows/` (or whatever filename matches `workflow_pattern`
@@ -60,8 +60,8 @@ in [`loop_audio.config.json`](../../../../scripts/loop_audio.config.json)).
 The card draws **only** from two source families:
 
 1. The five `Text Multiline` nodes above (the per-render notes).
-2. The `LTXDirector__koolook` node's own widget values and
-   input wiring.
+2. The active Director node's own widget values and input wiring
+   (`LTXDirector__koolook` / legacy Koolook / upstream `LTXDirector`).
 
 Forbidden on the card: `BasicScheduler` / `KSamplerSelect` / `RandomNoise` /
 `CFGGuider` widgets, `_dev_build.json`, `git status` output, hardcoded
@@ -77,11 +77,24 @@ does at runtime
 
 | Label | Conditions |
 |---|---|
-| `(no director)` | No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2` node on the canvas |
+| `(no director)` | No Koolook or upstream Director node on the canvas |
 | `off (no VAE)` | Director present · audio_vae not wired |
 | `model-gen` | audio_vae wired · use_custom_audio = False |
 | `custom` | audio_vae wired · use_custom_audio = True · audioSegments non-empty |
 | `custom (empty)` | audio_vae wired · use_custom_audio = True · audioSegments empty |
+
+## Segment prompt check
+
+`BASE · SCENE` includes `Prompt mode`, derived from
+`timeline_data.segments[].prompt`:
+
+| Label | Meaning |
+|---|---|
+| `none` | No video segments found |
+| `single` | One segment with a prompt |
+| `same` | Multiple segments, same prompt after whitespace normalization |
+| `per-segment` | Multiple segments with different prompts |
+| `missing` | At least one segment has no prompt |
 
 ## What lands in `runs/run-NNN_<label>/`
 

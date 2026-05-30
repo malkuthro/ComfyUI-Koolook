@@ -12,10 +12,10 @@ Two — and only two — source families feed this card:
   1. The five ``Text Multiline`` nodes tracked by the loop config
      (name / relay_overrides / overlay - info / overlay - feedback /
      working_folder).
-  2. The ``LTXDirector__koolook`` node's own widget values and
-     input-socket wiring (epsilon, frame_rate, timeline_data segments +
-     audioSegments, use_custom_audio toggle,
-     audio_vae link state).
+  2. The active ``LTXDirector`` node's own widget values and
+     input-socket wiring (Koolook for modified runs, upstream original
+     for A/B comparison; epsilon, frame_rate, timeline_data segments +
+     audioSegments, use_custom_audio toggle, audio_vae link state).
 
 Notably absent: BasicScheduler / KSamplerSelect / RandomNoise /
 CFGGuider widget scrapes, ``_dev_build.json`` fork-state, ``git status``
@@ -28,9 +28,11 @@ Card sections (top to bottom):
   HEADER            run-NNN — {name} · date · job · workflow filename
   KNOB STATE        relay_overrides (the per-render knob)
   BASE · NOTES      overlay - info (verbatim, Δ this run)
-  BASE · LOCKED     epsilon · Audio src · Working folder (path-wrapped)
+  BASE · LOCKED     Director · epsilon · Audio src · Working folder
+                    (path-wrapped)
   BASE · SCENE      Segments (N) — indented segment list with time
-                    ranges + flat Prompt/Audio/Keyframe coverage rows
+                    ranges + Prompt mode + flat Prompt/Audio/Keyframe
+                    coverage rows
   POST-RENDER       feedback body + outcome scores
 
 Two entry points:
@@ -215,8 +217,8 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
       run_number, run_label, date, workflow_name
       name, relay_overrides_raw, info_body, feedback_lines, scores,
       work_folder
-      director_variant, audio_src, epsilon, frame_rate,
-      segments, audio_segments
+      director_variant, director_flavor, audio_src, epsilon, frame_rate,
+      segments, audio_segments, segment_prompt_mode
     """
     name              = state.get("name") or "(unnamed)"
     relay             = (state.get("relay_overrides_raw") or "").strip()
@@ -224,11 +226,14 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     feedback_lines    = state.get("feedback_lines") or []
     scores            = state.get("scores") or {}
     work_folder       = state.get("work_folder") or ""
+    director_variant  = state.get("director_variant") or "(missing)"
+    director_flavor   = state.get("director_flavor") or director_variant
     audio_src         = state.get("audio_src") or "?"
     epsilon           = state.get("epsilon")
     fps               = state.get("frame_rate")
     segments          = state.get("segments") or []
     audio_segs        = state.get("audio_segments") or []
+    prompt_mode       = state.get("segment_prompt_mode") or "none"
     # NOTE: duration_frames / duration_seconds intentionally not read here
     # — the dropped "Duration" row used them; segment time ranges convey
     # the same info now. They stay in the state dict for notes.md.
@@ -277,8 +282,10 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         keep_blank_lines=True,
     )
 
-    # ----- BASE · LOCKED (sky) — Koolook Director widgets + working folder -----
-    locked_rows: list[tuple[str, str]] = []
+    # ----- BASE · LOCKED (sky) — Director flavor + widgets + working folder -----
+    locked_rows: list[tuple[str, str]] = [
+        ("Director", str(director_flavor)),
+    ]
     if epsilon is not None:
         locked_rows.append(("epsilon", str(epsilon)))
     locked_rows.append(("Audio src", audio_src))
@@ -306,11 +313,12 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     # visible segments — "[x]" only when every segment has that field.
     seg_rows = min(len(segments), 6)
     indent_seg = 18
-    body_h = 26 + 26 * seg_rows + 8 + 26 * 3 + 4
+    body_h = 26 * 2 + 26 * seg_rows + 8 + 26 * 3 + 4
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_BASE, "Base · scene", body_h,
     )
     cy = _draw_kv_row(draw, cx, cy, "Segments", f"({len(segments)})", key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Prompt mode", prompt_mode, key_w)
 
     visible = segments[:seg_rows]
     all_have_prompt   = bool(visible) and all((s.get("prompt") or "") for s in visible)
@@ -402,10 +410,11 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     folder. Reads the run's frozen workflow.json and walks it through
     the same extraction helpers loop_audio.py uses live."""
     from loop_audio import (  # type: ignore[import-not-found]
-        DIRECTOR_TYPE, derive_audio_state, director_widget,
+        derive_audio_state, director_flavor, director_type, director_widget,
         extract_director, extract_multilines, find_dotenv,
         first_multiline, load_config, load_dotenv,
         parse_feedback, parse_timeline, pick_existing_path,
+        segment_prompt_mode,
         DEFAULT_CONFIG_PATH,
     )
 
@@ -451,12 +460,16 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
             multilines.get("working_folder") or []
         ),
         "director_node": director_node,
-        "director_variant": DIRECTOR_TYPE if director_node else "(missing)",
+        "director_variant": director_type(director_node),
+        "director_flavor": director_flavor(director_node),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
+        "segment_prompt_mode": segment_prompt_mode(
+            timeline.get("segments") or []
+        ),
     }
 
 

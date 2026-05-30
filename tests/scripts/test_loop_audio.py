@@ -75,16 +75,34 @@ def _director(
     }
 
 
-# --- extract_director — stable ID plus legacy alias -------------------------
+# --- extract_director — stable, legacy, and upstream IDs --------------------
 
 
 @pytest.mark.parametrize(
     "node_type",
-    ["LTXDirector__koolook", "LTXDirector__koolook_v1_3_2"],
+    ["LTXDirector__koolook", "LTXDirector__koolook_v1_3_2", "LTXDirector"],
 )
-def test_extract_director_accepts_stable_and_legacy_ids(node_type):
+def test_extract_director_accepts_supported_director_ids(node_type):
     node = _director(node_type=node_type)
-    assert loop_audio.extract_director([{"type": "LTXDirector"}, node]) is node
+    assert loop_audio.extract_director([node]) is node
+
+
+def test_extract_director_prefers_koolook_over_upstream():
+    upstream = _director(node_type="LTXDirector")
+    koolook = _director(node_type="LTXDirector__koolook")
+    assert loop_audio.extract_director([upstream, koolook]) is koolook
+
+
+@pytest.mark.parametrize(
+    "node_type, expected",
+    [
+        ("LTXDirector__koolook", "Koolook v1_3_9"),
+        ("LTXDirector__koolook_v1_3_2", "Koolook v1_3_2"),
+        ("LTXDirector", "Original upstream"),
+    ],
+)
+def test_director_flavor_labels_supported_directors(node_type, expected):
+    assert loop_audio.director_flavor(_director(node_type=node_type)) == expected
 
 
 # --- derive_audio_state — 5 distinct states --------------------------------
@@ -305,6 +323,32 @@ def test_video_segment_has_audio_boundaries(video, audio_segs, expected):
     assert loop_audio.video_segment_has_audio(video, audio_segs) is expected
 
 
+# --- segment_prompt_mode — same vs per-segment prompt check -----------------
+
+
+@pytest.mark.parametrize(
+    "segments, expected",
+    [
+        ([], "none"),
+        ([{"prompt": "one prompt"}], "single"),
+        (
+            [{"prompt": "same prompt"}, {"prompt": "same   prompt"}],
+            "same",
+        ),
+        (
+            [{"prompt": "wide shot"}, {"prompt": "close up"}],
+            "per-segment",
+        ),
+        (
+            [{"prompt": "wide shot"}, {"prompt": ""}],
+            "missing",
+        ),
+    ],
+)
+def test_segment_prompt_mode_classifies_prompt_sequence(segments, expected):
+    assert loop_audio.segment_prompt_mode(segments) == expected
+
+
 # --- parse_feedback — score 0 must round-trip (PR #185 review MEDIUM-9) ----
 
 
@@ -460,6 +504,23 @@ def test_autogen_label_when_director_present():
     assert "koolook" in label
     assert "audio-on" in label
     assert "vstr10.0" in label
+
+
+def test_autogen_label_when_director_is_upstream():
+    label = loop_audio.autogen_label(
+        "Bear_3x", _director(node_type="LTXDirector"), ""
+    )
+    assert "upstream" in label
+    assert "audio-off" in label
+
+
+def test_relay_overrides_txt_marks_upstream_director_inert():
+    txt = loop_audio.render_relay_overrides_txt(
+        '{"video_strength": 10.0}',
+        _director(node_type="LTXDirector"),
+    )
+    assert "INERT" in txt
+    assert "LTXDirector" in txt
 
 
 def test_next_run_number_reads_folders_and_log(tmp_path):

@@ -224,7 +224,8 @@ def find_workflow(workflows_dir: Path, cfg: dict[str, Any]) -> Path:
 
 DIRECTOR_TYPE = "LTXDirector__koolook"
 LEGACY_DIRECTOR_TYPES = ("LTXDirector__koolook_v1_3_2",)
-DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES)
+UPSTREAM_DIRECTOR_TYPE = "LTXDirector"
+DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES, UPSTREAM_DIRECTOR_TYPE)
 
 # Koolook Director widget order — verified empirically against saved
 # workflow JSON. The Comfy frontend serialises widgets in their original
@@ -330,18 +331,38 @@ def wrap_path(path: str, max_chars: int = 40) -> list[str]:
 
 
 def extract_director(nodes: list[dict]) -> Optional[dict]:
-    """Return the Koolook Director node dict (or None). The full node
-    is returned so callers can read both widgets_values AND inputs[]
-    socket wiring — the audio_vae link is what decides whether audio
-    gets generated at all (see derive_audio_state)."""
-    for n in nodes:
-        if n.get("type") in DIRECTOR_TYPES:
-            return n
+    """Return the active Director node dict (or None).
+
+    Prefer the Koolook Director when both variants are on the canvas, but
+    accept upstream ``LTXDirector`` for A/B comparison runs. The full node
+    is returned so callers can read both widgets_values AND inputs[] socket
+    wiring; the audio_vae link is what decides whether audio gets generated
+    at all (see derive_audio_state).
+    """
+    for dtype in DIRECTOR_TYPES:
+        for n in nodes:
+            if n.get("type") == dtype:
+                return n
     return None
 
 
 def director_type(node: Optional[dict]) -> str:
     return node.get("type") if node else "(missing)"
+
+
+def director_flavor(node: Optional[dict]) -> str:
+    dtype = director_type(node)
+    if dtype == DIRECTOR_TYPE:
+        return "Koolook v1_3_9"
+    if dtype in LEGACY_DIRECTOR_TYPES:
+        return "Koolook v1_3_2"
+    if dtype == UPSTREAM_DIRECTOR_TYPE:
+        return "Original upstream"
+    return "(missing)"
+
+
+def is_koolook_director(node: Optional[dict]) -> bool:
+    return director_type(node) in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES)
 
 
 def director_widget(node: Optional[dict], key: str) -> Any:
@@ -464,6 +485,26 @@ def video_segment_has_audio(video_seg: dict, audio_segs: list[dict]) -> bool:
     return False
 
 
+def segment_prompt_mode(segments: list[dict]) -> str:
+    """Classify whether timeline segments share one prompt or vary.
+
+    This is a structural prompt check only. It normalizes whitespace but
+    does not inspect prompt meaning, so it stays inside the card's source
+    rule: Director timeline JSON in, small capture label out.
+    """
+    if not segments:
+        return "none"
+    prompts = [
+        " ".join(str(seg.get("prompt") or "").split())
+        for seg in segments
+    ]
+    if any(not prompt for prompt in prompts):
+        return "missing"
+    if len(prompts) == 1:
+        return "single"
+    return "same" if len(set(prompts)) == 1 else "per-segment"
+
+
 SCORE_PAT = re.compile(
     r"^\s*(?P<axis>motion|sync|sharp(?:ness)?)\s*[:=]?\s*"
     r"(?P<n>\d+)(?:\s*/\s*5)?\s*$",
@@ -567,7 +608,13 @@ def autogen_label(
     relay_overrides_raw: str,
 ) -> str:
     slug = _LABEL_BAD.sub("-", name.lower()).strip("-") or "unnamed"
-    director_tag = "koolook" if director_node else "missing"
+    dtype = director_type(director_node)
+    if dtype == UPSTREAM_DIRECTOR_TYPE:
+        director_tag = "upstream"
+    elif is_koolook_director(director_node):
+        director_tag = "koolook"
+    else:
+        director_tag = "missing"
     use_custom = director_widget(director_node, "use_custom_audio")
     audio_tag = "audio-on" if use_custom is True else "audio-off"
     knob_tag = ""
@@ -596,9 +643,16 @@ def render_relay_overrides_txt(
     missing_note = ""
     if director_node is None:
         missing_note = (
-            "\n\n# WARNING: no LTXDirector__koolook node found in "
+            "\n\n# WARNING: no supported LTXDirector node found in "
             "the workflow — the relay_overrides value above isn't being "
-            "consumed by anything. Add the Koolook Director to the canvas.\n"
+            "consumed by anything. Add the Koolook Director to make it active.\n"
+        )
+    elif not is_koolook_director(director_node):
+        missing_note = (
+            "\n\n# NOTE: this value is INERT for this render — the Director "
+            f"node in the workflow is upstream `{director_type(director_node)}`, "
+            "which has no `relay_overrides` input. Swap to "
+            "`LTXDirector__koolook` to make this active.\n"
         )
     return f"{body}\n{missing_note}"
 
@@ -624,7 +678,7 @@ def render_notes_md(
     scores: dict[str, Optional[int]],
 ) -> str:
     """Notes pulled exclusively from the two source families the card
-    is allowed to read: the OVERLAY-* multilines and the Koolook
+    is allowed to read: the OVERLAY-* multilines and the active
     Director node. No widget-scraping of BasicScheduler / KSamplerSelect /
     RandomNoise / CFGGuider — those don't define what this loop sweeps."""
     info_indented = (
@@ -643,8 +697,16 @@ def render_notes_md(
             "**missing** — no `LTXDirector__koolook` node on the "
             "canvas; this render didn't run through the Koolook fork."
         )
+    elif not is_koolook_director(director_node):
+        director_kind = (
+            f"**upstream** `{director_type(director_node)}` "
+            "(Koolook variant NOT wired — relay_overrides + per-segment "
+            "sigma are INERT this render)"
+        )
     else:
-        director_kind = f"Koolook variant (`{director_type(director_node)}`)"
+        director_kind = (
+            f"{director_flavor(director_node)} (`{director_type(director_node)}`)"
+        )
 
     epsilon = director_widget(director_node, "epsilon")
     dur_f = director_widget(director_node, "duration_frames")
@@ -652,6 +714,7 @@ def render_notes_md(
     fps = director_widget(director_node, "frame_rate")
     segments = timeline.get("segments") or []
     audio_segs = timeline.get("audioSegments") or []
+    prompt_mode = segment_prompt_mode(segments)
 
     return (
         f"# Run notes\n\n"
@@ -667,6 +730,7 @@ def render_notes_md(
         f"- Duration: {dur_f} frames @ {fps} fps ({dur_s} sec)\n"
         f"- Segments: {len(segments)} video / "
         f"{len(audio_segs)} audio\n"
+        f"- Segment prompt mode: {prompt_mode}\n"
     )
 
 
@@ -680,7 +744,7 @@ def render_log_row(
     feedback_lines: list[str],
 ) -> str:
     """Rolling-table row aligned with the card's data-source rule —
-    multilines + Koolook Director only. Scheduler/sampler columns are
+    multilines + active Director only. Scheduler/sampler columns are
     deliberately absent (they aren't what this loop sweeps)."""
     director_cell = director_type(director_node)
     relay_cell = (
@@ -724,7 +788,7 @@ def _build_state_for_card(
     scores: dict[str, Optional[int]], feedback_lines: list[str],
 ) -> dict[str, Any]:
     """Card state — strict subset matching the agreed source families:
-    five tracked multilines + the Koolook Director node's own values.
+    five tracked multilines + the active Director node's own values.
     No git, no _dev_build.json, no scheduler scrape.
 
     Director's duration_frames / duration_seconds widgets are NOT
@@ -747,11 +811,15 @@ def _build_state_for_card(
         ),
         "director_node": director_node,
         "director_variant": director_type(director_node),
+        "director_flavor": director_flavor(director_node),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
+        "segment_prompt_mode": segment_prompt_mode(
+            timeline.get("segments") or []
+        ),
     }
 
 

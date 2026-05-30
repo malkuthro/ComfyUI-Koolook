@@ -31,13 +31,15 @@ source_families:
 
   director_node:
     description: >
-      The Koolook fork of LTXDirector. Card reads both widget values AND
-      input-socket wiring (audio_vae link is what gates audio production
-      at runtime — see forks/whatdreamscost_koolook/versions/v1_3_9/
-      ltx_director.py).
+      The active LTXDirector node. Koolook variants are used for modified
+      runs; upstream `LTXDirector` is accepted for A/B comparison and is
+      labeled as original upstream on the card. Card reads both widget
+      values AND input-socket wiring (audio_vae link is what gates audio
+      production at runtime).
     type: LTXDirector__koolook
     legacy_type: LTXDirector__koolook_v1_3_2
-    upstream: WhatDreamsCost-ComfyUI LTXDirector at e81223a
+    upstream_type: LTXDirector
+    upstream: WhatDreamsCost-ComfyUI LTXDirector
     widget_order:
       # Empirical — frontend serialises widgets in legacy upstream order;
       # the Koolook fork only appends relay_overrides at the end.
@@ -101,10 +103,8 @@ audio_state_machine:
     - label: "(no director)"
       condition: director_present == false
       runtime_behavior: >
-        No `LTXDirector__koolook` or legacy `LTXDirector__koolook_v1_3_2`
-        node on the canvas. Loop runs
-        but the relay_overrides / per-segment σ patches are unreachable —
-        whatever produced the render did so through a different node.
+        No Koolook or upstream Director node on the canvas. Loop runs
+        but the Director structural state is unavailable.
         Surfaced distinctly so a missing-Director workflow doesn't
         silently collapse into the "VAE unwired" state (the pre-fix bug
         the multi-agent review caught).
@@ -152,11 +152,13 @@ state_dict:
   director_derived:
     director_node:       { source: "extract_director(nodes)" }
     director_variant:    { source: "actual Director node type OR '(missing)'" }
+    director_flavor:     { source: "director_flavor(director_node): Koolook v1_3_9 / Koolook v1_3_2 / Original upstream / (missing)" }
     audio_src:           { source: "derive_audio_state(director_node, timeline)" }
     epsilon:             { source: "director.widgets_values[6]" }
     frame_rate:          { source: "director.widgets_values[9]" }
     segments:            { source: "parse_timeline(director).segments (numeric fields coerced via _coerce_segment_numeric)" }
     audio_segments:      { source: "parse_timeline(director).audioSegments (numeric fields coerced)" }
+    segment_prompt_mode: { source: "segment_prompt_mode(segments): none / single / same / per-segment / missing" }
   notes_only:
     # These flow to notes.md but NOT through the state dict — the
     # renderer dropped the Duration row in favour of per-segment time
@@ -192,6 +194,7 @@ card_sections:
     accent: sky
     rule: stable across the iteration (frozen)
     rows:
+      - { label: "Director",       field: "director_flavor" }
       - { label: "epsilon",        field: "epsilon" }
       - { label: "Audio src",      field: "audio_src" }
       - { label: "Working folder", field: "wrap_path(work_folder, max_chars=40)" }
@@ -202,6 +205,7 @@ card_sections:
     layout: flat-left labels; only the segment list is indented
     rows:
       - { label: "Segments", field: "(len(segments))" }
+      - { label: "Prompt mode", field: "segment_prompt_mode" }
       - {
           repeating: true,
           template: "{i+1}) {start_s:.0f} to {end_s:.0f} seconds",
@@ -226,6 +230,10 @@ segment_coverage:
   Prompt:
     check: "bool(segment.prompt)"
     note: "Empty prompt → [ ]. Substring content (e.g. '[Audio]:') is NOT examined."
+  Prompt mode:
+    check: "Normalize whitespace in every timeline_data.segments[].prompt, then classify as none / single / same / per-segment / missing."
+    function: "segment_prompt_mode()"
+    note: "Small image-sequence prompt check for whether every segment uses the same prompt or each segment differs."
   Audio:
     check: "any audioSegments[].overlap(segment.start, segment.length)"
     function: "video_segment_has_audio()"

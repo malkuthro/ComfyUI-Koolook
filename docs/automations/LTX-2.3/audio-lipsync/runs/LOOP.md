@@ -10,7 +10,7 @@
 
 | Step | Who | What |
 |---|---|---|
-| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source in this repo + run **`dev-sync-audio`**, then restart ComfyUI manually. |
+| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook)`** node in ComfyUI, swap to upstream **`LTX Director`** for an original-vs-Koolook comparison, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source in this repo + run **`dev-sync-audio`**, then restart ComfyUI manually. |
 | 2 | Maintainer | **Save** workflow → overwrites the current workflow file at the working folder. |
 | 3 | Maintainer | Queue render in ComfyUI. |
 | 4 | Maintainer | Report result in chat (verbal feedback — sync state, motion state, prompt adherence). |
@@ -32,14 +32,15 @@ Each `loop-audio` capture folder looks like:
 ```
 run-NNN_<label>/
 ├── workflow.json           ← copy of the working-folder workflow at submission
-├── relay_overrides.txt     ← the LTX Director (Koolook) node's relay_overrides widget value
+├── relay_overrides.txt     ← RELAY_OVERRIDES multiline body; marked inert when upstream Director is active
 ├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
 └── notes.md                ← maintainer's verbal feedback + agent's one-line interp
 ```
 
-The `relay_overrides` value is also stored inside `workflow.json` (Koolook
-LTXDirector node widget), but the `.txt` copy makes it diff-friendly in the
-run folder.
+The `relay_overrides` value is also stored inside `workflow.json` when the
+Koolook Director is active, but the `.txt` copy makes it diff-friendly in the
+run folder. On upstream `LTXDirector` comparison runs, the `.txt` file keeps
+the same note body and explicitly marks that value as inert.
 
 ## Trigger detection
 
