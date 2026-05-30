@@ -53,6 +53,19 @@ def _normalize_text_input(value) -> str:
     return s
 
 
+def _clean_text_lines(value) -> list[str]:
+    """Return non-empty, non-sentinel lines from a connected text widget."""
+    if value is None:
+        return []
+    s = str(value).strip().strip('"').strip("'").strip()
+    lines = []
+    for line in s.replace("\r", "\n").split("\n"):
+        line = line.strip().strip('"').strip("'").strip()
+        if line and line.lower() not in _SENTINEL_STRINGS:
+            lines.append(line)
+    return lines
+
+
 def _input_root() -> str:
     try:
         return folder_paths.get_input_directory()
@@ -78,9 +91,19 @@ def _compose_input_video_path(
     path components are stripped, then the name is joined under the directory.
     Absolute directories are used directly; relative directories are rooted in
     ComfyUI's input directory.
+
+    When ``input_path`` is empty and ``video`` contains multiple non-empty
+    lines, the first line is treated as the directory and the second as the
+    filename; later lines are ignored. This matches connected text blocks that
+    package a path/name pair for loader handoff.
     """
-    video = _normalize_text_input(video)
+    raw_video_lines = _clean_text_lines(video)
     input_path = _normalize_text_input(input_path)
+    if not input_path and len(raw_video_lines) >= 2:
+        input_path = raw_video_lines[0]
+        video = raw_video_lines[1]
+    else:
+        video = _normalize_text_input(video)
     if not input_path:
         return video
 
