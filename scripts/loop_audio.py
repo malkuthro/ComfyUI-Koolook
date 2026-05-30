@@ -53,6 +53,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -97,7 +98,7 @@ def load_config(path: Path) -> dict[str, Any]:
         )
         sys.exit(2)
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         print(f"Malformed config {path}: {exc}", file=sys.stderr)
         sys.exit(4)
@@ -408,13 +409,13 @@ def _parse_int(value: str) -> Optional[int]:
         return None
 
 
-def widget_value_by_name(node: dict, name: str) -> str:
+def widget_value_by_name(node: dict, name: str, default: Any = "") -> Any:
     values = node.get("widgets_values")
     if isinstance(values, dict):
         value = values.get(name)
-        return "" if value is None else str(value)
+        return default if value is None else value
     if not isinstance(values, list):
-        return ""
+        return default
 
     index = 0
     for inp in node.get("inputs") or []:
@@ -424,9 +425,9 @@ def widget_value_by_name(node: dict, name: str) -> str:
         widget_name = widget.get("name") if isinstance(widget, dict) else None
         if widget_name == name and index < len(values):
             value = values[index]
-            return "" if value is None else str(value)
+            return default if value is None else value
         index += 1
-    return ""
+    return default
 
 
 def output_suffix_from_workflow(nodes: list[dict]) -> str:
@@ -439,7 +440,7 @@ def output_suffix_from_workflow(nodes: list[dict]) -> str:
     for n in nodes:
         if n.get("type") != "Easy_VideoCombine":
             continue
-        fmt = widget_value_by_name(n, "format")
+        fmt = str(widget_value_by_name(n, "format") or "")
         values = n.get("widgets_values")
         if not fmt and isinstance(values, list) and len(values) > 3:
             fmt = str(values[3] or "")
@@ -493,10 +494,24 @@ def copy_delivery_card(card_path: Path, output_tracking: dict[str, str]) -> str:
         return "(not configured)"
     try:
         delivery_path.parent.mkdir(parents=True, exist_ok=True)
+        if delivery_path.exists():
+            return f"exists (left in place: {delivery_path})"
         shutil.copy2(card_path, delivery_path)
     except OSError as exc:
         return f"failed ({exc})"
     return str(delivery_path)
+
+
+def scrub_path_for_metadata(value: str) -> str:
+    """Store a portable fingerprint instead of full workstation paths."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if re.match(r"^[A-Za-z]:[/\\]", raw) or raw.startswith(("/", "\\\\")):
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+        tail = Path(raw.replace("\\", "/")).name or "(folder)"
+        return f"{tail} [path-sha256:{digest}]"
+    return raw
 
 
 def pick_existing_path(candidates: list[str]) -> str:
@@ -575,6 +590,9 @@ def is_koolook_director(node: Optional[dict]) -> bool:
 def director_widget(node: Optional[dict], key: str) -> Any:
     if not node:
         return None
+    named = widget_value_by_name(node, key, default=None)
+    if named is not None:
+        return named
     wv = node.get("widgets_values") or []
     idx = DIRECTOR_WIDX.get(key)
     if idx is None or idx >= len(wv):
@@ -774,7 +792,7 @@ def read_dev_build_json() -> dict[str, str]:
     if not p.is_file():
         return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(p.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -891,6 +909,8 @@ def card_metadata(
 ) -> dict[str, Any]:
     segments = timeline.get("segments") or []
     audio_segments = timeline.get("audioSegments") or []
+    setup_input_path = first_multiline(setup_variables, "input_path_exr")
+    output_folder = output_tracking.get("folder", "")
     return {
         "schema": "koolook.audio_loop.card_metadata.v1",
         "run": {
@@ -902,14 +922,14 @@ def card_metadata(
         },
         "setup": {
             "base_name": first_multiline(multilines, "name").strip(),
-            "working_folder": output_tracking.get("folder", ""),
-            "input_path_exr": first_multiline(setup_variables, "input_path_exr"),
+            "working_folder": scrub_path_for_metadata(output_folder),
+            "input_path_exr": scrub_path_for_metadata(setup_input_path),
             "global_version": first_multiline(setup_variables, "version"),
             "global_run_offset": first_multiline(setup_variables, "run_offset"),
             "relay_overrides": first_multiline(multilines, "relay_overrides").strip(),
         },
         "output": {
-            "folder": output_tracking.get("folder", ""),
+            "folder": scrub_path_for_metadata(output_folder),
             "name": output_tracking.get("name", ""),
             "version_tag": output_tracking.get("version_tag", ""),
             "format_suffix": output_tracking.get("format_suffix", ""),
@@ -1191,7 +1211,7 @@ def main() -> int:
     else:
         wf_path = find_workflow(resolve_workflows_dir(cfg), cfg)
 
-    with wf_path.open(encoding="utf-8") as f:
+    with wf_path.open(encoding="utf-8-sig") as f:
         wf = json.load(f)
     nodes = wf.get("nodes") or []
 

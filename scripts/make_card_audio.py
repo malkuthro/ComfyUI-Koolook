@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Audio-lipsync card renderer â€” vertical PIL card scoped to the
+Audio-lipsync card renderer — vertical PIL card scoped to the
 ``docs/automations/LTX-2.3/audio-lipsync/`` iteration loop.
 
 Sibling to ``scripts/make_card.py`` (base-1step). Shares palette,
 font fallback chain, and section primitives so the two families read
 as a set, but the data sources are deliberately narrower:
 
-Two â€” and only two â€” source families feed this card:
+Two — and only two — source families feed this card:
 
   1. The five ``Text Multiline`` nodes tracked by the loop config
      (name / relay_overrides / overlay - info / overlay - feedback /
@@ -25,12 +25,12 @@ notes don't claim to summarise.
 
 Card sections (top to bottom):
 
-  HEADER            run-NNN â€” {name} Â· date Â· job Â· workflow filename
+  HEADER            run-NNN — {name} · date · job · workflow filename
   KNOB STATE        relay_overrides (the per-render knob)
-  BASE Â· NOTES      overlay - info (verbatim, Î” this run)
-  BASE Â· LOCKED     Director Â· epsilon Â· Audio src Â· Working folder
+  BASE · NOTES      overlay - info (verbatim, Δ this run)
+  BASE · LOCKED     Director · epsilon · Audio src · Working folder
                     (path-wrapped)
-  BASE Â· SCENE      Segments (N) â€” indented segment list with time
+  BASE · SCENE      Segments (N) — indented segment list with time
                     ranges + Prompt mode + flat Prompt/Audio/Keyframe
                     coverage rows
   POST-RENDER       feedback body + outcome scores
@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -60,7 +61,7 @@ from PIL.PngImagePlugin import PngInfo
 
 
 # --------------------------------------------------------------------------
-# Palette + geometry â€” kept in lockstep with scripts/make_card.py.
+# Palette + geometry — kept in lockstep with scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 W            = 540
@@ -74,16 +75,16 @@ BORDER       = (48, 47, 47)
 TEXT         = (249, 250, 251)
 MUTED        = (143, 149, 156)
 DIM          = (200, 204, 209)
-ACCENT_RUN   = (255, 184, 77)    # amber  â€” per-render knob state
-ACCENT_BASE  = (109, 180, 255)   # sky    â€” locked / scene
-ACCENT_OUT   = (123, 207, 128)   # green  â€” post-render outcome
+ACCENT_RUN   = (255, 184, 77)    # amber  — per-render knob state
+ACCENT_BASE  = (109, 180, 255)   # sky    — locked / scene
+ACCENT_OUT   = (123, 207, 128)   # green  — post-render outcome
 NOTE_BG      = (12, 12, 12)
 RADIUS       = 14
 SECTION_RADIUS = 8
 
 
 # --------------------------------------------------------------------------
-# Fonts â€” same fallback chain + same sizes as scripts/make_card.py.
+# Fonts — same fallback chain + same sizes as scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 WIN_FONTS = Path(r"C:/Windows/Fonts")
@@ -111,7 +112,7 @@ F_NOTE    = _load_font(["segoeuii.ttf", "Arial Italic.ttf"], 18)
 
 
 # --------------------------------------------------------------------------
-# Drawing primitives â€” copied 1:1 from scripts/make_card.py.
+# Drawing primitives — copied 1:1 from scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 
@@ -198,7 +199,7 @@ def _draw_text_box(
     max_lines: int = 4, char_per_line: int = 42,
     keep_blank_lines: bool = False,
 ) -> int:
-    """Left-accented note block â€” colored 4-px bar on the left, label
+    """Left-accented note block — colored 4-px bar on the left, label
     in the accent colour, italic body text."""
     lines = _wrap_text(content, char_per_line, keep_blank_lines=keep_blank_lines)[:max_lines]
     box_h = 28 + 22 * max(1, len(lines)) + 14
@@ -288,7 +289,7 @@ def _draw_score_chip(
 
 
 # --------------------------------------------------------------------------
-# Renderer â€” pure state-in / PNG-out. The ``state`` dict is built by
+# Renderer — pure state-in / PNG-out. The ``state`` dict is built by
 # loop_audio._build_state_for_card. All values come from the two source
 # families documented at the top of this module.
 # --------------------------------------------------------------------------
@@ -342,7 +343,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     audio_segs        = state.get("audio_segments") or []
     prompt_mode       = state.get("segment_prompt_mode") or "none"
     # NOTE: duration_frames / duration_seconds intentionally not read here
-    # â€” the dropped "Duration" row used them; segment time ranges convey
+    # — the dropped "Duration" row used them; segment time ranges convey
     # the same info now. They stay in the state dict for notes.md.
 
     canvas_h = 2400
@@ -474,7 +475,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         keep_blank_lines=True,
     )
 
-    # ----- POST-RENDER (green) â€” FEEDBACK + OUTCOME -----
+    # ----- POST-RENDER (green) — FEEDBACK + OUTCOME -----
     feedback_text = "\n".join(feedback_lines) if feedback_lines else "(no feedback)"
     fb_lines = _wrap_text(feedback_text, 42)[:6]
     body_h = (20 + max(24, 22 * len(fb_lines)) + 14 + 20 + 50)
@@ -526,7 +527,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
 
 
 # --------------------------------------------------------------------------
-# Standalone CLI â€” re-render a card from an existing run folder.
+# Standalone CLI — re-render a card from an existing run folder.
 # --------------------------------------------------------------------------
 
 
@@ -540,19 +541,20 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         extract_setup_variables, find_dotenv,
         first_multiline, load_config, load_dotenv,
         parse_feedback, parse_timeline, pick_existing_path,
-        segment_prompt_mode,
+        scrub_path_for_metadata, segment_prompt_mode,
         DEFAULT_CONFIG_PATH,
     )
 
     name_parts = run_dir.name.split("_", 1)
-    nnn = int(name_parts[0].removeprefix("run-")) if name_parts[0].startswith("run-") else 0
+    m = re.match(r"run-(\d+)$", name_parts[0])
+    nnn = int(m.group(1)) if m else 0
     label = name_parts[1] if len(name_parts) > 1 else ""
     tagged_workflow = run_dir / f"run{nnn:03d}_workflow.json"
     wf_path = tagged_workflow if tagged_workflow.is_file() else run_dir / "workflow.json"
     if not wf_path.is_file():
         print(f"missing run workflow JSON in {run_dir}", file=sys.stderr)
         sys.exit(2)
-    with wf_path.open(encoding="utf-8") as f:
+    with wf_path.open(encoding="utf-8-sig") as f:
         wf = json.load(f)
     nodes = wf.get("nodes") or []
 
@@ -612,13 +614,18 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
             },
             "setup": {
                 "base_name": first_multiline(multilines, "name").strip(),
-                "working_folder": output_tracking.get("folder", ""),
-                "input_path_exr": first_multiline(setup_variables, "input_path_exr"),
+                "working_folder": scrub_path_for_metadata(output_tracking.get("folder", "")),
+                "input_path_exr": scrub_path_for_metadata(
+                    first_multiline(setup_variables, "input_path_exr")
+                ),
                 "global_version": first_multiline(setup_variables, "version"),
                 "global_run_offset": first_multiline(setup_variables, "run_offset"),
                 "relay_overrides": first_multiline(multilines, "relay_overrides").strip(),
             },
-            "output": output_tracking,
+            "output": {
+                **output_tracking,
+                "folder": scrub_path_for_metadata(output_tracking.get("folder", "")),
+            },
             "director": {
                 "type": director_type(director_node),
                 "flavor": director_flavor(director_node),

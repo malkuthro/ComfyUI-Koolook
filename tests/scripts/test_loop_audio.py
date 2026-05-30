@@ -96,6 +96,26 @@ def test_extract_director_prefers_koolook_over_upstream():
     assert loop_audio.extract_director([upstream, koolook]) is koolook
 
 
+def test_director_widget_uses_named_widget_before_positional_fallback():
+    node = {
+        "type": "LTXDirector__koolook",
+        "inputs": [
+            {"name": "duration_frames", "widget": {"name": "duration_frames"}},
+            {"name": "epsilon", "widget": {"name": "epsilon"}},
+            {"name": "use_custom_audio", "widget": {"name": "use_custom_audio"}},
+        ],
+        "widgets_values": [144, 0.004, True],
+    }
+
+    assert loop_audio.director_widget(node, "epsilon") == 0.004
+    assert loop_audio.director_widget(node, "use_custom_audio") is True
+
+
+def test_director_widget_keeps_legacy_positional_fallback():
+    node = _director(epsilon=0.002)
+    assert loop_audio.director_widget(node, "epsilon") == 0.002
+
+
 @pytest.mark.parametrize(
     "node_type, expected",
     [
@@ -341,6 +361,50 @@ def test_copy_delivery_card_reports_failure_without_raising(monkeypatch, tmp_pat
     assert status == "failed (drive unavailable)"
 
 
+def test_copy_delivery_card_leaves_existing_file_in_place(tmp_path: Path):
+    card = tmp_path / "source.png"
+    folder = tmp_path / "renders"
+    existing = folder / "cards" / "Bear_h264_v002_card.png"
+    card.write_text("new", encoding="utf-8")
+    existing.parent.mkdir(parents=True)
+    existing.write_text("old", encoding="utf-8")
+
+    status = loop_audio.copy_delivery_card(
+        card,
+        {"folder": str(folder), "name": "Bear_h264_v002"},
+    )
+
+    assert status.startswith("exists (left in place:")
+    assert existing.read_text(encoding="utf-8") == "old"
+
+
+def test_card_metadata_scrubs_path_bearing_fields():
+    metadata = loop_audio.card_metadata(
+        4,
+        "label",
+        Path("run004_workflow.json"),
+        {"name": ["Bear"], "relay_overrides": ["{}"]},
+        {"input_path_exr": ["W:/projects/client_codename/shot/v003"]},
+        {
+            "folder": "E:/Jobs/Client/Comfy/Runs",
+            "name": "Bear_h264_v002",
+            "version_tag": "v002",
+            "format_suffix": "h264",
+        },
+        _director(),
+        {"segments": [], "audioSegments": []},
+        "custom",
+        {},
+        "clean",
+    )
+
+    encoded = json.dumps(metadata)
+    assert "W:/projects" not in encoded
+    assert "client_codename" not in encoded
+    assert "E:/Jobs" not in encoded
+    assert "path-sha256:" in encoded
+
+
 def test_audio_card_embeds_metadata_payload(tmp_path: Path):
     from PIL import Image
 
@@ -378,6 +442,22 @@ def test_audio_card_embeds_metadata_payload(tmp_path: Path):
     )
     embedded = json.loads(Image.open(out).info["koolook_audio_loop"])
     assert embedded == metadata
+
+
+def test_rebuild_state_handles_non_numeric_run_dir_and_bom_workflow(tmp_path: Path):
+    from make_card_audio import _rebuild_state_from_run_dir
+
+    run_dir = tmp_path / "run-foo_label"
+    run_dir.mkdir()
+    (run_dir / "workflow.json").write_text(
+        json.dumps({"nodes": []}),
+        encoding="utf-8-sig",
+    )
+
+    state = _rebuild_state_from_run_dir(run_dir)
+
+    assert state["run_number"] == 0
+    assert state["run_label"] == "label"
 
 
 def test_extract_multilines_ignores_non_text_multiline_nodes():

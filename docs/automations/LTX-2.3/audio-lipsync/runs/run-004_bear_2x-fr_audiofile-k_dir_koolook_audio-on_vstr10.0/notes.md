@@ -37,12 +37,12 @@ Base animation - reference
 - epsilon: `0.001`
 - Duration: `144 frames @ 24 fps (6 sec)`
 - RELAY_OVERRIDES: `{}`
-- GLOBAL [ path ] - working folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- GLOBAL [ path ] - working folder: `[local render folder redacted]`
 - GLOBAL [ base name ]: `Bear_2x-FR_AudioFile_K-Dir`
-- INPUT Path [ EXR ]: `W:/projects/samsung_goat_3188/vfx/assets/AI_renders/001/1130/messi/video/v003/`
+- INPUT Path [ EXR ]: `[local EXR source path redacted]`
 - GLOBAL [ version ]: `2`
 - GLOBAL [ run offset ]: `2`
-- Output folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- Output folder: `[local render folder redacted]`
 - Output name: `Bear_2x-FR_AudioFile_K-Dir_h264_v002`
 - OVERLAY - INFO: `(captured verbatim above)`
 - OVERLAY - FEEDBACK: `(captured verbatim above)`

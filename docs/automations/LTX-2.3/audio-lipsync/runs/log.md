@@ -1,4 +1,4 @@
-﻿# Audio-file-sync tests â€” run log
+# Audio-file-sync tests — run log
 
 One row per render. Newest at the bottom.
 
@@ -9,8 +9,8 @@ node's own widgets and input wiring. No `BasicScheduler` /
 
 `Audio src` reflects the five structural states derived from
 Director presence + `audio_vae` link + `use_custom_audio` widget +
-`timeline_data.audioSegments`: `(no director)` Â· `off (no VAE)` Â·
-`model-gen` Â· `custom` Â· `custom (empty)`.
+`timeline_data.audioSegments`: `(no director)` · `off (no VAE)` ·
+`model-gen` · `custom` · `custom (empty)`.
 
 `Segments` is logged as `Nv/Na`: video segment count and audio segment
 count from `timeline_data.segments` / `timeline_data.audioSegments`.
