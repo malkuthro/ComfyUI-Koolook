@@ -24,6 +24,9 @@ try:
             "at Koolook load time. Either ComfyUI-VideoHelperSuite isn't "
             "installed, or it loaded after Koolook."
         )
+    # VHS LoadVideoPath wraps the shared decoder with path validation that
+    # rejects absolute/local handoff paths. Existing local videos can use the
+    # same shared decoder directly; fail loudly if a future VHS refactor moves it.
     _VHS_LOAD_VIDEO_FN = _VHS_LoadVideoPath.load_video.__globals__.get("load_video")
     if _VHS_LOAD_VIDEO_FN is None:
         raise RuntimeError("VHS shared load_video function not found.")
@@ -114,7 +117,12 @@ def _existing_local_path_candidate(path: str, input_root: str | None = None) -> 
 
 
 def _normalize_path_input(value, input_root: str | None = None) -> str:
-    """Normalize a text-widget path while preserving wrapped full paths."""
+    """Normalize a path input while preserving wrapped full paths.
+
+    Multiline text can mean either "directory + filename" or a single path
+    wrapped by a text node. Prefer candidates that exist on disk, then candidates
+    that at least look like video files, and otherwise keep the first line.
+    """
     lines = _clean_text_lines(value)
     if not lines:
         return ""
@@ -242,6 +250,8 @@ if _VHS_AVAILABLE:
 
         @classmethod
         def VALIDATE_INPUTS(cls, video, input_path="", **kwargs):
+            # Linked inputs are unresolved during ComfyUI validation; execution
+            # receives the real value after the upstream text node runs.
             if video is None or input_path is None:
                 return True
             resolved = _compose_input_video_path(video, input_path)
