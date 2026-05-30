@@ -97,13 +97,53 @@ renders should be skipped with "no log" / "don't log this" before capture.
      [`../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/prompt_relay.py)
      or [`ltx_director.py`](../../../../forks/whatdreamscost_koolook/versions/v1_3_9/ltx_director.py)
      in this repo. Then run **`dev-sync-audio`** (chat phrase or directly
-     [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) — a scoped variant of `dev-sync` that copies just the fork dir, Director web extension, and root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, removes the stale pre-v1.3.9 web extension folder if present, leaves `forks/radiance_koolook/` and the rest of the tree alone, then triggers a ComfyUI-Manager reboot so the Python module re-imports. User-initiated only — same rule as `dev-sync`; see project `CLAUDE.md`.
+     [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py)) - a scoped variant of `dev-sync` that copies just the fork dir, Director web extension, and root `__init__.py` into the live ComfyUI install at `$KOLOOK_COMFYUI_DEV_PATH`, removes the stale pre-v1.3.9 web extension folder if present, and leaves `forks/radiance_koolook/` plus the rest of the tree alone. Restart ComfyUI manually after Python changes so modules re-import. User-initiated only - same rule as `dev-sync`; see project `CLAUDE.md`.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
 5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + notes).
 
 See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
+
+## Timed transcript experiment
+
+Raw custom audio alone can fail to produce usable mouth timing even when
+the same words improve the render when typed into the prompt. The loop now
+has an optional helper for that gap.
+
+Inside ComfyUI, add `Koolook Audio Transcript Timeline`, set the same
+`audio_file`, `image_file`, duration, and FPS as the Director, then link
+its `transcript_json` output into the Koolook Director's
+`audio_transcript_json` input. Keep `use_custom_audio=True`; use the same
+`transcript_json` output with a text preview node to inspect what Whisper
+recognized. The Director converts the phrase timings into its internal
+`timeline_data`, `local_prompts`, and `segment_lengths` immediately before
+Prompt Relay conditioning runs.
+
+For Timeline Editor workflows, link `Koolook Timeline Editor.timeline_data`
+into `Koolook Audio Transcript Timeline.timeline_data`. The transcript node
+then reads every `audioSegments` clip, including separated clips, and applies
+that clip's start frame, trim start, and visible length before merging the
+phrases into the final Prompt Relay timing. The node also composes each
+speech/pause timing instruction with the active image segment prompt, so
+visual directions stay on the timeline image clips while speech timing is
+generated automatically.
+
+The same helper can also run from a script when an export file is useful:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[audio]"
+.\.venv\Scripts\python scripts\transcribe_audio_timeline.py <audio.mp3> --workflow <workflow.json> --out timed-prompts.json --patched-workflow timed-workflow.json
+```
+
+The helper uses `faster-whisper` to transcribe speech into timestamped
+phrases, inserts closed-mouth pause segments for silence, and emits
+Director-shaped `timeline_data`, `local_prompts`, and `segment_lengths`.
+Those fields remain useful for debugging or patched-workflow exports. Use
+`--patched-workflow` to write a loadable workflow JSON with those fields
+already applied to the Koolook Director. Render it with
+`use_custom_audio=True` to test whether LTX needs semantic speech timing
+in addition to the raw audio latent.
 
 ## Workflow JSON — Koolook node ID
 
@@ -135,5 +175,4 @@ install is untouched.
 Edits to `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` are normal
 git-tracked changes — `git restore` / `git stash` work as usual. Once
 `dev-sync-audio` is run, the running ComfyUI install is updated; the
-auto-restart triggered at the end of the sync re-imports the Python
-module.
+manual ComfyUI restart after the sync re-imports the Python module.

@@ -9,6 +9,11 @@ const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const HANDLE_HIT_PX = 14;
 const MIN_SEGMENT_LENGTH = 6;
 const MAX_THUMBNAIL_DIM = 512; // Increased to maintain quality for taller images
+const COMFY_DRAFTS_KEY = "Comfy.Workflow.Drafts";
+const COMFY_DRAFT_ORDER_KEY = "Comfy.Workflow.DraftOrder";
+const MAX_COMFY_DRAFT_CACHE_CHARS = 1_500_000;
+const MAX_COMFY_DRAFT_ENTRY_CHARS = 750_000;
+const WORKFLOW_DRAFT_KEYS = new Set([COMFY_DRAFTS_KEY, COMFY_DRAFT_ORDER_KEY]);
 
 const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths", "guide_strength", "audio_data", "use_custom_audio"];
 
@@ -25,6 +30,195 @@ function hideWidget(w) {
 }
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function pruneComfyDraftCache() {
+  try {
+    const rawDrafts = localStorage.getItem(COMFY_DRAFTS_KEY);
+    if (!rawDrafts) return;
+
+    let drafts = JSON.parse(rawDrafts);
+    if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {
+      localStorage.removeItem(COMFY_DRAFTS_KEY);
+      localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+      return;
+    }
+
+    let order = [];
+    try {
+      const parsedOrder = JSON.parse(localStorage.getItem(COMFY_DRAFT_ORDER_KEY) || "[]");
+      if (Array.isArray(parsedOrder)) order = parsedOrder.filter(path => typeof path === "string");
+    } catch (_err) {
+      order = [];
+    }
+
+    const draftKeys = Object.keys(drafts);
+    const orderedKeys = [
+      ...order.filter(path => Object.prototype.hasOwnProperty.call(drafts, path)),
+      ...draftKeys.filter(path => !order.includes(path)),
+    ];
+
+    let changed = false;
+    for (const key of [...orderedKeys]) {
+      const data = drafts[key]?.data;
+      if (typeof data === "string" && data.length > MAX_COMFY_DRAFT_ENTRY_CHARS) {
+        delete drafts[key];
+        changed = true;
+      }
+    }
+
+    const sizeOf = () => JSON.stringify(drafts).length;
+    let currentSize = sizeOf();
+    while (currentSize > MAX_COMFY_DRAFT_CACHE_CHARS && orderedKeys.length > 1) {
+      const key = orderedKeys.shift();
+      if (key && Object.prototype.hasOwnProperty.call(drafts, key)) {
+        delete drafts[key];
+        changed = true;
+        currentSize = sizeOf();
+      }
+    }
+
+    if (changed) {
+      const nextOrder = orderedKeys.filter(path => Object.prototype.hasOwnProperty.call(drafts, path));
+      localStorage.setItem(COMFY_DRAFTS_KEY, JSON.stringify(drafts));
+      localStorage.setItem(COMFY_DRAFT_ORDER_KEY, JSON.stringify(nextOrder));
+      console.warn("[PromptRelay] pruned oversized Comfy workflow draft cache to prevent save-draft failures.");
+    }
+  } catch (err) {
+    try {
+      localStorage.removeItem(COMFY_DRAFTS_KEY);
+      localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+      console.warn("[PromptRelay] cleared unreadable Comfy workflow draft cache.", err);
+    } catch (_err) { }
+  }
+}
+
+function showComfyDraftQuotaWarning(message) {
+  try {
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.cssText = [
+      "position:fixed",
+      "right:30px",
+      "bottom:30px",
+      "z-index:9999",
+      "max-width:420px",
+      "padding:10px 14px",
+      "border-radius:4px",
+      "background:rgba(180,60,60,0.95)",
+      "color:#fff",
+      "font:12px/1.4 ui-sans-serif,system-ui,sans-serif",
+      "box-shadow:0 2px 8px rgba(0,0,0,0.4)",
+    ].join(";");
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6500);
+  } catch (_err) { }
+}
+
+function evictOldestComfyDraft(originalSetItem) {
+  const rawDrafts = localStorage.getItem(COMFY_DRAFTS_KEY);
+  if (!rawDrafts) return false;
+
+  const drafts = JSON.parse(rawDrafts);
+  if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {
+    localStorage.removeItem(COMFY_DRAFTS_KEY);
+    localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+    return false;
+  }
+
+  let order = [];
+  try {
+    const parsedOrder = JSON.parse(localStorage.getItem(COMFY_DRAFT_ORDER_KEY) || "[]");
+    if (Array.isArray(parsedOrder)) order = parsedOrder.filter(path => typeof path === "string");
+  } catch (_err) {
+    order = [];
+  }
+
+  const draftKeys = Object.keys(drafts);
+  const orderedKeys = [
+    ...order.filter(path => Object.prototype.hasOwnProperty.call(drafts, path)),
+    ...draftKeys.filter(path => !order.includes(path)),
+  ];
+  const key = orderedKeys.shift();
+  if (!key) return false;
+
+  delete drafts[key];
+  const nextOrder = orderedKeys.filter(path => Object.prototype.hasOwnProperty.call(drafts, path));
+  originalSetItem(COMFY_DRAFTS_KEY, JSON.stringify(drafts));
+  originalSetItem(COMFY_DRAFT_ORDER_KEY, JSON.stringify(nextOrder));
+  console.warn(`[PromptRelay] evicted oldest Comfy workflow draft "${key}" after browser quota error.`);
+  showComfyDraftQuotaWarning("Comfy draft cache was full. Koolook removed the oldest draft only; save again if needed.");
+  return true;
+}
+
+function installComfyDraftQuotaGuard() {
+  try {
+    if (localStorage.__koolookDraftQuotaGuardInstalled) return;
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    Object.defineProperty(localStorage, "__koolookDraftQuotaGuardInstalled", {
+      value: true,
+      configurable: true,
+    });
+    localStorage.setItem = (key, value) => {
+      try {
+        return originalSetItem(key, value);
+      } catch (err) {
+        const isQuotaError =
+          err instanceof DOMException &&
+          (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
+        if (!isQuotaError || !WORKFLOW_DRAFT_KEYS.has(String(key))) throw err;
+
+        for (let attempt = 0; attempt < 25; attempt += 1) {
+          try {
+            if (!evictOldestComfyDraft(originalSetItem)) break;
+            return originalSetItem(key, value);
+          } catch (retryErr) {
+            const retryIsQuota =
+              retryErr instanceof DOMException &&
+              (retryErr.name === "QuotaExceededError" || retryErr.name === "NS_ERROR_DOM_QUOTA_REACHED");
+            if (!retryIsQuota) throw retryErr;
+          }
+        }
+        showComfyDraftQuotaWarning("Comfy draft cache is still full. Koolook did not clear all drafts; export or delete old drafts manually.");
+        throw err;
+      }
+    };
+  } catch (err) {
+    console.warn("[PromptRelay] could not install Comfy draft quota guard.", err);
+  }
+}
+
+function serializeTimelineSegment(seg) {
+  const { imgObj, imageB64, audioB64, _audioBuffer, _file, _imagePreviewSrc, ...rest } = seg || {};
+  return rest;
+}
+
+function inputImageUrl(imageFile) {
+  const normalized = String(imageFile || "").replace(/\\/g, "/");
+  if (!normalized) return "";
+  const parts = normalized.split("/");
+  const filename = parts.pop();
+  const subfolder = parts.join("/");
+  if (!filename) return "";
+  return api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+}
+
+function imagePreviewSrc(seg) {
+  if (!seg) return "";
+  return seg.imageB64 || seg._imagePreviewSrc || inputImageUrl(seg.imageFile);
+}
+
+function scrubPersistedPreviewMedia(seg) {
+  if (!seg || typeof seg !== "object") return seg;
+  if (seg.imageFile && seg.imageB64) delete seg.imageB64;
+  if (seg.audioFile && seg.audioB64) delete seg.audioB64;
+  delete seg.imgObj;
+  delete seg._audioBuffer;
+  delete seg._file;
+  return seg;
+}
+
+installComfyDraftQuotaGuard();
+pruneComfyDraftCache();
 
 // --- Modern Dark/Grey UI CSS (ComfyUI Match) ---
 const STYLES = `
@@ -547,8 +741,8 @@ function parseInitial(jsonStr) {
   try {
     if (jsonStr) {
       const p = JSON.parse(jsonStr);
-      if (Array.isArray(p.segments)) parsed.segments = p.segments;
-      if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments;
+      if (Array.isArray(p.segments)) parsed.segments = p.segments.map(scrubPersistedPreviewMedia);
+      if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments.map(scrubPersistedPreviewMedia);
     }
   } catch (e) { }
 
@@ -792,10 +986,12 @@ class TimelineEditor {
 
   loadImages() {
     for (const seg of this.timeline.segments) {
-      if (seg.imageB64 && !seg.imgObj) {
+      const src = imagePreviewSrc(seg);
+      if (src && !seg.imgObj) {
+        seg._imagePreviewSrc = src;
         seg.imgObj = new Image();
         seg.imgObj.onload = () => this.render();
-        seg.imgObj.src = seg.imageB64;
+        seg.imgObj.src = src;
       }
     }
   }
@@ -2802,11 +2998,8 @@ class TimelineEditor {
     }
 
     const toSave = {
-      segments: sortedSegments.map(s => {
-        const { imgObj, ...rest } = s;
-        return rest;
-      }),
-      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))
+      segments: sortedSegments.map(s => serializeTimelineSegment(s)),
+      audioSegments: (this.timeline.audioSegments || []).map(s => serializeTimelineSegment(s))
     };
 
     const jsonStr = JSON.stringify(toSave);
@@ -2947,7 +3140,8 @@ class TimelineEditor {
     menu.style.left = `${clientX + 6}px`;
     menu.style.top = `${clientY - 10}px`;
 
-    const isImage = trackType !== "audio" && trackType !== "text" && seg.imageB64;
+    const previewSrc = imagePreviewSrc(seg);
+    const isImage = trackType !== "audio" && trackType !== "text" && previewSrc;
 
     if (isImage) {
       const copyBtn = document.createElement("button");
@@ -2955,7 +3149,7 @@ class TimelineEditor {
       copyBtn.innerHTML = `Copy Image`;
       copyBtn.onclick = async () => {
         try {
-          const res = await fetch(seg.imageB64);
+          const res = await fetch(previewSrc);
           const blob = await res.blob();
           await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         } catch (err) {
@@ -2970,7 +3164,7 @@ class TimelineEditor {
       saveBtn.innerHTML = `Save Image`;
       saveBtn.onclick = () => {
         const a = document.createElement("a");
-        a.href = seg.imageB64;
+        a.href = previewSrc;
         a.download = "timeline_image.jpg";
         a.click();
         this.dismissContextMenu();
@@ -2983,7 +3177,7 @@ class TimelineEditor {
       openBtn.onclick = () => {
         const win = window.open();
         if (win) {
-          win.document.write(`<body style="margin:0;display:flex;justify-content:center;align-items:center;background:#0e0e0e;height:100vh;"><img style="max-width:100%;max-height:100%;" src="${seg.imageB64}" /></body>`);
+          win.document.write(`<body style="margin:0;display:flex;justify-content:center;align-items:center;background:#0e0e0e;height:100vh;"><img style="max-width:100%;max-height:100%;" src="${previewSrc}" /></body>`);
           win.document.close();
         }
         this.dismissContextMenu();
@@ -3784,7 +3978,11 @@ const APPENDED_WIDGET_DEFAULTS = [
 app.registerExtension({
   name: "LTXDirector_Koolook",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
-    if (nodeData.name === "LTXDirector__koolook" || nodeData.name === "LTXDirector__koolook_v1_3_2") {
+    if (
+      nodeData.name === "LTXDirector__koolook" ||
+      nodeData.name === "LTXDirector__koolook_v1_3_2" ||
+      nodeData.name === "KoolookTimelineEditor"
+    ) {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
       nodeType.prototype.onNodeCreated = function () {

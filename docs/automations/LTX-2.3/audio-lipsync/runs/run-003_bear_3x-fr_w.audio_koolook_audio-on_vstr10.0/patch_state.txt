@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 031af80
+Last dev-sync-audio   : 031af80  (2026-05-29 18:20)
+Sync scope tag        : cleanup duplicate timeline
+Sync worktree         : ComfyUI-Koolook
+Fork dir status       : clean (matches HEAD)

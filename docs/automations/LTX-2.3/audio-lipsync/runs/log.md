@@ -16,3 +16,4 @@ Director presence + `audio_vae` link + `use_custom_audio` widget +
 |---|---|---|---|---|---|---|---|
 | 001 | 2026-05-28 | `LTXDirector` | `{"video_strength": 10.0}` | model-gen | 1 | M4·S5·Sh4 | Base animation - reference (upstream LTXDirector — relay_overrides INERT) |
 | 002 | 2026-05-29 | `LTXDirector__koolook_v1_3_2` | `{"video_strength": 10.0}` | model-gen | 1 | M4·S5·Sh4 | Base animation - reference |
+| 003 | 2026-05-29 | `LTXDirector__koolook_v1_3_2` | `{"video_strength": 10.0}` | custom | 1 | M1·S0·Sh4 | Base animation - reference |

@@ -104,6 +104,9 @@ entries:
       Side-by-side successor to the v1.3.2 Koolook fork. Carries forward the
       `relay_overrides` multiline JSON input and Prompt-Relay per-segment sigma
       patch, while keeping upstream v1.3.9's audio latent compatibility fixes.
+      Adds Koolook's optional `audio_transcript_json` execution input, which
+      turns timed speech phrases into Prompt Relay `local_prompts` and
+      `segment_lengths` without replacing existing timeline image segments.
       `patches.py` is vendored verbatim from upstream 3b65410. New workflows
       use stable node ID `LTXDirector__koolook`; saved workflows using
       `LTXDirector__koolook_v1_3_2` still load through a legacy alias backed

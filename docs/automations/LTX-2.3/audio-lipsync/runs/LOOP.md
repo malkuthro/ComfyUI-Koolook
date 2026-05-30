@@ -10,7 +10,7 @@
 
 | Step | Who | What |
 |---|---|---|
-| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source in this repo + run **`dev-sync-audio`** (auto-restarts Comfy). |
+| 1 | Maintainer | Either edit `relay_overrides` JSON on the **`LTX Director (Koolook)`** node in ComfyUI, OR edit a `forks/whatdreamscost_koolook/versions/v1_3_9/*.py` source in this repo + run **`dev-sync-audio`**, then restart ComfyUI manually. |
 | 2 | Maintainer | **Save** workflow → overwrites the current workflow file at the working folder. |
 | 3 | Maintainer | Queue render in ComfyUI. |
 | 4 | Maintainer | Report result in chat (verbal feedback — sync state, motion state, prompt adherence). |
@@ -83,14 +83,13 @@ What it does:
   two identical timeline editors on legacy workflows.
 - Leaves the rest of the live install (radiance fork, the root `k_*.py`
   nodes, the sidebar `web/` bundle, `video_formats/`) untouched.
-- Auto-triggers a ComfyUI-Manager reboot so the Python module re-imports
-  (custom-node `.py` files load once at server start; without a restart
-  the new code stays invisible). Use `--no-restart` to opt out.
+- Copies files only. Restart ComfyUI manually after Python changes so
+  custom-node modules re-import.
 - Writes the scope tag into `<target>/web/_dev_build.json` so the
   Kforge Labs sidebar footer shows which build is live.
 
 Flags mirror `dev-sync`: `--dry-run`, `--init`, `--verbose`,
-`--scope "<≤10-word change>"`, `--no-restart`, `--restart-url`.
+`--scope "<≤10-word change>"`.
 
 User-initiated only — same rule as `dev-sync` (see project `CLAUDE.md`).
 Never automatic. Never on commit, never on session end.

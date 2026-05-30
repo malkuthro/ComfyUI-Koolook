@@ -45,6 +45,8 @@ py-modules = [
     "k_easy_resize",
     "k_easy_track",
     "k_easy_wan22_prompt",
+    "k_audio_timeline",
+    "k_timeline_editor",
     "k_video_combine",
     "k_video_load",
     "koolook_routes",
@@ -69,3 +71,4 @@ addopts = ["--import-mode=importlib"]
 # ``aiohttp`` is a runtime dep of ``koolook_routes`` and must be importable
 # even when only a pure helper is under test.
 test = ["pytest>=8", "aiohttp>=3.9", "pip-audit>=2.7", "Pillow>=10"]
+audio = ["faster-whisper>=1.1,<2"]

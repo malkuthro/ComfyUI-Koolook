@@ -11,6 +11,37 @@ The format is inspired by Keep a Changelog and SemVer.
   audio sync now removes the old `web/whatdreamscost_koolook_v1_3_2/`
   folder after the stable v1.3.9 web-extension rename, preventing legacy
   workflows from loading two identical timeline editors in dev installs.
+- **Audio Transcript Timeline now follows every timeline audio clip.** When
+  the node receives `timeline_data` from Koolook Timeline Editor it now
+  transcribes all `audioSegments`, applies each clip's timeline start,
+  trim start, and visible length, then merges the phrases into one ordered
+  Prompt Relay timing sequence. This fixes separated audio clips where only
+  the first file affected `local_prompts` / `segment_lengths`. Generated
+  speech/pause prompts now also include the active image segment's prompt,
+  with a first-non-empty timeline prompt fallback for empty image segments.
+- **LTX Director timeline images persist after canvas/setup switches.** The
+  timeline editor keeps saved workflow payloads light by omitting preview-only
+  image blobs, but now rebuilds image previews from the persisted `imageFile`
+  path when the node is restored. It also strips legacy inline preview blobs
+  from restored timeline data when a saved file path exists, preventing old
+  image-heavy setups from re-triggering Comfy's draft-quota error.
+- **Comfy workflow draft quota guard for large LTX timeline workflows.** The
+  LTX Director frontend now strips preview-only media blobs from timeline
+  serialization and catches browser quota failures on Comfy's own
+  `Comfy.Workflow.Drafts` / `Comfy.Workflow.DraftOrder` writes, evicting only
+  the oldest saved Comfy draft before retrying and showing a visible warning if
+  the browser store is still full. This documents and extends the
+  v0.3.6 stable-draft-ID lesson to large workflows imported directly from disk,
+  which bypass the Koolook sidebar load path.
+- **LTX Director transcript timing preserves image timelines.** The
+  `audio_transcript_json` hook now rejects empty phrase lists and keeps existing
+  timeline image segments intact, using the transcript only to update Prompt
+  Relay `local_prompts` / `segment_lengths`. When no timeline image segments
+  exist, it still builds speech/pause segments for older stripped-down flows.
+- **Audio-lipsync run evidence no longer carries local machine paths.**
+  Checked-in run workflow snapshots now replace user-home, working-folder, and
+  project-drive paths with placeholders so the reproducibility evidence stays
+  useful without publishing workstation-specific paths.
 - **`loop-audio`: run numbering now respects the log.** The audio-lipsync
   loop now chooses the next run number from both existing `run-NNN_*`
   folders and `runs/log.md`, preventing a newly saved snapshot from reusing
@@ -52,6 +83,10 @@ The format is inspired by Keep a Changelog and SemVer.
   widget-to-input conversion, stale workflows, and downstream widget patches.
 
 ### Changed
+- **Dev-sync scripts now only copy files.** `sync_to_dev.py` and the
+  scoped `dev-sync-audio` wrapper no longer call the ComfyUI-Manager
+  reboot endpoint and no longer expose `--no-restart` / `--restart-url`;
+  restart ComfyUI manually after Python changes need to be re-imported.
 - **`loop-audio` card redesigned around a strict two-source rule** (issue
   [#177](https://github.com/malkuthro/ComfyUI-Koolook/issues/177)). The
   audio-lipsync card now only reads (a) the five tracked
@@ -100,6 +135,18 @@ The format is inspired by Keep a Changelog and SemVer.
   *Loop* and *Run* entries are rewritten to point at the new structure.
 
 ### Added
+- **Koolook Audio Transcript Timeline node for custom-audio sync tests.**
+  New optional `.[audio]` dependency group installs `faster-whisper`, and
+  the new `Koolook Audio Transcript Timeline` Comfy node converts a speech
+  file into Director-shaped `timeline_data`, `local_prompts`, and
+  `segment_lengths` with explicit closed-mouth pause segments. The
+  Koolook Director now also accepts the node's `transcript_json` directly
+  via `audio_transcript_json` and builds those Director fields internally
+  before Prompt Relay conditioning runs. The companion
+  `scripts/transcribe_audio_timeline.py` produces the same data from the
+  command line. This gives the audio-lipsync loop a repeatable way to test
+  whether LTX needs semantic speech timing in addition to the raw
+  custom-audio latent.
 - **`forks/whatdreamscost_koolook/v1_3_9/` — updated Koolook LTX Director
   fork.** Upgrades the Koolook Director to upstream WhatDreamsCost-ComfyUI `3b65410`
   (pyproject/README version `1.3.9`; no `v1.3.9` git tag at fork time).
