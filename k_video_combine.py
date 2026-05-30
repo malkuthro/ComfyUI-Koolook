@@ -41,10 +41,9 @@ try:
 except ImportError:  # pragma: no cover - standalone (pytest / tooling)
     from koolook_versioning import resolve_version_token
 
-_KOLOOK_VIDEO_FORMATS_DIR = Path(__file__).resolve().parent / "video_formats"
-
 try:
     import folder_paths  # ComfyUI core; always present at runtime.
+    _KOLOOK_VIDEO_FORMATS_DIR = Path(__file__).resolve().parent / "video_formats"
     if _KOLOOK_VIDEO_FORMATS_DIR.exists():
         _paths, _exts = folder_paths.folder_names_and_paths.get(
             "VHS_video_formats",
@@ -266,76 +265,6 @@ def _runtime_format_name(format_name: str) -> str:
     return format_name
 
 
-def _format_extension(format_name: str) -> str:
-    """Resolve the container extension for Koolook/VHS format names."""
-    runtime_name = _runtime_format_name(format_name)
-    if runtime_name.startswith("video/koolook-") and runtime_name.endswith(".json"):
-        preset = _KOLOOK_VIDEO_FORMATS_DIR / runtime_name.removeprefix("video/")
-        try:
-            data = json.loads(preset.read_text(encoding="utf-8"))
-            ext = str(data.get("extension", "")).strip().lstrip(".")
-            if ext:
-                return ext
-        except Exception:
-            pass
-    lowered = runtime_name.lower()
-    if "prores" in lowered:
-        return "mov"
-    if "webm" in lowered:
-        return "webm"
-    if "gif" in lowered:
-        return "gif"
-    return "mp4"
-
-
-def _next_counter_path(prefix: str, extension: str) -> str:
-    """Estimate VHS's next ``<prefix>_NNNNN.<ext>`` output path."""
-    folder = os.path.dirname(prefix) or os.getcwd()
-    stem = os.path.basename(prefix)
-    pattern = re.compile(rf"^{re.escape(stem)}_(\d{{5}})\.{re.escape(extension)}$")
-    max_counter = 0
-    try:
-        for name in os.listdir(folder):
-            match = pattern.match(name)
-            if match:
-                max_counter = max(max_counter, int(match.group(1)))
-    except OSError:
-        pass
-    return os.path.join(folder, f"{stem}_{max_counter + 1:05d}.{extension}")
-
-
-def _estimate_output_paths(
-    filename_prefix: str,
-    output_directory: str,
-    format_name: str,
-    version,
-    enable_overwrite,
-) -> Tuple[str, str, str, str, bool]:
-    """Estimate final video/json paths without running the encoder."""
-    filename_prefix = _normalize_text_input(filename_prefix) or "AnimateDiff"
-    output_directory = _normalize_text_input(output_directory)
-    effective_prefix = _strip_sentinel_components(
-        _compose_prefix(filename_prefix, output_directory)
-    )
-    version_token = resolve_version_token(_coerce_version_input(version))
-    extension = _format_extension(format_name)
-
-    if version_token:
-        versioned_prefix = _append_version_to_prefix(effective_prefix, version_token)
-        deterministic = os.path.normpath(f"{versioned_prefix}.{extension}")
-        if _normalize_bool_input(enable_overwrite, default=False) or not os.path.exists(deterministic):
-            video_path = deterministic
-        else:
-            video_path = os.path.normpath(_next_counter_path(versioned_prefix, extension))
-    else:
-        video_path = os.path.normpath(_next_counter_path(effective_prefix, extension))
-
-    video_directory = os.path.dirname(video_path)
-    video_name = os.path.basename(video_path)
-    json_path = os.path.splitext(video_path)[0] + ".json"
-    return (video_path, video_directory, video_name, json_path, os.path.exists(video_path))
-
-
 def _metadata_sidecar_path(output_files: list[str]) -> Optional[str]:
     """Pick the JSON sidecar path from VHS's output file list."""
     if not output_files:
@@ -500,9 +429,7 @@ def _strip_counter_path(path_str: str, enable_overwrite: bool) -> str:
     stripped = _COUNTER_RE.sub("", p.stem)
     if stripped == p.stem:
         return path_str
-    candidate_suffix = Path(stripped).suffix.lower()
-    candidate_name = stripped if candidate_suffix in _VIDEO_OUTPUT_EXTENSIONS else stripped + p.suffix
-    candidate = p.with_name(candidate_name)
+    candidate = p.with_name(stripped + p.suffix)
     if candidate == p:
         return path_str
     if candidate.exists():
@@ -691,78 +618,6 @@ def _append_video_path_outputs(result):
 
 
 if _VHS_AVAILABLE:
-    class Easy_VideoPathEstimate:
-        """Calculate Easy_VideoCombine output paths without encoding."""
-
-        CATEGORY = "Koolook/Video"
-        DESCRIPTION = "Estimate Easy Video Combine output paths without rendering."
-        FUNCTION = "estimate_paths"
-        RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "BOOLEAN")
-        RETURN_NAMES = (
-            "video_path",
-            "video_directory",
-            "video_name",
-            "json_path",
-            "video_exists",
-        )
-
-        @classmethod
-        def INPUT_TYPES(cls):
-            combine_types = Easy_VideoCombine.INPUT_TYPES()
-            format_options, format_config = combine_types["required"]["format"]
-            return {
-                "required": {
-                    "filename_prefix": (
-                        "STRING",
-                        {
-                            "default": "AnimateDiff",
-                            "tooltip": "Filename root, matching Easy Video Combine.",
-                        },
-                    ),
-                    "format": (format_options, format_config),
-                },
-                "optional": {
-                    "output_directory": (
-                        "STRING",
-                        {
-                            "default": "",
-                            "tooltip": "Absolute or relative output directory.",
-                        },
-                    ),
-                    "version": (
-                        "STRING",
-                        {
-                            "default": "",
-                            "tooltip": "Strict version token, matching Easy Video Combine.",
-                        },
-                    ),
-                    "enable_overwrite": (
-                        "BOOLEAN",
-                        {
-                            "default": False,
-                            "tooltip": "Match Easy Video Combine strict-version collision behavior.",
-                        },
-                    ),
-                },
-            }
-
-        def estimate_paths(
-            self,
-            filename_prefix="AnimateDiff",
-            format="video/koolook-ASTRA-h264",
-            output_directory="",
-            version="",
-            enable_overwrite=False,
-        ):
-            return _estimate_output_paths(
-                filename_prefix,
-                output_directory,
-                format,
-                version,
-                enable_overwrite,
-            )
-
-
     class Easy_VideoCombine(_VHS_VideoCombine):
         """Video Combine variant with absolute-path output."""
 
@@ -1007,14 +862,8 @@ if _VHS_AVAILABLE:
             finally:
                 folder_paths.get_save_image_path = original_get_save_path
 
-    NODE_CLASS_MAPPINGS = {
-        "Easy_VideoPathEstimate": Easy_VideoPathEstimate,
-        "Easy_VideoCombine": Easy_VideoCombine,
-    }
-    NODE_DISPLAY_NAME_MAPPINGS = {
-        "Easy_VideoPathEstimate": "Easy Video Path Estimate (Koolook)",
-        "Easy_VideoCombine": "Easy Video Combine (Koolook)",
-    }
+    NODE_CLASS_MAPPINGS = {"Easy_VideoCombine": Easy_VideoCombine}
+    NODE_DISPLAY_NAME_MAPPINGS = {"Easy_VideoCombine": "Easy Video Combine (Koolook)"}
 else:
     print(
         f"[Koolook] Easy_VideoCombine skipped: "
