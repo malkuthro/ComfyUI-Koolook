@@ -16,14 +16,41 @@
   "skip_filename_substring": "loop",
   "_skip_filename_substring": "Any JSON whose stem contains this substring (case-insensitive) is excluded — these are post-card outputs, never iteration inputs. Convention matches scripts/make_card.py.",
 
-  "tracked_multilines": [
-    "working_folder",
-    "name",
-    "relay_overrides",
-    "overlay - info",
-    "overlay - feedback"
-  ],
-  "_tracked_multilines": "Lowercase substrings the loop expects to find inside Text Multiline node titles in the workflow JSON. Match is case-insensitive title.contains(). Add or rename keys here when the canvas tracking-group changes; no Python edit needed.",
+  "tracked_multilines": {
+    "working_folder": [
+      "global [ path ] - working folder",
+      "working_folder",
+      "working folder"
+    ],
+    "name": [
+      "global [ base name ]",
+      "name"
+    ],
+    "relay_overrides": [
+      "relay_overrides"
+    ],
+    "overlay - info": [
+      "overlay - info"
+    ],
+    "overlay - feedback": [
+      "overlay - feedback"
+    ]
+  },
+  "_tracked_multilines": "Semantic capture keys mapped to prioritized lowercase title substrings. Matching is case-insensitive and treats underscores as spaces, so old titles and the v02 GLOBAL labels can coexist. For each key, earlier aliases win when multiple Text Multiline titles match.",
+
+  "tracked_setup_variables": {
+    "input_path_exr": [
+      "input path [ exr ]"
+    ],
+    "version": [
+      "global [ version ]",
+      "version [ global ]"
+    ],
+    "run_offset": [
+      "global [ run offset ]"
+    ]
+  },
+  "_tracked_setup_variables": "Additional setup-card variables captured into notes.md for audit. Aliases are exact normalized title matches. Reads source value nodes only (Text Multiline and Primitive*), not GetNode/SetNode relay plumbing. The BASE note is a checklist/reminder, not a value, so derived BASE facts are calculated by the script instead. GLOBAL [ run ] is calculated inside the workflow from version + run offset; the capture records the inputs instead of reimplementing that graph math.",
 
   "fork_to_track": "forks/whatdreamscost_koolook/versions/v1_3_9",
   "_fork_to_track": "Repo-relative path of the fork files this module iterates on. Recorded in patch_state.txt of each run snapshot + diffed for the 'fork dir status' line.",

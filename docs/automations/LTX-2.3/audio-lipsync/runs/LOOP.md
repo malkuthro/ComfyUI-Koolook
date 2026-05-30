@@ -31,16 +31,21 @@ Each `loop-audio` capture folder looks like:
 
 ```
 run-NNN_<label>/
-├── workflow.json           ← copy of the working-folder workflow at submission
+├── runNNN_workflow.json    ← copy of the working-folder workflow at submission
 ├── relay_overrides.txt     ← RELAY_OVERRIDES multiline body; marked inert when upstream Director is active
 ├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
-└── notes.md                ← maintainer's verbal feedback + agent's one-line interp
+└── notes.md                ← maintainer feedback + SETUP variables + director state
 ```
 
-The `relay_overrides` value is also stored inside `workflow.json` when the
+The `relay_overrides` value is also stored inside `runNNN_workflow.json` when the
 Koolook Director is active, but the `.txt` copy makes it diff-friendly in the
 run folder. On upstream `LTXDirector` comparison runs, the `.txt` file keeps
 the same note body and explicitly marks that value as inert.
+
+When card rendering is enabled, the loop also writes a delivery copy into the
+setup output folder's `cards/` subfolder as `cards/<Output name>_card.png`.
+Use that stable external path when compositing the card beside the rendered
+QuickTime; the run-folder `card.png` remains the archive copy.
 
 ## Trigger detection
 

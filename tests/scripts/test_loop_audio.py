@@ -17,12 +17,15 @@ can't silently regress.
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 import pytest
 
 # Load the script directly — it lives under scripts/, not under a package.
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "loop_audio.py"
+sys.path.insert(0, str(_SCRIPT.parent))
 _spec = importlib.util.spec_from_file_location("loop_audio", _SCRIPT)
 assert _spec is not None and _spec.loader is not None
 loop_audio = importlib.util.module_from_spec(_spec)
@@ -96,8 +99,8 @@ def test_extract_director_prefers_koolook_over_upstream():
 @pytest.mark.parametrize(
     "node_type, expected",
     [
-        ("LTXDirector__koolook", "Koolook v1_3_9"),
-        ("LTXDirector__koolook_v1_3_2", "Koolook v1_3_2"),
+        ("LTXDirector__koolook", "Koolook v1.3.9"),
+        ("LTXDirector__koolook_v1_3_2", "Koolook v1.3.9"),
         ("LTXDirector", "Original upstream"),
     ],
 )
@@ -201,6 +204,141 @@ def test_extract_multilines_first_match_wins_per_node():
     # per-node break keeps the same node from being counted twice.
     assert out["name"] == []
     assert out["overlay - info"] == ["one node"]
+
+
+def test_extract_multilines_accepts_prioritized_alias_map():
+    nodes = [
+        _multiline("NAME", "old setup name"),
+        _multiline("GLOBAL [ base name ]", "new base name"),
+        _multiline("GLOBAL [ path ] - working folder", "E:/runs"),
+    ]
+    out = loop_audio.extract_multilines(
+        nodes,
+        {
+            "name": ["global [ base name ]", "name"],
+            "working_folder": [
+                "global [ path ] - working folder",
+                "working_folder",
+            ],
+        },
+    )
+    assert out["name"] == ["new base name", "old setup name"]
+    assert out["working_folder"] == ["E:/runs"]
+
+
+def test_extract_setup_variables_reads_text_and_primitive_source_nodes():
+    nodes = [
+        _multiline("INPUT Path [ EXR ]", "W:/plates"),
+        {
+            "type": "PrimitiveInt",
+            "title": "GLOBAL [ version ]",
+            "widgets_values": [1, "fixed"],
+        },
+        {
+            "type": "PrimitiveInt",
+            "title": "GLOBAL [ run offset ]",
+            "widgets_values": [7, "fixed"],
+        },
+        {
+            "type": "GetNode",
+            "title": "Get_GLOBAL [ version ]",
+            "widgets_values": ["GLOBAL [ version ]"],
+        },
+        {
+            "type": "SetNode",
+            "title": "Set_GLOBAL [ run ]",
+            "widgets_values": ["GLOBAL [ run ]"],
+        },
+    ]
+    out = loop_audio.extract_setup_variables(
+        nodes,
+        {
+            "input_path_exr": ["input path [ exr ]"],
+            "version": ["global [ version ]"],
+            "run_offset": ["global [ run offset ]"],
+        },
+    )
+    assert out["input_path_exr"] == ["W:/plates"]
+    assert out["version"] == ["1"]
+    assert out["run_offset"] == ["7"]
+
+
+def test_expected_output_tracking_uses_current_setup_values():
+    nodes = [
+        {
+            "type": "Easy_VideoCombine",
+            "widgets_values": {
+                "format": "video/koolook-ASTRA-h264",
+            },
+        },
+        {
+            "type": "easy showAnything",
+            "widgets_values": [
+                '[true, ["E:/old/Previous_h264_v001.mp4"]]',
+            ],
+        },
+    ]
+    out = loop_audio.expected_output_tracking(
+        nodes,
+        {
+            "working_folder": ["E:/current/renders"],
+            "name": ["Bear_2x-FR_AudioFile-K_Dir"],
+        },
+        {"version": ["2"]},
+    )
+    assert out["folder"] == "E:/current/renders"
+    assert out["name"] == "Bear_2x-FR_AudioFile-K_Dir_h264_v002"
+
+
+def test_delivery_card_path_uses_output_folder_and_name():
+    out = loop_audio.delivery_card_path({
+        "folder": "E:/current/renders",
+        "name": "Bear_h264_v002",
+    })
+    assert out == Path("E:/current/renders") / "cards" / "Bear_h264_v002_card.png"
+
+
+def test_delivery_card_path_skips_when_output_is_unknown():
+    assert loop_audio.delivery_card_path({"folder": "E:/renders"}) is None
+
+
+def test_audio_card_embeds_metadata_payload(tmp_path: Path):
+    from PIL import Image
+
+    from make_card_audio import render_audio_card
+
+    metadata = {
+        "schema": "koolook.audio_loop.card_metadata.v1",
+        "repo": {"main_sha": "abc1234"},
+        "output": {"name": "Bear_h264_v002"},
+    }
+    out = tmp_path / "card.png"
+    render_audio_card(
+        {
+            "run_number": 3,
+            "date": "2026-05-30",
+            "workflow_name": "workflow.json",
+            "name": "Bear",
+            "relay_overrides_raw": "{}",
+            "info_body": "",
+            "feedback_lines": [],
+            "scores": {},
+            "work_folder": "E:/renders",
+            "output_folder": "E:/renders",
+            "output_name": "Bear_h264_v002",
+            "director_flavor": "Koolook v1.3.9",
+            "audio_src": "custom",
+            "epsilon": 0.001,
+            "frame_rate": 24,
+            "segments": [],
+            "audio_segments": [],
+            "segment_prompt_mode": "none",
+            "metadata": metadata,
+        },
+        out,
+    )
+    embedded = json.loads(Image.open(out).info["koolook_audio_loop"])
+    assert embedded == metadata
 
 
 def test_extract_multilines_ignores_non_text_multiline_nodes():
@@ -385,6 +523,19 @@ def test_render_log_row_preserves_zero_scores():
         [],
     )
     assert "M0·S0·Sh0" in row
+
+
+def test_render_log_row_records_video_and_audio_segment_counts():
+    row = loop_audio.render_log_row(
+        3,
+        _director(),
+        "",
+        "custom",
+        {"segments": [{}, {}], "audioSegments": [{}, {}]},
+        {"motion": None, "sync": None, "sharp": None},
+        [],
+    )
+    assert "| custom | 2v/2a |" in row
 
 
 def test_parse_feedback_accepts_sharpness_alias():

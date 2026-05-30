@@ -74,7 +74,7 @@ audio-lipsync/
     ├── LOOP.md          ← the iteration protocol
     ├── log.md           ← rolling table — one row per render, always
     └── run-NNN_<label>/  ← created by each `loop-audio` capture
-        ├── workflow.json
+        ├── runNNN_workflow.json
         ├── relay_overrides.txt
         ├── patch_state.txt
         └── notes.md

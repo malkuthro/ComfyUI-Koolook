@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Audio-lipsync card renderer — vertical PIL card scoped to the
+Audio-lipsync card renderer â€” vertical PIL card scoped to the
 ``docs/automations/LTX-2.3/audio-lipsync/`` iteration loop.
 
 Sibling to ``scripts/make_card.py`` (base-1step). Shares palette,
 font fallback chain, and section primitives so the two families read
 as a set, but the data sources are deliberately narrower:
 
-Two — and only two — source families feed this card:
+Two â€” and only two â€” source families feed this card:
 
   1. The five ``Text Multiline`` nodes tracked by the loop config
      (name / relay_overrides / overlay - info / overlay - feedback /
@@ -25,12 +25,12 @@ notes don't claim to summarise.
 
 Card sections (top to bottom):
 
-  HEADER            run-NNN — {name} · date · job · workflow filename
+  HEADER            run-NNN â€” {name} Â· date Â· job Â· workflow filename
   KNOB STATE        relay_overrides (the per-render knob)
-  BASE · NOTES      overlay - info (verbatim, Δ this run)
-  BASE · LOCKED     Director · epsilon · Audio src · Working folder
+  BASE Â· NOTES      overlay - info (verbatim, Î” this run)
+  BASE Â· LOCKED     Director Â· epsilon Â· Audio src Â· Working folder
                     (path-wrapped)
-  BASE · SCENE      Segments (N) — indented segment list with time
+  BASE Â· SCENE      Segments (N) â€” indented segment list with time
                     ranges + Prompt mode + flat Prompt/Audio/Keyframe
                     coverage rows
   POST-RENDER       feedback body + outcome scores
@@ -56,10 +56,11 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
+from PIL.PngImagePlugin import PngInfo
 
 
 # --------------------------------------------------------------------------
-# Palette + geometry — kept in lockstep with scripts/make_card.py.
+# Palette + geometry â€” kept in lockstep with scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 W            = 540
@@ -73,16 +74,16 @@ BORDER       = (48, 47, 47)
 TEXT         = (249, 250, 251)
 MUTED        = (143, 149, 156)
 DIM          = (200, 204, 209)
-ACCENT_RUN   = (255, 184, 77)    # amber  — per-render knob state
-ACCENT_BASE  = (109, 180, 255)   # sky    — locked / scene
-ACCENT_OUT   = (123, 207, 128)   # green  — post-render outcome
+ACCENT_RUN   = (255, 184, 77)    # amber  â€” per-render knob state
+ACCENT_BASE  = (109, 180, 255)   # sky    â€” locked / scene
+ACCENT_OUT   = (123, 207, 128)   # green  â€” post-render outcome
 NOTE_BG      = (12, 12, 12)
 RADIUS       = 14
 SECTION_RADIUS = 8
 
 
 # --------------------------------------------------------------------------
-# Fonts — same fallback chain + same sizes as scripts/make_card.py.
+# Fonts â€” same fallback chain + same sizes as scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 WIN_FONTS = Path(r"C:/Windows/Fonts")
@@ -110,7 +111,7 @@ F_NOTE    = _load_font(["segoeuii.ttf", "Arial Italic.ttf"], 18)
 
 
 # --------------------------------------------------------------------------
-# Drawing primitives — copied 1:1 from scripts/make_card.py.
+# Drawing primitives â€” copied 1:1 from scripts/make_card.py.
 # --------------------------------------------------------------------------
 
 
@@ -137,11 +138,58 @@ def _wrap_text(text: str, max_chars: int, keep_blank_lines: bool = False) -> lis
 
 def _draw_kv_row(
     draw: ImageDraw.ImageDraw, x: int, y: int,
-    key: str, val: str, key_w: int,
+    key: str, val: str, key_w: int, max_w: int | None = None,
 ) -> int:
     draw.text((x, y), key, font=F_MONO, fill=MUTED)
-    draw.text((x + key_w, y), str(val), font=F_MONO, fill=TEXT)
+    value = str(val)
+    if max_w is not None:
+        value = _trim_middle_to_width(draw, value, F_MONO, max_w)
+    draw.text((x + key_w, y), value, font=F_MONO, fill=TEXT)
     return y + 26
+
+
+def _trim_to_width(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    max_w: int,
+) -> str:
+    if draw.textbbox((0, 0), text, font=font)[2] <= max_w:
+        return text
+    ellipsis = "..."
+    lo = 0
+    hi = len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        candidate = text[:mid].rstrip() + ellipsis
+        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo].rstrip() + ellipsis
+
+
+def _trim_middle_to_width(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    max_w: int,
+) -> str:
+    if draw.textbbox((0, 0), text, font=font)[2] <= max_w:
+        return text
+    ellipsis = "..."
+    keep_tail = min(18, max(8, len(text) // 3))
+    tail = text[-keep_tail:]
+    lo = 0
+    hi = max(0, len(text) - keep_tail)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        candidate = text[:mid].rstrip("_- ") + ellipsis + tail
+        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo].rstrip("_- ") + ellipsis + tail
 
 
 def _draw_text_box(
@@ -150,24 +198,51 @@ def _draw_text_box(
     max_lines: int = 4, char_per_line: int = 42,
     keep_blank_lines: bool = False,
 ) -> int:
-    """Left-accented note block — colored 4-px bar on the left, label
+    """Left-accented note block â€” colored 4-px bar on the left, label
     in the accent colour, italic body text."""
     lines = _wrap_text(content, char_per_line, keep_blank_lines=keep_blank_lines)[:max_lines]
     box_h = 28 + 22 * max(1, len(lines)) + 14
     draw.rounded_rectangle(
-        [x - 12, y, x + width, y + box_h],
-        radius=4, fill=NOTE_BG,
+        [x, y, x + width, y + box_h],
+        radius=SECTION_RADIUS, fill=BG_SECTION, outline=BORDER, width=1,
     )
-    draw.rectangle(
-        [x - 12, y, x - 8, y + box_h],
-        fill=accent,
-    )
-    draw.text((x + 4, y + 8), label.upper(), font=F_H2, fill=accent)
+    draw.text((x + 12, y + 8), label.upper(), font=F_H2, fill=accent)
     line_y = y + 36
     for line in lines:
-        draw.text((x + 4, line_y), line, font=F_NOTE, fill=DIM)
+        draw.text((x + 12, line_y), line, font=F_NOTE, fill=DIM)
         line_y += 22
-    return y + box_h + 4
+    return y + box_h + 10
+
+
+def _draw_header_box(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    width: int,
+    run_line: str,
+    module_name: str,
+    name_line: str,
+) -> int:
+    box_h = 118
+    draw.rounded_rectangle(
+        [x, y, x + width, y + box_h],
+        radius=SECTION_RADIUS, fill=BG_SECTION, outline=BORDER, width=1,
+    )
+    tx = x + 14
+    ty = y + 14
+    run_id, _, run_date = run_line.partition(" - ")
+    draw.text((tx, ty), run_id, font=F_H2, fill=ACCENT_RUN)
+    run_w = draw.textbbox((0, 0), run_id + "  ", font=F_H2)[2]
+    if run_date:
+        draw.text((tx + run_w, ty), run_date, font=F_SUB, fill=MUTED)
+    ty += 27
+    module_label = "Module:"
+    draw.text((tx, ty), module_label, font=F_SUB, fill=ACCENT_BASE)
+    label_w = draw.textbbox((0, 0), module_label + " ", font=F_SUB)[2]
+    draw.text((tx + label_w, ty), module_name, font=F_SUB, fill=TEXT)
+    ty += 31
+    draw.text((tx, ty), name_line, font=F_TITLE, fill=TEXT)
+    return y + box_h + 10
 
 
 def _draw_section(
@@ -193,8 +268,27 @@ def _section_body_rows(num_rows: int, extra: int = 0) -> int:
     return num_rows * 26 + extra
 
 
+def _draw_score_chip(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    width: int,
+    label: str,
+    value: Any,
+) -> None:
+    draw.rounded_rectangle(
+        [x, y, x + width, y + 50],
+        radius=6, fill=BG_CARD, outline=BORDER, width=1,
+    )
+    label_w = draw.textbbox((0, 0), label, font=F_TAG)[2]
+    draw.text((x + (width - label_w) // 2, y + 7), label, font=F_TAG, fill=ACCENT_OUT)
+    score = f"{value}/5" if value is not None else "?/5"
+    score_w = draw.textbbox((0, 0), score, font=F_MONO)[2]
+    draw.text((x + (width - score_w) // 2, y + 24), score, font=F_MONO, fill=TEXT)
+
+
 # --------------------------------------------------------------------------
-# Renderer — pure state-in / PNG-out. The ``state`` dict is built by
+# Renderer â€” pure state-in / PNG-out. The ``state`` dict is built by
 # loop_audio._build_state_for_card. All values come from the two source
 # families documented at the top of this module.
 # --------------------------------------------------------------------------
@@ -211,12 +305,23 @@ from loop_audio import (  # type: ignore[import-not-found]  # noqa: E402
 )
 
 
+def _audio_source_label(audio_src: str) -> str:
+    labels = {
+        "custom": "custom audio ON",
+        "custom (empty)": "custom audio ON (empty)",
+        "model-gen": "model audio",
+        "off (no VAE)": "audio OFF",
+        "(no director)": "no director",
+    }
+    return labels.get(audio_src, audio_src)
+
+
 def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     """Render the audio-lipsync card PNG. ``state`` keys consumed:
 
       run_number, run_label, date, workflow_name
       name, relay_overrides_raw, info_body, feedback_lines, scores,
-      work_folder
+      work_folder, output_folder, output_name
       director_variant, director_flavor, audio_src, epsilon, frame_rate,
       segments, audio_segments, segment_prompt_mode
     """
@@ -226,6 +331,8 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     feedback_lines    = state.get("feedback_lines") or []
     scores            = state.get("scores") or {}
     work_folder       = state.get("work_folder") or ""
+    output_folder     = state.get("output_folder") or ""
+    output_name       = state.get("output_name") or ""
     director_variant  = state.get("director_variant") or "(missing)"
     director_flavor   = state.get("director_flavor") or director_variant
     audio_src         = state.get("audio_src") or "?"
@@ -235,7 +342,7 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     audio_segs        = state.get("audio_segments") or []
     prompt_mode       = state.get("segment_prompt_mode") or "none"
     # NOTE: duration_frames / duration_seconds intentionally not read here
-    # — the dropped "Duration" row used them; segment time ranges convey
+    # â€” the dropped "Duration" row used them; segment time ranges convey
     # the same info now. They stay in the state dict for notes.md.
 
     canvas_h = 2400
@@ -254,75 +361,71 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     key_w = 178
 
     # ----- HEADER -----
-    title_line = f"Run {state['run_number']:03d} — {name}"
-    sub_line = (
-        f"{state['date']} · audio-lipsync · {state['workflow_name']}"
-    )
-    draw.text((x, y), title_line, font=F_TITLE, fill=TEXT)
-    y += 38
-    draw.text((x, y), sub_line, font=F_SUB, fill=MUTED)
-    y += 30
-    draw.line([(x, y), (x + inner_w, y)], fill=BORDER, width=1)
-    y += 18
+    module_name = state.get("module_name") or "audio-lipsync"
+    run_line = f"Run {state['run_number']:03d} - {state['date']}"
+    name_line = _trim_to_width(draw, str(name), F_TITLE, inner_w)
+    y = _draw_header_box(draw, x, y, inner_w, run_line, module_name, name_line)
 
-    # ----- KNOB STATE (amber) — relay_overrides from the multiline -----
-    relay_disp = relay if relay else "(empty → defaults)"
-    body_h = _section_body_rows(1)
-    cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_RUN, "Knob state", body_h,
-    )
-    _draw_kv_row(draw, cx, cy, "relay_overrides", relay_disp[:30], key_w)
-    y = end_y
-
-    # ----- BASE · NOTES (Δ this run, amber) — overlay - info verbatim -----
-    note_text = info_body if info_body.strip() else "(no Δ this render)"
-    y = _draw_text_box(
-        draw, x, y, inner_w, "Base · notes (Δ this run)",
-        note_text, ACCENT_RUN, max_lines=18, char_per_line=42,
-        keep_blank_lines=True,
-    )
-
-    # ----- BASE · LOCKED (sky) — Director flavor + widgets + working folder -----
-    locked_rows: list[tuple[str, str]] = [
-        ("Director", str(director_flavor)),
-    ]
-    if epsilon is not None:
-        locked_rows.append(("epsilon", str(epsilon)))
-    locked_rows.append(("Audio src", audio_src))
-
+    # ----- BASE / RUN -----
     path_lines = wrap_path(work_folder, max_chars=40) if work_folder else []
-    body_h = _section_body_rows(len(locked_rows))
+    output_lines = wrap_path(output_folder, max_chars=40) if output_folder else []
+    body_h = _section_body_rows(1)
+    if output_name:
+        body_h += 52
     if path_lines:
         body_h += 26 + 26 * len(path_lines) + 4
+    if output_lines:
+        body_h += 26 + 26 * len(output_lines) + 4
     cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_BASE, "Base · locked", body_h,
+        draw, x, y, inner_w, ACCENT_BASE, "Base / run", body_h,
     )
-    for k, v in locked_rows:
-        cy = _draw_kv_row(draw, cx, cy, k, v, key_w)
+    cy = _draw_kv_row(
+        draw, cx, cy, "Workflow", state.get("workflow_name", ""), key_w, cw - key_w
+    )
+    if output_name:
+        draw.text((cx, cy), "Output name", font=F_MONO, fill=MUTED)
+        cy += 26
+        draw.text(
+            (cx + 12, cy),
+            _trim_middle_to_width(draw, output_name, F_MONO, cw - 12),
+            font=F_MONO,
+            fill=TEXT,
+        )
+        cy += 26
     if path_lines:
         draw.text((cx, cy), "Working folder", font=F_MONO, fill=MUTED)
         cy += 26
         for line in path_lines:
             draw.text((cx + 12, cy), line, font=F_MONO, fill=TEXT)
             cy += 26
+    if output_lines:
+        draw.text((cx, cy), "Output folder", font=F_MONO, fill=MUTED)
+        cy += 26
+        for line in output_lines:
+            draw.text((cx + 12, cy), line, font=F_MONO, fill=TEXT)
+            cy += 26
     y = end_y
 
-    # ----- BASE · SCENE (sky) — flat layout with one indented child -----
-    # Segments parent row + indented segment list + flat coverage rows
-    # for Prompt / Audio / Keyframe. Coverage is aggregated across all
-    # visible segments — "[x]" only when every segment has that field.
+    # ----- DIRECTOR READINGS -----
     seg_rows = min(len(segments), 6)
     indent_seg = 18
-    body_h = 26 * 2 + 26 * seg_rows + 8 + 26 * 3 + 4
+    director_rows = 4 if epsilon is not None else 3
+    body_h = 26 * director_rows + 26 * 3 + 26 * seg_rows + 8 + 26 * 3 + 4
     cx, cy, cw, end_y = _draw_section(
-        draw, x, y, inner_w, ACCENT_BASE, "Base · scene", body_h,
+        draw, x, y, inner_w, ACCENT_BASE, "Director readings", body_h,
     )
-    cy = _draw_kv_row(draw, cx, cy, "Segments", f"({len(segments)})", key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Director", str(director_flavor), key_w)
+    if epsilon is not None:
+        cy = _draw_kv_row(draw, cx, cy, "epsilon", str(epsilon), key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Audio", _audio_source_label(audio_src), key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Frame rate", str(fps or "?"), key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Image segments", f"({len(segments)})", key_w)
+    cy = _draw_kv_row(draw, cx, cy, "Audio segments", f"({len(audio_segs)})", key_w)
     cy = _draw_kv_row(draw, cx, cy, "Prompt mode", prompt_mode, key_w)
 
     visible = segments[:seg_rows]
-    all_have_prompt   = bool(visible) and all((s.get("prompt") or "") for s in visible)
-    all_have_audio    = bool(visible) and all(
+    all_have_prompt = bool(visible) and all((s.get("prompt") or "") for s in visible)
+    all_have_audio = bool(visible) and all(
         video_segment_has_audio(s, audio_segs) for s in visible
     )
     all_have_keyframe = bool(visible) and all(s.get("imageFile") for s in visible)
@@ -335,8 +438,6 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         has_a = video_segment_has_audio(seg, audio_segs)
         has_k = bool(seg.get("imageFile"))
         header_col = ACCENT_OUT if (has_p and has_a and has_k) else ACCENT_BASE
-        # Without a frame_rate widget we can't compute the time range;
-        # show frame counts instead of pretending "0 to 0 seconds".
         if fps:
             start_s = start / fps
             end_s = (start + length) / fps
@@ -348,8 +449,8 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     cy += 8
 
     for label, present in (
-        ("Prompt",   all_have_prompt),
-        ("Audio",    all_have_audio),
+        ("Prompt", all_have_prompt),
+        ("Audio", all_have_audio),
         ("Keyframe", all_have_keyframe),
     ):
         mark = "[x]" if present else "[ ]"
@@ -359,10 +460,24 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
         cy += 26
     y = end_y
 
-    # ----- POST-RENDER (green) — FEEDBACK + OUTCOME -----
+    # ----- AMBER NOTES -----
+    relay_disp = relay if relay else "(empty -> defaults)"
+    y = _draw_text_box(
+        draw, x, y, inner_w, "Knob state",
+        relay_disp, ACCENT_RUN, max_lines=6, char_per_line=42,
+        keep_blank_lines=True,
+    )
+    note_text = info_body if info_body.strip() else "(no note this render)"
+    y = _draw_text_box(
+        draw, x, y, inner_w, "Base notes",
+        note_text, ACCENT_RUN, max_lines=18, char_per_line=42,
+        keep_blank_lines=True,
+    )
+
+    # ----- POST-RENDER (green) â€” FEEDBACK + OUTCOME -----
     feedback_text = "\n".join(feedback_lines) if feedback_lines else "(no feedback)"
     fb_lines = _wrap_text(feedback_text, 42)[:6]
-    body_h = (20 + max(24, 22 * len(fb_lines)) + 14 + 20 + 26)
+    body_h = (20 + max(24, 22 * len(fb_lines)) + 14 + 20 + 50)
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_OUT, "Post-render", body_h,
     )
@@ -375,15 +490,17 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     draw.text((cx, cy), "OUTCOME", font=F_TAG, fill=ACCENT_OUT)
     cy += 20
 
-    def _s(v: Any) -> str:
-        return f"{v}/5" if v is not None else "?/5"
-    draw.text(
-        (cx, cy),
-        f"Motion {_s(scores.get('motion'))}     "
-        f"Sync {_s(scores.get('sync'))}     "
-        f"Sharp {_s(scores.get('sharp'))}",
-        font=F_MONO, fill=TEXT,
-    )
+    gap = 8
+    chip_w = (cw - 2 * gap) // 3
+    for idx, (label, key) in enumerate((
+        ("Motion", "motion"),
+        ("Sync", "sync"),
+        ("Sharp", "sharp"),
+    )):
+        _draw_score_chip(
+            draw, cx + idx * (chip_w + gap), cy,
+            chip_w, label, scores.get(key),
+        )
     y = end_y
 
     # ----- crop to actual content + save -----
@@ -396,31 +513,44 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(str(out_path))
+    pnginfo = None
+    metadata = state.get("metadata")
+    if metadata:
+        pnginfo = PngInfo()
+        pnginfo.add_text(
+            "koolook_audio_loop",
+            json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+        )
+    img.save(str(out_path), pnginfo=pnginfo)
     return out_path
 
 
 # --------------------------------------------------------------------------
-# Standalone CLI — re-render a card from an existing run folder.
+# Standalone CLI â€” re-render a card from an existing run folder.
 # --------------------------------------------------------------------------
 
 
 def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     """Reconstruct the loop_audio state dict from an on-disk run
-    folder. Reads the run's frozen workflow.json and walks it through
+    folder. Reads the run's frozen runNNN_workflow.json and walks it through
     the same extraction helpers loop_audio.py uses live."""
     from loop_audio import (  # type: ignore[import-not-found]
         derive_audio_state, director_flavor, director_type, director_widget,
-        extract_director, extract_multilines, find_dotenv,
+        expected_output_tracking, extract_director, extract_multilines,
+        extract_setup_variables, find_dotenv,
         first_multiline, load_config, load_dotenv,
         parse_feedback, parse_timeline, pick_existing_path,
         segment_prompt_mode,
         DEFAULT_CONFIG_PATH,
     )
 
-    wf_path = run_dir / "workflow.json"
+    name_parts = run_dir.name.split("_", 1)
+    nnn = int(name_parts[0].removeprefix("run-")) if name_parts[0].startswith("run-") else 0
+    label = name_parts[1] if len(name_parts) > 1 else ""
+    tagged_workflow = run_dir / f"run{nnn:03d}_workflow.json"
+    wf_path = tagged_workflow if tagged_workflow.is_file() else run_dir / "workflow.json"
     if not wf_path.is_file():
-        print(f"missing workflow.json in {run_dir}", file=sys.stderr)
+        print(f"missing run workflow JSON in {run_dir}", file=sys.stderr)
         sys.exit(2)
     with wf_path.open(encoding="utf-8") as f:
         wf = json.load(f)
@@ -434,23 +564,32 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
 
     cfg = load_config(DEFAULT_CONFIG_PATH)
     multilines = extract_multilines(nodes, cfg["tracked_multilines"])
+    setup_variables = extract_setup_variables(
+        nodes, cfg.get("tracked_setup_variables", {})
+    )
+    output_tracking = expected_output_tracking(nodes, multilines, setup_variables)
     director_node = extract_director(nodes)
     timeline = parse_timeline(director_node)
     audio_src = derive_audio_state(director_node, timeline)
     scores, feedback_lines = parse_feedback(
         first_multiline(multilines, "overlay - feedback")
     )
-
-    name_parts = run_dir.name.split("_", 1)
-    nnn = int(name_parts[0].removeprefix("run-")) if name_parts[0].startswith("run-") else 0
-    label = name_parts[1] if len(name_parts) > 1 else ""
+    patch_meta: dict[str, str] = {}
+    patch_path = run_dir / "patch_state.txt"
+    if patch_path.is_file():
+        for line in patch_path.read_text(encoding="utf-8").splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            patch_meta[key.strip()] = value.strip()
 
     from datetime import date
+    workflow_name = wf_path.name
     return {
         "run_number": nnn,
         "run_label": label,
         "date": date.today().isoformat(),
-        "workflow_name": "workflow.json",
+        "workflow_name": workflow_name,
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
         "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
         "info_body": first_multiline(multilines, "overlay - info").rstrip(),
@@ -459,6 +598,49 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "work_folder": pick_existing_path(
             multilines.get("working_folder") or []
         ),
+        "output_folder": output_tracking.get("folder", ""),
+        "output_name": output_tracking.get("name", ""),
+        "metadata": {
+            "schema": "koolook.audio_loop.card_metadata.v1",
+            "source": "rebuilt from frozen run folder",
+            "run": {
+                "capture_number": f"{nnn:03d}",
+                "label": label,
+                "date": date.today().isoformat(),
+                "workflow": workflow_name,
+                "setup_name": wf_path.stem,
+            },
+            "setup": {
+                "base_name": first_multiline(multilines, "name").strip(),
+                "working_folder": output_tracking.get("folder", ""),
+                "input_path_exr": first_multiline(setup_variables, "input_path_exr"),
+                "global_version": first_multiline(setup_variables, "version"),
+                "global_run_offset": first_multiline(setup_variables, "run_offset"),
+                "relay_overrides": first_multiline(multilines, "relay_overrides").strip(),
+            },
+            "output": output_tracking,
+            "director": {
+                "type": director_type(director_node),
+                "flavor": director_flavor(director_node),
+                "audio_src": audio_src,
+                "epsilon": director_widget(director_node, "epsilon"),
+                "duration_frames": director_widget(director_node, "duration_frames"),
+                "duration_seconds": director_widget(director_node, "duration_seconds"),
+                "frame_rate": director_widget(director_node, "frame_rate"),
+                "segment_prompt_mode": segment_prompt_mode(
+                    timeline.get("segments") or []
+                ),
+                "video_segments": len(timeline.get("segments") or []),
+                "audio_segments": len(timeline.get("audioSegments") or []),
+            },
+            "repo": {
+                "main_sha": patch_meta.get("MAIN SHA", ""),
+                "last_dev_sync_audio": patch_meta.get("Last dev-sync-audio", ""),
+                "sync_scope_tag": patch_meta.get("Sync scope tag", ""),
+                "sync_worktree": patch_meta.get("Sync worktree", ""),
+                "fork_dir_status": patch_meta.get("Fork dir status", ""),
+            },
+        },
         "director_node": director_node,
         "director_variant": director_type(director_node),
         "director_flavor": director_flavor(director_node),

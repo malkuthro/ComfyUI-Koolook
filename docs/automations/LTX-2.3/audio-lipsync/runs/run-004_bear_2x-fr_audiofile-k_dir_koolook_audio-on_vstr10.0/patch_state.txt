@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : ed4c46c
+Last dev-sync-audio   : c074efc  (2026-05-30 16:51)
+Sync scope tag        : audio-lipsync fork edit
+Sync worktree         : ComfyUI-Koolook
+Fork dir status       : clean (matches HEAD)
