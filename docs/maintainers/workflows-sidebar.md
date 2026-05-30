@@ -108,6 +108,37 @@ further subdirectories.
 | `localStorage["koolook.workflows.seeded.v1"]` | `"1"` once defaults have been seeded for this install. |
 | `web/workflow_defaults.json` (in repo) | Distributed starter pack — seeded once into `/userdata` on first load with empty workflow data. |
 
+## Comfy workflow draft quota gotcha
+
+ComfyUI also keeps its own browser-side workflow draft cache in localStorage:
+
+| Key | Owner |
+|---|---|
+| `Comfy.Workflow.Drafts` | ComfyUI frontend draft autosave |
+| `Comfy.Workflow.DraftOrder` | ComfyUI frontend draft LRU order |
+
+When large workflows are repeatedly loaded or imported with changing workflow
+IDs, Comfy can accumulate multiple large drafts. Once browser storage quota is
+hit, Comfy shows repeated **"Failed to save workflow draft"** toasts. Koolook
+hit this first in v0.3.6 with sidebar workflow loads; the fix was to give
+sidebar loads a stable temporary workflow ID derived from the sidebar path/name
+so the same workflow replaces the same draft entry instead of creating a new one
+each time.
+
+The same symptom can reappear when large workflow JSONs are imported directly
+from disk, bypassing the sidebar load path. For Koolook frontend extensions that
+ship large timeline/editor data, keep two rules in mind:
+
+- Do not churn workflow IDs for equivalent exported/imported workflow files.
+- Keep hidden widget payloads plain JSON and strip preview-only blobs before
+  serialization.
+
+The LTX Director timeline extension also installs a small guard around Comfy's
+draft-cache writes. If the browser throws `QuotaExceededError` while writing
+only the Comfy draft keys above, the guard clears those draft entries and lets
+Comfy retry. It does not touch Koolook `/userdata`, snapshots, workflow library
+entries, render outputs, or user project files.
+
 JSON shape (recursive — `directories` lives both at the root AND inside
 every directory node):
 

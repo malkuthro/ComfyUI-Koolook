@@ -9,6 +9,11 @@ const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const HANDLE_HIT_PX = 14;
 const MIN_SEGMENT_LENGTH = 6;
 const MAX_THUMBNAIL_DIM = 512; // Increased to maintain quality for taller images
+const COMFY_DRAFTS_KEY = "Comfy.Workflow.Drafts";
+const COMFY_DRAFT_ORDER_KEY = "Comfy.Workflow.DraftOrder";
+const MAX_COMFY_DRAFT_CACHE_CHARS = 1_500_000;
+const MAX_COMFY_DRAFT_ENTRY_CHARS = 750_000;
+const WORKFLOW_DRAFT_KEYS = new Set([COMFY_DRAFTS_KEY, COMFY_DRAFT_ORDER_KEY]);
 
 const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths", "guide_strength", "audio_data", "use_custom_audio"];
 
@@ -25,6 +30,115 @@ function hideWidget(w) {
 }
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function pruneComfyDraftCache() {
+  try {
+    const rawDrafts = localStorage.getItem(COMFY_DRAFTS_KEY);
+    if (!rawDrafts) return;
+
+    let drafts = JSON.parse(rawDrafts);
+    if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {
+      localStorage.removeItem(COMFY_DRAFTS_KEY);
+      localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+      return;
+    }
+
+    let order = [];
+    try {
+      const parsedOrder = JSON.parse(localStorage.getItem(COMFY_DRAFT_ORDER_KEY) || "[]");
+      if (Array.isArray(parsedOrder)) order = parsedOrder.filter(path => typeof path === "string");
+    } catch (_err) {
+      order = [];
+    }
+
+    const draftKeys = Object.keys(drafts);
+    const orderedKeys = [
+      ...order.filter(path => Object.prototype.hasOwnProperty.call(drafts, path)),
+      ...draftKeys.filter(path => !order.includes(path)),
+    ];
+
+    let changed = false;
+    for (const key of [...orderedKeys]) {
+      const data = drafts[key]?.data;
+      if (typeof data === "string" && data.length > MAX_COMFY_DRAFT_ENTRY_CHARS) {
+        delete drafts[key];
+        changed = true;
+      }
+    }
+
+    const sizeOf = () => JSON.stringify(drafts).length;
+    let currentSize = sizeOf();
+    while (currentSize > MAX_COMFY_DRAFT_CACHE_CHARS && orderedKeys.length > 1) {
+      const key = orderedKeys.shift();
+      if (key && Object.prototype.hasOwnProperty.call(drafts, key)) {
+        delete drafts[key];
+        changed = true;
+        currentSize = sizeOf();
+      }
+    }
+
+    if (changed) {
+      const nextOrder = orderedKeys.filter(path => Object.prototype.hasOwnProperty.call(drafts, path));
+      localStorage.setItem(COMFY_DRAFTS_KEY, JSON.stringify(drafts));
+      localStorage.setItem(COMFY_DRAFT_ORDER_KEY, JSON.stringify(nextOrder));
+      console.warn("[PromptRelay] pruned oversized Comfy workflow draft cache to prevent save-draft failures.");
+    }
+  } catch (err) {
+    try {
+      localStorage.removeItem(COMFY_DRAFTS_KEY);
+      localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+      console.warn("[PromptRelay] cleared unreadable Comfy workflow draft cache.", err);
+    } catch (_err) { }
+  }
+}
+
+function installComfyDraftQuotaGuard() {
+  try {
+    if (localStorage.__koolookDraftQuotaGuardInstalled) return;
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    Object.defineProperty(localStorage, "__koolookDraftQuotaGuardInstalled", {
+      value: true,
+      configurable: true,
+    });
+    localStorage.setItem = (key, value) => {
+      try {
+        return originalSetItem(key, value);
+      } catch (err) {
+        const isQuotaError =
+          err instanceof DOMException &&
+          (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
+        if (!isQuotaError || !WORKFLOW_DRAFT_KEYS.has(String(key))) throw err;
+
+        try {
+          originalSetItem(COMFY_DRAFTS_KEY, "{}");
+          originalSetItem(COMFY_DRAFT_ORDER_KEY, "[]");
+          console.warn("[PromptRelay] cleared Comfy workflow draft cache after browser quota error.");
+        } catch (_cleanupErr) {
+          localStorage.removeItem(COMFY_DRAFTS_KEY);
+          localStorage.removeItem(COMFY_DRAFT_ORDER_KEY);
+        }
+
+        try {
+          return originalSetItem(key, value);
+        } catch (_retryErr) {
+          if (String(key) === COMFY_DRAFTS_KEY) return originalSetItem(key, "{}");
+          if (String(key) === COMFY_DRAFT_ORDER_KEY) return originalSetItem(key, "[]");
+          throw err;
+        }
+      }
+    };
+  } catch (err) {
+    console.warn("[PromptRelay] could not install Comfy draft quota guard.", err);
+  }
+}
+
+function serializeTimelineSegment(seg) {
+  const { imgObj, imageB64, audioB64, _audioBuffer, _file, ...rest } = seg || {};
+  return rest;
+}
+
+installComfyDraftQuotaGuard();
+pruneComfyDraftCache();
 
 // --- Modern Dark/Grey UI CSS (ComfyUI Match) ---
 const STYLES = `
@@ -2802,11 +2916,8 @@ class TimelineEditor {
     }
 
     const toSave = {
-      segments: sortedSegments.map(s => {
-        const { imgObj, ...rest } = s;
-        return rest;
-      }),
-      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))
+      segments: sortedSegments.map(s => serializeTimelineSegment(s)),
+      audioSegments: (this.timeline.audioSegments || []).map(s => serializeTimelineSegment(s))
     };
 
     const jsonStr = JSON.stringify(toSave);

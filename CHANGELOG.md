@@ -11,6 +11,14 @@ The format is inspired by Keep a Changelog and SemVer.
   audio sync now removes the old `web/whatdreamscost_koolook_v1_3_2/`
   folder after the stable v1.3.9 web-extension rename, preventing legacy
   workflows from loading two identical timeline editors in dev installs.
+- **Comfy workflow draft quota guard for large LTX timeline workflows.** The
+  LTX Director frontend now strips preview-only media blobs from timeline
+  serialization and catches browser quota failures on Comfy's own
+  `Comfy.Workflow.Drafts` / `Comfy.Workflow.DraftOrder` writes, evicting only
+  the oldest saved Comfy draft before retrying and showing a visible warning if
+  the browser store is still full. This documents and extends the
+  v0.3.6 stable-draft-ID lesson to large workflows imported directly from disk,
+  which bypass the Koolook sidebar load path.
 - **`loop-audio`: run numbering now respects the log.** The audio-lipsync
   loop now chooses the next run number from both existing `run-NNN_*`
   folders and `runs/log.md`, preventing a newly saved snapshot from reusing
