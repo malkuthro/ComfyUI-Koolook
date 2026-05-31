@@ -27,12 +27,9 @@ Card sections (top to bottom):
 
   HEADER            run-NNN — {name} · date · job · workflow filename
   KNOB STATE        relay_overrides (the per-render knob)
-  BASE · NOTES      overlay - info (verbatim, Δ this run)
-  BASE · LOCKED     Director · epsilon · Audio src · Working folder
-                    (path-wrapped)
-  BASE · SCENE      Segments (N) — indented segment list with time
-                    ranges + Prompt mode + flat Prompt/Audio/Keyframe
-                    coverage rows
+  BASE / RUN        source workflow · copied-from workflow · working folder
+  DIRECTOR READINGS Director · pin tag · epsilon · Audio src
+  SEGMENTS          segment list with time ranges + coverage rows
   POST-RENDER       feedback body + outcome scores
 
 Two entry points:
@@ -303,6 +300,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from loop_audio import (  # type: ignore[import-not-found]  # noqa: E402
     copy_delivery_card,
     video_segment_has_audio,
+    metadata_numeric_widget,
+    parse_dev_sync_audio_line,
+    repo_metadata_from_build,
+    render_notes_md,
+    scrub_path_for_metadata,
     wrap_path,
 )
 
@@ -316,6 +318,32 @@ def _audio_source_label(audio_src: str) -> str:
         "(no director)": "no director",
     }
     return labels.get(audio_src, audio_src)
+
+
+def _read_existing_metadata(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "metadata.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _preserved_run_date(run_dir: Path, existing_metadata: dict[str, Any]) -> str:
+    existing_date = (existing_metadata.get("run") or {}).get("date", "")
+    if isinstance(existing_date, str) and existing_date.strip():
+        return existing_date.strip()
+    wf = next(run_dir.glob("run*_workflow.json"), None)
+    if wf is not None:
+        try:
+            from datetime import datetime
+            return datetime.fromtimestamp(wf.stat().st_mtime).date().isoformat()
+        except OSError:
+            pass
+    from datetime import date
+    return date.today().isoformat()
 
 
 def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
@@ -604,6 +632,8 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     audio_src = derive_audio_state(director_node, timeline)
     upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     pin_tag = director_pin_tag(director_node, upstream_whatdreamscost_version)
+    existing_metadata = _read_existing_metadata(run_dir)
+    run_date = _preserved_run_date(run_dir, existing_metadata)
     scores, feedback_lines = parse_feedback(
         first_multiline(multilines, "overlay - feedback")
     )
@@ -615,6 +645,15 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 continue
             key, value = line.split(":", 1)
             patch_meta[key.strip()] = value.strip()
+    last_dev_sync_audio, last_dev_sync_at = parse_dev_sync_audio_line(
+        patch_meta.get("Last dev-sync-audio", "")
+    )
+    repo_build = {
+        "commit": last_dev_sync_audio,
+        "synced_at": last_dev_sync_at,
+        "scope": patch_meta.get("Sync scope tag", ""),
+        "worktree": patch_meta.get("Sync worktree", ""),
+    }
     source_workflow_name = ""
     notes_path = run_dir / "notes.md"
     if notes_path.is_file():
@@ -624,12 +663,11 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 source_workflow_name = f"{match.group(1)}.json"
                 break
 
-    from datetime import date
     workflow_name = wf_path.name
-    return {
+    state = {
         "run_number": nnn,
         "run_label": label,
-        "date": date.today().isoformat(),
+        "date": run_date,
         "workflow_name": workflow_name,
         "source_workflow_name": source_workflow_name,
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
@@ -649,7 +687,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
             "run": {
                 "capture_number": f"{nnn:03d}",
                 "label": label,
-                "date": date.today().isoformat(),
+                "date": run_date,
                 "workflow": workflow_name,
                 "source_workflow": source_workflow_name,
                 "archived_workflow": workflow_name,
@@ -681,7 +719,9 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 "epsilon": director_widget(director_node, "epsilon"),
                 "duration_frames": director_widget(director_node, "duration_frames"),
                 "duration_seconds": director_widget(director_node, "duration_seconds"),
-                "frame_rate": director_widget(director_node, "frame_rate"),
+                "frame_rate": metadata_numeric_widget(
+                    director_widget(director_node, "frame_rate")
+                ),
                 "segment_prompt_mode": segment_prompt_mode(
                     timeline.get("segments") or []
                 ),
@@ -689,12 +729,11 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 "audio_segments": len(timeline.get("audioSegments") or []),
             },
             "repo": {
+                **repo_metadata_from_build(
+                    repo_build,
+                    patch_meta.get("Fork dir status", ""),
+                ),
                 "main_sha": patch_meta.get("MAIN SHA", ""),
-                "sync_script": "sync_to_dev_audio.py",
-                "last_dev_sync_audio": patch_meta.get("Last dev-sync-audio", ""),
-                "sync_scope_tag": patch_meta.get("Sync scope tag", ""),
-                "sync_worktree": patch_meta.get("Sync worktree", ""),
-                "fork_dir_status": patch_meta.get("Fork dir status", ""),
             },
         },
         "director_node": director_node,
@@ -703,19 +742,41 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "director_pin_tag": pin_tag,
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
-        "frame_rate": director_widget(director_node, "frame_rate"),
+        "frame_rate": metadata_numeric_widget(
+            director_widget(director_node, "frame_rate")
+        ),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
         "segment_prompt_mode": segment_prompt_mode(
             timeline.get("segments") or []
         ),
     }
+    state["notes_md"] = render_notes_md(
+        nnn,
+        Path(source_workflow_name) if source_workflow_name else wf_path,
+        multilines,
+        setup_variables,
+        director_node,
+        timeline,
+        audio_src,
+        state["info_body"],
+        feedback_lines,
+        scores,
+        output_tracking,
+        commit_sha=patch_meta.get("MAIN SHA", ""),
+    )
+    return state
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("run_dir", type=Path)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--no-delivery",
+        action="store_true",
+        help="Skip copying the rendered card to the external cards folder.",
+    )
     args = p.parse_args()
 
     run_dir = args.run_dir.expanduser().resolve()
@@ -733,6 +794,7 @@ def main() -> int:
         return 0
     render_audio_card(state, out)
     metadata_path = run_dir / "metadata.json"
+    notes_path = run_dir / "notes.md"
     metadata_path.write_text(
         json.dumps(
             state.get("metadata") or {},
@@ -742,14 +804,19 @@ def main() -> int:
         ) + "\n",
         encoding="utf-8",
     )
-    delivery_status = copy_delivery_card(
-        out,
-        state.get("output_tracking") or {},
-        state.get("run_number"),
-        overwrite=True,
-    )
+    notes_path.write_text(state.get("notes_md") or "", encoding="utf-8")
+    if args.no_delivery:
+        delivery_status = "(skipped)"
+    else:
+        delivery_status = copy_delivery_card(
+            out,
+            state.get("output_tracking") or {},
+            state.get("run_number"),
+            overwrite=True,
+        )
     print(f"wrote: {out}")
     print(f"wrote: {metadata_path}")
+    print(f"wrote: {notes_path}")
     print(f"delivered: {delivery_status}")
     return 0
 

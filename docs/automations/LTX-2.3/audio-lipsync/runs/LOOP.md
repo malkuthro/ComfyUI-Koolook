@@ -31,7 +31,7 @@ Each `loop-audio` capture folder looks like:
 
 ```
 run-NNN_<label>/
-├── runNNN_workflow.json    ← copy of the working-folder workflow at submission
+├── runNNN_workflow.json    ← redacted copy of the working-folder workflow at submission
 ├── relay_overrides.txt     ← RELAY_OVERRIDES multiline body; marked inert when upstream Director is active
 ├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
 ├── metadata.json           ← structured run/setup/director/repo metadata
@@ -39,7 +39,9 @@ run-NNN_<label>/
 └── card.png                ← stable archive card
 ```
 
-The `relay_overrides` value is also stored inside `runNNN_workflow.json` when the
+The archived workflow keeps the Comfy graph shape but redacts absolute
+workstation paths before it is committed. The `relay_overrides` value is
+also stored inside `runNNN_workflow.json` when the
 Koolook Director is active, but the `.txt` copy makes it diff-friendly in the
 run folder. On upstream `LTXDirector` comparison runs, the `.txt` file keeps
 the same note body and explicitly marks that value as inert.
@@ -63,8 +65,10 @@ Re-render an existing run through the script, not by copying files manually:
 .\.venv\Scripts\python.exe scripts\make_card_audio.py docs\automations\LTX-2.3\audio-lipsync\runs\run-NNN_<label>
 ```
 
-That scripted path updates `card.png`, rewrites `metadata.json`, and replaces
-the external `cards/<Output name>_runNNN_card.png` delivery copy.
+That scripted path updates `card.png`, rewrites `metadata.json`, refreshes
+`notes.md`, and replaces the external
+`cards/<Output name>_runNNN_card.png` delivery copy. Use `--no-delivery`
+when refreshing committed evidence without touching the render drive.
 
 ## Trigger detection
 

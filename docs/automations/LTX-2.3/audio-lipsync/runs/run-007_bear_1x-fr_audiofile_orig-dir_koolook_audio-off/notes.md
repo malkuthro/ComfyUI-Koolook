@@ -32,27 +32,27 @@ Quest to find a BASE
 - Image segments: `1 video / 2 audio`
 - Prompts / similarity: `single`
 - Commit No.: `3294e6e`
-- LTX-Director (flavour): `Original upstream (LTXDirector)`
+- LTX-Director (flavour): `Original upstream`
 - Director pin tag: `v1.3.2`
-- Audio src: `custom audio ON`
+- Audio src: `model-gen`
 - epsilon: `0.001`
-- Duration: `144 frames @ 24 fps (6 sec)`
-- RELAY_OVERRIDES: `"video_strength": 10.0` (inert: active Director is upstream LTXDirector)
-- GLOBAL [ path ] - working folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- Duration: `144 frames @ (unknown fps) fps (6 sec)`
+- RELAY_OVERRIDES: `"video_strength": 10.0 (inert: active Director is upstream LTXDirector)`
+- GLOBAL [ path ] - working folder: `Runs-Audio-File [path-sha256:9ffb2549beb1]`
 - GLOBAL [ base name ]: `Bear_1x-FR_AudioFile_ORIG-Dir`
-- INPUT Path [ EXR ]: `W:/projects/samsung_goat_3188/vfx/assets/AI_renders/001/1130/messi/video/v003/`
+- INPUT Path [ EXR ]: `v003 [path-sha256:d7b84bf37ca2]`
 - GLOBAL [ version ]: `1`
 - GLOBAL [ run offset ]: `6`
-- Output folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- Output folder: `Runs-Audio-File [path-sha256:9ffb2549beb1]`
 - Output name: `Bear_1x-FR_AudioFile_ORIG-Dir_h264_v001`
 - OVERLAY - INFO: `(captured verbatim above)`
 - OVERLAY - FEEDBACK: `(captured verbatim above)`
 
 ## Director node — structural state
 
-- Variant: **upstream** `LTXDirector` (Koolook variant NOT wired - relay_overrides + per-segment sigma are INERT this render)
-- Audio src: custom
+- Variant: **upstream** `LTXDirector` (Koolook variant NOT wired — relay_overrides + per-segment sigma are INERT this render)
+- Audio src: model-gen
 - ε (epsilon): 0.001
-- Duration: 144 frames @ 24 fps (6 sec)
+- Duration: 144 frames @ (unknown fps) fps (6 sec)
 - Segments: 1 video / 2 audio
 - Segment prompt mode: single

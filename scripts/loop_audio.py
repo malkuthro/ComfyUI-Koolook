@@ -229,6 +229,14 @@ DIRECTOR_TYPE = "LTXDirector__koolook"
 LEGACY_DIRECTOR_TYPES = ("LTXDirector__koolook_v1_3_2",)
 UPSTREAM_DIRECTOR_TYPE = "LTXDirector"
 DIRECTOR_TYPES = (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES, UPSTREAM_DIRECTOR_TYPE)
+KOOLOOK_UPSTREAM_PIN = (
+    REPO_ROOT
+    / "forks"
+    / "whatdreamscost_koolook"
+    / "versions"
+    / "v1_3_9"
+    / "UPSTREAM_PIN.yaml"
+)
 
 # Koolook Director widget order — verified empirically against saved
 # workflow JSON. The Comfy frontend serialises widgets in their original
@@ -537,6 +545,46 @@ def scrub_path_for_metadata(value: str) -> str:
     return raw
 
 
+def _scrub_path_fragments(value: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        return scrub_path_for_metadata(match.group(0))
+
+    value = re.sub(
+        r"(?<![A-Za-z])(?:[A-Za-z]:[/\\]{1,2}|\\\\)[^\"'`,\]\s<>]+",
+        repl,
+        value,
+    )
+    return re.sub(r"<PROJECTS>/[^\"'`,\]\s<>]+", "<PROJECTS>/[path-redacted]", value)
+
+
+def sanitize_workflow_for_archive(value: Any) -> Any:
+    """Redact absolute workstation paths before committing workflow snapshots."""
+    if isinstance(value, dict):
+        return {
+            key: sanitize_workflow_for_archive(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_workflow_for_archive(item) for item in value]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if re.match(r"^[A-Za-z]:[/\\]", stripped) or stripped.startswith(("/", "\\\\")):
+            redacted = scrub_path_for_metadata(stripped)
+            if value != stripped:
+                return value.replace(stripped, redacted)
+            return redacted
+        return _scrub_path_fragments(value)
+    return value
+
+
+def write_archived_workflow(wf: dict[str, Any], path: Path) -> None:
+    sanitized = sanitize_workflow_for_archive(wf)
+    path.write_text(
+        json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
 def pick_existing_path(candidates: list[str]) -> str:
     """Pick the first candidate that resolves to a real directory on
     this machine. Falls back to the first non-empty candidate so the
@@ -616,7 +664,7 @@ def extract_director(nodes: list[dict], links: Optional[list] = None) -> Optiona
     """
     if links:
         nodes_by_id = {int(n["id"]): n for n in nodes if "id" in n}
-        links_by_id = {int(l[0]): l for l in links if l}
+        links_by_id = {int(link[0]): link for link in links if link}
         for guide in (n for n in nodes if n.get("type") == "LTXDirectorGuide"):
             for inp in guide.get("inputs") or []:
                 if inp.get("name") != "guide_data":
@@ -663,13 +711,30 @@ def detect_upstream_whatdreamscost_version() -> str:
     return str(version).strip()
 
 
+def detect_koolook_whatdreamscost_pin() -> str:
+    """Return the Koolook fork's pinned upstream version tag."""
+    if not KOOLOOK_UPSTREAM_PIN.is_file():
+        return ""
+    try:
+        for line in KOOLOOK_UPSTREAM_PIN.read_text(encoding="utf-8").splitlines():
+            match = re.match(r'\s*source_ref:\s*"?(v[0-9]+(?:\.[0-9]+)+)', line)
+            if match:
+                return match.group(1)
+    except OSError:
+        return ""
+    version_dir = KOOLOOK_UPSTREAM_PIN.parent.name
+    if version_dir.startswith("v"):
+        return version_dir.replace("_", ".")
+    return ""
+
+
 def director_pin_tag(
     node: Optional[dict],
     upstream_whatdreamscost_version: str = "",
 ) -> str:
     dtype = director_type(node)
     if dtype in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES):
-        return "v1.3.9"
+        return detect_koolook_whatdreamscost_pin() or "(unknown Koolook pin)"
     if dtype == UPSTREAM_DIRECTOR_TYPE:
         if upstream_whatdreamscost_version:
             return f"v{upstream_whatdreamscost_version}"
@@ -686,14 +751,46 @@ def director_widget(node: Optional[dict], key: str) -> Any:
         return None
     wv = node.get("widgets_values") or []
     idx = DIRECTOR_WIDX.get(key)
-    if isinstance(wv, list) and idx is not None and idx < len(wv):
-        return wv[idx]
     named = widget_value_by_name(node, key, default=None)
     if named is not None:
         return named
+    if isinstance(wv, list) and idx is not None and idx < len(wv):
+        return wv[idx]
     if idx is None or idx >= len(wv):
         return None
     return wv[idx]
+
+
+def display_numeric_widget(value: Any, label: str = "unknown") -> str:
+    """Render numeric Director widgets without accepting stale booleans."""
+    if isinstance(value, bool) or value is None:
+        return f"(unknown {label})"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value).strip()
+    if not text:
+        return f"(unknown {label})"
+    try:
+        float(text)
+    except ValueError:
+        return f"(unknown {label})"
+    return text
+
+
+def metadata_numeric_widget(value: Any) -> Any:
+    """Store numeric Director widgets without bool-as-number coercion."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    return int(parsed) if parsed.is_integer() else parsed
 
 
 def is_input_wired(node: Optional[dict], input_name: str) -> Optional[bool]:
@@ -1044,21 +1141,36 @@ def card_metadata(
             "epsilon": director_widget(director_node, "epsilon"),
             "duration_frames": director_widget(director_node, "duration_frames"),
             "duration_seconds": director_widget(director_node, "duration_seconds"),
-            "frame_rate": director_widget(director_node, "frame_rate"),
+            "frame_rate": metadata_numeric_widget(
+                director_widget(director_node, "frame_rate")
+            ),
             "segment_prompt_mode": segment_prompt_mode(segments),
             "video_segments": len(segments),
             "audio_segments": len(audio_segments),
         },
-        "repo": {
-            "main_sha": short_sha(),
-            "sync_script": "sync_to_dev_audio.py",
-            "last_dev_sync_audio": build.get("commit", ""),
-            "last_dev_sync_at": build.get("synced_at", ""),
-            "sync_scope_tag": build.get("scope", ""),
-            "sync_worktree": build.get("worktree", ""),
-            "fork_dir_status": fork_status,
-        },
+        "repo": repo_metadata_from_build(build, fork_status),
     }
+
+
+def repo_metadata_from_build(build: dict[str, str], fork_status: str) -> dict[str, str]:
+    return {
+        "main_sha": short_sha(),
+        "sync_script": "sync_to_dev_audio.py",
+        "last_dev_sync_audio": build.get("commit", ""),
+        "last_dev_sync_at": build.get("synced_at", ""),
+        "sync_scope_tag": build.get("scope", ""),
+        "sync_worktree": build.get("worktree", ""),
+        "fork_dir_status": fork_status,
+    }
+
+
+def parse_dev_sync_audio_line(value: str) -> tuple[str, str]:
+    """Split 'sha  (date)' patch_state text into schema fields."""
+    raw = str(value or "").strip()
+    match = re.match(r"(.+?)\s+\(([^()]*)\)\s*$", raw)
+    if not match:
+        return raw, ""
+    return match.group(1).strip(), match.group(2).strip()
 
 
 def _notes_value(value: str) -> str:
@@ -1079,20 +1191,29 @@ def render_setup_variables_md(
     director_node: Optional[dict],
     timeline: dict[str, list],
     output_tracking: dict[str, str],
+    *,
+    commit_sha: str = "",
 ) -> str:
     segments = timeline.get("segments") or []
     audio_segs = timeline.get("audioSegments") or []
     dur_f = director_widget(director_node, "duration_frames")
     dur_s = director_widget(director_node, "duration_seconds")
-    fps = director_widget(director_node, "frame_rate")
+    fps = display_numeric_widget(
+        director_widget(director_node, "frame_rate"), "fps"
+    )
     epsilon = director_widget(director_node, "epsilon")
+    relay_overrides = first_multiline(multilines, "relay_overrides")
+    if relay_overrides.strip() and not is_koolook_director(director_node):
+        relay_overrides = (
+            f"{relay_overrides} (inert: active Director is upstream LTXDirector)"
+        )
     upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     rows = [
         ("Capture run number", f"{nnn:03d} (from runs folder/log)"),
         ("Setup name", wf_path.stem),
         ("Image segments", f"{len(segments)} video / {len(audio_segs)} audio"),
         ("Prompts / similarity", segment_prompt_mode(segments)),
-        ("Commit No.", short_sha()),
+        ("Commit No.", commit_sha or short_sha()),
         ("LTX-Director (flavour)", director_flavor(director_node)),
         (
             "Director pin tag",
@@ -1101,16 +1222,19 @@ def render_setup_variables_md(
         ("Audio src", derive_audio_state(director_node, timeline)),
         ("epsilon", "" if epsilon is None else str(epsilon)),
         ("Duration", f"{dur_f} frames @ {fps} fps ({dur_s} sec)"),
-        ("RELAY_OVERRIDES", first_multiline(multilines, "relay_overrides")),
+        ("RELAY_OVERRIDES", relay_overrides),
         (
             "GLOBAL [ path ] - working folder",
-            first_multiline(multilines, "working_folder"),
+            scrub_path_for_metadata(first_multiline(multilines, "working_folder")),
         ),
         ("GLOBAL [ base name ]", first_multiline(multilines, "name")),
-        ("INPUT Path [ EXR ]", first_multiline(setup_variables, "input_path_exr")),
+        (
+            "INPUT Path [ EXR ]",
+            scrub_path_for_metadata(first_multiline(setup_variables, "input_path_exr")),
+        ),
         ("GLOBAL [ version ]", first_multiline(setup_variables, "version")),
         ("GLOBAL [ run offset ]", first_multiline(setup_variables, "run_offset")),
-        ("Output folder", output_tracking.get("folder", "")),
+        ("Output folder", scrub_path_for_metadata(output_tracking.get("folder", ""))),
         ("Output name", output_tracking.get("name", "")),
         ("OVERLAY - INFO", "(captured verbatim above)"),
         ("OVERLAY - FEEDBACK", "(captured verbatim above)"),
@@ -1133,6 +1257,8 @@ def render_notes_md(
     feedback_lines: list[str],
     scores: dict[str, Optional[int]],
     output_tracking: dict[str, str],
+    *,
+    commit_sha: str = "",
 ) -> str:
     """Notes pulled exclusively from the two source families the card
     is allowed to read: the OVERLAY-* multilines and the active
@@ -1171,7 +1297,9 @@ def render_notes_md(
     epsilon = director_widget(director_node, "epsilon")
     dur_f = director_widget(director_node, "duration_frames")
     dur_s = director_widget(director_node, "duration_seconds")
-    fps = director_widget(director_node, "frame_rate")
+    fps = display_numeric_widget(
+        director_widget(director_node, "frame_rate"), "fps"
+    )
     segments = timeline.get("segments") or []
     audio_segs = timeline.get("audioSegments") or []
     prompt_mode = segment_prompt_mode(segments)
@@ -1183,7 +1311,7 @@ def render_notes_md(
         f"**Scores:** {scores_line}\n\n"
         f"## OVERLAY - INFO (verbatim)\n\n"
         f"{info_indented}\n\n"
-        f"{render_setup_variables_md(nnn, wf_path, multilines, setup_variables, director_node, timeline, output_tracking)}"
+        f"{render_setup_variables_md(nnn, wf_path, multilines, setup_variables, director_node, timeline, output_tracking, commit_sha=commit_sha)}"
         f"## Director node — structural state\n\n"
         f"- Variant: {director_kind}\n"
         f"- Audio src: {audio_src}\n"
@@ -1283,7 +1411,9 @@ def _build_state_for_card(
         "director_pin_tag": (metadata.get("director") or {}).get("pin_tag", ""),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
-        "frame_rate": director_widget(director_node, "frame_rate"),
+        "frame_rate": metadata_numeric_widget(
+            director_widget(director_node, "frame_rate")
+        ),
         "segments": timeline.get("segments") or [],
         "audio_segments": timeline.get("audioSegments") or [],
         "segment_prompt_mode": segment_prompt_mode(
@@ -1372,7 +1502,7 @@ def main() -> int:
         return 0
 
     run_dir.mkdir(parents=True, exist_ok=False)
-    shutil.copy2(wf_path, run_dir / f"run{nnn:03d}_workflow.json")
+    write_archived_workflow(wf, run_dir / f"run{nnn:03d}_workflow.json")
     (run_dir / "relay_overrides.txt").write_text(
         render_relay_overrides_txt(relay_overrides_raw, director_node),
         encoding="utf-8",

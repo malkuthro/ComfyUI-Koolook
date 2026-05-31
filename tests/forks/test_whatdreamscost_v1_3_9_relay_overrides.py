@@ -196,6 +196,7 @@ def test_non_object_json_raises(raw):
     "raw",
     [
         '{"video_strength": "ten"}',
+        '{"video_strength": true}',
         '{"video_strength": null}',
         '{"video_strength": [1, 2]}',
         '{"video_strength": {"nested": 1}}',

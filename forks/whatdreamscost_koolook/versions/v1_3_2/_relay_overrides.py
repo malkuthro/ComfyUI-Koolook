@@ -98,6 +98,12 @@ def parse_relay_overrides(s: str) -> Optional[dict]:
             continue
 
         coerce = RELAY_OVERRIDE_KEYS[key]
+        if isinstance(value, bool):
+            raise ValueError(
+                f"relay_overrides[{key!r}] must be a number, got "
+                f"{value!r} (bool). Example: "
+                f'{{"{key}": 10.0}}'
+            )
         try:
             cleaned[key] = coerce(value)
         except (TypeError, ValueError) as exc:

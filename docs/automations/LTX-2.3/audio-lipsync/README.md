@@ -82,7 +82,7 @@ audio-lipsync/
     ├── LOOP.md          ← the iteration protocol
     ├── log.md           ← rolling table — one row per render, always
     └── run-NNN_<label>/  ← created by each `loop-audio` capture
-        ├── runNNN_workflow.json
+        ├── runNNN_workflow.json    # redacted workflow snapshot
         ├── relay_overrides.txt
         ├── patch_state.txt
         ├── metadata.json
@@ -111,7 +111,7 @@ renders should be skipped with "no log" / "don't log this" before capture.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
-5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + metadata + notes + card).
+5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the snapshot (redacted workflow JSON copy + relay_overrides + patch state + metadata + notes + card).
 
 The card's BASE/RUN area shows the original copied workflow stem (for
 example `LTX-23-audio_tests_03`) instead of the predictable archive name

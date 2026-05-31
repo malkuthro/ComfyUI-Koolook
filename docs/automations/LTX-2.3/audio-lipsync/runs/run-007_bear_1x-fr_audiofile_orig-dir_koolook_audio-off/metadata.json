@@ -1,12 +1,12 @@
 {
   "director": {
     "audio_segments": 2,
-    "audio_src": "custom",
+    "audio_src": "model-gen",
     "duration_frames": 144,
     "duration_seconds": 6,
     "epsilon": 0.001,
     "flavor": "Original upstream",
-    "frame_rate": 24,
+    "frame_rate": null,
     "pin_tag": "v1.3.2",
     "segment_prompt_mode": "single",
     "type": "LTXDirector",
@@ -21,7 +21,8 @@
   },
   "repo": {
     "fork_dir_status": "M forks/whatdreamscost_koolook/versions/v1_3_9/_relay_overrides.py",
-    "last_dev_sync_audio": "3294e6e  (2026-05-31 11:21)",
+    "last_dev_sync_at": "2026-05-31 11:21",
+    "last_dev_sync_audio": "3294e6e",
     "main_sha": "3294e6e",
     "sync_scope_tag": "relay overrides loose parser",
     "sync_script": "sync_to_dev_audio.py",

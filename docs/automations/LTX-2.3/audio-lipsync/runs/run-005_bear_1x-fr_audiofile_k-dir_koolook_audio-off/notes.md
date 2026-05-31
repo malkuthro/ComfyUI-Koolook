@@ -32,26 +32,27 @@ Quest to find a BASE
 - Image segments: `1 video / 2 audio`
 - Prompts / similarity: `single`
 - Commit No.: `3294e6e`
-- LTX-Director (flavour): `Koolook v1.3.9`
+- LTX-Director (flavour): `Koolook`
+- Director pin tag: `v1.3.9`
 - Audio src: `model-gen`
 - epsilon: `0.001`
-- Duration: `144 frames @ True fps (6 sec)`
+- Duration: `144 frames @ (unknown fps) fps (6 sec)`
 - RELAY_OVERRIDES: `{}`
-- GLOBAL [ path ] - working folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- GLOBAL [ path ] - working folder: `Runs-Audio-File [path-sha256:9ffb2549beb1]`
 - GLOBAL [ base name ]: `Bear_1x-FR_AudioFile_K-Dir`
-- INPUT Path [ EXR ]: `W:/projects/samsung_goat_3188/vfx/assets/AI_renders/001/1130/messi/video/v003/`
+- INPUT Path [ EXR ]: `v003 [path-sha256:d7b84bf37ca2]`
 - GLOBAL [ version ]: `1`
 - GLOBAL [ run offset ]: `4`
-- Output folder: `e:\G-Drive-BaconX\Jobs\Jeep_Animals\ComfyUI_LTX23\Runs-Audio-File`
+- Output folder: `Runs-Audio-File [path-sha256:9ffb2549beb1]`
 - Output name: `Bear_1x-FR_AudioFile_K-Dir_h264_v001`
 - OVERLAY - INFO: `(captured verbatim above)`
 - OVERLAY - FEEDBACK: `(captured verbatim above)`
 
 ## Director node — structural state
 
-- Variant: Koolook v1.3.9 (`LTXDirector__koolook_v1_3_2`)
+- Variant: Koolook (`LTXDirector__koolook_v1_3_2`)
 - Audio src: model-gen
 - ε (epsilon): 0.001
-- Duration: 144 frames @ True fps (6 sec)
+- Duration: 144 frames @ (unknown fps) fps (6 sec)
 - Segments: 1 video / 2 audio
 - Segment prompt mode: single

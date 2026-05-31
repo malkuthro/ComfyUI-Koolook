@@ -503,6 +503,87 @@ def test_card_metadata_scrubs_path_bearing_fields():
     assert "path-sha256:" in encoded
 
 
+def test_card_metadata_does_not_store_boolean_frame_rate():
+    metadata = loop_audio.card_metadata(
+        4,
+        "label",
+        Path("run004_workflow.json"),
+        {"name": ["Bear"], "relay_overrides": ["{}"]},
+        {},
+        {"folder": "", "name": ""},
+        _director(fps=True),
+        {"segments": [], "audioSegments": []},
+        "model-gen",
+        {},
+        "clean",
+        "1.3.2",
+    )
+
+    assert metadata["director"]["frame_rate"] is None
+
+
+def test_sanitize_workflow_for_archive_redacts_absolute_paths():
+    workflow = {
+        "nodes": [
+            {
+                "widgets_values": [
+                    "E:/Jobs/Client/Comfy/Runs",
+                    "notes\nW:/projects/client_codename/shot/v003\nok",
+                    '["e:\\\\G-Drive-BaconX\\\\Jobs\\\\Jeep_Animals\\\\render.json"]',
+                    "<PROJECTS>/samsung_goat/vfx/assets",
+                    "W:/projects/client_codename/shot/v003",
+                    "relative/path/is-kept",
+                    "https://example.com/kept",
+                ]
+            }
+        ]
+    }
+
+    sanitized = loop_audio.sanitize_workflow_for_archive(workflow)
+    encoded = json.dumps(sanitized)
+
+    assert "E:/Jobs" not in encoded
+    assert "W:/projects" not in encoded
+    assert "client_codename" not in encoded
+    assert "samsung_goat" not in encoded
+    assert "relative/path/is-kept" in encoded
+    assert "https://example.com/kept" in encoded
+    assert "path-sha256:" in encoded
+
+
+def test_render_notes_scrubs_paths_and_rejects_boolean_fps():
+    notes = loop_audio.render_notes_md(
+        5,
+        Path("LTX-23-audio_tests_03.json"),
+        {
+            "name": ["Bear"],
+            "relay_overrides": [""],
+            "overlay - info": [""],
+            "overlay - feedback": [""],
+            "working_folder": ["E:/Jobs/Client/Comfy/Runs"],
+        },
+        {
+            "input_path_exr": ["W:/projects/client_codename/shot/v003"],
+            "version": ["1"],
+            "run_offset": ["0"],
+        },
+        _director(fps=True),
+        {"segments": [], "audioSegments": []},
+        "custom",
+        "",
+        [],
+        {"motion": None, "sync": None, "sharp": None},
+        {"folder": "E:/Jobs/Client/Comfy/Runs", "name": "Bear_h264_v001"},
+    )
+
+    assert "E:/Jobs" not in notes
+    assert "W:/projects" not in notes
+    assert "client_codename" not in notes
+    assert "path-sha256:" in notes
+    assert "True fps" not in notes
+    assert "(unknown fps)" in notes
+
+
 def test_audio_card_embeds_metadata_payload(tmp_path: Path):
     from PIL import Image
 
@@ -556,6 +637,41 @@ def test_rebuild_state_handles_non_numeric_run_dir_and_bom_workflow(tmp_path: Pa
 
     assert state["run_number"] == 0
     assert state["run_label"] == "label"
+
+
+def test_rebuild_state_preserves_date_and_splits_repo_sync_metadata(tmp_path: Path):
+    from make_card_audio import _rebuild_state_from_run_dir
+
+    run_dir = tmp_path / "run-005_label"
+    run_dir.mkdir()
+    (run_dir / "run005_workflow.json").write_text(
+        json.dumps({"nodes": [], "links": []}),
+        encoding="utf-8",
+    )
+    (run_dir / "metadata.json").write_text(
+        json.dumps({"run": {"date": "2026-05-01"}}),
+        encoding="utf-8",
+    )
+    (run_dir / "patch_state.txt").write_text(
+        "\n".join(
+            [
+                "MAIN SHA              : abc1234",
+                "Last dev-sync-audio   : def5678  (2026-05-02 11:22)",
+                "Sync scope tag        : relay parser",
+                "Sync worktree         : ComfyUI-Koolook",
+                "Fork dir status       : clean",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    state = _rebuild_state_from_run_dir(run_dir)
+    metadata = state["metadata"]
+
+    assert state["date"] == "2026-05-01"
+    assert metadata["run"]["date"] == "2026-05-01"
+    assert metadata["repo"]["last_dev_sync_audio"] == "def5678"
+    assert metadata["repo"]["last_dev_sync_at"] == "2026-05-02 11:22"
 
 
 def test_extract_multilines_ignores_non_text_multiline_nodes():

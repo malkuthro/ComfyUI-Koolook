@@ -303,7 +303,7 @@ outputs:
   per_run_folder:
     path: runs/run-NNN_<label>/
     files:
-      runNNN_workflow.json: Copy of the saved workflow at submission. Ground truth.
+      runNNN_workflow.json: Redacted copy of the saved workflow at submission.
       card.png:            Rendered card matching this graph plus embedded koolook_audio_loop JSON metadata.
       metadata.json:        Structured run/setup/director/repo metadata, same technical payload embedded in the PNG.
       notes.md:            OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + captured SETUP variables + director's structural state.

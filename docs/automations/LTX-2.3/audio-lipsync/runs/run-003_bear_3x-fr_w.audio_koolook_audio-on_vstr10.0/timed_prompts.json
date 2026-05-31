@@ -23,7 +23,7 @@
         "prompt": "A brown grizzly bear faces the camera and says \"This can't be real.\". The bear clearly forms the words with its mouth, jaw, and lips.",
         "type": "image",
         "imageFile": "bear_FF_A.png",
-        "imageB64": "/api/view?filename=bear_FF_A.png&type=input&subfolder="
+        "imageB64": "view?filename=bear_FF_A.png&type=input&subfolder= [path-sha256:7066ba6607bc]"
       },
       {
         "id": "speech_002",
@@ -32,7 +32,7 @@
         "prompt": "The brown grizzly bear pauses between spoken words. Its mouth closes naturally while it keeps facing the camera.",
         "type": "image",
         "imageFile": "bear_FF_A.png",
-        "imageB64": "/api/view?filename=bear_FF_A.png&type=input&subfolder="
+        "imageB64": "view?filename=bear_FF_A.png&type=input&subfolder= [path-sha256:7066ba6607bc]"
       },
       {
         "id": "speech_003",
@@ -41,7 +41,7 @@
         "prompt": "A brown grizzly bear faces the camera and says \"It's made by AI.\". The bear clearly forms the words with its mouth, jaw, and lips.",
         "type": "image",
         "imageFile": "bear_FF_A.png",
-        "imageB64": "/api/view?filename=bear_FF_A.png&type=input&subfolder="
+        "imageB64": "view?filename=bear_FF_A.png&type=input&subfolder= [path-sha256:7066ba6607bc]"
       },
       {
         "id": "speech_004",
@@ -50,7 +50,7 @@
         "prompt": "The brown grizzly bear pauses between spoken words. Its mouth closes naturally while it keeps facing the camera.",
         "type": "image",
         "imageFile": "bear_FF_A.png",
-        "imageB64": "/api/view?filename=bear_FF_A.png&type=input&subfolder="
+        "imageB64": "view?filename=bear_FF_A.png&type=input&subfolder= [path-sha256:7066ba6607bc]"
       }
     ],
     "audioSegments": [

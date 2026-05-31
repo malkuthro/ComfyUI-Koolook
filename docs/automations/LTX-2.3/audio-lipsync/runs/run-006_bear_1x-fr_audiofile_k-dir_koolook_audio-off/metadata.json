@@ -1,12 +1,12 @@
 {
   "director": {
     "audio_segments": 2,
-    "audio_src": "custom",
+    "audio_src": "model-gen",
     "duration_frames": 144,
     "duration_seconds": 6,
     "epsilon": 0.001,
     "flavor": "Koolook",
-    "frame_rate": 24,
+    "frame_rate": null,
     "pin_tag": "v1.3.9",
     "segment_prompt_mode": "single",
     "type": "LTXDirector__koolook_v1_3_2",
@@ -21,7 +21,8 @@
   },
   "repo": {
     "fork_dir_status": "clean (matches HEAD)",
-    "last_dev_sync_audio": "bc260a4  (2026-05-31 01:00)",
+    "last_dev_sync_at": "2026-05-31 01:00",
+    "last_dev_sync_audio": "bc260a4",
     "main_sha": "3294e6e",
     "sync_scope_tag": "Revert combine naming changes",
     "sync_script": "sync_to_dev_audio.py",
