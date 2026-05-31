@@ -1,0 +1,50 @@
+{
+  "director": {
+    "audio_segments": 1,
+    "audio_src": "custom",
+    "duration_frames": 144,
+    "duration_seconds": 6,
+    "epsilon": 0.001,
+    "flavor": "Koolook",
+    "frame_rate": 24,
+    "pin_tag": "v1.3.9",
+    "segment_prompt_mode": "per-segment",
+    "type": "LTXDirector__koolook_v1_3_2",
+    "upstream_whatdreamscost_version": "1.3.2",
+    "video_segments": 3
+  },
+  "output": {
+    "folder": "Working-3x-1x [path-sha256:ef867fca2eee]",
+    "format_suffix": "h264",
+    "name": "Bear_3x-FR_AudioFile_K-Dir_h264_v008",
+    "version_tag": "v008"
+  },
+  "repo": {
+    "fork_dir_status": "clean (matches HEAD)",
+    "last_dev_sync_at": "2026-05-31 11:21",
+    "last_dev_sync_audio": "3294e6e",
+    "main_sha": "63f5c1d",
+    "sync_scope_tag": "relay overrides loose parser",
+    "sync_script": "sync_to_dev_audio.py",
+    "sync_worktree": "ComfyUI-Koolook"
+  },
+  "run": {
+    "archived_workflow": "run008_workflow.json",
+    "capture_number": "008",
+    "date": "2026-05-31",
+    "label": "bear_2x-fr_audiofile_k-dir_upstream_audio-off",
+    "setup_name": "LTX-23-audio_tests_03",
+    "source_workflow": "LTX-23-audio_tests_03.json",
+    "workflow": "run008_workflow.json"
+  },
+  "schema": "koolook.audio_loop.card_metadata.v1",
+  "setup": {
+    "base_name": "Bear_3x-FR_AudioFile_K-Dir",
+    "global_run_offset": "",
+    "global_version": "8",
+    "input_path_exr": "v003 [path-sha256:d7b84bf37ca2]",
+    "relay_overrides": "",
+    "working_folder": "Working-3x-1x [path-sha256:ef867fca2eee]"
+  },
+  "source": "rebuilt from frozen run folder"
+}

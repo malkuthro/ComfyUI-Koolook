@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 63f5c1d
+Last dev-sync-audio   : 3294e6e  (2026-05-31 11:21)
+Sync scope tag        : relay overrides loose parser
+Sync worktree         : ComfyUI-Koolook
+Fork dir status       : clean (matches HEAD)

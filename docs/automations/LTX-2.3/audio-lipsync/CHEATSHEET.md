@@ -33,7 +33,7 @@ against the title) + one Director node:
 | Capture key | Preferred title alias | Used for |
 |---|---|---|
 | `name` | `GLOBAL [ base name ]`, fallback `NAME` | Run identifier — feeds snapshot folder + card title |
-| `relay_overrides` | `RELAY_OVERRIDES` | JSON dict of Prompt-Relay knob overrides. **Wired** into the Director's `relay_overrides` input |
+| `relay_overrides` | `RELAY_OVERRIDES` | JSON dict of Prompt-Relay knob overrides. Counts as active only when **wired** into the Director's `relay_overrides` input. |
 | `overlay - info` | `OVERLAY - INFO` | Free-form Δ-this-run note. Card renders verbatim |
 | `overlay - feedback` | `OVERLAY - FEEDBACK` | Observations + `motion: N/5 · sync: N/5 · sharp: N/5` score lines |
 | `working_folder` | `GLOBAL [ path ] - working folder`, fallbacks `working_folder` / `working folder` | Per-project working folder. Duplicates allowed (mount + mirror); first existing wins |
@@ -83,7 +83,7 @@ in [`loop_audio.config.json`](../../../../scripts/loop_audio.config.json)).
 
 The card draws **only** from two source families:
 
-1. The five `Text Multiline` nodes above (the per-render notes).
+1. The `Text Multiline` nodes above for run naming, notes, feedback, and working folder. `RELAY_OVERRIDES` is read through the active Director input link, not merely by title.
 2. The active Director node's own widget values and input wiring
    (`LTXDirector__koolook` / legacy Koolook / upstream `LTXDirector`).
 
@@ -129,7 +129,7 @@ Director timeline.
 
 ```
 runNNN_workflow.json   ← redacted copy of the Comfy file at submission
-relay_overrides.txt    ← RELAY_OVERRIDES body (diff-friendly plain text)
+relay_overrides.txt    ← active Director relay_overrides body; empty/defaults when the socket is unwired
 patch_state.txt        ← MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty (audit trail; NOT on the card)
 metadata.json          ← structured run/setup/director/repo metadata
 notes.md               ← OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + SETUP variables + director's structural state

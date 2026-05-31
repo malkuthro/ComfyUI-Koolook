@@ -592,6 +592,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     folder. Reads the run's frozen runNNN_workflow.json and walks it through
     the same extraction helpers loop_audio.py uses live."""
     from loop_audio import (  # type: ignore[import-not-found]
+        active_relay_overrides,
         derive_audio_state, detect_upstream_whatdreamscost_version,
         director_flavor, director_pin_tag, director_type, director_widget,
         expected_output_tracking, extract_director, extract_multilines,
@@ -630,6 +631,11 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     director_node = extract_director(nodes, wf.get("links") or [])
     timeline = parse_timeline(director_node)
     audio_src = derive_audio_state(director_node, timeline)
+    relay_overrides_raw = active_relay_overrides(
+        nodes, wf.get("links") or [], director_node
+    )
+    active_multilines = dict(multilines)
+    active_multilines["relay_overrides"] = [relay_overrides_raw]
     upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     pin_tag = director_pin_tag(director_node, upstream_whatdreamscost_version)
     existing_metadata = _read_existing_metadata(run_dir)
@@ -671,7 +677,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "workflow_name": workflow_name,
         "source_workflow_name": source_workflow_name,
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
-        "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
+        "relay_overrides_raw": relay_overrides_raw,
         "info_body": first_multiline(multilines, "overlay - info").rstrip(),
         "feedback_lines": feedback_lines,
         "scores": scores,
@@ -704,7 +710,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 ),
                 "global_version": first_multiline(setup_variables, "version"),
                 "global_run_offset": first_multiline(setup_variables, "run_offset"),
-                "relay_overrides": first_multiline(multilines, "relay_overrides").strip(),
+                "relay_overrides": relay_overrides_raw.strip(),
             },
             "output": {
                 **output_tracking,
@@ -754,7 +760,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     state["notes_md"] = render_notes_md(
         nnn,
         Path(source_workflow_name) if source_workflow_name else wf_path,
-        multilines,
+        active_multilines,
         setup_variables,
         director_node,
         timeline,

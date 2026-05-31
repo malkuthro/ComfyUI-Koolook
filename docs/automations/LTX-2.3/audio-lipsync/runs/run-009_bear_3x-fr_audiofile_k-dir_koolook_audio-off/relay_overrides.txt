@@ -1,0 +1,1 @@
+"video_strength": 1.0

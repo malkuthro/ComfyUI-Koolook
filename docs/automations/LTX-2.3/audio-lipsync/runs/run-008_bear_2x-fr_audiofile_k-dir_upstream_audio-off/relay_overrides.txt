@@ -1,0 +1,4 @@
+"video_strength": 1.0
+
+
+# NOTE: this value is INERT for this render — the Director node in the workflow is upstream `LTXDirector`, which has no `relay_overrides` input. Swap to `LTXDirector__koolook` to make this active.

@@ -178,7 +178,7 @@ state_dict:
     source_workflow_name: { source: "wf_path.name", type: str, desc: "original copied Comfy workflow filename" }
   multiline_derived:
     name:                { source: "multilines.name[0]" }
-    relay_overrides_raw: { source: "multilines.relay_overrides[0]" }
+    relay_overrides_raw: { source: "linked_input_value(director.relay_overrides); empty when socket is unwired" }
     info_body:           { source: "multilines.overlay - info[0]" }
     feedback_lines:      { source: "parse_feedback(multilines.overlay - feedback[0]).lines" }
     scores:              { source: "parse_feedback(multilines.overlay - feedback[0]).scores" }
@@ -253,7 +253,7 @@ card_sections:
     accent: amber
     rule: per-render knob
     rows:
-      - { label: "relay_overrides", field: "relay_overrides_raw (verbatim, fallback '(empty → defaults)'; marked inert when upstream Director is active)" }
+      - { label: "relay_overrides", field: "relay_overrides_raw (active Director input value; fallback '(empty → defaults)' when unwired)" }
 
   - name: BASE NOTES
     accent: amber
@@ -307,7 +307,7 @@ outputs:
       card.png:            Rendered card matching this graph plus embedded koolook_audio_loop JSON metadata.
       metadata.json:        Structured run/setup/director/repo metadata, same technical payload embedded in the PNG.
       notes.md:            OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + captured SETUP variables + director's structural state.
-      relay_overrides.txt: RELAY_OVERRIDES body in plain text (diff-friendly copy of the multiline).
+      relay_overrides.txt: active Director relay_overrides body in plain text; empty/defaults when the socket is unwired.
       patch_state.txt:     MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. Also represented in metadata.
   delivery_copy:
     path: "<Output folder>/cards/<Output name>_runNNN_card.png"
@@ -351,6 +351,7 @@ triggers:
 
 invariants:
   - Every value displayed on the card traces to one of the two source families.
+  - relay_overrides is active only when consumed by the active Koolook Director input; canvas notes with the right title are inert unless wired.
   - Audio src is derived structurally from director wiring; never from prompt text.
   - "(no director)" is its own audio_src state — a missing Koolook Director node never silently collapses into "off (no VAE)".
   - notes.md mirrors only the configured multilines, configured SETUP variables, and director's structural state.
