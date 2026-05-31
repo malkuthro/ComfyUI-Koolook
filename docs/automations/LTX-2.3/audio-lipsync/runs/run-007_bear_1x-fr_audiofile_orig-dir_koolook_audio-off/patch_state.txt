@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 3294e6e
+Last dev-sync-audio   : 3294e6e  (2026-05-31 11:21)
+Sync scope tag        : relay overrides loose parser
+Sync worktree         : ComfyUI-Koolook
+Fork dir status       : M forks/whatdreamscost_koolook/versions/v1_3_9/_relay_overrides.py

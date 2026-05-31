@@ -276,10 +276,10 @@
             Returns a flat dict with the canonical field set the renderer consumes. Building it in one place — not inside the renderer — keeps the source rule auditable: every key here can be traced to one node on the canvas.
           </p>
           <code>
-run_number · run_label · date · workflow_name<br>
+run_number · run_label · date · workflow_name · source_workflow_name<br>
 name · relay_overrides_raw · info_body · feedback_lines · scores · work_folder<br>
 output_folder · output_name · metadata<br>
-director_node · director_variant · director_flavor · audio_src<br>
+director_node · director_variant · director_flavor · director_pin_tag · audio_src<br>
 epsilon · frame_rate<br>
 segments · audio_segments · segment_prompt_mode
           </code>
@@ -302,31 +302,31 @@ segments · audio_segments · segment_prompt_mode
               <td><strong>HEADER</strong></td>
               <td>—</td>
               <td>multiline + loop bookkeeping</td>
-              <td><code>name</code> multiline + loop's own run number + date + workflow filename</td>
+              <td><code>name</code> multiline + loop's own run number + date + module name</td>
+            </tr>
+            <tr>
+              <td><strong>BASE / RUN</strong></td>
+              <td style="color: #6db4ff;">sky</td>
+              <td>workflow + multiline + setup</td>
+              <td>copied workflow stem (no <code>.json</code>) + expected output folder/name/version</td>
+            </tr>
+            <tr>
+              <td><strong>DIRECTOR READINGS</strong></td>
+              <td style="color: #6db4ff;">sky</td>
+              <td>director + live upstream package metadata</td>
+              <td>Director flavor + pin tag + <code>epsilon</code> + derived <code>audio_src</code> + <code>timeline_data</code> segment coverage</td>
             </tr>
             <tr>
               <td><strong>KNOB STATE</strong></td>
               <td style="color: #ffb84d;">amber</td>
               <td>multiline</td>
-              <td><code>relay_overrides</code> multiline (verbatim)</td>
+              <td><code>relay_overrides</code> multiline (verbatim; marked inert when upstream Director is active)</td>
             </tr>
             <tr>
-              <td><strong>BASE · NOTES (Δ this run)</strong></td>
+              <td><strong>BASE NOTES</strong></td>
               <td style="color: #ffb84d;">amber</td>
               <td>multiline</td>
               <td><code>overlay - info</code> multiline (verbatim, blank lines preserved)</td>
-            </tr>
-            <tr>
-              <td><strong>BASE · LOCKED</strong></td>
-              <td style="color: #6db4ff;">sky</td>
-              <td>director + multiline + setup</td>
-              <td>Director flavor · director <code>epsilon</code> widget · derived <code>audio_src</code> · <code>working_folder</code> multiline · expected output folder/name/version</td>
-            </tr>
-            <tr>
-              <td><strong>BASE · SCENE</strong></td>
-              <td style="color: #6db4ff;">sky</td>
-              <td>director</td>
-              <td>director <code>timeline_data.segments</code> + <code>audioSegments</code> + <code>frame_rate</code> widget; prompt mode (<code>single</code> / <code>same</code> / <code>per-segment</code> / <code>missing</code>) plus per-segment <code>prompt</code> / <code>audioSegments</code>-overlap / <code>imageFile</code> coverage</td>
             </tr>
             <tr>
               <td><strong>POST-RENDER</strong></td>
@@ -352,6 +352,11 @@ segments · audio_segments · segment_prompt_mode
             <code>runs/run-NNN_&lt;label&gt;/</code>
           </div>
           <div class="output-file">
+            <strong>metadata.json</strong>
+            <span>Structured run/setup/director/repo metadata, including copied workflow source and Director pin tag.</span>
+            <code>runs/run-NNN_&lt;label&gt;/</code>
+          </div>
+          <div class="output-file">
             <strong>notes.md</strong>
             <span>OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + captured SETUP variables + director's structural state.</span>
             <code>runs/run-NNN_&lt;label&gt;/</code>
@@ -363,7 +368,7 @@ segments · audio_segments · segment_prompt_mode
           </div>
           <div class="output-file">
             <strong>patch_state.txt</strong>
-            <span>MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty; also embedded in <code>card.png</code> metadata.</span>
+            <span>MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty; also represented in metadata.</span>
             <code>runs/run-NNN_&lt;label&gt;/</code>
           </div>
           <div class="output-file">

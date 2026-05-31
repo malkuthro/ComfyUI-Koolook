@@ -96,6 +96,35 @@ def test_extract_director_prefers_koolook_over_upstream():
     assert loop_audio.extract_director([upstream, koolook]) is koolook
 
 
+def test_extract_director_prefers_guide_wired_upstream_over_idle_koolook():
+    upstream = {"id": 10, **_director(node_type="LTXDirector")}
+    upstream["outputs"] = [{"name": "guide_data", "links": [100]}]
+    koolook = {"id": 20, **_director(node_type="LTXDirector__koolook")}
+    koolook["outputs"] = [{"name": "guide_data", "links": []}]
+    reroute = {
+        "id": 30,
+        "type": "Reroute",
+        "inputs": [{"name": "", "link": 100}],
+        "outputs": [{"name": "", "links": [101]}],
+    }
+    guide = {
+        "id": 40,
+        "type": "LTXDirectorGuide",
+        "inputs": [{"name": "guide_data", "link": 101}],
+    }
+
+    assert (
+        loop_audio.extract_director(
+            [koolook, upstream, reroute, guide],
+            [
+                [100, 10, 4, 30, 0, "GUIDE_DATA"],
+                [101, 30, 0, 40, 4, "GUIDE_DATA"],
+            ],
+        )
+        is upstream
+    )
+
+
 def test_director_widget_uses_named_widget_before_positional_fallback():
     node = {
         "type": "LTXDirector__koolook",
@@ -119,13 +148,31 @@ def test_director_widget_keeps_legacy_positional_fallback():
 @pytest.mark.parametrize(
     "node_type, expected",
     [
-        ("LTXDirector__koolook", "Koolook v1.3.9"),
-        ("LTXDirector__koolook_v1_3_2", "Koolook v1.3.9"),
+        ("LTXDirector__koolook", "Koolook"),
+        ("LTXDirector__koolook_v1_3_2", "Koolook"),
         ("LTXDirector", "Original upstream"),
     ],
 )
 def test_director_flavor_labels_supported_directors(node_type, expected):
     assert loop_audio.director_flavor(_director(node_type=node_type)) == expected
+
+
+@pytest.mark.parametrize(
+    "node_type, upstream_version, expected",
+    [
+        ("LTXDirector__koolook", "", "v1.3.9"),
+        ("LTXDirector__koolook_v1_3_2", "", "v1.3.9"),
+        ("LTXDirector", "1.3.2", "v1.3.2"),
+        ("LTXDirector", "", "(unknown upstream pin)"),
+    ],
+)
+def test_director_pin_tag_labels_lock_version(node_type, upstream_version, expected):
+    assert (
+        loop_audio.director_pin_tag(
+            _director(node_type=node_type), upstream_version
+        )
+        == expected
+    )
 
 
 # --- derive_audio_state — 5 distinct states --------------------------------
@@ -343,6 +390,21 @@ def test_delivery_card_path_uses_output_folder_and_name():
     assert out == Path("E:/current/renders") / "cards" / "Bear_h264_v002_card.png"
 
 
+def test_delivery_card_path_can_include_run_number():
+    out = loop_audio.delivery_card_path(
+        {
+            "folder": "E:/current/renders",
+            "name": "Bear_h264_v002",
+        },
+        7,
+    )
+    assert out == (
+        Path("E:/current/renders")
+        / "cards"
+        / "Bear_h264_v002_run007_card.png"
+    )
+
+
 def test_delivery_card_path_skips_when_output_is_unknown():
     assert loop_audio.delivery_card_path({"folder": "E:/renders"}) is None
 
@@ -361,6 +423,22 @@ def test_copy_delivery_card_reports_failure_without_raising(monkeypatch, tmp_pat
     assert status == "failed (drive unavailable)"
 
 
+def test_copy_delivery_card_creates_missing_cards_folder(tmp_path: Path):
+    card = tmp_path / "source.png"
+    folder = tmp_path / "renders"
+    card.write_text("new", encoding="utf-8")
+
+    status = loop_audio.copy_delivery_card(
+        card,
+        {"folder": str(folder), "name": "Bear_h264_v002"},
+        7,
+    )
+
+    expected = folder / "cards" / "Bear_h264_v002_run007_card.png"
+    assert status == str(expected)
+    assert expected.read_text(encoding="utf-8") == "new"
+
+
 def test_copy_delivery_card_leaves_existing_file_in_place(tmp_path: Path):
     card = tmp_path / "source.png"
     folder = tmp_path / "renders"
@@ -376,6 +454,25 @@ def test_copy_delivery_card_leaves_existing_file_in_place(tmp_path: Path):
 
     assert status.startswith("exists (left in place:")
     assert existing.read_text(encoding="utf-8") == "old"
+
+
+def test_copy_delivery_card_can_overwrite_existing_file(tmp_path: Path):
+    card = tmp_path / "source.png"
+    folder = tmp_path / "renders"
+    existing = folder / "cards" / "Bear_h264_v002_run007_card.png"
+    card.write_text("new", encoding="utf-8")
+    existing.parent.mkdir(parents=True)
+    existing.write_text("old", encoding="utf-8")
+
+    status = loop_audio.copy_delivery_card(
+        card,
+        {"folder": str(folder), "name": "Bear_h264_v002"},
+        7,
+        overwrite=True,
+    )
+
+    assert status == str(existing)
+    assert existing.read_text(encoding="utf-8") == "new"
 
 
 def test_card_metadata_scrubs_path_bearing_fields():
@@ -396,6 +493,7 @@ def test_card_metadata_scrubs_path_bearing_fields():
         "custom",
         {},
         "clean",
+        "1.3.2",
     )
 
     encoded = json.dumps(metadata)

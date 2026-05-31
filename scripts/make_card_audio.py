@@ -301,6 +301,7 @@ def _draw_score_chip(
 # sys.path before invoking render_audio_card).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from loop_audio import (  # type: ignore[import-not-found]  # noqa: E402
+    copy_delivery_card,
     video_segment_has_audio,
     wrap_path,
 )
@@ -334,14 +335,19 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     work_folder       = state.get("work_folder") or ""
     output_folder     = state.get("output_folder") or ""
     output_name       = state.get("output_name") or ""
+    metadata          = state.get("metadata") or {}
     director_variant  = state.get("director_variant") or "(missing)"
     director_flavor   = state.get("director_flavor") or director_variant
+    director_pin_tag  = state.get("director_pin_tag") or (
+        (metadata.get("director") or {}).get("pin_tag", "")
+    )
     audio_src         = state.get("audio_src") or "?"
     epsilon           = state.get("epsilon")
     fps               = state.get("frame_rate")
     segments          = state.get("segments") or []
     audio_segs        = state.get("audio_segments") or []
     prompt_mode       = state.get("segment_prompt_mode") or "none"
+    run_meta          = metadata.get("run") or {}
     # NOTE: duration_frames / duration_seconds intentionally not read here
     # — the dropped "Duration" row used them; segment time ranges convey
     # the same info now. They stay in the state dict for notes.md.
@@ -370,9 +376,17 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     # ----- BASE / RUN -----
     path_lines = wrap_path(work_folder, max_chars=40) if work_folder else []
     output_lines = wrap_path(output_folder, max_chars=40) if output_folder else []
-    body_h = _section_body_rows(1)
+    body_h = 0
     if output_name:
         body_h += 52
+    source_workflow = state.get("source_workflow_name") or run_meta.get("workflow")
+    if source_workflow:
+        source_workflow = str(Path(str(source_workflow)).with_suffix(""))
+    source_workflow_lines = (
+        wrap_path(str(source_workflow), max_chars=40) if source_workflow else []
+    )
+    if source_workflow_lines:
+        body_h += 26 + 26 * len(source_workflow_lines) + 4
     if path_lines:
         body_h += 26 + 26 * len(path_lines) + 4
     if output_lines:
@@ -380,9 +394,13 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_BASE, "Base / run", body_h,
     )
-    cy = _draw_kv_row(
-        draw, cx, cy, "Workflow", state.get("workflow_name", ""), key_w, cw - key_w
-    )
+    if source_workflow_lines:
+        draw.text((cx, cy), "Copied from", font=F_MONO, fill=MUTED)
+        cy += 26
+        for line in source_workflow_lines:
+            draw.text((cx + 12, cy), line, font=F_MONO, fill=TEXT)
+            cy += 26
+        cy += 4
     if output_name:
         draw.text((cx, cy), "Output name", font=F_MONO, fill=MUTED)
         cy += 26
@@ -410,12 +428,20 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
     # ----- DIRECTOR READINGS -----
     seg_rows = min(len(segments), 6)
     indent_seg = 18
-    director_rows = 4 if epsilon is not None else 3
+    director_rows = 5 if epsilon is not None else 4
     body_h = 26 * director_rows + 26 * 3 + 26 * seg_rows + 8 + 26 * 3 + 4
     cx, cy, cw, end_y = _draw_section(
         draw, x, y, inner_w, ACCENT_BASE, "Director readings", body_h,
     )
-    cy = _draw_kv_row(draw, cx, cy, "Director", str(director_flavor), key_w)
+    cy = _draw_kv_row(
+        draw, cx, cy, "Director", str(director_flavor),
+        key_w, cw - key_w,
+    )
+    cy = _draw_kv_row(
+        draw, cx, cy, "Pin tag",
+        _trim_middle_to_width(draw, str(director_pin_tag), F_MONO, cw - key_w),
+        key_w, cw - key_w,
+    )
     if epsilon is not None:
         cy = _draw_kv_row(draw, cx, cy, "epsilon", str(epsilon), key_w)
     cy = _draw_kv_row(draw, cx, cy, "Audio", _audio_source_label(audio_src), key_w)
@@ -463,6 +489,8 @@ def render_audio_card(state: dict[str, Any], out_path: Path) -> Path:
 
     # ----- AMBER NOTES -----
     relay_disp = relay if relay else "(empty -> defaults)"
+    if relay and director_variant == "LTXDirector":
+        relay_disp = f"{relay}\n\nINERT: active Director is upstream LTXDirector."
     y = _draw_text_box(
         draw, x, y, inner_w, "Knob state",
         relay_disp, ACCENT_RUN, max_lines=6, char_per_line=42,
@@ -536,7 +564,8 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
     folder. Reads the run's frozen runNNN_workflow.json and walks it through
     the same extraction helpers loop_audio.py uses live."""
     from loop_audio import (  # type: ignore[import-not-found]
-        derive_audio_state, director_flavor, director_type, director_widget,
+        derive_audio_state, detect_upstream_whatdreamscost_version,
+        director_flavor, director_pin_tag, director_type, director_widget,
         expected_output_tracking, extract_director, extract_multilines,
         extract_setup_variables, find_dotenv,
         first_multiline, load_config, load_dotenv,
@@ -570,9 +599,11 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         nodes, cfg.get("tracked_setup_variables", {})
     )
     output_tracking = expected_output_tracking(nodes, multilines, setup_variables)
-    director_node = extract_director(nodes)
+    director_node = extract_director(nodes, wf.get("links") or [])
     timeline = parse_timeline(director_node)
     audio_src = derive_audio_state(director_node, timeline)
+    upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
+    pin_tag = director_pin_tag(director_node, upstream_whatdreamscost_version)
     scores, feedback_lines = parse_feedback(
         first_multiline(multilines, "overlay - feedback")
     )
@@ -584,6 +615,14 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 continue
             key, value = line.split(":", 1)
             patch_meta[key.strip()] = value.strip()
+    source_workflow_name = ""
+    notes_path = run_dir / "notes.md"
+    if notes_path.is_file():
+        for line in notes_path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"- Setup name:\s+`([^`]+)`", line)
+            if match:
+                source_workflow_name = f"{match.group(1)}.json"
+                break
 
     from datetime import date
     workflow_name = wf_path.name
@@ -592,6 +631,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "run_label": label,
         "date": date.today().isoformat(),
         "workflow_name": workflow_name,
+        "source_workflow_name": source_workflow_name,
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
         "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
         "info_body": first_multiline(multilines, "overlay - info").rstrip(),
@@ -602,6 +642,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         ),
         "output_folder": output_tracking.get("folder", ""),
         "output_name": output_tracking.get("name", ""),
+        "output_tracking": output_tracking,
         "metadata": {
             "schema": "koolook.audio_loop.card_metadata.v1",
             "source": "rebuilt from frozen run folder",
@@ -610,7 +651,12 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
                 "label": label,
                 "date": date.today().isoformat(),
                 "workflow": workflow_name,
-                "setup_name": wf_path.stem,
+                "source_workflow": source_workflow_name,
+                "archived_workflow": workflow_name,
+                "setup_name": (
+                    Path(source_workflow_name).stem
+                    if source_workflow_name else wf_path.stem
+                ),
             },
             "setup": {
                 "base_name": first_multiline(multilines, "name").strip(),
@@ -629,6 +675,8 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
             "director": {
                 "type": director_type(director_node),
                 "flavor": director_flavor(director_node),
+                "pin_tag": pin_tag,
+                "upstream_whatdreamscost_version": upstream_whatdreamscost_version,
                 "audio_src": audio_src,
                 "epsilon": director_widget(director_node, "epsilon"),
                 "duration_frames": director_widget(director_node, "duration_frames"),
@@ -642,6 +690,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
             },
             "repo": {
                 "main_sha": patch_meta.get("MAIN SHA", ""),
+                "sync_script": "sync_to_dev_audio.py",
                 "last_dev_sync_audio": patch_meta.get("Last dev-sync-audio", ""),
                 "sync_scope_tag": patch_meta.get("Sync scope tag", ""),
                 "sync_worktree": patch_meta.get("Sync worktree", ""),
@@ -651,6 +700,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         "director_node": director_node,
         "director_variant": director_type(director_node),
         "director_flavor": director_flavor(director_node),
+        "director_pin_tag": pin_tag,
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
@@ -682,7 +732,25 @@ def main() -> int:
         print(f"(dry-run) would write: {out}")
         return 0
     render_audio_card(state, out)
+    metadata_path = run_dir / "metadata.json"
+    metadata_path.write_text(
+        json.dumps(
+            state.get("metadata") or {},
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    delivery_status = copy_delivery_card(
+        out,
+        state.get("output_tracking") or {},
+        state.get("run_number"),
+        overwrite=True,
+    )
     print(f"wrote: {out}")
+    print(f"wrote: {metadata_path}")
+    print(f"delivered: {delivery_status}")
     return 0
 
 

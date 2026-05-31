@@ -28,6 +28,7 @@ Snapshot folder layout (always created):
     ├── runNNN_workflow.json copy of the workflow at submission
     ├── relay_overrides.txt  RELAY_OVERRIDES multiline body
     ├── patch_state.txt      MAIN sha + last dev-sync-audio + fork-dir status
+    ├── metadata.json        structured run/setup/director/repo metadata
     ├── notes.md             feedback + scores + mechanical interp
     └── card.png             when render_card=true in config
 
@@ -60,6 +61,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
@@ -480,21 +482,42 @@ def expected_output_tracking(
     }
 
 
-def delivery_card_path(output_tracking: dict[str, str]) -> Optional[Path]:
-    folder = (output_tracking.get("folder") or "").strip()
+def delivery_card_filename(
+    output_tracking: dict[str, str],
+    run_number: Optional[int] = None,
+) -> Optional[str]:
     name = (output_tracking.get("name") or "").strip()
-    if not folder or not name:
+    if not name:
         return None
-    return Path(folder) / "cards" / f"{name}_card.png"
+    if run_number is not None:
+        return f"{name}_run{run_number:03d}_card.png"
+    return f"{name}_card.png"
 
 
-def copy_delivery_card(card_path: Path, output_tracking: dict[str, str]) -> str:
-    delivery_path = delivery_card_path(output_tracking)
+def delivery_card_path(
+    output_tracking: dict[str, str],
+    run_number: Optional[int] = None,
+) -> Optional[Path]:
+    folder = (output_tracking.get("folder") or "").strip()
+    filename = delivery_card_filename(output_tracking, run_number)
+    if not folder or not filename:
+        return None
+    return Path(folder) / "cards" / filename
+
+
+def copy_delivery_card(
+    card_path: Path,
+    output_tracking: dict[str, str],
+    run_number: Optional[int] = None,
+    *,
+    overwrite: bool = False,
+) -> str:
+    delivery_path = delivery_card_path(output_tracking, run_number)
     if delivery_path is None:
         return "(not configured)"
     try:
         delivery_path.parent.mkdir(parents=True, exist_ok=True)
-        if delivery_path.exists():
+        if delivery_path.exists() and not overwrite:
             return f"exists (left in place: {delivery_path})"
         shutil.copy2(card_path, delivery_path)
     except OSError as exc:
@@ -554,15 +577,55 @@ def wrap_path(path: str, max_chars: int = 40) -> list[str]:
     return lines
 
 
-def extract_director(nodes: list[dict]) -> Optional[dict]:
+def _source_node_for_link(
+    link_id: Optional[int],
+    nodes_by_id: dict[int, dict],
+    links_by_id: dict[int, list],
+    *,
+    seen: Optional[set[int]] = None,
+) -> Optional[dict]:
+    if link_id is None:
+        return None
+    if seen is None:
+        seen = set()
+    if link_id in seen:
+        return None
+    seen.add(link_id)
+    link = links_by_id.get(link_id)
+    if not link or len(link) < 3:
+        return None
+    origin = nodes_by_id.get(int(link[1]))
+    if not origin:
+        return None
+    if origin.get("type") == "Reroute":
+        inputs = origin.get("inputs") or []
+        if inputs:
+            return _source_node_for_link(
+                inputs[0].get("link"), nodes_by_id, links_by_id, seen=seen
+            )
+    return origin
+
+
+def extract_director(nodes: list[dict], links: Optional[list] = None) -> Optional[dict]:
     """Return the active Director node dict (or None).
 
-    Prefer the Koolook Director when both variants are on the canvas, but
-    accept upstream ``LTXDirector`` for A/B comparison runs. The full node
-    is returned so callers can read both widgets_values AND inputs[] socket
-    wiring; the audio_vae link is what decides whether audio gets generated
-    at all (see derive_audio_state).
+    Prefer the Director that feeds an ``LTXDirectorGuide.guide_data`` input.
+    A/B comparison canvases can keep both upstream and Koolook Directors on
+    the graph; canvas presence alone is not enough. If no active guide wiring
+    is visible, fall back to the old Koolook-first selection.
     """
+    if links:
+        nodes_by_id = {int(n["id"]): n for n in nodes if "id" in n}
+        links_by_id = {int(l[0]): l for l in links if l}
+        for guide in (n for n in nodes if n.get("type") == "LTXDirectorGuide"):
+            for inp in guide.get("inputs") or []:
+                if inp.get("name") != "guide_data":
+                    continue
+                source = _source_node_for_link(
+                    inp.get("link"), nodes_by_id, links_by_id
+                )
+                if source and source.get("type") in DIRECTOR_TYPES:
+                    return source
     for dtype in DIRECTOR_TYPES:
         for n in nodes:
             if n.get("type") == dtype:
@@ -577,9 +640,40 @@ def director_type(node: Optional[dict]) -> str:
 def director_flavor(node: Optional[dict]) -> str:
     dtype = director_type(node)
     if dtype in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES):
-        return "Koolook v1.3.9"
+        return "Koolook"
     if dtype == UPSTREAM_DIRECTOR_TYPE:
         return "Original upstream"
+    return "(missing)"
+
+
+def detect_upstream_whatdreamscost_version() -> str:
+    """Return the installed upstream WhatDreamsCost version, if available."""
+    dev = os.environ.get("KOLOOK_COMFYUI_DEV_PATH", "")
+    if not dev:
+        return ""
+    custom_nodes = Path(dev).expanduser().parent
+    pyproject = custom_nodes / "WhatDreamsCost-ComfyUI" / "pyproject.toml"
+    if not pyproject.is_file():
+        return ""
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8-sig"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+    version = data.get("project", {}).get("version", "")
+    return str(version).strip()
+
+
+def director_pin_tag(
+    node: Optional[dict],
+    upstream_whatdreamscost_version: str = "",
+) -> str:
+    dtype = director_type(node)
+    if dtype in (DIRECTOR_TYPE, *LEGACY_DIRECTOR_TYPES):
+        return "v1.3.9"
+    if dtype == UPSTREAM_DIRECTOR_TYPE:
+        if upstream_whatdreamscost_version:
+            return f"v{upstream_whatdreamscost_version}"
+        return "(unknown upstream pin)"
     return "(missing)"
 
 
@@ -590,11 +684,13 @@ def is_koolook_director(node: Optional[dict]) -> bool:
 def director_widget(node: Optional[dict], key: str) -> Any:
     if not node:
         return None
+    wv = node.get("widgets_values") or []
+    idx = DIRECTOR_WIDX.get(key)
+    if isinstance(wv, list) and idx is not None and idx < len(wv):
+        return wv[idx]
     named = widget_value_by_name(node, key, default=None)
     if named is not None:
         return named
-    wv = node.get("widgets_values") or []
-    idx = DIRECTOR_WIDX.get(key)
     if idx is None or idx >= len(wv):
         return None
     return wv[idx]
@@ -906,6 +1002,7 @@ def card_metadata(
     audio_src: str,
     build: dict[str, str],
     fork_status: str,
+    upstream_whatdreamscost_version: str,
 ) -> dict[str, Any]:
     segments = timeline.get("segments") or []
     audio_segments = timeline.get("audioSegments") or []
@@ -917,7 +1014,9 @@ def card_metadata(
             "capture_number": f"{nnn:03d}",
             "label": label,
             "date": date.today().isoformat(),
-            "workflow": wf_path.name,
+            "workflow": f"run{nnn:03d}_workflow.json",
+            "source_workflow": wf_path.name,
+            "archived_workflow": f"run{nnn:03d}_workflow.json",
             "setup_name": wf_path.stem,
         },
         "setup": {
@@ -937,6 +1036,10 @@ def card_metadata(
         "director": {
             "type": director_type(director_node),
             "flavor": director_flavor(director_node),
+            "pin_tag": director_pin_tag(
+                director_node, upstream_whatdreamscost_version
+            ),
+            "upstream_whatdreamscost_version": upstream_whatdreamscost_version,
             "audio_src": audio_src,
             "epsilon": director_widget(director_node, "epsilon"),
             "duration_frames": director_widget(director_node, "duration_frames"),
@@ -948,6 +1051,7 @@ def card_metadata(
         },
         "repo": {
             "main_sha": short_sha(),
+            "sync_script": "sync_to_dev_audio.py",
             "last_dev_sync_audio": build.get("commit", ""),
             "last_dev_sync_at": build.get("synced_at", ""),
             "sync_scope_tag": build.get("scope", ""),
@@ -982,6 +1086,7 @@ def render_setup_variables_md(
     dur_s = director_widget(director_node, "duration_seconds")
     fps = director_widget(director_node, "frame_rate")
     epsilon = director_widget(director_node, "epsilon")
+    upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     rows = [
         ("Capture run number", f"{nnn:03d} (from runs folder/log)"),
         ("Setup name", wf_path.stem),
@@ -989,6 +1094,10 @@ def render_setup_variables_md(
         ("Prompts / similarity", segment_prompt_mode(segments)),
         ("Commit No.", short_sha()),
         ("LTX-Director (flavour)", director_flavor(director_node)),
+        (
+            "Director pin tag",
+            director_pin_tag(director_node, upstream_whatdreamscost_version),
+        ),
         ("Audio src", derive_audio_state(director_node, timeline)),
         ("epsilon", "" if epsilon is None else str(epsilon)),
         ("Duration", f"{dur_f} frames @ {fps} fps ({dur_s} sec)"),
@@ -1030,7 +1139,10 @@ def render_notes_md(
     Director node. No widget-scraping of BasicScheduler / KSamplerSelect /
     RandomNoise / CFGGuider — those don't define what this loop sweeps."""
     info_indented = (
-        "\n".join("    " + line for line in info_body.splitlines())
+        "\n".join(
+            f"    {line}" if line else ""
+            for line in info_body.splitlines()
+        )
         if info_body.strip()
         else "    (none)"
     )
@@ -1153,6 +1265,7 @@ def _build_state_for_card(
         "run_label": label,
         "date": date.today().isoformat(),
         "workflow_name": f"run{nnn:03d}_workflow.json",
+        "source_workflow_name": wf_path.name,
         "name": first_multiline(multilines, "name").strip() or "(unnamed)",
         "relay_overrides_raw": first_multiline(multilines, "relay_overrides"),
         "info_body": first_multiline(multilines, "overlay - info").rstrip(),
@@ -1167,6 +1280,7 @@ def _build_state_for_card(
         "director_node": director_node,
         "director_variant": director_type(director_node),
         "director_flavor": director_flavor(director_node),
+        "director_pin_tag": (metadata.get("director") or {}).get("pin_tag", ""),
         "audio_src": audio_src,
         "epsilon": director_widget(director_node, "epsilon"),
         "frame_rate": director_widget(director_node, "frame_rate"),
@@ -1220,7 +1334,7 @@ def main() -> int:
         nodes, cfg.get("tracked_setup_variables", {})
     )
     output_tracking = expected_output_tracking(nodes, multilines, setup_variables)
-    director_node = extract_director(nodes)
+    director_node = extract_director(nodes, wf.get("links") or [])
     timeline = parse_timeline(director_node)
     audio_src = derive_audio_state(director_node, timeline)
     scores, feedback_lines = parse_feedback(
@@ -1237,9 +1351,11 @@ def main() -> int:
     run_dir = runs_dir / f"run-{nnn:03d}_{label}"
     build = read_dev_build_json()
     fork_status = fork_dir_status(cfg["fork_to_track"])
+    upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     metadata = card_metadata(
         nnn, label, wf_path, multilines, setup_variables, output_tracking,
         director_node, timeline, audio_src, build, fork_status,
+        upstream_whatdreamscost_version,
     )
 
     # Two-line chat-report header (matches dev-sync convention).
@@ -1265,6 +1381,10 @@ def main() -> int:
         render_patch_state(build, fork_status),
         encoding="utf-8",
     )
+    (run_dir / "metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     (run_dir / "notes.md").write_text(
         render_notes_md(
             nnn, wf_path, multilines, setup_variables,
@@ -1288,7 +1408,7 @@ def main() -> int:
             )
             card_path = render_audio_card(state, run_dir / "card.png")
             card_status = "rendered"
-            delivery_status = copy_delivery_card(card_path, output_tracking)
+            delivery_status = copy_delivery_card(card_path, output_tracking, nnn)
         except ImportError as exc:
             card_status = f"skipped ({exc})"
         except OSError as exc:

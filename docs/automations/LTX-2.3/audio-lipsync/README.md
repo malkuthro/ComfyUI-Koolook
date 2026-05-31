@@ -52,7 +52,7 @@ Supported keys (all optional):
 | `audio_window_scale` | float | 1.0 | Audio-side window. |
 | `audio_epsilon` | float | inherit | Independent σ for the audio path. |
 
-Underscore-prefixed keys are ignored (use for inline JSON comments). Example value to paste:
+Underscore-prefixed keys are ignored (use for inline JSON comments). Preferred example value to paste:
 
 ```json
 {"video_strength": 10.0}
@@ -60,6 +60,14 @@ Underscore-prefixed keys are ignored (use for inline JSON comments). Example val
 
 Empty field → upstream Prompt-Relay defaults (Modification 1 still active —
 the new σ formula is unconditional).
+
+If a connected Text Multiline node mangles strict JSON, the parser also accepts
+one setting per line:
+
+```text
+video_strength: 10.0
+video_window_scale: 0.75
+```
 
 ## Folder map
 
@@ -77,7 +85,9 @@ audio-lipsync/
         ├── runNNN_workflow.json
         ├── relay_overrides.txt
         ├── patch_state.txt
-        └── notes.md
+        ├── metadata.json
+        ├── notes.md
+        └── card.png
 ```
 
 Each `loop-audio` capture adds a row to `log.md` and creates a matching
@@ -101,7 +111,12 @@ renders should be skipped with "no log" / "don't log this" before capture.
 2. **Save workflow** — `Workflow → Save (API Format)` into the working folder.
 3. **Render** — queue.
 4. **Report** in chat — verbal feedback on sync state, motion, prompt adherence.
-5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + notes).
+5. **Agent captures the run** by appending a row to [`runs/log.md`](runs/log.md) and creating `runs/run-NNN_<label>/` with the full snapshot (workflow JSON copy + relay_overrides + patch state + metadata + notes + card).
+
+The card's BASE/RUN area shows the original copied workflow stem (for
+example `LTX-23-audio_tests_03`) instead of the predictable archive name
+`runNNN_workflow.json`. The full archive filename and technical details stay
+in `metadata.json` and the PNG `koolook_audio_loop` text metadata.
 
 See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
 
@@ -150,7 +165,9 @@ in addition to the raw audio latent.
 New modified runs should use the stable node ID `LTXDirector__koolook`
 (display name *"LTX Director (Koolook)"*). Upstream `LTXDirector` is still
 accepted for original-vs-Koolook comparison captures; the card labels it as
-original upstream and marks `relay_overrides` inert. Old workflows saved with
+original upstream, marks `relay_overrides` inert, and shows the upstream pin
+tag read automatically from the live `WhatDreamsCost-ComfyUI/pyproject.toml`
+beside `$KOLOOK_COMFYUI_DEV_PATH`. Old workflows saved with
 `LTXDirector__koolook_v1_3_2` still load through a compatibility alias backed
 by the same v1.3.9 implementation, not the byte-identical v1.3.2 class, so
 future fork upgrades do not require repeated node replacement.

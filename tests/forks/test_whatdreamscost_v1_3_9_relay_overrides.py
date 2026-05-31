@@ -91,6 +91,28 @@ def test_numeric_values_are_coerced_to_float(raw, expected):
     assert isinstance(out["video_strength"], float)
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "video_strength: 10.0",
+        '"video_strength": 10.0',
+        "video_strength = 10.0",
+        "{\nvideo_strength: 10.0,\nvideo_window_scale: 0.75\n}",
+    ],
+)
+def test_text_multiline_key_value_blocks_are_accepted(raw):
+    out = parse_relay_overrides(raw)
+    assert out["video_strength"] == 10.0
+
+
+def test_stacked_json_objects_are_merged():
+    raw = '{"video_strength": 10.0}\n{"video_window_scale": 0.75}'
+    assert parse_relay_overrides(raw) == {
+        "video_strength": 10.0,
+        "video_window_scale": 0.75,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Comment keys: underscore-prefixed entries are silently dropped.
 # ---------------------------------------------------------------------------
@@ -141,13 +163,11 @@ def test_only_unknown_keys_returns_none(caplog):
     "raw",
     [
         '{"video_strength":10.0',     # missing closing brace
-        '{"video_strength": 10,}',    # trailing comma
-        '{video_strength: 10}',       # unquoted key
         "not json at all",
     ],
 )
 def test_malformed_json_raises(raw):
-    with pytest.raises(ValueError, match="not valid JSON"):
+    with pytest.raises(ValueError, match="not valid JSON or a supported"):
         parse_relay_overrides(raw)
 
 
