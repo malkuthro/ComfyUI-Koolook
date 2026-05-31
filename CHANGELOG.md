@@ -15,6 +15,14 @@ The format is inspired by Keep a Changelog and SemVer.
   JSON/video list.
 
 ### Fixed
+- **`loop-audio`: Director card reads execution-active values.** The
+  audio-lipsync card now reads Director widgets from the saved Director
+  widget order before falling back to generic input-name lookup, fixing
+  false `model-gen` / unknown-fps cards when saved workflows include
+  non-input widgets such as `epsilon`. `relay_overrides` is now reported
+  only when the active Koolook Director's `relay_overrides` socket is
+  actually wired; an unwired `RELAY_OVERRIDES` note no longer appears as
+  an active knob on the card, log, metadata, or notes.
 - **`Easy_LoadVideo`: direct `video_path` handoff.** The loader now
   accepts a complete video file path in `input_path` when `video` is
   empty, so `Easy_VideoCombine.video_path` can wire straight into

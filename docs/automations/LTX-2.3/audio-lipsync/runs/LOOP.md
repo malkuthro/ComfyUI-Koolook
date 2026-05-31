@@ -32,7 +32,7 @@ Each `loop-audio` capture folder looks like:
 ```
 run-NNN_<label>/
 ├── runNNN_workflow.json    ← redacted copy of the working-folder workflow at submission
-├── relay_overrides.txt     ← RELAY_OVERRIDES multiline body; marked inert when upstream Director is active
+├── relay_overrides.txt     ← active Director relay_overrides body; empty/defaults when the socket is unwired
 ├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
 ├── metadata.json           ← structured run/setup/director/repo metadata
 ├── notes.md                ← maintainer feedback + SETUP variables + director state
@@ -40,11 +40,12 @@ run-NNN_<label>/
 ```
 
 The archived workflow keeps the Comfy graph shape but redacts absolute
-workstation paths before it is committed. The `relay_overrides` value is
-also stored inside `runNNN_workflow.json` when the
-Koolook Director is active, but the `.txt` copy makes it diff-friendly in the
-run folder. On upstream `LTXDirector` comparison runs, the `.txt` file keeps
-the same note body and explicitly marks that value as inert.
+workstation paths before it is committed. The active `relay_overrides` value is
+read from the Koolook Director's linked `relay_overrides` input; an unwired
+`RELAY_OVERRIDES` note is treated as inactive and records empty/defaults. The
+`.txt` copy makes the active value diff-friendly in the run folder. On upstream
+`LTXDirector` comparison runs, relay overrides are inactive because upstream has
+no `relay_overrides` input.
 
 When card rendering is enabled, the loop also writes a delivery copy into the
 setup output folder's `cards/` subfolder as

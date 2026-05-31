@@ -751,6 +751,14 @@ def director_widget(node: Optional[dict], key: str) -> Any:
         return None
     wv = node.get("widgets_values") or []
     idx = DIRECTOR_WIDX.get(key)
+    if isinstance(wv, dict):
+        named = widget_value_by_name(node, key, default=None)
+        if named is not None:
+            return named
+    if director_type(node) in DIRECTOR_TYPES and isinstance(wv, list):
+        if idx is not None and idx < len(wv):
+            return wv[idx]
+        return None
     named = widget_value_by_name(node, key, default=None)
     if named is not None:
         return named
@@ -802,6 +810,60 @@ def is_input_wired(node: Optional[dict], input_name: str) -> Optional[bool]:
         if inp.get("name") == input_name:
             return inp.get("link") is not None
     return None
+
+
+def linked_input_value(
+    nodes: list[dict],
+    links: list,
+    target_node: Optional[dict],
+    input_name: str,
+) -> str:
+    """Return the value feeding a linked input socket, not a nearby note.
+
+    This keeps card/log state aligned with execution: a multiline
+    ``RELAY_OVERRIDES`` note only counts when its value is actually wired into
+    the active Director input. Reroutes and simple display/pass-through nodes
+    are followed one hop chain at a time so tidy canvas plumbing still works.
+    """
+    if not target_node:
+        return ""
+    input_link = None
+    for inp in target_node.get("inputs") or []:
+        if inp.get("name") == input_name:
+            input_link = inp.get("link")
+            break
+    if input_link is None:
+        return ""
+
+    nodes_by_id = {n.get("id"): n for n in nodes}
+    links_by_id = {link[0]: link for link in links if isinstance(link, list) and link}
+    current_link = input_link
+    seen: set[int] = set()
+    while current_link is not None and current_link not in seen:
+        seen.add(current_link)
+        link = links_by_id.get(current_link)
+        if not link or len(link) < 3:
+            return ""
+        source = nodes_by_id.get(link[1])
+        if not source:
+            return ""
+        source_type = source.get("type")
+        if source_type in {"Reroute", "easy showAnything"}:
+            source_inputs = source.get("inputs") or []
+            current_link = source_inputs[0].get("link") if source_inputs else None
+            continue
+        return node_widget_value(source)
+    return ""
+
+
+def active_relay_overrides(
+    nodes: list[dict],
+    links: list,
+    director_node: Optional[dict],
+) -> str:
+    if not is_koolook_director(director_node):
+        return ""
+    return linked_input_value(nodes, links, director_node, "relay_overrides")
 
 
 def _coerce_segment_numeric(seg: dict) -> dict:
@@ -1472,7 +1534,11 @@ def main() -> int:
     )
 
     name = first_multiline(multilines, "name").strip()
-    relay_overrides_raw = first_multiline(multilines, "relay_overrides")
+    relay_overrides_raw = active_relay_overrides(
+        nodes, wf.get("links") or [], director_node
+    )
+    active_multilines = dict(multilines)
+    active_multilines["relay_overrides"] = [relay_overrides_raw]
     info_body = first_multiline(multilines, "overlay - info").rstrip()
     label = args.label or autogen_label(
         name, director_node, relay_overrides_raw
@@ -1483,7 +1549,7 @@ def main() -> int:
     fork_status = fork_dir_status(cfg["fork_to_track"])
     upstream_whatdreamscost_version = detect_upstream_whatdreamscost_version()
     metadata = card_metadata(
-        nnn, label, wf_path, multilines, setup_variables, output_tracking,
+        nnn, label, wf_path, active_multilines, setup_variables, output_tracking,
         director_node, timeline, audio_src, build, fork_status,
         upstream_whatdreamscost_version,
     )
@@ -1517,7 +1583,7 @@ def main() -> int:
     )
     (run_dir / "notes.md").write_text(
         render_notes_md(
-            nnn, wf_path, multilines, setup_variables,
+            nnn, wf_path, active_multilines, setup_variables,
             director_node, timeline, audio_src,
             info_body, feedback_lines, scores, output_tracking,
         ),
@@ -1533,7 +1599,7 @@ def main() -> int:
 
             state = _build_state_for_card(
                 nnn, label, wf_path,
-                multilines, output_tracking, metadata, director_node, timeline,
+                active_multilines, output_tracking, metadata, director_node, timeline,
                 audio_src, scores, feedback_lines,
             )
             card_path = render_audio_card(state, run_dir / "card.png")

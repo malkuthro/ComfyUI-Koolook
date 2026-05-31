@@ -125,7 +125,7 @@ def test_extract_director_prefers_guide_wired_upstream_over_idle_koolook():
     )
 
 
-def test_director_widget_uses_named_widget_before_positional_fallback():
+def test_director_widget_uses_saved_director_widget_order():
     node = {
         "type": "LTXDirector__koolook",
         "inputs": [
@@ -133,16 +133,65 @@ def test_director_widget_uses_named_widget_before_positional_fallback():
             {"name": "epsilon", "widget": {"name": "epsilon"}},
             {"name": "use_custom_audio", "widget": {"name": "use_custom_audio"}},
         ],
-        "widgets_values": [144, 0.004, True],
+        "widgets_values": [
+            "",
+            144,
+            6,
+            "",
+            "",
+            "",
+            0.004,
+            "1.00,1.00,1.00",
+            True,
+            24,
+        ],
     }
 
     assert loop_audio.director_widget(node, "epsilon") == 0.004
     assert loop_audio.director_widget(node, "use_custom_audio") is True
+    assert loop_audio.director_widget(node, "frame_rate") == 24
 
 
 def test_director_widget_keeps_legacy_positional_fallback():
     node = _director(epsilon=0.002)
     assert loop_audio.director_widget(node, "epsilon") == 0.002
+
+
+def test_active_relay_overrides_reads_only_wired_director_input():
+    director = {
+        "id": 10,
+        **_director(),
+        "inputs": [
+            {"name": "audio_vae", "link": 99},
+            {"name": "relay_overrides", "link": 20},
+        ],
+    }
+    relay_note = _multiline("RELAY_OVERRIDES", '{"video_strength": 1.0}')
+    relay_note["id"] = 5
+    relay_note["outputs"] = [{"name": "STRING", "links": [20]}]
+
+    assert loop_audio.active_relay_overrides(
+        [director, relay_note],
+        [[20, 5, 0, 10, 16, "STRING"]],
+        director,
+    ) == '{"video_strength": 1.0}'
+
+
+def test_active_relay_overrides_ignores_unwired_note():
+    director = {
+        "id": 10,
+        **_director(),
+        "inputs": [
+            {"name": "audio_vae", "link": 99},
+            {"name": "relay_overrides", "link": None},
+        ],
+    }
+    relay_note = _multiline("RELAY_OVERRIDES", '{"video_strength": 1.0}')
+    relay_note["id"] = 5
+
+    assert loop_audio.active_relay_overrides(
+        [director, relay_note], [], director
+    ) == ""
 
 
 @pytest.mark.parametrize(
