@@ -598,7 +598,7 @@ def _rebuild_state_from_run_dir(run_dir: Path) -> dict[str, Any]:
         extract_setup_variables, find_dotenv,
         first_multiline, load_config, load_dotenv,
         parse_feedback, parse_timeline, pick_existing_path,
-        scrub_path_for_metadata, segment_prompt_mode,
+        segment_prompt_mode,
         DEFAULT_CONFIG_PATH,
     )
 
