@@ -31,21 +31,44 @@ Each `loop-audio` capture folder looks like:
 
 ```
 run-NNN_<label>/
-├── runNNN_workflow.json    ← copy of the working-folder workflow at submission
+├── runNNN_workflow.json    ← redacted copy of the working-folder workflow at submission
 ├── relay_overrides.txt     ← RELAY_OVERRIDES multiline body; marked inert when upstream Director is active
 ├── patch_state.txt         ← MAIN SHA + dev-sync SHA + whether forks/.../v1_3_9/*.py differs from MAIN
-└── notes.md                ← maintainer feedback + SETUP variables + director state
+├── metadata.json           ← structured run/setup/director/repo metadata
+├── notes.md                ← maintainer feedback + SETUP variables + director state
+└── card.png                ← stable archive card
 ```
 
-The `relay_overrides` value is also stored inside `runNNN_workflow.json` when the
+The archived workflow keeps the Comfy graph shape but redacts absolute
+workstation paths before it is committed. The `relay_overrides` value is
+also stored inside `runNNN_workflow.json` when the
 Koolook Director is active, but the `.txt` copy makes it diff-friendly in the
 run folder. On upstream `LTXDirector` comparison runs, the `.txt` file keeps
 the same note body and explicitly marks that value as inert.
 
 When card rendering is enabled, the loop also writes a delivery copy into the
-setup output folder's `cards/` subfolder as `cards/<Output name>_card.png`.
-Use that stable external path when compositing the card beside the rendered
-QuickTime; the run-folder `card.png` remains the archive copy.
+setup output folder's `cards/` subfolder as
+`cards/<Output name>_runNNN_card.png`. The run folder keeps only the stable
+archive `card.png`; the long filename belongs to the external delivery copy
+so the run snapshot stays compact.
+
+The visual card shows the original copied workflow stem (without `.json`)
+under BASE/RUN, not the predictable archive filename. Technical details live
+in `metadata.json` and the PNG metadata. The Director section shows both the
+active flavor and the lock pin tag; for upstream comparison runs that pin tag
+is read automatically from the live `WhatDreamsCost-ComfyUI/pyproject.toml`
+beside `$KOLOOK_COMFYUI_DEV_PATH`.
+
+Re-render an existing run through the script, not by copying files manually:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\make_card_audio.py docs\automations\LTX-2.3\audio-lipsync\runs\run-NNN_<label>
+```
+
+That scripted path updates `card.png`, rewrites `metadata.json`, refreshes
+`notes.md`, and replaces the external
+`cards/<Output name>_runNNN_card.png` delivery copy. Use `--no-delivery`
+when refreshing committed evidence without touching the render drive.
 
 ## Trigger detection
 

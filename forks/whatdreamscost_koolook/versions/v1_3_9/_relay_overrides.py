@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,66 @@ RELAY_OVERRIDE_KEYS: dict[str, type] = {
     "audio_window_scale": float,
     "audio_epsilon": float,
 }
+
+
+_PAIR_LINE_RE = re.compile(
+    r'^\s*(?P<key>"?[A-Za-z_][A-Za-z0-9_]*"?)\s*(?::|=)\s*(?P<value>[^,#/]+?)\s*,?\s*$'
+)
+
+
+def _parse_loose_relay_overrides(raw: str) -> Optional[dict]:
+    """Parse Comfy Text Multiline-friendly override snippets."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+
+    decoder = json.JSONDecoder()
+    idx = 0
+    objects: list[dict] = []
+    try:
+        while idx < len(text):
+            while idx < len(text) and text[idx].isspace():
+                idx += 1
+            if idx >= len(text):
+                break
+            obj, next_idx = decoder.raw_decode(text, idx)
+            if not isinstance(obj, dict):
+                raise ValueError
+            objects.append(obj)
+            idx = next_idx
+        if objects:
+            merged: dict = {}
+            for obj in objects:
+                merged.update(obj)
+            return merged
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    loose: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "//")):
+            continue
+        if stripped in ("{", "}"):
+            continue
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                obj = json.loads(stripped)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict):
+                loose.update(obj)
+                continue
+        if "{" in stripped or "}" in stripped:
+            return None
+        match = _PAIR_LINE_RE.match(stripped.strip("{} \t"))
+        if not match:
+            return None
+        key = match.group("key").strip().strip('"')
+        value = match.group("value").strip().strip('"').strip("'")
+        loose[key] = value
+
+    return loose or None
 
 
 def parse_relay_overrides(s: str) -> Optional[dict]:
@@ -70,12 +131,15 @@ def parse_relay_overrides(s: str) -> Optional[dict]:
     try:
         opts = json.loads(s)
     except (json.JSONDecodeError, TypeError) as exc:
-        raise ValueError(
-            "relay_overrides input is not valid JSON "
-            f"({type(exc).__name__}: {exc}). Empty the field to use "
-            'upstream defaults, or paste a JSON object like '
-            '{"video_strength": 10.0}.'
-        ) from exc
+        opts = _parse_loose_relay_overrides(s)
+        if opts is None:
+            raise ValueError(
+                "relay_overrides input is not valid JSON or a supported "
+                f"key/value block ({type(exc).__name__}: {exc}). Empty "
+                "the field to use upstream defaults, paste a JSON object "
+                'like {"video_strength": 10.0}, or use '
+                "video_strength: 10.0."
+            ) from exc
 
     if not isinstance(opts, dict):
         raise ValueError(
@@ -98,6 +162,12 @@ def parse_relay_overrides(s: str) -> Optional[dict]:
             continue
 
         coerce = RELAY_OVERRIDE_KEYS[key]
+        if isinstance(value, bool):
+            raise ValueError(
+                f"relay_overrides[{key!r}] must be a number, got "
+                f"{value!r} (bool). Example: "
+                f'{{"{key}": 10.0}}'
+            )
         try:
             cleaned[key] = coerce(value)
         except (TypeError, ValueError) as exc:

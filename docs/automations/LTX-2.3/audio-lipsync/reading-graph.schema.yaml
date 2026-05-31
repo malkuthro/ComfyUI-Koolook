@@ -65,7 +65,10 @@ source_families:
       runs; upstream `LTXDirector` is accepted for A/B comparison and is
       labeled as original upstream on the card. Card reads both widget
       values AND input-socket wiring (audio_vae link is what gates audio
-      production at runtime).
+      production at runtime). Upstream comparison runs also read the
+      installed WhatDreamsCost version from the live
+      `WhatDreamsCost-ComfyUI/pyproject.toml` beside
+      `$KOLOOK_COMFYUI_DEV_PATH` so the card can show the lock pin tag.
     type: LTXDirector__koolook
     legacy_type: LTXDirector__koolook_v1_3_2
     upstream_type: LTXDirector
@@ -99,14 +102,14 @@ source_families:
         audioSegments:
           fields: [id, start, length, audioFile, audioB64, trimStart]
 
-forbidden_sources:
+forbidden_visual_sources:
   - BasicScheduler widgets
   - KSamplerSelect widgets
   - RandomNoise widgets
   - CFGGuider widgets
   - LTXDirectorGuide widgets
   - VAELoaderKJ / CheckpointLoaderSimple / DualCLIPLoader widgets
-  - web/_dev_build.json (the dev-sync footer)
+  - web/_dev_build.json (captured in metadata only, not displayed on the card)
   - git rev-parse / git status output
   - hardcoded sampler / cfg / seed constants
   - substring matches on segment.prompt text (e.g. "[Audio]:" as wiring signal)
@@ -171,7 +174,8 @@ state_dict:
     run_number:        { source: loop, type: int,  desc: "next available NNN under runs/" }
     run_label:         { source: loop, type: str,  desc: "autogen_label or explicit override" }
     date:              { source: loop, type: str,  desc: "ISO today" }
-    workflow_name:     { source: loop, type: str,  desc: "basename of saved JSON" }
+    workflow_name:     { source: loop, type: str,  desc: "archive workflow basename, e.g. runNNN_workflow.json" }
+    source_workflow_name: { source: "wf_path.name", type: str, desc: "original copied Comfy workflow filename" }
   multiline_derived:
     name:                { source: "multilines.name[0]" }
     relay_overrides_raw: { source: "multilines.relay_overrides[0]" }
@@ -182,7 +186,8 @@ state_dict:
   director_derived:
     director_node:       { source: "extract_director(nodes)" }
     director_variant:    { source: "actual Director node type OR '(missing)'" }
-    director_flavor:     { source: "director_flavor(director_node): Koolook v1.3.9 / Original upstream / (missing)" }
+    director_flavor:     { source: "director_flavor(director_node): Koolook / Original upstream / (missing)" }
+    director_pin_tag:    { source: "director_pin_tag(director_node, detect_upstream_whatdreamscost_version())" }
     audio_src:           { source: "derive_audio_state(director_node, timeline)" }
     epsilon:             { source: "director.widgets_values[6]" }
     frame_rate:          { source: "director.widgets_values[9]" }
@@ -191,7 +196,7 @@ state_dict:
     segment_prompt_mode: { source: "segment_prompt_mode(segments): none / single / same / per-segment / missing" }
     output_folder:       { source: "expected_output_tracking(nodes, multilines, setup_variables).folder" }
     output_name:         { source: "expected_output_tracking(nodes, multilines, setup_variables).name" }
-    metadata:            { source: "card_metadata(...)", consumer: "PNG text chunk koolook_audio_loop" }
+    metadata:            { source: "card_metadata(...)", consumer: "metadata.json + PNG text chunk koolook_audio_loop" }
   notes_only:
     setup_variables:   { source: "extract_setup_variables(nodes, tracked_setup_variables)", consumer: "render_notes_md" }
     # These flow to notes.md but NOT through the state dict — the
@@ -210,37 +215,28 @@ card_sections:
     accent: ink
     rows:
       - { display: "Run NNN — {name}",                       field: "name + run_number" }
-      - { display: "{date} · audio-lipsync · {workflow_name}", field: "date + workflow_name" }
+      - { display: "{date} / audio-lipsync", field: "date + module_name" }
 
-  - name: KNOB STATE
-    accent: amber
-    rule: per-render knob (Δ this run)
-    rows:
-      - { label: "relay_overrides", field: "relay_overrides_raw (verbatim, fallback '(empty → defaults)')" }
-
-  - name: BASE · NOTES (Δ this run)
-    accent: amber
-    rule: per-render note (Δ this run)
-    rendering: left-accented italic block, blank lines preserved
-    field: "info_body"
-
-  - name: BASE · LOCKED
+  - name: BASE / RUN
     accent: sky
-    rule: stable across the iteration (frozen)
+    rule: copied setup and output target
     rows:
-      - { label: "Director",       field: "director_flavor" }
-      - { label: "epsilon",        field: "epsilon" }
-      - { label: "Audio src",      field: "audio_src" }
+      - { label: "Copied from",    field: "source_workflow_name without .json, wrapped; archive name stays in metadata" }
+      - { label: "Output name",    field: "output_name (trimmed visually, full value in metadata)" }
       - { label: "Working folder", field: "wrap_path(work_folder, max_chars=40)" }
-      - { label: "Output name",    field: "output_name (trimmed visually, full value in PNG metadata)" }
       - { label: "Output folder",  field: "wrap_path(output_folder, max_chars=40)" }
 
-  - name: BASE · SCENE
+  - name: DIRECTOR READINGS
     accent: sky
-    rule: scene structure (frozen per project)
+    rule: active Director structure
     layout: flat-left labels; only the segment list is indented
     rows:
-      - { label: "Segments", field: "(len(segments))" }
+      - { label: "Director", field: "director_flavor" }
+      - { label: "Pin tag", field: "director_pin_tag" }
+      - { label: "epsilon", field: "epsilon" }
+      - { label: "Audio", field: "audio_src" }
+      - { label: "Frame rate", field: "frame_rate" }
+      - { label: "Image segments", field: "(len(segments))" }
       - { label: "Audio segments", field: "(len(audio_segments))" }
       - { label: "Prompt mode", field: "segment_prompt_mode" }
       - {
@@ -252,6 +248,18 @@ card_sections:
       - { label: "Prompt",   field: "all(segments[i].prompt for i in visible)" }
       - { label: "Audio",    field: "all(video_segment_has_audio(segments[i], audio_segments) for i in visible)" }
       - { label: "Keyframe", field: "all(segments[i].imageFile for i in visible)" }
+
+  - name: KNOB STATE
+    accent: amber
+    rule: per-render knob
+    rows:
+      - { label: "relay_overrides", field: "relay_overrides_raw (verbatim, fallback '(empty → defaults)'; marked inert when upstream Director is active)" }
+
+  - name: BASE NOTES
+    accent: amber
+    rule: per-render note
+    rendering: left-accented italic block, blank lines preserved
+    field: "info_body"
 
   - name: POST-RENDER
     accent: green
@@ -295,14 +303,15 @@ outputs:
   per_run_folder:
     path: runs/run-NNN_<label>/
     files:
-      runNNN_workflow.json: Copy of the saved workflow at submission. Ground truth.
+      runNNN_workflow.json: Redacted copy of the saved workflow at submission.
       card.png:            Rendered card matching this graph plus embedded koolook_audio_loop JSON metadata.
+      metadata.json:        Structured run/setup/director/repo metadata, same technical payload embedded in the PNG.
       notes.md:            OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + captured SETUP variables + director's structural state.
       relay_overrides.txt: RELAY_OVERRIDES body in plain text (diff-friendly copy of the multiline).
-      patch_state.txt:     MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. Also embedded in card.png metadata.
+      patch_state.txt:     MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty. Also represented in metadata.
   delivery_copy:
-    path: "<Output folder>/cards/<Output name>_card.png"
-    purpose: Stable external card path for manual QuickTime/NLE compositing beside the rendered video.
+    path: "<Output folder>/cards/<Output name>_runNNN_card.png"
+    purpose: Stable external card path for manual QuickTime/NLE compositing beside the rendered video. Re-render script replaces this copy.
   rolling_log:
     path: runs/log.md
     schema:

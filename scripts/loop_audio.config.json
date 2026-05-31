@@ -56,5 +56,5 @@
   "_fork_to_track": "Repo-relative path of the fork files this module iterates on. Recorded in patch_state.txt of each run snapshot + diffed for the 'fork dir status' line.",
 
   "render_card": true,
-  "_render_card": "When true, loop_audio.py invokes scripts/make_card_audio.render_audio_card at end-of-snapshot, writing card.png into the new run-NNN_ folder. Set false to skip the PIL dependency."
+  "_render_card": "When true, loop_audio.py invokes scripts/make_card_audio.render_audio_card at end-of-snapshot, writing card.png into the new run-NNN_ folder and copying it to the external cards folder as <Output name>_runNNN_card.png. Set false to skip the PIL dependency."
 }

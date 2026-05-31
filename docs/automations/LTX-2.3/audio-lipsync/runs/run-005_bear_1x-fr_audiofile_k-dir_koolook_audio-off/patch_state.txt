@@ -1,0 +1,7 @@
+# Fork state at submission
+
+MAIN SHA              : 3294e6e
+Last dev-sync-audio   : bc260a4  (2026-05-31 01:00)
+Sync scope tag        : Revert combine naming changes
+Sync worktree         : ComfyUI-Koolook
+Fork dir status       : clean (matches HEAD)

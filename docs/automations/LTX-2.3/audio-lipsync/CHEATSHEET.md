@@ -18,7 +18,7 @@ look as clean as baseline.
 
 | Phrase | Script | What it does |
 |---|---|---|
-| `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (runNNN_workflow.json + relay_overrides.txt + patch_state.txt + notes.md + card.png) and appends a row to [`runs/log.md`](runs/log.md). |
+| `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (redacted runNNN_workflow.json + relay_overrides.txt + patch_state.txt + metadata.json + notes.md + card.png), delivers the external card copy, and appends a row to [`runs/log.md`](runs/log.md). |
 | `transcribe-audio` | [`scripts/transcribe_audio_timeline.py`](../../../../scripts/transcribe_audio_timeline.py) or the `Koolook Audio Transcript Timeline` Comfy node | Uses the optional Whisper helper to turn the current speech file into timed Director prompts (`timeline_data`, `local_prompts`, `segment_lengths`). Install with `.[audio]` first. |
 | `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`; removes stale pre-v1.3.9 web extension folder. Restart ComfyUI manually after Python changes need to be re-imported. Widget-only changes on the canvas don't need it. |
 
@@ -128,24 +128,30 @@ Director timeline.
 ## What lands in `runs/run-NNN_<label>/`
 
 ```
-runNNN_workflow.json   ← copy of the Comfy file at submission (ground truth)
+runNNN_workflow.json   ← redacted copy of the Comfy file at submission
 relay_overrides.txt    ← RELAY_OVERRIDES body (diff-friendly plain text)
 patch_state.txt        ← MAIN sha + last dev-sync-audio sha + fork-dir clean/dirty (audit trail; NOT on the card)
+metadata.json          ← structured run/setup/director/repo metadata
 notes.md               ← OVERLAY-FEEDBACK + OVERLAY-INFO verbatim + SETUP variables + director's structural state
-card.png               ← visual card for the NLE + embedded `koolook_audio_loop` JSON metadata
+card.png               ← stable archive card with embedded `koolook_audio_loop` JSON metadata
 ```
 
-The PNG metadata includes the technical report as portable card data:
-run number, setup values, expected output folder/name/version,
-Director structure, MAIN SHA, last `dev-sync-audio`, sync scope, and
-fork-dir status.
+`metadata.json` and the PNG metadata include the technical report:
+run number, copied workflow source, setup values, expected output
+folder/name/version, Director structure, Director pin tag, MAIN SHA,
+last `dev-sync-audio`, sync scope, and fork-dir status. The visual card
+keeps only scan-friendly rows; BASE/RUN shows the copied workflow stem
+without the `.json` extension.
 
-For compositing beside the rendered QuickTime, `loop-audio` also copies
-the card into the setup's stable output folder under `cards/` as
-`cards/<Output name>_card.png` (for example
-`cards/Bear_2x-FR_AudioFile_K-Dir_h264_v002_card.png`). That delivery
-copy is the path to use in manual NLE/QuickTime assembly; the run-folder
-`card.png` remains the archive copy.
+For compositing beside the rendered QuickTime, the card script copies the
+card into the setup's stable output folder under `cards/` as
+`cards/<Output name>_runNNN_card.png` (for example
+`cards/Bear_2x-FR_AudioFile_K-Dir_h264_v002_run006_card.png`). The
+run-folder `card.png` remains the single archive card; the long filename is
+only for the external delivery copy. Re-rendering an existing run through
+`scripts/make_card_audio.py <run_dir>` refreshes `card.png`, `metadata.json`,
+`notes.md`, and that delivery copy. Add `--no-delivery` when refreshing
+committed evidence only.
 
 Each render also appends a row to [`runs/log.md`](runs/log.md) with the
 same source rule (no scheduler/sampler columns).
