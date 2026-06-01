@@ -2311,7 +2311,7 @@ export function renderSidebar(container) {
     // Left = live working copy (untouched). Right = the same render, fed the
     // chosen snapshot read-only, then tinted.
     renderPanel(leftCol, { onToggleCompare: exitCompareMode, signal });
-    renderPanel(rightCol, { compare: true, snapshot: compareSnapshot, onToggleCompare: exitCompareMode });
+    renderPanel(rightCol, { compare: true, snapshot: compareSnapshot, onToggleCompare: exitCompareMode, signal });
     applyCompareTint(rightCol, compareSnapshot);
 
     const status = document.createElement("div");
@@ -2396,10 +2396,32 @@ export function renderPanel(container, options = {}) {
     const withSource = compare
         ? (fn) => withSnapshotSource(snapshot, fn)
         : (fn) => fn();
+    // `signal` (from renderSidebar's AbortController) lets a re-render drop the
+    // previous mount's window listeners, so toggling Compare never leaks a set.
+    const listenerOpts = signal ? { signal } : undefined;
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
-    if (compare) container.classList.add("koolook-compare-panel");
+    if (compare) {
+        container.classList.add("koolook-compare-panel");
+        // Read-only comparison panel (#181): the same interactive renderPanel is
+        // reused (chrome stays visually identical), but the snapshot side must
+        // never mutate or load live state. Capture-phase guards allow navigation
+        // only — folder expand/collapse, search, the view-mode toggle, and the
+        // A/B exit button — and neutralize every mutating/loading affordance:
+        // leaf load/insert clicks, pick ×/+, the snapshot + tools buttons,
+        // context menus, and drag. The buttons stay visible but inert.
+        const NAV_ALLOW =
+            ".koolook-search, .koolook-mode-toggle, [data-koolook-compare-exit], .koolook-row:not(.koolook-leaf)";
+        container.addEventListener("click", (e) => {
+            const t = e.target;
+            if (t instanceof Element && t.closest(NAV_ALLOW)) return;
+            e.preventDefault();
+            e.stopPropagation();
+        }, true);
+        container.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("dragstart", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+    }
 
     // Forward declarations — `tree` and `search` are created several rows
     // below, but the Nodes-row mode toggle (built mid-renderPanel) needs to
@@ -2541,9 +2563,9 @@ export function renderPanel(container, options = {}) {
         });
     }
     refreshSnapshotStatus();
-    window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus);
-    window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus);
-    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus);
+    window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+    window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
 
     snapshotRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.loadSnapshot,
@@ -2579,7 +2601,7 @@ export function renderPanel(container, options = {}) {
         quickSaveBtn.disabled = !getCurrentPresetName();
     }
     refreshQuickSaveDisabled();
-    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled);
+    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled, listenerOpts);
     snapshotRow.appendChild(quickSaveBtn);
     snapshotRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.saveSnapshot,
@@ -2590,13 +2612,17 @@ export function renderPanel(container, options = {}) {
     // host (`renderSidebar`) supplies the toggle handler (enter on the live
     // panel, exit on the comparison panels).
     if (onToggleCompare) {
-        snapshotRow.appendChild(makeToolbarButton({
+        const compareBtn = makeToolbarButton({
             icon: TOOLBAR_ICONS.compareSnapshot,
             title: compare
                 ? "Exit Compare mode"
                 : "Compare mode — open another snapshot side by side",
             onClick: onToggleCompare,
-        }));
+        });
+        // Exempt from the read-only comparison-panel click guard so the user
+        // can always toggle back out of Compare mode.
+        compareBtn.dataset.koolookCompareExit = "1";
+        snapshotRow.appendChild(compareBtn);
     }
     // Settings cog removed in #137: library-path change now lives inside the
     // Save dialog ("Save to...") and the Load dialog ("Load from..."), both
@@ -3022,10 +3048,6 @@ export function renderPanel(container, options = {}) {
     // would read live state instead of the snapshot) or leak window listeners
     // across compare toggles.
     if (!compare) {
-        // `signal` (from renderSidebar's AbortController) lets a re-render drop
-        // the previous mount's listeners, so toggling Compare on/off doesn't
-        // leak a fresh set of window listeners each time.
-        const listenerOpts = signal ? { signal } : undefined;
         window.addEventListener(PICKS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }), listenerOpts);
         window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }), listenerOpts);
         window.addEventListener("storage", (e) => {
