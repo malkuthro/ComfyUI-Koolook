@@ -127,6 +127,7 @@ export function ensureStyle() {
 .koolook-snap-status-autosaved { background: #6db4ff; }
 .koolook-snap-status-unsaved { background: #e0a64a; }
 .koolook-snap-status-none { background: rgba(255,255,255,0.28); }
+.koolook-snap-status-comparing { background: #6db4ff; }
 .koolook-tree-divider { margin: 8px 8px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
 .koolook-search-wrap { position: relative; width: 100%; }
 .koolook-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.55; font-size: 11px; pointer-events: none; }

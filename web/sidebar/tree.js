@@ -2311,7 +2311,13 @@ export function renderSidebar(container) {
     // Left = live working copy (untouched). Right = the same render, fed the
     // chosen snapshot read-only, then tinted.
     renderPanel(leftCol, { onToggleCompare: exitCompareMode, signal });
-    renderPanel(rightCol, { compare: true, snapshot: compareSnapshot, onToggleCompare: exitCompareMode, signal });
+    renderPanel(rightCol, {
+        compare: true,
+        snapshot: compareSnapshot,
+        onToggleCompare: exitCompareMode,
+        signal,
+        compareName: compareMeta && compareMeta.displayName ? compareMeta.displayName : "",
+    });
     applyCompareTint(rightCol, compareSnapshot);
 
     const status = document.createElement("div");
@@ -2387,7 +2393,7 @@ function applyCompareTint(panelEl, snapshot) {
 }
 
 export function renderPanel(container, options = {}) {
-    const { compare = false, snapshot = null, onToggleCompare = null, signal = null } = options;
+    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "" } = options;
     // Compare mode (#181): when `compare` is set, every tree (re-)render in
     // this panel reads from the loaded `snapshot` via the read-only store
     // overrides, and the live-change listeners at the bottom are skipped so
@@ -2567,10 +2573,21 @@ export function renderPanel(container, options = {}) {
             snapshotStatus.title = snapshotTooltip(status);
         });
     }
-    refreshSnapshotStatus();
-    window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
-    window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
-    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+    if (compare) {
+        // The comparison panel identifies the snapshot it is showing — its own
+        // name + a static "comparing" state — rather than echoing the live
+        // working-copy status. It never refreshes off live status events.
+        snapshotDot.className = "koolook-snap-status-dot koolook-snap-status-comparing";
+        snapshotName.classList.remove("koolook-snap-status-name-empty");
+        snapshotName.textContent = compareName || "(snapshot)";
+        snapshotState.textContent = "· comparing";
+        snapshotStatus.title = compareName ? `Comparing: ${compareName}` : "Comparing";
+    } else {
+        refreshSnapshotStatus();
+        window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+        window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+        window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+    }
 
     snapshotRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.loadSnapshot,
