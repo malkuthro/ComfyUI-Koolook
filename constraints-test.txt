@@ -1,0 +1,56 @@
+# Locked test dependency set for ComfyUI-Koolook.
+#
+# Pinned resolve of the `[test]` extras in pyproject.toml plus their full
+# transitive closure, captured via `pip freeze --exclude-editable`. The
+# bootstrap scripts install with `-c constraints-test.txt`, so every fresh
+# .venv is reproducible and pip-audit-verifiable.
+#
+# DO NOT hand-edit the version pins. To change the set: edit the `[test]`
+# extras in pyproject.toml, then regenerate this file with
+#   bash scripts/bootstrap_test_env.sh --force --relock   (POSIX)
+#   scripts\bootstrap_test_env.ps1 -Force -Relock         (Windows)
+# and commit the diff -- that diff is the dependency-change review surface.
+#
+# Generated against CPython 3.14 / macOS arm64. Version-only pins (no
+# hashes): they resolve wherever wheels are published for these versions;
+# an older interpreter or unusual ABI may need a source build or a re-lock
+# (--relock). Pins guard versions, not artifacts.
+aiohappyeyeballs==2.6.2
+aiohttp==3.13.5
+aiosignal==1.4.0
+attrs==26.1.0
+boolean.py==5.0
+CacheControl==0.14.4
+certifi==2026.5.20
+charset-normalizer==3.4.7
+cyclonedx-python-lib==11.7.0
+defusedxml==0.7.1
+filelock==3.29.0
+frozenlist==1.8.0
+idna==3.17
+iniconfig==2.3.0
+license-expression==30.4.4
+markdown-it-py==4.2.0
+mdurl==0.1.2
+msgpack==1.1.2
+multidict==6.7.1
+packageurl-python==0.17.6
+packaging==26.2
+pillow==12.2.0
+pip-api==0.0.34
+pip-requirements-parser==32.0.1
+pip_audit==2.10.0
+platformdirs==4.10.0
+pluggy==1.6.0
+propcache==0.5.2
+py-serializable==2.1.0
+Pygments==2.20.0
+pyparsing==3.3.2
+pytest==9.0.3
+requests==2.34.2
+rich==15.0.0
+sortedcontainers==2.4.0
+tomli==2.4.1
+tomli_w==1.2.0
+urllib3==2.7.0
+yarl==1.24.2

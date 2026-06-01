@@ -24,10 +24,14 @@
   fresh checkout/worktree run the platform bootstrap script:
   `scripts\bootstrap_test_env.ps1` (Windows PowerShell) or
   `bash scripts/bootstrap_test_env.sh` (POSIX). Both create `.venv` and
-  install `.[test]` idempotently — pass `-Force` / `--force` to recreate.
-  Do not install into system Python or user-site packages. If `.venv`
-  cannot be used, stop and explain the blocker before installing anywhere
-  broader.
+  install the **locked** test set (`constraints-test.txt` — a pinned
+  resolve of `.[test]` + its full transitive closure), then **audit** it
+  with `pip-audit`; a known CVE fails the bootstrap. Idempotent (no-op if
+  `.venv` exists) — pass `-Force` / `--force` to recreate, `-Relock` /
+  `--relock` to re-resolve and rewrite the lock, `-NoAudit` / `--no-audit`
+  to skip the audit (e.g. offline). Do not install into system Python or
+  user-site packages. If `.venv` cannot be used, stop and explain the
+  blocker before installing anywhere broader.
 - Keep MAIN limited to:
   - custom Koolook nodes
   - wrapper loaders under `forks/`
@@ -36,6 +40,27 @@
   - `forks/forks_manifest.yaml`
   - `forks/THIRD_PARTY.md`
   - `forks/README.md` (if workflow conventions change)
+
+## Test env is pre-authorized (no "go" needed)
+
+Running the bootstrap script above is **pre-approved** — run it
+automatically whenever `.venv` is missing or `pytest` isn't importable,
+without asking first. It is safe by construction: it installs only the
+already-reviewed, pinned `constraints-test.txt` set and `pip-audit`-gates
+the result, so it can never silently pull an unreviewed package or version.
+This **supersedes the global `/warmup` skill's `MISSING_VENV` hard-stop**:
+in this repo, when warmup finds `.venv` missing, silently run the bootstrap
+and continue — do not surface it as a blocker.
+
+Two things still need your attention, and only these:
+
+- **Bootstrap exits non-zero** (pip-audit flagged a CVE, or no Python was
+  found) — surface *that* as the blocker. A failed audit is the one signal
+  that genuinely warrants a human.
+- **Dependency changes** — editing the `[test]` extras in `pyproject.toml`
+  or regenerating `constraints-test.txt` (`--relock`) — still go through a
+  reviewed PR diff. The lock file *is* the review surface; never relock
+  silently as a drive-by.
 
 ## Radiance fork policy (v2_3_3)
 

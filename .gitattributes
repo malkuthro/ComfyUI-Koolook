@@ -3,3 +3,8 @@
 # PowerShell scripts use CRLF by Windows convention.
 *.sh   text eol=lf
 *.ps1  text eol=crlf
+
+# Dependency lock: normalize to LF regardless of which platform regenerates
+# it (the PowerShell --relock path would otherwise write CRLF), so the diff
+# stays the review surface.
+constraints-test.txt text eol=lf
