@@ -2407,12 +2407,15 @@ export function renderPanel(container, options = {}) {
         // Read-only comparison panel (#181): the same interactive renderPanel is
         // reused (chrome stays visually identical), but the snapshot side must
         // never mutate or load live state. Capture-phase guards allow navigation
-        // only — folder expand/collapse, search, the view-mode toggle, and the
-        // A/B exit button — and neutralize every mutating/loading affordance:
-        // leaf load/insert clicks, pick ×/+, the snapshot + tools buttons,
-        // context menus, and drag. The buttons stay visible but inert.
+        // only — folder expand/collapse, search, and the A/B exit button — and
+        // neutralize every mutating/loading affordance: leaf load/insert clicks,
+        // pick ×/+, the snapshot + tools buttons, the grouping mode toggle
+        // (which writes the shared global GROUP_MODE_KEY), context menus, and
+        // drag — dragstart on the source PLUS dragover/drop so a drag begun in
+        // the live panel can't land on (and mutate via) the snapshot column.
+        // Buttons stay visible but inert.
         const NAV_ALLOW =
-            ".koolook-search, .koolook-mode-toggle, [data-koolook-compare-exit], .koolook-row:not(.koolook-leaf)";
+            ".koolook-search, [data-koolook-compare-exit], .koolook-row:not(.koolook-leaf)";
         container.addEventListener("click", (e) => {
             const t = e.target;
             if (t instanceof Element && t.closest(NAV_ALLOW)) return;
@@ -2421,6 +2424,8 @@ export function renderPanel(container, options = {}) {
         }, true);
         container.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         container.addEventListener("dragstart", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("drop", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
     }
 
     // Forward declarations — `tree` and `search` are created several rows

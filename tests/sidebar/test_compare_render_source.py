@@ -41,6 +41,42 @@ def test_enter_compare_mode_uses_readonly_chooser() -> None:
     )
 
 
+def _compare_guard_block(src: str) -> str:
+    # The read-only capture-guard block lives between the NAV_ALLOW declaration
+    # and the "Forward declarations" marker that follows the `if (compare)` block.
+    start = src.index("const NAV_ALLOW =")
+    return src[start:src.index("// Forward declarations", start)]
+
+
+def test_compare_panel_guard_blocks_drag_drop_fully() -> None:
+    # #181 read-only guarantee: the comparison panel must neutralize cross-panel
+    # drag-and-drop, not just dragstart. A drag begun in the live panel and
+    # dropped on a comparison folder row would otherwise persist a live
+    # move/archive (handleDndDrop -> persistMutation on the live store).
+    guard = _compare_guard_block(
+        (REPO_ROOT / "web" / "sidebar" / "tree.js").read_text(encoding="utf-8")
+    )
+    for evt in ("click", "contextmenu", "dragstart", "dragover", "drop"):
+        assert f'addEventListener("{evt}"' in guard, (
+            f"compare read-only guard is missing a capture handler for '{evt}'"
+        )
+    # Every guard listener must be capture-phase (third arg `true`).
+    assert guard.count(", true)") >= 5, (
+        "all compare-guard listeners must be registered capture-phase"
+    )
+
+
+def test_compare_nav_allow_excludes_group_mode_toggle() -> None:
+    # The grouping mode toggle writes a shared global key (GROUP_MODE_KEY), so it
+    # must NOT be allow-listed in the read-only comparison panel.
+    src = (REPO_ROOT / "web" / "sidebar" / "tree.js").read_text(encoding="utf-8")
+    start = src.index("const NAV_ALLOW =")
+    nav = src[start:src.index(";", start)]
+    assert "koolook-mode-toggle" not in nav, (
+        "grouping mode toggle writes a shared global key; drop it from NAV_ALLOW"
+    )
+
+
 def run_node_scenario(source: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["node", "--input-type=module"],
