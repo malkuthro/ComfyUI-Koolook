@@ -11,9 +11,11 @@ Copies only what that automation's iteration loop touches:
                                        node mappings; needs to be re-synced
                                        when the fork's NODE_CLASS_MAPPINGS
                                        set changes)
-    - k_audio_timeline.py              transcript-to-Director prompt node
-    - k_timeline_editor.py             standalone Director timeline UI node
     - web/whatdreamscost_koolook/      Director timeline-editor extension
+
+It also ships ``koolook_install_guard.py`` + ``koolook_versioning.py`` — the
+loader gates ``__init__.py`` imports at load — so a scoped sync never leaves
+the loader pointing at a module the target lacks (#198 / #183).
 
 Everything else in the live install - ``forks/radiance_koolook/``, the
 root ``k_*.py`` nodes, unrelated ``web/`` assets, ``video_formats/`` -
@@ -68,8 +70,14 @@ import sync_to_dev as _dev  # noqa: E402
 
 AUDIO_PATHS: tuple[str, ...] = (
     "__init__.py",
-    "k_audio_timeline.py",
-    "k_timeline_editor.py",
+    # __init__.py imports these at load, before any node group, and a missing
+    # gate is catastrophic (not per-group-guarded): the install guard's
+    # absolute-import fallback raises uncaught, and the koolook_versioning
+    # context probe mislabels its ImportError as a non-Comfy context and
+    # registers nothing. Ship them with __init__.py so a scoped sync never
+    # leaves the loader pointing at a module the target lacks (#198 / #183).
+    "koolook_install_guard.py",
+    "koolook_versioning.py",
     "forks/whatdreamscost_koolook",
     "web/whatdreamscost_koolook",
 )

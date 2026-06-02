@@ -120,45 +120,14 @@ in `metadata.json` and the PNG `koolook_audio_loop` text metadata.
 
 See [`runs/LOOP.md`](runs/LOOP.md) for the full per-render protocol and the retention rationale.
 
-## Timed transcript experiment
+## Timed transcript experiment (removed)
 
-Raw custom audio alone can fail to produce usable mouth timing even when
-the same words improve the render when typed into the prompt. The loop now
-has an optional helper for that gap.
-
-Inside ComfyUI, add `Koolook Audio Transcript Timeline`, set the same
-`audio_file`, `image_file`, duration, and FPS as the Director, then link
-its `transcript_json` output into the Koolook Director's
-`audio_transcript_json` input. Keep `use_custom_audio=True`; use the same
-`transcript_json` output with a text preview node to inspect what Whisper
-recognized. The Director converts the phrase timings into its internal
-`timeline_data`, `local_prompts`, and `segment_lengths` immediately before
-Prompt Relay conditioning runs.
-
-For Timeline Editor workflows, link `Koolook Timeline Editor.timeline_data`
-into `Koolook Audio Transcript Timeline.timeline_data`. The transcript node
-then reads every `audioSegments` clip, including separated clips, and applies
-that clip's start frame, trim start, and visible length before merging the
-phrases into the final Prompt Relay timing. The node also composes each
-speech/pause timing instruction with the active image segment prompt, so
-visual directions stay on the timeline image clips while speech timing is
-generated automatically.
-
-The same helper can also run from a script when an export file is useful:
-
-```powershell
-.\.venv\Scripts\python -m pip install -e ".[audio]"
-.\.venv\Scripts\python scripts\transcribe_audio_timeline.py <audio.mp3> --workflow <workflow.json> --out timed-prompts.json --patched-workflow timed-workflow.json
-```
-
-The helper uses `faster-whisper` to transcribe speech into timestamped
-phrases, inserts closed-mouth pause segments for silence, and emits
-Director-shaped `timeline_data`, `local_prompts`, and `segment_lengths`.
-Those fields remain useful for debugging or patched-workflow exports. Use
-`--patched-workflow` to write a loadable workflow JSON with those fields
-already applied to the Koolook Director. Render it with
-`use_custom_audio=True` to test whether LTX needs semantic speech timing
-in addition to the raw audio latent.
+The standalone `Koolook Audio Transcript Timeline` node and the
+`scripts/transcribe_audio_timeline.py` Whisper helper were removed in #198 —
+the capability was experimental and not worth maintaining as bundled nodes.
+The Koolook Director keeps its optional `audio_transcript_json` input, so a
+transcript JSON produced by external tooling can still drive semantic speech
+timing; the bundled loop no longer generates that JSON.
 
 ## Workflow JSON — Koolook node ID
 
