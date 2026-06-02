@@ -46,9 +46,13 @@ Using it inside ComfyUI? Open the operational guide:
 | `Easy_Pattern` | Easy Pattern (Koolook) | `Koolook/Testing` |
 | `Easy_LoadVideo` | Easy Load Video (Koolook) | `Koolook/Video` |
 | `Easy_VideoCombine` | Easy Video Combine (Koolook) | `Koolook/Video` |
+| `Easy_Utility` | Easy Utility (Koolook) | `Koolook/Utility` |
+| `LTXDirector__koolook` | LTX Director (Koolook) | `Koolook/PromptRelay` |
 
 The root Koolook nodes and the slim Radiance Koolook VAE wrappers have no
 extra Python dependencies beyond `torch`, which ComfyUI already requires.
+The video wrappers require Video Helper Suite, and the LTX Director fork is
+for workflows that already use the LTX / Prompt Relay node ecosystem.
 
 ## Install
 
