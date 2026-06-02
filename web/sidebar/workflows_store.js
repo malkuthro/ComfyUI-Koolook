@@ -113,7 +113,12 @@ function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-function sortJsonValue(value) {
+// Exported for reuse by snapshot_diff.js (issue #181) — the Compare view needs
+// the same key-order canonicalization to decide whether two workflow graphs
+// differ. Kept defined here (next to its `compareNames` dependency and
+// `normalizedStoresEqual`) rather than moved, so the store's own callers are
+// untouched.
+export function sortJsonValue(value) {
     if (Array.isArray(value)) return value.map(sortJsonValue);
     if (!value || typeof value !== "object") return value;
     const out = {};
@@ -538,16 +543,43 @@ export async function seedWorkflowDefaultsIfNeeded() {
 
 const ARCHIVE_RESERVED_NAME = "archive";
 
+// Read-only render-source override (issue #181, Compare mode). When set,
+// everything that resolves through `dirOf` — `listDirectoryNames`,
+// `getWorkflowGraph`, `getWorkflowTags`, `isWorkflowModule`, and the tree
+// gather in tree.js — reads this store instead of the live `workflowsCache`,
+// letting the Compare view render a second sidebar from a loaded snapshot
+// without mutating live state. Mutators also resolve paths through `dirOf`, so
+// the override is scoped to one synchronous render pass and always cleared
+// afterwards (see `withSnapshotSource` in tree.js); it must never straddle an
+// await or a user interaction.
+let renderSourceOverride = null;
+
+function activeStore() {
+    return renderSourceOverride || workflowsCache;
+}
+
+export function setWorkflowsRenderSource(store) {
+    renderSourceOverride =
+        store && typeof store === "object" && store.directories && typeof store.directories === "object"
+            ? store
+            : { directories: {} };
+}
+
+export function clearWorkflowsRenderSource() {
+    renderSourceOverride = null;
+}
+
 // Resolves to the DirNode at `path`, or `undefined` if any segment is missing.
 // `[]` returns a synthetic wrapper around the root (with `directories`
-// pointing at `workflowsCache.directories`) so callers don't need a special
+// pointing at the active store's directories) so callers don't need a special
 // case for root vs. nested.
 export function dirOf(path) {
     if (!Array.isArray(path)) return undefined;
+    const store = activeStore();
     if (path.length === 0) {
-        return { workflows: {}, directories: workflowsCache.directories || {} };
+        return { workflows: {}, directories: store.directories || {} };
     }
-    let node = { directories: workflowsCache.directories || {} };
+    let node = { directories: store.directories || {} };
     for (const seg of path) {
         if (typeof seg !== "string" || !seg) return undefined;
         if (!node.directories || !node.directories[seg]) return undefined;

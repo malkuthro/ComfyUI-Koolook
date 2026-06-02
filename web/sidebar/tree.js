@@ -36,6 +36,8 @@ import {
     addToMyPicks,
     loadAutoPullHidden,
     hideAutoPullType,
+    setPicksRenderSource,
+    clearPicksRenderSource,
 } from "./picks_store.js";
 import {
     persistMutation,
@@ -58,7 +60,11 @@ import {
     isWorkflowModule,
     addTag,
     removeTag,
+    getAllWorkflowsForExport,
+    setWorkflowsRenderSource,
+    clearWorkflowsRenderSource,
 } from "./workflows_store.js";
+import { diffPicks, diffWorkflows } from "./snapshot_diff.js";
 import {
     serializeFullCanvas,
     serializeSelection,
@@ -124,6 +130,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const TOOLBAR_ICONS = {
     loadSnapshot: { kind: "letter", text: "L" },
     saveSnapshot: { kind: "letter", text: "S" },
+    compareSnapshot: { kind: "letter", text: "A/B" },
     help: { kind: "letter", text: "H" },
     exportStarter: { kind: "letter", text: "E" },
     installMissing: { kind: "letter", text: "I" },
@@ -1314,6 +1321,8 @@ function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadc
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
     if (unresolved) row.classList.add("koolook-leaf-unresolved");
+    // Stable identity for Compare-mode tinting (#181). Invisible otherwise.
+    if (type) row.dataset.koolookNodeType = type;
     // Breadcrumb-equipped rows under search-flatten mode also surface the
     // origin path in the row tooltip (`type` is still appended) so a hover
     // confirms exactly which folder the leaf would live under in the tree.
@@ -1383,9 +1392,11 @@ function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadc
     return row;
 }
 
-function makeWorkflowLeafRow({ name, dirName, onClick, onContextMenu, draggablePayload, isModule = false }) {
+function makeWorkflowLeafRow({ name, dirName, wfPath, onClick, onContextMenu, draggablePayload, isModule = false }) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
+    // Stable identity for Compare-mode tinting (#181). Invisible otherwise.
+    if (wfPath) row.dataset.koolookWfPath = wfPath;
     // Module-tagged entries get a distinct hover tooltip so the green icon
     // isn't the only signal that a left-click does something different. The
     // `pi pi-plus-circle` class swap is what actually makes them look like
@@ -2149,6 +2160,7 @@ addSection({
                             row: makeWorkflowLeafRow({
                                 name: entry.wfName,
                                 dirName: entry.path.join(" / "),
+                                wfPath: [...entry.path, entry.wfName].join("/"),
                                 onClick: () => moduleEntry
                                     ? insertWorkflowOntoCanvas(entry.path, entry.wfName)
                                     : loadWorkflowOntoCanvas(entry.path, entry.wfName),
@@ -2200,6 +2212,7 @@ function renderGatheredDir(parentCtx, dir) {
                                 row: makeWorkflowLeafRow({
                                     name: wfName,
                                     dirName: dirDisplay,
+                                    wfPath: [...dirPath, wfName].join("/"),
                                     onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
                                     onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, true),
                                     draggablePayload: { type: "workflow", path: dirPath, name: wfName },
@@ -2215,6 +2228,7 @@ function renderGatheredDir(parentCtx, dir) {
                     row: makeWorkflowLeafRow({
                         name: wfName,
                         dirName: dirDisplay,
+                        wfPath: [...dirPath, wfName].join("/"),
                         // Module convention: left-click inserts; non-module
                         // entries left-click loads (replaces canvas, with
                         // confirm modal as before). Both actions are always
@@ -2235,10 +2249,190 @@ function renderGatheredDir(parentCtx, dir) {
 // =============================================================================
 // Panel rendering
 // =============================================================================
-export function renderPanel(container) {
+// =============================================================================
+// Compare mode (#181) — host + helpers.
+//
+// `renderSidebar` is the panel entry point bound by koolook_sidebar.js. With
+// compare off it renders the single live `renderPanel`, exactly as before.
+// With compare on it lays out two columns — the live working copy and a
+// read-only render of a chosen snapshot — plus a bottom "Compare mode" status,
+// then tints the comparison column from the snapshot diff. The existing
+// `renderPanel` + CSS are reused verbatim; only the data source differs.
+// =============================================================================
+
+let compareSnapshot = null;   // null = compare off; else the chosen snapshot object
+let compareMeta = null;       // { fileName, displayName } of the chosen snapshot
+let sidebarContainer = null;  // remembered so a toggle can re-render in place
+let liveListeners = null;     // AbortController for the live panel's window listeners
+
+// Run `fn` synchronously with the render path pointed at `snapshot`'s data
+// instead of live state. Read-only: always clears the overrides afterwards
+// (even if `fn` throws) so later live renders see live data. Must wrap only
+// synchronous render work — never an await.
+function withSnapshotSource(snapshot, fn) {
+    setPicksRenderSource(snapshot && Array.isArray(snapshot.picks) ? snapshot.picks : []);
+    setWorkflowsRenderSource(snapshot && snapshot.workflows ? snapshot.workflows : { directories: {} });
+    try {
+        return fn();
+    } finally {
+        clearPicksRenderSource();
+        clearWorkflowsRenderSource();
+    }
+}
+
+export function renderSidebar(container) {
+    sidebarContainer = container;
+    // Drop the previous mount's live-panel window listeners before re-rendering
+    // (toggling Compare re-runs renderPanel for the live panel).
+    if (liveListeners) liveListeners.abort();
+    liveListeners = new AbortController();
+    const signal = liveListeners.signal;
+
+    if (!compareSnapshot) {
+        container.classList.remove("koolook-compare-host");
+        renderPanel(container, { onToggleCompare: enterCompareMode, signal });
+        return;
+    }
+
+    container.innerHTML = "";
+    container.classList.remove("koolook-sidebar");
+    container.classList.add("koolook-compare-host");
+
+    const split = document.createElement("div");
+    split.className = "koolook-compare-split";
+    const leftCol = document.createElement("div");
+    leftCol.className = "koolook-compare-col";
+    const rightCol = document.createElement("div");
+    rightCol.className = "koolook-compare-col";
+    split.appendChild(leftCol);
+    split.appendChild(rightCol);
+    container.appendChild(split);
+
+    // Left = live working copy (untouched). Right = the same render, fed the
+    // chosen snapshot read-only, then tinted.
+    renderPanel(leftCol, { onToggleCompare: exitCompareMode, signal });
+    renderPanel(rightCol, {
+        compare: true,
+        snapshot: compareSnapshot,
+        onToggleCompare: exitCompareMode,
+        signal,
+        compareName: compareMeta && compareMeta.displayName ? compareMeta.displayName : "",
+    });
+    applyCompareTint(rightCol, compareSnapshot);
+
+    const status = document.createElement("div");
+    status.className = "koolook-compare-status";
+    status.textContent = compareMeta && compareMeta.displayName
+        ? `Compare mode · ${compareMeta.displayName}`
+        : "Compare mode";
+    container.appendChild(status);
+}
+
+function rerenderSidebar() {
+    if (sidebarContainer) renderSidebar(sidebarContainer);
+}
+
+// Enter Compare mode: reuse the existing Load dialog in read-only "choose"
+// mode (`onChoose`) so picking a preset hands back its parsed snapshot WITHOUT
+// applying it. Never calls applySnapshot — the non-destructive guarantee.
+function enterCompareMode() {
+    showLoadSnapshotDialog({
+        listPresets,
+        readPreset,
+        deletePreset,
+        applySnapshot,
+        setCurrentPresetName,
+        getCurrentPresetName,
+        getLibraryInfo,
+        saveSettings,
+        browseDirectories,
+        createBrowseDirectory,
+        writePreLoadAutosave,
+        markStateSaved,
+        markStateAutosaved,
+        listAutosaves,
+        revealPresetFolder,
+        onToast: toast,
+        onChoose: (snap, meta) => {
+            compareSnapshot = snap;
+            compareMeta = meta || null;
+            rerenderSidebar();
+        },
+    });
+}
+
+function exitCompareMode() {
+    compareSnapshot = null;
+    compareMeta = null;
+    rerenderSidebar();
+}
+
+// Tint the comparison column from the snapshot diff (text-only, via CSS
+// classes on the existing rows). Nodes: a pick only in the comparison →
+// green/new. Workflows: per full path → green/new or red/diff; identical
+// (ignoring savedAt) stays plain. Runs after the column rendered with the
+// store overrides already cleared, so the working-side reads are live.
+function applyCompareTint(panelEl, snapshot) {
+    if (!panelEl || !snapshot) return;
+
+    const pickDiff = diffPicks(loadUserPicks(), Array.isArray(snapshot.picks) ? snapshot.picks : []);
+    const newPicks = new Set(pickDiff.onlyComparison);
+    for (const row of panelEl.querySelectorAll("[data-koolook-node-type]")) {
+        if (newPicks.has(row.dataset.koolookNodeType)) row.classList.add("koolook-cmp-new");
+    }
+
+    const snapWorkflows = snapshot.workflows && typeof snapshot.workflows === "object"
+        ? snapshot.workflows
+        : { directories: {} };
+    const wfStatus = diffWorkflows(getAllWorkflowsForExport(), snapWorkflows);
+    for (const row of panelEl.querySelectorAll("[data-koolook-wf-path]")) {
+        const status = wfStatus[row.dataset.koolookWfPath];
+        if (status === "new") row.classList.add("koolook-cmp-new");
+        else if (status === "diff") row.classList.add("koolook-cmp-diff");
+    }
+}
+
+export function renderPanel(container, options = {}) {
+    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "" } = options;
+    // Compare mode (#181): when `compare` is set, every tree (re-)render in
+    // this panel reads from the loaded `snapshot` via the read-only store
+    // overrides, and the live-change listeners at the bottom are skipped so
+    // the snapshot panel stays static. compare=false is byte-identical to the
+    // pre-#181 single live panel.
+    const withSource = compare
+        ? (fn) => withSnapshotSource(snapshot, fn)
+        : (fn) => fn();
+    // `signal` (from renderSidebar's AbortController) lets a re-render drop the
+    // previous mount's window listeners, so toggling Compare never leaks a set.
+    const listenerOpts = signal ? { signal } : undefined;
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
+    if (compare) {
+        container.classList.add("koolook-compare-panel");
+        // Read-only comparison panel (#181): the same interactive renderPanel is
+        // reused (chrome stays visually identical), but the snapshot side must
+        // never mutate or load live state. Capture-phase guards allow navigation
+        // only — folder expand/collapse, search, and the A/B exit button — and
+        // neutralize every mutating/loading affordance: leaf load/insert clicks,
+        // pick ×/+, the snapshot + tools buttons, the grouping mode toggle
+        // (which writes the shared global GROUP_MODE_KEY), context menus, and
+        // drag — dragstart on the source PLUS dragover/drop so a drag begun in
+        // the live panel can't land on (and mutate via) the snapshot column.
+        // Buttons stay visible but inert.
+        const NAV_ALLOW =
+            ".koolook-search, [data-koolook-compare-exit], .koolook-row:not(.koolook-leaf)";
+        container.addEventListener("click", (e) => {
+            const t = e.target;
+            if (t instanceof Element && t.closest(NAV_ALLOW)) return;
+            e.preventDefault();
+            e.stopPropagation();
+        }, true);
+        container.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("dragstart", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("drop", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+    }
 
     // Forward declarations — `tree` and `search` are created several rows
     // below, but the Nodes-row mode toggle (built mid-renderPanel) needs to
@@ -2249,7 +2443,7 @@ export function renderPanel(container) {
     let tree;
     let search;
     const rerenderTree = () => {
-        if (tree) renderTree({ treeEl: tree, query: search ? search.value : "" });
+        if (tree) withSource(() => renderTree({ treeEl: tree, query: search ? search.value : "" }));
     };
 
     // Three small wrappers over the snapshot dialogs. Each opens directly
@@ -2379,10 +2573,21 @@ export function renderPanel(container) {
             snapshotStatus.title = snapshotTooltip(status);
         });
     }
-    refreshSnapshotStatus();
-    window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus);
-    window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus);
-    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus);
+    if (compare) {
+        // The comparison panel identifies the snapshot it is showing — its own
+        // name + a static "comparing" state — rather than echoing the live
+        // working-copy status. It never refreshes off live status events.
+        snapshotDot.className = "koolook-snap-status-dot koolook-snap-status-comparing";
+        snapshotName.classList.remove("koolook-snap-status-name-empty");
+        snapshotName.textContent = compareName || "(snapshot)";
+        snapshotState.textContent = "· comparing";
+        snapshotStatus.title = compareName ? `Comparing: ${compareName}` : "Comparing";
+    } else {
+        refreshSnapshotStatus();
+        window.addEventListener(PICKS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+        window.addEventListener(WORKFLOWS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+        window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshSnapshotStatus, listenerOpts);
+    }
 
     snapshotRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.loadSnapshot,
@@ -2418,13 +2623,29 @@ export function renderPanel(container) {
         quickSaveBtn.disabled = !getCurrentPresetName();
     }
     refreshQuickSaveDisabled();
-    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled);
+    window.addEventListener(SNAPSHOT_STATUS_CHANGED_EVENT, refreshQuickSaveDisabled, listenerOpts);
     snapshotRow.appendChild(quickSaveBtn);
     snapshotRow.appendChild(makeToolbarButton({
         icon: TOOLBAR_ICONS.saveSnapshot,
         title: "Save current state — overwrites the last-loaded preset, or prompts for a name",
         onClick: openSaveDialog,
     }));
+    // A/B — Compare mode toggle (#181). Same letter-button style as L/S; the
+    // host (`renderSidebar`) supplies the toggle handler (enter on the live
+    // panel, exit on the comparison panels).
+    if (onToggleCompare) {
+        const compareBtn = makeToolbarButton({
+            icon: TOOLBAR_ICONS.compareSnapshot,
+            title: compare
+                ? "Exit Compare mode"
+                : "Compare mode — open another snapshot side by side",
+            onClick: onToggleCompare,
+        });
+        // Exempt from the read-only comparison-panel click guard so the user
+        // can always toggle back out of Compare mode.
+        compareBtn.dataset.koolookCompareExit = "1";
+        snapshotRow.appendChild(compareBtn);
+    }
     // Settings cog removed in #137: library-path change now lives inside the
     // Save dialog ("Save to...") and the Load dialog ("Load from..."), both
     // backed by the same folder picker. The cog is gone; the snapshot row
@@ -2793,7 +3014,7 @@ export function renderPanel(container) {
     tree.className = "koolook-tree";
     container.appendChild(tree);
 
-    renderTree({ treeEl: tree, query: "" });
+    withSource(() => renderTree({ treeEl: tree, query: "" }));
 
     // ---- Build tag (dev-sync verification) ----
     // `scripts/sync_to_dev.py` writes `web/_dev_build.json` post-sync so the
@@ -2840,15 +3061,21 @@ export function renderPanel(container) {
     search.addEventListener("input", (e) => {
         const q = e.target.value;
         if (debounce) clearTimeout(debounce);
-        debounce = setTimeout(() => renderTree({ treeEl: tree, query: q }), 60);
+        debounce = setTimeout(() => withSource(() => renderTree({ treeEl: tree, query: q })), 60);
     });
 
     // ---- Event subscriptions for live re-rendering ----
-    window.addEventListener(PICKS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
-    window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }));
-    window.addEventListener("storage", (e) => {
-        if (e.key === STORAGE_KEY || e.key === WORKFLOWS_FALLBACK_KEY || e.key === GROUP_MODE_KEY) {
-            renderTree({ treeEl: tree, query: search.value });
-        }
-    });
+    // Skipped in compare mode: a comparison panel shows a static snapshot, so
+    // it must not re-render off live picks/workflows/storage changes (which
+    // would read live state instead of the snapshot) or leak window listeners
+    // across compare toggles.
+    if (!compare) {
+        window.addEventListener(PICKS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }), listenerOpts);
+        window.addEventListener(WORKFLOWS_CHANGED_EVENT, () => renderTree({ treeEl: tree, query: search.value }), listenerOpts);
+        window.addEventListener("storage", (e) => {
+            if (e.key === STORAGE_KEY || e.key === WORKFLOWS_FALLBACK_KEY || e.key === GROUP_MODE_KEY) {
+                renderTree({ treeEl: tree, query: search.value });
+            }
+        }, listenerOpts);
+    }
 }

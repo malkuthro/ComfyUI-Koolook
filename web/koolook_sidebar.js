@@ -35,7 +35,7 @@ import {
 } from "./sidebar/workflows_store.js";
 import { loadUserPicks } from "./sidebar/picks_store.js";
 import { showConfirmModal } from "./sidebar/modals.js";
-import { renderPanel } from "./sidebar/tree.js";
+import { renderSidebar } from "./sidebar/tree.js";
 import { patchCanvasMenu } from "./sidebar/canvas_menu.js";
 
 function wireOfflineFallbackRecovery(initialBlob) {
@@ -192,7 +192,7 @@ app.registerExtension({
             tooltip: TAB_TOOLTIP,
             icon: TAB_ICON,
             type: "custom",
-            render: (el) => renderPanel(el),
+            render: (el) => renderSidebar(el),
         });
         patchCanvasMenu();
         // Periodic defensive auto-save — fires every 5 minutes if state has

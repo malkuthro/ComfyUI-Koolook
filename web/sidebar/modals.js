@@ -1449,6 +1449,10 @@ export function showLoadSnapshotDialog({
     listAutosaves,
     revealPresetFolder,
     onToast,
+    // Compare mode (#181): when provided, selecting a preset (or an autosave)
+    // calls onChoose(snapshot, meta) and closes — instead of the destructive
+    // applySnapshot load. Default undefined keeps the normal Load flow intact.
+    onChoose,
 }) {
     const toast = onToast || (() => {});
     const body = document.createElement("div");
@@ -1606,6 +1610,19 @@ export function showLoadSnapshotDialog({
     // case, and no YES/NO choice modal at all). ``close()`` here refers
     // to the OUTER Load Snapshot dialog's overlay.
     async function doNamedLoad(preview) {
+        // Compare mode: read-only — hand the parsed snapshot back and close.
+        // No pre-load auto-save, no applySnapshot, no tracker change.
+        if (onChoose) {
+            try {
+                const snap = await readPreset(preview.fileName);
+                close();
+                onChoose(snap, { fileName: preview.fileName, displayName: preview.displayName });
+            } catch (e) {
+                console.error("[Koolook] preset read (compare) failed:", e);
+                toast(`Could not read "${preview.displayName}": ${e.message}`);
+            }
+            return;
+        }
         try {
             // Defensive auto-save BEFORE any destructive write — see
             // `writePreLoadAutosave` rationale in snapshot.js. If the
@@ -1667,6 +1684,18 @@ export function showLoadSnapshotDialog({
 
     async function doAutosaveRestore(item) {
         const tooltipName = `${item.dir}/${item.fileName}`;
+        // Compare mode: read-only — hand the parsed snapshot back and close.
+        if (onChoose) {
+            try {
+                const snap = await readPreset(item.fileName, { dir: item.dir });
+                close();
+                onChoose(snap, { fileName: item.fileName, displayName: tooltipName });
+            } catch (e) {
+                console.error("[Koolook] autosave read (compare) failed:", e);
+                toast(`Could not read "${tooltipName}": ${e.message}`);
+            }
+            return;
+        }
         try {
             let backupName = null;
             if (typeof writePreLoadAutosave === "function") {
