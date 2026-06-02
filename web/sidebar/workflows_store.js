@@ -776,10 +776,15 @@ export function copyWorkflowIntoStore(store, dirSegs, wfName, graph, { tags = []
     if (!store || typeof store !== "object" || !Array.isArray(dirSegs) || typeof wfName !== "string" || !wfName) {
         return { status: "failed", finalName: wfName };
     }
+    // Prototype-pollution guard for the destination keys, matching the other
+    // name-keyed store mutators (#203): a "__proto__"/"constructor"/"prototype"
+    // workflow name or directory segment (from a crafted snapshot) would
+    // otherwise poison Object.prototype on the assignments below.
+    if (!isSafeObjectKey(wfName)) return { status: "failed", finalName: wfName };
     if (!store.directories) store.directories = {};
     let node = store;
     for (const seg of dirSegs) {
-        if (typeof seg !== "string" || !seg) return { status: "failed", finalName: wfName };
+        if (typeof seg !== "string" || !seg || !isSafeObjectKey(seg)) return { status: "failed", finalName: wfName };
         if (!node.directories) node.directories = {};
         if (!node.directories[seg]) node.directories[seg] = { workflows: {}, directories: {} };
         node = node.directories[seg];

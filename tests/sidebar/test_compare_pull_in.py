@@ -236,6 +236,27 @@ def test_copy_folder_bulk_merge() -> None:
     assert proc.returncode == 0, proc.stderr
 
 
+def test_copy_engine_rejects_prototype_polluting_names() -> None:
+    # The copy engine writes user-named keys (from a possibly-crafted snapshot),
+    # so it must reject __proto__/constructor/prototype like the other name-keyed
+    # store mutators (#203) — no Object.prototype pollution.
+    proc = run_node_scenario(
+        textwrap.dedent(
+            """
+            import assert from "node:assert/strict";
+            import { copyWorkflowIntoStore } from "./web/sidebar/workflows_store.js";
+
+            const target = { directories: {} };
+            assert.equal(copyWorkflowIntoStore(target, ["Basics"], "__proto__", { n: 1 }, {}).status, "failed");
+            assert.equal(copyWorkflowIntoStore(target, ["__proto__"], "wf", { n: 1 }, {}).status, "failed");
+            assert.equal(copyWorkflowIntoStore(target, ["Basics"], "constructor", { n: 1 }, {}).status, "failed");
+            assert.equal(({}).n, undefined, "Object.prototype not polluted");
+            """
+        )
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
 def test_copy_engine_deep_clones_graph() -> None:
     # The engine must deep-clone so the destination never aliases the source
     # graph object — a later edit on either side must not bleed across.
