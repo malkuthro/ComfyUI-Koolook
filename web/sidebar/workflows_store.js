@@ -37,6 +37,16 @@ import {
 
 let workflowsCache = { directories: {} };
 
+// Reject the three keys that can poison Object.prototype when an untrusted
+// directory/workflow name is used as an object key. Guards the keyed-mutation
+// sinks below (CodeQL js/prototype-polluting-assignment — e.g. archiveWorkflow's
+// `dir.workflows[wfName].archived = true`, where a "__proto__" name resolves to
+// Object.prototype and slips past the truthy existence check). Reads are
+// harmless; only assignment/delete/mutation by name needs the guard.
+function isSafeObjectKey(name) {
+    return name !== "__proto__" && name !== "constructor" && name !== "prototype";
+}
+
 function notifyWorkflowsChanged() {
     window.dispatchEvent(new CustomEvent(WORKFLOWS_CHANGED_EVENT));
 }
@@ -637,6 +647,7 @@ function ensureDirectoryAtPath(path) {
 export function addDirectory(parentPath, name) {
     name = (name || "").trim();
     if (!name) return false;
+    if (!isSafeObjectKey(name)) return false;
     // Type guard mirroring `moveDirectory` — without this, a future caller
     // passing `undefined` would crash on `parentPath.length`.
     if (!Array.isArray(parentPath)) return false;
@@ -655,6 +666,7 @@ export function addDirectory(parentPath, name) {
 export function renameDirectory(parentPath, oldName, newName) {
     newName = (newName || "").trim();
     if (!newName || newName === oldName) return false;
+    if (!isSafeObjectKey(oldName) || !isSafeObjectKey(newName)) return false;
     if (parentPath.length > 0 && newName.toLowerCase() === ARCHIVE_RESERVED_NAME) return false;
     const parent = dirOf(parentPath);
     if (!parent || !parent.directories || !parent.directories[oldName]) return false;
@@ -665,6 +677,7 @@ export function renameDirectory(parentPath, oldName, newName) {
 }
 
 export function deleteDirectory(parentPath, name) {
+    if (!isSafeObjectKey(name)) return false;
     const parent = dirOf(parentPath);
     if (!parent || !parent.directories || !parent.directories[name]) return false;
     delete parent.directories[name];
@@ -675,6 +688,7 @@ export function deleteDirectory(parentPath, name) {
 // Workflow operations (path-addressed)
 // =============================================================================
 export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = ensureDirectoryAtPath(path);
     if (!dir) return false;
     let archivedAs = null;
@@ -701,6 +715,7 @@ export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
 }
 
 export function archiveWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     dir.workflows[wfName].archived = true;
@@ -708,6 +723,7 @@ export function archiveWorkflow(path, wfName) {
 }
 
 export function unarchiveWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName].archived;
@@ -717,6 +733,7 @@ export function unarchiveWorkflow(path, wfName) {
 export function renameWorkflow(path, oldWfName, newWfName) {
     newWfName = (newWfName || "").trim();
     if (!newWfName || newWfName === oldWfName) return false;
+    if (!isSafeObjectKey(oldWfName) || !isSafeObjectKey(newWfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[oldWfName]) return false;
     if (dir.workflows[newWfName]) return false;
@@ -726,6 +743,7 @@ export function renameWorkflow(path, oldWfName, newWfName) {
 }
 
 export function deleteWorkflow(path, wfName) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     delete dir.workflows[wfName];
@@ -736,6 +754,7 @@ export function deleteWorkflow(path, wfName) {
 // false on identical paths, missing source workflow, missing destination,
 // or a name collision in the destination.
 export function moveWorkflow(srcPath, wfName, dstPath) {
+    if (!isSafeObjectKey(wfName)) return false;
     if (pathsEqual(srcPath, dstPath)) return false;
     const src = dirOf(srcPath);
     if (!src || !src.workflows[wfName]) return false;
@@ -776,6 +795,7 @@ export function getWorkflowTags(path, wfName) {
 }
 
 export function addTag(path, wfName, tag) {
+    if (!isSafeObjectKey(wfName)) return false;
     tag = (tag || "").trim();
     if (!tag) return false;
     const dir = dirOf(path);
@@ -789,6 +809,7 @@ export function addTag(path, wfName, tag) {
 }
 
 export function removeTag(path, wfName, tag) {
+    if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     const wf = dir.workflows[wfName];
@@ -871,6 +892,7 @@ export function clearArchive(path) {
 export function moveDirectory(srcParentPath, name, dstParentPath) {
     name = (name || "").trim();
     if (!name) return false;
+    if (!isSafeObjectKey(name)) return false;
     if (!Array.isArray(srcParentPath) || !Array.isArray(dstParentPath)) return false;
     // Same parent → no-op (identical location).
     if (pathsEqual(srcParentPath, dstParentPath)) return false;
