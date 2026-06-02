@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Koolook Archive Cleanup Harness</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #111;
+      color: #e6e8ec;
+      font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      gap: 18px;
+      padding: 18px;
+      box-sizing: border-box;
+    }
+    .harness-panel {
+      width: 360px;
+      height: 680px;
+      border: 1px solid #333842;
+      background: #17181c;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      overflow: hidden;
+    }
+    .harness-notes {
+      max-width: 420px;
+      color: #aeb4bd;
+    }
+    .harness-notes h1 {
+      color: #f3f4f6;
+      font-size: 18px;
+      margin: 0 0 8px;
+    }
+  </style>
+</head>
+<body>
+  <main id="panel" class="harness-panel"></main>
+  <aside class="harness-notes">
+    <h1>Archive cleanup harness</h1>
+    <p>Right-click the Archive folder to verify Clean up archive and Delete archive appear together. Cleanup runs across the whole selected Archive folder, groups entries by original setup name, and keeps the newest archived setup from the last 5 minutes, last hour, and last day for each group, plus one fallback if needed. Archived rows should show the original workflow name with concise archive timing underneath.</p>
+  </aside>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "/scripts/app.js": "data:text/javascript,export const app = window.app;"
+      }
+    }
+  </script>
+  <script type="module">
+    import { loadWorkflowsStore } from "../../../web/sidebar/workflows_store.js";
+    import { renderPanel } from "../../../web/sidebar/tree.js";
+
+    const store = {
+      directories: {
+        "LTX-2.3": {
+          workflows: {
+            "Script cleanup version 01": {
+              savedAt: "2026-06-02T12:00:00.000Z",
+              graph: { nodes: [{ id: 1, type: "CurrentV01" }] },
+            },
+            "Script cleanup version 01 (archived 2026-06-02 11:57:00)": {
+              archived: true,
+              archivedAt: "2026-06-02T11:57:00.000Z",
+              savedAt: "2026-06-02T11:57:00.000Z",
+              graph: { nodes: [{ id: 2, type: "V01Recent" }] },
+            },
+            "Script cleanup version 01 (archived 2026-06-02 11:30:00)": {
+              archived: true,
+              archivedAt: "2026-06-02T11:30:00.000Z",
+              savedAt: "2026-06-02T11:30:00.000Z",
+              graph: { nodes: [{ id: 3, type: "V01Hour" }] },
+            },
+            "Script cleanup version 01 (archived 2026-05-31 12:00:00)": {
+              archived: true,
+              archivedAt: "2026-05-31T12:00:00.000Z",
+              savedAt: "2026-05-31T12:00:00.000Z",
+              graph: { nodes: [{ id: 4, type: "V01Old" }] },
+            },
+            "Script cleanup version 02": {
+              savedAt: "2026-06-02T12:00:00.000Z",
+              graph: { nodes: [{ id: 5, type: "CurrentV02" }] },
+            },
+            "Script cleanup version 02 (archived 2026-06-02 11:58:00)": {
+              archived: true,
+              archivedAt: "2026-06-02T11:58:00.000Z",
+              savedAt: "2026-06-02T11:58:00.000Z",
+              graph: { nodes: [{ id: 6, type: "V02Recent" }] },
+            },
+            "Script cleanup version 02 (archived 2026-06-02 10:30:00)": {
+              archived: true,
+              archivedAt: "2026-06-02T10:30:00.000Z",
+              savedAt: "2026-06-02T10:30:00.000Z",
+              graph: { nodes: [{ id: 7, type: "V02Day" }] },
+            },
+            "Script cleanup version 02 (archived 2026-05-30 12:00:00)": {
+              archived: true,
+              archivedAt: "2026-05-30T12:00:00.000Z",
+              savedAt: "2026-05-30T12:00:00.000Z",
+              graph: { nodes: [{ id: 8, type: "V02Old" }] },
+            },
+          },
+          directories: {},
+        },
+      },
+    };
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (url, init = {}) => {
+      const textUrl = String(url);
+      if (textUrl.startsWith("/userdata/koolook_workflows.json")) {
+        if (init.method === "POST") return new Response("", { status: 200 });
+        return new Response(JSON.stringify(store), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(url, init);
+    };
+
+    window.LiteGraph = { registered_node_types: {} };
+    window.app = {
+      graph: {
+        _nodes: [],
+        serialize: () => ({ nodes: [] }),
+      },
+    };
+
+    try {
+      await loadWorkflowsStore();
+      renderPanel(document.getElementById("panel"));
+    } catch (err) {
+      const panel = document.getElementById("panel");
+      panel.style.padding = "14px";
+      panel.style.boxSizing = "border-box";
+      panel.textContent = err && err.stack ? err.stack : String(err);
+      throw err;
+    }
+  </script>
+</body>
+</html>
