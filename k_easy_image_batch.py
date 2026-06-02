@@ -338,8 +338,8 @@ class easy_ImageBatch:
             (image4, image4_frame, "image4"),
         )
 
-        # When the user is driving the node from `source_frames`, the 4 manual
-        # `imageN_frame` defaults (0, 4, 8, 12) shouldn't sneak in extra picks
+        # When the user is driving the node from `source_frames`, the manual
+        # `imageN_frame` defaults shouldn't sneak in extra picks
         # from source_batch — only the explicit list (and any explicitly
         # connected imageN inputs) should contribute. So the source_batch
         # fallback for an UN-connected slot is only active when the list is
