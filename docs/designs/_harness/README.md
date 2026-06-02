@@ -46,6 +46,12 @@ Then open one of the harness pages alongside the mockup:
 
 - Folder picker (mockup §6): http://127.0.0.1:8765/docs/designs/_harness/folder-picker.html
 - Mockup reference (§6):     http://127.0.0.1:8765/docs/designs/snapshot-dialogs.html#
+- Archive cleanup:          http://127.0.0.1:8765/docs/designs/_harness/archive-cleanup.html
+
+`archive-cleanup.html` is not tied to a design mockup; it mounts the real
+sidebar panel against canned workflow-store data so Archive row labels and
+the Archive-folder context menu can be screenshot-checked without a live
+ComfyUI install.
 
 The harness pages auto-trigger the default state on load; the buttons
 in the header cycle through the other states the mockup illustrates.

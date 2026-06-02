@@ -7,6 +7,13 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Workflow Archive cleanup.** The synthetic Archive folder now offers
+  `Clean up archive` alongside the existing all-or-nothing delete action.
+  Cleanup confirms keep/delete counts, groups archived entries by original
+  workflow name, keeps representative recent backups from the last five
+  minutes / hour / day, and leaves active workflows untouched. New archive
+  entries store `archivedAt`, while legacy timestamped names and `savedAt`
+  remain compatible.
 - **`Easy_VideoCombine`: loader-friendly video path outputs.** The node
   now keeps its original `Filenames` output and appends clean string
   outputs for the final video's full path, directory, filename, and JSON

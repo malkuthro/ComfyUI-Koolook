@@ -179,7 +179,11 @@ export function showConfirmModal({ title, message, confirmLabel, cancelLabel, da
 
     const msg = document.createElement("div");
     msg.className = "koolook-modal-message";
-    msg.textContent = message;
+    if (message && typeof message === "object" && typeof message.nodeType === "number") {
+        msg.appendChild(message);
+    } else {
+        msg.textContent = message;
+    }
     body.appendChild(msg);
 
     let overlay;

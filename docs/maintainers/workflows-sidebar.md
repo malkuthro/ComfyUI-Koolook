@@ -71,7 +71,7 @@ the tag editor keeps the first-class `module` flag in sync.
 
 - **Workflow row**: Load / **Insert into canvas** / Update from selection or canvas / Rename / Duplicate / Tags / Move to archive (or Restore from archive if already archived) / + New directory / + New subdirectory / Delete. Existing-folder moves are handled by drag-and-drop so the menu stays short in large libraries.
 - **Directory row** (any depth): **Create subdirectory…** / Rename / Delete (with confirm if non-empty — the message names workflow + subdirectory counts).
-- **Archive folder** (synthetic — appears only when a directory has archived workflows): **Delete archive (N)** — removes every archived workflow in this directory in one go (active workflows in the same directory are untouched).
+- **Archive folder** (synthetic — appears only when a directory has archived workflows): **Clean up archive** runs across the whole selected Archive folder, groups entries by original workflow/setup name, keeps the newest archived entry from the last 5 minutes, last hour, and last day for each group (plus one fallback if none land in those windows), and confirms the keep/delete counts before mutating; **Delete archive (N)** removes every archived workflow in this directory in one go. Active workflows in the same directory are untouched by both actions.
 
 ## Drag-and-drop (Tier 1 — moves only; reordering is alphabetical)
 
@@ -195,5 +195,5 @@ location.reload();
 - **Folder expansion state persists across re-renders** (the `pathStates` Map in `web/sidebar/tree.js`). Saving never collapses the directory you were viewing — and a save into a nested path opens every ancestor folder.
 - **Archive sub-folder is rendered *above* active workflows** in each directory (and *below* nested subdirectories), so the latest active workflow sits closest to the bottom of its directory — easy to spot.
 - **Directory header counts include all descendants.** A parent dir with no direct workflows but multiple subdirectories shows the recursive total.
-- **No auto-pruning of archives.** Re-saving the same name many times leaves many timestamped archive entries. Right-click → Delete to remove individual ones when no longer useful.
+- **No background auto-pruning of archives.** Re-saving the same name can still leave many timestamped archive entries. Right-click the synthetic Archive folder → **Clean up archive** to triage all archived entries in that folder by original workflow/setup name, keeping the newest archived entry from the last 5 minutes, last hour, and last day for each group. Use **Delete archive (N)** / per-row Delete when you want explicit removal.
 - **Same-pattern distribution as `starter_preset.json`** — see [`curated-sidebar.md`](curated-sidebar.md) for the seeding semantics that also apply here.

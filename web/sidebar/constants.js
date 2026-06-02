@@ -169,6 +169,9 @@ export function ensureStyle() {
 .koolook-module-icon { color: #7be08a; opacity: 0.95; flex-shrink: 0; font-size: 11px; }
 .koolook-leaf-dot { width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: rgba(255,255,255,0.45); flex-shrink: 0; }
 .koolook-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koolook-name-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.koolook-name-stack .koolook-name { flex: none; width: 100%; }
+.koolook-row-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; opacity: 0.55; margin-top: 1px; }
 .koolook-count { background: rgba(255,255,255,0.08); padding: 1px 7px; border-radius: 8px; font-size: 11px; opacity: 0.75; }
 .koolook-children { padding-left: 14px; }
 .koolook-empty { padding: 14px 8px; opacity: 0.65; font-size: 12px; line-height: 1.4; }
@@ -189,6 +192,8 @@ export function ensureStyle() {
 .koolook-modal-title { font-size: 15px; font-weight: 700; margin: -16px -18px 14px; padding: 14px 18px; border-bottom: 1px solid var(--border-color, #302f2f); background: var(--comfy-menu-bg, #181818); }
 .koolook-modal-pathline { font-size: 11px; opacity: 0.55; margin: -6px 0 12px; white-space: normal; overflow-wrap: anywhere; cursor: default; }
 .koolook-modal-message { font-size: 12px; opacity: 0.85; margin-bottom: 14px; line-height: 1.45; }
+.koolook-confirm-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.koolook-confirm-list li { padding-left: 2px; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
 .koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, #111111); border: 1px solid var(--border-color, #302f2f); border-radius: 4px; color: var(--input-text, #e6e8ec); font-size: 13px; box-sizing: border-box; outline: none; }
 .koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }

@@ -34,6 +34,7 @@ import {
     toast,
     criticalToast,
 } from "./constants.js";
+import { formatLocalStamp } from "./format_time.js";
 
 let workflowsCache = { directories: {} };
 
@@ -160,6 +161,39 @@ function workflowSavedAtMs(wf) {
     if (!wf || typeof wf !== "object" || typeof wf.savedAt !== "string") return 0;
     const ms = Date.parse(wf.savedAt);
     return Number.isFinite(ms) ? ms : 0;
+}
+
+const ARCHIVE_NAME_RE = /^(.*) \(archived (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\)(?: #\d+)?$/;
+
+function archiveTimestampFromName(wfName) {
+    if (typeof wfName !== "string") return 0;
+    const m = wfName.match(ARCHIVE_NAME_RE);
+    if (!m) return 0;
+    // Archive keys are generated from `toISOString()` with "T" replaced by
+    // a space, so parse them back as UTC. Parsing the bare string directly
+    // would use the browser's local timezone and skew retention windows.
+    const ms = Date.parse(`${m[2]}T${m[3]}.000Z`);
+    return Number.isFinite(ms) ? ms : 0;
+}
+
+function archiveBaseName(wfName) {
+    if (typeof wfName !== "string") return "";
+    const m = wfName.match(ARCHIVE_NAME_RE);
+    return m ? m[1] : wfName;
+}
+
+function workflowArchivedAtMs(wfName, wf) {
+    if (wf && typeof wf === "object" && typeof wf.archivedAt === "string") {
+        const ms = Date.parse(wf.archivedAt);
+        if (Number.isFinite(ms)) return ms;
+    }
+    const nameMs = archiveTimestampFromName(wfName);
+    if (nameMs) return nameMs;
+    return workflowSavedAtMs(wf);
+}
+
+function archiveStampForName(d) {
+    return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
 function mergeNewerFallbackDir(serverDir, fallbackDir) {
@@ -693,32 +727,39 @@ export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
     if (!dir) return false;
     let archivedAs = null;
     const existing = dir.workflows[wfName];
+    const now = options.now instanceof Date && !isNaN(options.now.getTime())
+        ? options.now
+        : new Date();
     if (existing) {
         // Same-name save: move the existing version into the directory's
         // Archive (timestamp-suffixed) before overwriting.
-        const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const ts = archiveStampForName(now);
         let archiveName = `${wfName} (archived ${ts})`;
         let n = 1;
         while (dir.workflows[archiveName]) {
             n += 1;
             archiveName = `${wfName} (archived ${ts}) #${n}`;
         }
-        dir.workflows[archiveName] = { ...existing, archived: true };
+        dir.workflows[archiveName] = { ...existing, archived: true, archivedAt: now.toISOString() };
         archivedAs = archiveName;
     }
     dir.workflows[wfName] = {
-        savedAt: new Date().toISOString(),
+        savedAt: now.toISOString(),
         graph: graphData,
         module: options.module === true,
     };
     return { archivedAs };
 }
 
-export function archiveWorkflow(path, wfName) {
+export function archiveWorkflow(path, wfName, options = {}) {
     if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return false;
     dir.workflows[wfName].archived = true;
+    const now = options.now instanceof Date && !isNaN(options.now.getTime())
+        ? options.now
+        : new Date();
+    dir.workflows[wfName].archivedAt = now.toISOString();
     return true;
 }
 
@@ -876,6 +917,106 @@ export function clearArchive(path) {
     if (archivedNames.length === 0) return false;
     for (const name of archivedNames) delete dir.workflows[name];
     return { count: archivedNames.length };
+}
+
+function sortedArchivedEntries(dir) {
+    return Object.entries(dir.workflows || {})
+        .filter(([, wf]) => wf && wf.archived === true)
+        .map(([name, wf]) => ({
+            name,
+            wf,
+            baseName: archiveBaseName(name),
+            timestampMs: workflowArchivedAtMs(name, wf),
+        }))
+        .sort((a, b) => {
+            const byTime = b.timestampMs - a.timestampMs;
+            return byTime || compareNames(a.name, b.name);
+        });
+}
+
+export function getArchiveDisplayInfo(path, wfName, now = new Date()) {
+    const dir = dirOf(path);
+    const wf = dir && dir.workflows ? dir.workflows[wfName] : null;
+    const timestampMs = workflowArchivedAtMs(wfName, wf);
+    const label = archiveBaseName(wfName);
+    const safeNow = now instanceof Date && !isNaN(now.getTime()) ? now : new Date();
+    const stamp = timestampMs ? formatLocalStamp(new Date(timestampMs), safeNow) : "";
+    return {
+        label,
+        timestampMs,
+        meta: stamp ? `archived ${stamp}` : "archived",
+    };
+}
+
+export function getArchiveCleanupPlan(path, now = new Date()) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows) {
+        return { keepNames: [], deleteNames: [], keepCount: 0, deleteCount: 0, groups: 0 };
+    }
+    const nowMs = now instanceof Date && !isNaN(now.getTime()) ? now.getTime() : Date.now();
+    const windows = [
+        5 * 60 * 1000,
+        60 * 60 * 1000,
+        24 * 60 * 60 * 1000,
+    ];
+    const archivedEntries = sortedArchivedEntries(dir);
+    const byBase = new Map();
+    for (const entry of archivedEntries) {
+        if (!byBase.has(entry.baseName)) byBase.set(entry.baseName, []);
+        byBase.get(entry.baseName).push(entry);
+    }
+
+    const keep = new Set();
+    for (const entries of byBase.values()) {
+        const groupKeep = new Set();
+        for (const windowMs of windows) {
+            const representative = entries.find((entry) => {
+                if (!entry.timestampMs) return false;
+                const ageMs = Math.max(0, nowMs - entry.timestampMs);
+                return ageMs <= windowMs && !groupKeep.has(entry.name);
+            });
+            if (representative) groupKeep.add(representative.name);
+        }
+        if (groupKeep.size === 0 && entries.length > 0) {
+            groupKeep.add(entries[0].name);
+        }
+        for (const name of groupKeep) keep.add(name);
+    }
+
+    const allNames = archivedEntries.map((entry) => entry.name);
+    const deleteNames = allNames.filter((name) => !keep.has(name));
+    const keepNames = allNames.filter((name) => keep.has(name));
+    return {
+        keepNames,
+        deleteNames,
+        keepCount: keepNames.length,
+        deleteCount: deleteNames.length,
+        groups: byBase.size,
+    };
+}
+
+export function cleanUpArchive(path, planOrNow = new Date()) {
+    const dir = dirOf(path);
+    if (!dir || !dir.workflows) return false;
+    const plan =
+        planOrNow && typeof planOrNow === "object" && Array.isArray(planOrNow.deleteNames)
+            ? planOrNow
+            : getArchiveCleanupPlan(path, planOrNow);
+    if (!Array.isArray(plan.deleteNames) || plan.deleteNames.length === 0) return false;
+    const deletedNames = [];
+    for (const name of plan.deleteNames) {
+        if (!isSafeObjectKey(name)) continue;
+        const wf = dir.workflows[name];
+        if (!wf || wf.archived !== true) continue;
+        delete dir.workflows[name];
+        deletedNames.push(name);
+    }
+    if (deletedNames.length === 0) return false;
+    return {
+        ...plan,
+        deleteNames: deletedNames,
+        deleteCount: deletedNames.length,
+    };
 }
 
 // Move the directory at `srcParentPath/name` to live under `dstParentPath`

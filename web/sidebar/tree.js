@@ -54,6 +54,9 @@ import {
     moveWorkflow,
     moveDirectory,
     clearArchive,
+    cleanUpArchive,
+    getArchiveCleanupPlan,
+    getArchiveDisplayInfo,
     pathsEqual,
     getWorkflowGraph,
     getWorkflowTags,
@@ -1119,7 +1122,12 @@ function gatherDirsAt(parentPath, q, stats) {
             else active.push(n);
         }
         active.sort(compareNames);
-        archived.sort(compareNames);
+        archived.sort((a, b) => {
+            const aInfo = getArchiveDisplayInfo(dirPath, a);
+            const bInfo = getArchiveDisplayInfo(dirPath, b);
+            const byTime = bInfo.timestampMs - aInfo.timestampMs;
+            return byTime || compareNames(a, b);
+        });
 
         const subdirs = gatherDirsAt(dirPath, q, stats);
 
@@ -1392,7 +1400,16 @@ function makeNodeLeafRow({ display, type, removable, onClick, unresolved, breadc
     return row;
 }
 
-function makeWorkflowLeafRow({ name, dirName, wfPath, onClick, onContextMenu, draggablePayload, isModule = false }) {
+function makeWorkflowLeafRow({
+    name,
+    dirName,
+    wfPath,
+    onClick,
+    onContextMenu,
+    draggablePayload,
+    isModule = false,
+    secondaryText = "",
+}) {
     const row = document.createElement("div");
     row.className = "koolook-row koolook-leaf";
     // Stable identity for Compare-mode tinting (#181). Invisible otherwise.
@@ -1401,9 +1418,10 @@ function makeWorkflowLeafRow({ name, dirName, wfPath, onClick, onContextMenu, dr
     // isn't the only signal that a left-click does something different. The
     // `pi pi-plus-circle` class swap is what actually makes them look like
     // "drop in" affordances rather than "open" affordances.
+    const titleSuffix = secondaryText ? ` — ${secondaryText}` : "";
     row.title = isModule
-        ? `${dirName} / ${name} — module (left-click to insert into canvas)`
-        : `${dirName} / ${name}`;
+        ? `${dirName} / ${name}${titleSuffix} — module (left-click to insert into canvas)`
+        : `${dirName} / ${name}${titleSuffix}`;
 
     const chevron = document.createElement("span");
     chevron.className = "koolook-chevron";
@@ -1415,10 +1433,24 @@ function makeWorkflowLeafRow({ name, dirName, wfPath, onClick, onContextMenu, dr
         : "pi pi-file koolook-leaf-icon";
     row.appendChild(icon);
 
-    const nameEl = document.createElement("span");
-    nameEl.className = "koolook-name";
-    nameEl.textContent = name;
-    row.appendChild(nameEl);
+    if (secondaryText) {
+        const stack = document.createElement("span");
+        stack.className = "koolook-name-stack";
+        const nameEl = document.createElement("span");
+        nameEl.className = "koolook-name";
+        nameEl.textContent = name;
+        stack.appendChild(nameEl);
+        const metaEl = document.createElement("span");
+        metaEl.className = "koolook-row-meta";
+        metaEl.textContent = secondaryText;
+        stack.appendChild(metaEl);
+        row.appendChild(stack);
+    } else {
+        const nameEl = document.createElement("span");
+        nameEl.className = "koolook-name";
+        nameEl.textContent = name;
+        row.appendChild(nameEl);
+    }
 
     row.addEventListener("click", onClick);
     if (onContextMenu) row.addEventListener("contextmenu", onContextMenu);
@@ -1783,13 +1815,35 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
 
 // Right-click on the synthetic Archive folder. The Archive folder isn't a
 // real DirNode — it's rendered for any dir with `archived: true` workflows
-// at this level. The only useful bulk op is "delete every archived entry
-// here in one go"; per-entry restore/delete still works on each archived
-// workflow's own row.
+// at this level. Bulk cleanup keeps representative recent entries; the
+// destructive all-delete escape hatch remains available below it.
 function archiveFolderContextMenu(event, dirPath, archivedCount) {
     const dirDisplay = dirPath.join(" / ");
     const noun = `${archivedCount} archived workflow${archivedCount === 1 ? "" : "s"}`;
+    const cleanupPlan = getArchiveCleanupPlan(dirPath);
     showContextMenu(event, [
+        {
+            label: "Clean up archive",
+            action: () => {
+                if (!cleanupPlan || cleanupPlan.deleteCount === 0) {
+                    toast(`Archive in "${dirDisplay}" already looks tidy.`);
+                    return;
+                }
+                showConfirmModal({
+                    title: "Clean up archive?",
+                    message: archiveCleanupConfirmMessage(cleanupPlan),
+                    confirmLabel: "Clean up archive",
+                    danger: true,
+                    onConfirm: () => persistMutation({
+                        mutate: () => cleanUpArchive(dirPath, cleanupPlan),
+                        onSuccess: (result) => toast(
+                            `Cleaned archive in "${dirDisplay}": kept ${result.keepCount}, deleted ${result.deleteCount}.`
+                        ),
+                        onNoOp: () => toast(`Archive in "${dirDisplay}" already looks tidy.`),
+                    }),
+                });
+            },
+        },
         {
             label: `Delete archive (${archivedCount})`,
             danger: true,
@@ -1809,6 +1863,27 @@ function archiveFolderContextMenu(event, dirPath, archivedCount) {
             },
         },
     ]);
+}
+
+function archiveCleanupConfirmMessage(cleanupPlan) {
+    const list = document.createElement("ul");
+    list.className = "koolook-confirm-list";
+
+    const items = [
+        "Clean up this Archive folder.",
+        "Keep latest from 5 minutes, 1 hour, and 1 day.",
+        "Apply separately to each setup name.",
+        `Delete ${cleanupPlan.deleteCount} older duplicate${cleanupPlan.deleteCount === 1 ? "" : "s"}.`,
+        "Active workflows stay untouched.",
+    ];
+
+    for (const text of items) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        list.appendChild(item);
+    }
+
+    return list;
 }
 
 // Right-click on the "Workflows" section header — the row labeled "Workflows"
@@ -2208,14 +2283,16 @@ function renderGatheredDir(parentCtx, dir) {
                     dropTarget: { kind: "archive", path: dirPath },
                     build: (archCtx) => {
                         for (const wfName of dir.archived) {
+                            const displayInfo = getArchiveDisplayInfo(dirPath, wfName);
                             archCtx.leaf({
                                 row: makeWorkflowLeafRow({
-                                    name: wfName,
+                                    name: displayInfo.label,
                                     dirName: dirDisplay,
                                     wfPath: [...dirPath, wfName].join("/"),
                                     onClick: () => loadWorkflowOntoCanvas(dirPath, wfName),
                                     onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, true),
                                     draggablePayload: { type: "workflow", path: dirPath, name: wfName },
+                                    secondaryText: displayInfo.meta,
                                 }),
                             });
                         }
