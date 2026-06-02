@@ -104,6 +104,15 @@ _AST_SKIP_DIRS = {
     "nuke_CAM_exporter", "node_modules",
 }
 
+# Some fork implementation files retain upstream-style mappings so they can be
+# inspected or imported in isolation. Runtime registration goes through the
+# package entrypoint, where these IDs are namespaced or superseded.
+_STATIC_NODE_ID_OMISSIONS = {
+    Path("forks/whatdreamscost_koolook/versions/v1_3_2/ltx_director.py"): {
+        "LTXDirector",
+    },
+}
+
 
 def _iter_python_files() -> Iterable[Path]:
     for p in REPO_ROOT.rglob("*.py"):
@@ -163,11 +172,22 @@ def check_static(verbose: bool = False) -> tuple[bool, set[str]]:
                         isinstance(target, ast.Name)
                         and target.id == "NODE_CLASS_MAPPINGS"
                     ):
-                        keys = _extract_literal_dict_keys(node.value)
+                        rel = py_path.relative_to(REPO_ROOT)
+                        raw_keys = _extract_literal_dict_keys(node.value)
+                        omitted = raw_keys & _STATIC_NODE_ID_OMISSIONS.get(
+                            rel, set()
+                        )
+                        keys = raw_keys - omitted
                         all_node_ids.update(keys)
                         if verbose and keys:
-                            rel = py_path.relative_to(REPO_ROOT)
                             print(_dim(f"  {rel}: {sorted(keys)}"))
+                        if verbose and omitted:
+                            print(
+                                _dim(
+                                    f"  {rel}: omitted implementation-only "
+                                    f"{sorted(omitted)}"
+                                )
+                            )
 
     if parse_errors:
         print(_red(f"  FAIL — {len(parse_errors)} parse errors:"))

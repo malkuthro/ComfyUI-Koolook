@@ -133,34 +133,40 @@ class easy_ImageBatch:
                     "min": 1,
                     "max": 1024,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "Length of the output cut window in frames.",
                 }),
                 "cut_start_frame": ("INT", {
                     "default": 1,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "First VFX frame represented by output index 0. All frame numbers are 1-based.",
                 }),
                 "placeholder_color": (list(_PLACEHOLDER_FILL.keys()), {
-                    "default": "Black"
+                    "default": "Black",
+                    "tooltip": "Fill color for empty frames in image_batch. Alpha output is controlled separately.",
                 }),
                 "invert_alpha": ("BOOLEAN", {
                     "default": False,
                     "label_on": "compositing",
                     "label_off": "inpaint",
+                    "tooltip": "Off: selected frames are black/0 and empty frames are white/1. On: selected frames are white/1 for compositing.",
                 }),
                 "source_frames": ("STRING", {
                     "default": "",
                     "multiline": True,
                     "placeholder": "extra frames from source_batch, e.g. 1, 27, 41, 63, 85 (commas and/or newlines)",
+                    "tooltip": "Optional 1-based VFX frame list to pick from source_batch. Separators can be commas, spaces, tabs, or newlines.",
                 }),
                 "image1_frame": ("INT", {
                     "default": 5,
                     "min": 1,
                     "max": 999999,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "1-based VFX frame number for image1, or source_batch pick when source_frames is empty.",
                 }),
             },
             "optional": {
@@ -172,7 +178,8 @@ class easy_ImageBatch:
                     "min": 1,
                     "max": 999999,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "1-based VFX frame number for image2, or source_batch pick when source_frames is empty.",
                 }),
                 "image3": ("IMAGE", ),
                 "image3_frame": ("INT", {
@@ -180,7 +187,8 @@ class easy_ImageBatch:
                     "min": 1,
                     "max": 999999,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "1-based VFX frame number for image3, or source_batch pick when source_frames is empty.",
                 }),
                 "image4": ("IMAGE", ),
                 "image4_frame": ("INT", {
@@ -188,7 +196,8 @@ class easy_ImageBatch:
                     "min": 1,
                     "max": 999999,
                     "step": 1,
-                    "display": "number"
+                    "display": "number",
+                    "tooltip": "1-based VFX frame number for image4, or source_batch pick when source_frames is empty.",
                 }),
             }
         }
@@ -329,8 +338,8 @@ class easy_ImageBatch:
             (image4, image4_frame, "image4"),
         )
 
-        # When the user is driving the node from `source_frames`, the 4 manual
-        # `imageN_frame` defaults (0, 4, 8, 12) shouldn't sneak in extra picks
+        # When the user is driving the node from `source_frames`, the manual
+        # `imageN_frame` defaults shouldn't sneak in extra picks
         # from source_batch — only the explicit list (and any explicitly
         # connected imageN inputs) should contribute. So the source_batch
         # fallback for an UN-connected slot is only active when the list is

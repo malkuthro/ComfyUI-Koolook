@@ -30,10 +30,29 @@ class Easy_Utility:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "mode": (list(_MODES), {"default": _MODES[0]}),
-                "int_value": ("INT", {"default": 1, "min": 0, "max": 99999, "step": 1}),
-                "prefix": ("STRING", {"default": "", "multiline": False}),
-                "pad_width": ("INT", {"default": 3, "min": 0, "max": 10, "step": 1}),
+                "mode": (list(_MODES), {
+                    "default": _MODES[0],
+                    "tooltip": "Conversion mode. Current mode turns an INT into a zero-padded STRING.",
+                }),
+                "int_value": ("INT", {
+                    "default": 1,
+                    "min": 0,
+                    "max": 99999,
+                    "step": 1,
+                    "tooltip": "Number to convert.",
+                }),
+                "prefix": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Optional text prepended before the padded number. Leave empty for EasyAIPipeline version inputs.",
+                }),
+                "pad_width": ("INT", {
+                    "default": 3,
+                    "min": 0,
+                    "max": 10,
+                    "step": 1,
+                    "tooltip": "Minimum digit count. 1 with width 3 becomes 001.",
+                }),
             },
         }
 

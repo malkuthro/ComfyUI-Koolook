@@ -28,22 +28,67 @@ class EasyResize:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "base_on": (["Width", "Height"], {"default": "Width"}),
-                "base_size": ("INT", {"default": 512, "min": 1, "max": MAX_RESOLUTION, "step": 1}),
-                "aspect_ratio": ("STRING", {"default": "16:9"}),
-                "divisible_by": ("INT", {"default": 32, "min": 1, "max": 128, "step": 1}),
-                "upscale_method": (["nearest-exact", "bilinear", "area", "bicubic", "lanczos"], {"default": "nearest-exact"}),
-                "keep_proportion": (["stretch", "letterbox", "pillarbox"], {"default": "stretch"}),
-                "crop_position": (["top", "bottom", "left", "right", "center"], {"default": "center"}),
-                "pad_color_mode": (["White", "Black", "Gray", "Custom"], {"default": "Black"}),
-                "panel_color_mode": (["White", "Black", "Gray", "Custom"], {"default": "Black"}),
-                "device": (["cpu", "cuda"], {"default": "cpu"}),
+                "base_on": (["Width", "Height"], {
+                    "default": "Width",
+                    "tooltip": "Choose which target dimension is driven by base_size; the other is computed from aspect_ratio.",
+                }),
+                "base_size": ("INT", {
+                    "default": 512,
+                    "min": 1,
+                    "max": MAX_RESOLUTION,
+                    "step": 1,
+                    "tooltip": "Target width or height before snapping to divisible_by.",
+                }),
+                "aspect_ratio": ("STRING", {
+                    "default": "16:9",
+                    "tooltip": "Target ratio as W:H, e.g. 16:9, 1:1, or 9:16.",
+                }),
+                "divisible_by": ("INT", {
+                    "default": 32,
+                    "min": 1,
+                    "max": 128,
+                    "step": 1,
+                    "tooltip": "Snap final width and height to a multiple; use the model's latent/grid requirement.",
+                }),
+                "upscale_method": (["nearest-exact", "bilinear", "area", "bicubic", "lanczos"], {
+                    "default": "nearest-exact",
+                    "tooltip": "ComfyUI resize filter used for the image and mask.",
+                }),
+                "keep_proportion": (["stretch", "letterbox", "pillarbox"], {
+                    "default": "stretch",
+                    "tooltip": "stretch fills the target exactly; letterbox/pillarbox preserve proportions and add bars.",
+                }),
+                "crop_position": (["top", "bottom", "left", "right", "center"], {
+                    "default": "center",
+                    "tooltip": "Placement of the preserved image when bars are added. Top/bottom affect letterbox; left/right affect pillarbox.",
+                }),
+                "pad_color_mode": (["White", "Black", "Gray", "Custom"], {
+                    "default": "Black",
+                    "tooltip": "Color for letterbox/pillarbox bars. Custom reads pad_color.",
+                }),
+                "panel_color_mode": (["White", "Black", "Gray", "Custom"], {
+                    "default": "Black",
+                    "tooltip": "Color for COLOR_PANEL and masked composed_IMAGE background. Custom reads panel_color.",
+                }),
+                "device": (["cpu", "cuda"], {
+                    "default": "cpu",
+                    "tooltip": "Device used for resize/composite tensors.",
+                }),
             },
             "optional": {
                 "mask": ("MASK",),
-                "pad_color": ("STRING", {"default": "0, 0, 0"}),
-                "panel_color": ("STRING", {"default": "0, 0, 0"}),
-                "invert_composed_MASK": ("BOOLEAN", {"default": False}),
+                "pad_color": ("STRING", {
+                    "default": "0, 0, 0",
+                    "tooltip": "Custom RGB bar color in 0..1 floats, e.g. 0, 0, 0 or 1, 0.5, 0.",
+                }),
+                "panel_color": ("STRING", {
+                    "default": "0, 0, 0",
+                    "tooltip": "Custom RGB color for COLOR_PANEL and mask composition background.",
+                }),
+                "invert_composed_MASK": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Flip which side of the resized mask shows IMAGE vs COLOR_PANEL in composed_IMAGE.",
+                }),
             }
         }
 

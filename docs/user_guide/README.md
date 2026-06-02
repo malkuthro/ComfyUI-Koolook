@@ -12,12 +12,18 @@ attribution is visible without needing a fork-shaped directory tree.
 
 | ComfyUI menu | Status | Nodes |
 |---|---|---|
-| `Koolook/Pipeline` | 🚧 page TBD | `EasyAIPipeline` |
-| `Koolook/Image` | 🚧 `EasyResize_Koolook` page TBD · ✅ [`easy_ImageBatch`](nodes/koolook_image/easy_image_batch.md) | `EasyResize_Koolook`, `easy_ImageBatch` |
-| `Koolook/Camera` | 🚧 page TBD | `KoolookLoadCameraPosesAbsolute` |
-| `Koolook/Wan_Video` | 🚧 page TBD | `EasyWan22Prompt` |
+| `Koolook/Pipeline` | ✅ [`EasyAIPipeline`](nodes/koolook_pipeline/easy_ai_pipeline.md) | `EasyAIPipeline` |
+| `Koolook/Image` | ✅ [`EasyResize_Koolook`](nodes/koolook_image/easy_resize_koolook.md) · ✅ [`easy_ImageBatch`](nodes/koolook_image/easy_image_batch.md) | `EasyResize_Koolook`, `easy_ImageBatch` |
+| `Koolook/Wan_Video` | ✅ [`EasyWan22Prompt`](nodes/koolook_wan_video/easy_wan22_prompt.md) | `EasyWan22Prompt` |
 | `Koolook/VAE` | ✅ [`nodes/radiance_koolook_v2_3_3/`](nodes/radiance_koolook_v2_3_3/) | `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode` |
-| `Koolook/Testing` | 🚧 page TBD | `Easy_Pattern` |
+| `Koolook/Video` | ✅ [`Easy_LoadVideo`](nodes/koolook_video/easy_load_video.md) · ✅ [`Easy_VideoCombine`](nodes/koolook_video/easy_video_combine.md) | `Easy_LoadVideo`, `Easy_VideoCombine` |
+| `Koolook/Utility` | ✅ [`Easy_Utility`](nodes/koolook_utility/easy_utility.md) | `Easy_Utility` |
+| `Koolook/Testing` | ✅ [`Easy_Pattern`](nodes/koolook_testing/easy_pattern.md) | `Easy_Pattern` |
+| `Koolook/PromptRelay` | ✅ [`LTXDirector__koolook`](nodes/whatdreamscost_koolook/ltx_director_koolook.md) | `LTXDirector__koolook` |
+
+`KoolookLoadCameraPosesAbsolute` is intentionally omitted from the user guide
+for now. It is a narrow CameraCtrl helper rather than a general public workflow
+node.
 
 ## Cross-cutting concepts
 
@@ -52,6 +58,8 @@ Convention:
 
 ## Where to find the canonical node ID list
 
-The repo [`README.md`](../../README.md) lists all currently-registered
-node IDs and display names. The historical inventory (including removed
-nodes) is in the [`CHANGELOG.md`](../../CHANGELOG.md).
+The repo [`README.md`](../../README.md) lists the canonical public node IDs
+and display names. Some compatibility aliases remain registered so older saved
+workflows load, but new workflows should pick the canonical IDs documented
+here. The historical inventory (including removed nodes) is in the
+[`CHANGELOG.md`](../../CHANGELOG.md).

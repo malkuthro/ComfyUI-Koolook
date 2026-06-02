@@ -42,14 +42,16 @@ class EasyWan22Prompt:
                 options = field['options']
                 defaults = {
                     "default": field.get('default', options[0]),
-                    "lazy": True
+                    "lazy": True,
+                    "tooltip": f"Optional Wan 2.2 prompt fragment for {name.replace('_', ' ')}. Choose 'none' to omit it.",
                 }
                 input_types["required"][name] = (options, defaults)
             elif field['type'] == 'string':
                 defaults = {
                     "default": field.get('default', ""),
                     "multiline": True,
-                    "lazy": True
+                    "lazy": True,
+                    "tooltip": f"Optional Wan 2.2 prompt text for {name.replace('_', ' ')}.",
                 }
                 input_types["required"][name] = ("STRING", defaults)
 
@@ -57,7 +59,8 @@ class EasyWan22Prompt:
         input_types["required"]["body"] = ("STRING", {
             "multiline": True,
             "default": "",
-            "lazy": True
+            "lazy": True,
+            "tooltip": "Main free-text prompt. Appended after selected dropdown fragments.",
         })
 
         return input_types

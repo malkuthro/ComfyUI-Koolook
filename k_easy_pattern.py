@@ -91,26 +91,94 @@ class EasyPattern:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "batch_size": ("INT", {"default": 81, "min": 1, "max": 4096, "step": 1}),
-                "width": ("INT", {"default": 512, "min": 16, "max": 8192, "step": 8}),
-                "height": ("INT", {"default": 512, "min": 16, "max": 8192, "step": 8}),
-                "bg_color_mode": (["White", "Black", "Gray", "Custom"], {"default": "Custom"}),
-                "show_text": ("BOOLEAN", {"default": True}),
-                "text_color_mode": (["White", "Black", "Gray", "Custom"], {"default": "White"}),
-                "start_from": ("INT", {"default": 1, "min": 0, "max": 999999, "step": 1}),
-                "step": ("INT", {"default": 1, "min": -1000, "max": 1000, "step": 1}),
-                "font_size": ("INT", {"default": 256, "min": 8, "max": 1024, "step": 1}),
+                "batch_size": ("INT", {
+                    "default": 81,
+                    "min": 1,
+                    "max": 4096,
+                    "step": 1,
+                    "tooltip": "Number of test-pattern images to generate.",
+                }),
+                "width": ("INT", {
+                    "default": 512,
+                    "min": 16,
+                    "max": 8192,
+                    "step": 8,
+                    "tooltip": "Output image width.",
+                }),
+                "height": ("INT", {
+                    "default": 512,
+                    "min": 16,
+                    "max": 8192,
+                    "step": 8,
+                    "tooltip": "Output image height.",
+                }),
+                "bg_color_mode": (["White", "Black", "Gray", "Custom"], {
+                    "default": "Custom",
+                    "tooltip": "Background color preset. Custom reads bg_color.",
+                }),
+                "show_text": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Draw the generated frame number text on each image.",
+                }),
+                "text_color_mode": (["White", "Black", "Gray", "Custom"], {
+                    "default": "White",
+                    "tooltip": "Text color preset. Custom reads text_color.",
+                }),
+                "start_from": ("INT", {
+                    "default": 1,
+                    "min": 0,
+                    "max": 999999,
+                    "step": 1,
+                    "tooltip": "Number shown on the first generated frame.",
+                }),
+                "step": ("INT", {
+                    "default": 1,
+                    "min": -1000,
+                    "max": 1000,
+                    "step": 1,
+                    "tooltip": "Number added for each next frame. Negative values count backward.",
+                }),
+                "font_size": ("INT", {
+                    "default": 256,
+                    "min": 8,
+                    "max": 1024,
+                    "step": 1,
+                    "tooltip": "Text size. Very large values may clip if the label is wider than the image.",
+                }),
                 "position": (
                     ["center", "top-left", "top-right", "bottom-left", "bottom-right"],
-                    {"default": "center"},
+                    {
+                        "default": "center",
+                        "tooltip": "Where to place the text label.",
+                    },
                 ),
-                "zero_pad": ("INT", {"default": 0, "min": 0, "max": 8, "step": 1}),
+                "zero_pad": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 8,
+                    "step": 1,
+                    "tooltip": "Minimum digit count. 7 with padding 3 becomes 007.",
+                }),
             },
             "optional": {
-                "bg_color":   ("STRING", {"default": "#C71585"}),
-                "text_color": ("STRING", {"default": "#FFFFFF"}),
-                "prefix": ("STRING", {"default": "", "multiline": False}),
-                "suffix": ("STRING", {"default": "", "multiline": False}),
+                "bg_color":   ("STRING", {
+                    "default": "#C71585",
+                    "tooltip": "Custom background color as #RRGGBB, RRGGBB, or #RGB.",
+                }),
+                "text_color": ("STRING", {
+                    "default": "#FFFFFF",
+                    "tooltip": "Custom text color as #RRGGBB, RRGGBB, or #RGB.",
+                }),
+                "prefix": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Text added before the generated number.",
+                }),
+                "suffix": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Text added after the generated number.",
+                }),
             },
         }
 

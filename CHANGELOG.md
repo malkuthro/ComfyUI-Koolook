@@ -13,6 +13,11 @@ The format is inspired by Keep a Changelog and SemVer.
   sidecar path, so a rendered clip can wire directly into `Easy Load Video
   (Koolook)` for a second workflow stage without parsing VHS's mixed
   JSON/video list.
+- **Node user-guide coverage and tooltip pass.** Added user-guide pages for
+  `EasyAIPipeline`, `EasyResize_Koolook`, `EasyWan22Prompt`, `Easy_Utility`,
+  `Easy_Pattern`, and `LTXDirector__koolook`; refreshed the guide inventory
+  and README node list; and added hover tooltips to the public Koolook nodes
+  that still had sparse widget metadata.
 
 ### Removed
 - **Standalone audio-transcript tooling.** Removed the experimental
