@@ -3980,8 +3980,7 @@ app.registerExtension({
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
     if (
       nodeData.name === "LTXDirector__koolook" ||
-      nodeData.name === "LTXDirector__koolook_v1_3_2" ||
-      nodeData.name === "KoolookTimelineEditor"
+      nodeData.name === "LTXDirector__koolook_v1_3_2"
     ) {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;

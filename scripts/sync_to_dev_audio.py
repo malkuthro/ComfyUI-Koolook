@@ -11,8 +11,6 @@ Copies only what that automation's iteration loop touches:
                                        node mappings; needs to be re-synced
                                        when the fork's NODE_CLASS_MAPPINGS
                                        set changes)
-    - k_audio_timeline.py              transcript-to-Director prompt node
-    - k_timeline_editor.py             standalone Director timeline UI node
     - web/whatdreamscost_koolook/      Director timeline-editor extension
 
 Everything else in the live install - ``forks/radiance_koolook/``, the
@@ -68,8 +66,6 @@ import sync_to_dev as _dev  # noqa: E402
 
 AUDIO_PATHS: tuple[str, ...] = (
     "__init__.py",
-    "k_audio_timeline.py",
-    "k_timeline_editor.py",
     "forks/whatdreamscost_koolook",
     "web/whatdreamscost_koolook",
 )

@@ -19,7 +19,6 @@ look as clean as baseline.
 | Phrase | Script | What it does |
 |---|---|---|
 | `loop-audio` | [`scripts/loop_audio.py`](../../../../scripts/loop_audio.py) | Snapshots the most recent render into `runs/run-NNN_<label>/` (redacted runNNN_workflow.json + relay_overrides.txt + patch_state.txt + metadata.json + notes.md + card.png), delivers the external card copy, and appends a row to [`runs/log.md`](runs/log.md). |
-| `transcribe-audio` | [`scripts/transcribe_audio_timeline.py`](../../../../scripts/transcribe_audio_timeline.py) or the `Koolook Audio Transcript Timeline` Comfy node | Uses the optional Whisper helper to turn the current speech file into timed Director prompts (`timeline_data`, `local_prompts`, `segment_lengths`). Install with `.[audio]` first. |
 | `dev-sync-audio` | [`scripts/sync_to_dev_audio.py`](../../../../scripts/sync_to_dev_audio.py) | Copies `forks/whatdreamscost_koolook/`, `web/whatdreamscost_koolook/`, and root `__init__.py` into `$KOLOOK_COMFYUI_DEV_PATH`; removes stale pre-v1.3.9 web extension folder. Restart ComfyUI manually after Python changes need to be re-imported. Widget-only changes on the canvas don't need it. |
 
 Config lives in `<script>.config.json` next to each script — edit the
@@ -168,56 +167,14 @@ runs**:
 3. Remove the corresponding hypothesis from [`README.md`](README.md) or
    [`backstory/audio-lipsync-rationale.md`](backstory/audio-lipsync-rationale.md).
 
-## Timed transcript experiment
+## Timed transcript experiment (removed)
 
-When raw custom audio is not enough to drive mouth timing, generate timed
-speech prompts from the audio and feed those back into the Director:
-
-**Inside ComfyUI:** add `Koolook Audio Transcript Timeline`, set the same
-`audio_file`, `image_file`, duration, and FPS as the Director, then link:
-
-- `transcript_json` -> Director `audio_transcript_json`
-
-When its `timeline_data` input is linked from `Koolook Timeline Editor`,
-the node uses all audio clips on the timeline. Each clip is transcribed
-separately, shifted by its timeline start, clipped by its trim/length, and
-then merged into one ordered prompt-timing sequence. This is the preferred
-ComfyUI path for testing separated dialogue clips. The generated speech
-and pause prompts include the active image segment prompt, so multi-image
-timelines can keep visual directions on the image clips while the transcript
-node adds exact mouth timing.
-
-Keep `use_custom_audio=True`. The node emits `transcript_json` so the
-recognized phrase timing can also be inspected with a text-preview node.
-The Koolook Director converts that JSON into its own `timeline_data`,
-`local_prompts`, and `segment_lengths` immediately before Prompt Relay
-conditioning runs.
-
-The older manual hook still works for debugging:
-
-- `timeline_data` -> Director `timeline_data`
-- `local_prompts` -> Director `local_prompts`
-- `segment_lengths` -> Director `segment_lengths`
-
-**Script/export path:**
-
-```powershell
-.\.venv\Scripts\python -m pip install -e ".[audio]"
-.\.venv\Scripts\python scripts\transcribe_audio_timeline.py <audio.mp3> --workflow <workflow.json> --out timed-prompts.json --patched-workflow timed-workflow.json
-```
-
-The output JSON contains:
-
-- `phrases` - timestamped transcript chunks for review.
-- `timeline_data` - Director timeline JSON with one prompt segment per
-  phrase, preserving the source image and audio segments from the workflow.
-- `local_prompts` and `segment_lengths` - the matching Director fields.
-- `--patched-workflow` - optional loadable workflow JSON with those fields
-  already written onto the Koolook Director node.
-
-Paste the generated prompt/timeline fields into the Director, keep
-`use_custom_audio=True`, and render. This tests whether the model needs
-semantic speech timing in addition to the raw audio latent.
+The standalone `Koolook Audio Transcript Timeline` node and the
+`scripts/transcribe_audio_timeline.py` Whisper helper were removed in #198.
+The capability was experimental and superseded by the Koolook Director's
+built-in `audio_transcript_json` input — supply it a transcript JSON from
+your own tooling if you still want semantic speech timing on top of the raw
+audio latent. Nothing in the bundled loop generates that JSON anymore.
 
 ## Where settings live (no code edits for the common cases)
 
