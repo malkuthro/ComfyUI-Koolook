@@ -374,8 +374,28 @@ export function ensureStyle() {
    Reminder: no backticks in comments inside this CSS template literal. */
 .koolook-compare-host { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .koolook-compare-split { display: flex; flex: 1 1 auto; gap: 8px; min-height: 0; overflow: auto; padding: 0 4px; }
-.koolook-compare-col { flex: 1 1 0; min-width: 0; }
-.koolook-compare-status { flex: 0 0 auto; padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; color: rgba(170, 200, 255, 0.95); background: rgba(80, 140, 235, 0.18); border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); }
+/* Each column stacks the rendered panel over a SOURCE/TARGET footer stripe. */
+.koolook-compare-col { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
+.koolook-compare-panelhost { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.koolook-compare-colfoot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 6px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); overflow: hidden; }
+.koolook-foot-role { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 3px; }
+.koolook-foot-target .koolook-foot-role { background: rgba(123, 224, 138, 0.28); color: #bff0c7; }
+.koolook-foot-source .koolook-foot-role { background: rgba(120, 150, 200, 0.22); color: rgba(205, 218, 240, 0.95); }
+.koolook-foot-name { font-size: 10px; font-weight: 600; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Active (editable TARGET) column — a quiet green outline mirrors the green
+   new-item tint so the eye reads "this side is live". */
+.koolook-compare-active { outline: 1px solid rgba(123, 224, 138, 0.5); outline-offset: -1px; border-radius: 4px; }
+.koolook-compare-status { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 5px 10px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); background: rgba(80, 140, 235, 0.14); }
+/* Swap (A<->B) toggle — flips which column is the editable destination. */
+.koolook-compare-swap { font: inherit; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; padding: 2px 8px; border-radius: 4px; color: inherit; background: rgba(80, 140, 235, 0.28); border: 1px solid var(--border-color, rgba(255, 255, 255, 0.18)); }
+.koolook-compare-swap:hover { background: rgba(80, 140, 235, 0.45); }
+/* Legend chips that double as diff filters (green = new, red = modified). */
+.koolook-cmp-chip { font: inherit; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 10px; color: inherit; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)); }
+.koolook-cmp-chip:hover { background: rgba(255, 255, 255, 0.1); }
+.koolook-cmp-chip-on { background: rgba(80, 140, 235, 0.32); border-color: rgba(120, 170, 250, 0.6); }
+.koolook-cmp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.koolook-cmp-dot-new { background: #7be08a; }
+.koolook-cmp-dot-diff { background: #ff7d7d; }
 /* Text-only diff tint, applied only to the comparison column's rows. */
 .koolook-cmp-new .koolook-name { color: #7be08a; }
 .koolook-cmp-diff .koolook-name { color: #ff7d7d; }

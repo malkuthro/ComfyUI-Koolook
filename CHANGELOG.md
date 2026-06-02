@@ -14,6 +14,34 @@ The format is inspired by Keep a Changelog and SemVer.
   minutes / hour / day, and leaves active workflows untouched. New archive
   entries store `archivedAt`, while legacy timestamped names and `savedAt`
   remain compatible.
+- **Snapshot Compare — actionable A/B with bidirectional copy (Phase 2, #197).**
+  The side-by-side Compare view (live kit **A** ↔ loaded snapshot **B**) is now
+  actionable in both directions:
+  - **Path-preserving copy.** Right-click a node or workflow on the read-only
+    **source** side → **"Copy to <target>"**. Workflows land at the *same folder
+    path* they came from — missing folders are auto-created, existing ones
+    merged into (no folder-picker step). Same-name collisions skip when
+    identical and keep-both (`name (from <source>)`) when they differ. Tags and
+    module flag ride along; graphs are deep-cloned so neither side aliases the
+    other.
+  - **Both directions. B→A** writes into your live kit (and Save round-trips
+    it). **A→B** writes back into the snapshot **file on disk** (`writePreset`),
+    targeting the exact file the snapshot was loaded from. The write is atomic —
+    a failed write leaves both the file and the in-memory view untouched.
+  - **Copy a whole folder across.** Right-click a workflow folder → **"Copy
+    folder … (with contents)"** bulk-copies every workflow under it (recursively,
+    path-preserving, same collision policy) — the merge-two-snapshots case. The
+    Workflows root copies the entire tree; a summary toast reports
+    added/kept-both/already-there. Archived versions are skipped.
+  - **Swap (A↔B) toggle** flips which side is the editable **TARGET**; the
+    read-only capture guard follows to the **SOURCE** side. Each column shows a
+    **SOURCE / TARGET** footer stripe so the direction is unambiguous.
+  - **Diff legend + filter.** A green/red legend (green = only in the snapshot;
+    red = in both, graph differs) doubles as **clickable filters**: click *new*
+    or *modified* to collapse the snapshot panel down to just those items
+    (folders auto-expanded), click again to restore the full tree.
+  - Non-destructive throughout: no `applySnapshot` on the Compare path; the
+    read-only side only ever writes through the one explicit copy affordance.
 - **`Easy_VideoCombine`: loader-friendly video path outputs.** The node
   now keeps its original `Filenames` output and appends clean string
   outputs for the final video's full path, directory, filename, and JSON

@@ -27,7 +27,7 @@ export function diffPicks(working, comparison) {
 // Flatten a workflows store ({ directories: { [name]: DirNode } }, the shape
 // returned by getAllWorkflowsForExport / stored under snapshot.workflows) into
 // a Map of full path ("Basics/txt2img", "Basics/Sub/wf") -> WorkflowEntry.
-function collectWorkflows(node, prefix, out) {
+function collectWorkflows(node, prefix, out, skipArchived = false) {
     const dirs = node && typeof node.directories === "object" && node.directories ? node.directories : {};
     for (const dirName of Object.keys(dirs)) {
         const child = dirs[dirName];
@@ -35,9 +35,14 @@ function collectWorkflows(node, prefix, out) {
         const childPrefix = `${prefix}${dirName}/`;
         const wfs = child.workflows && typeof child.workflows === "object" ? child.workflows : {};
         for (const wfName of Object.keys(wfs)) {
+            // Archived entries are old versions surfaced under the synthetic
+            // "Archive" folder. The diff skips them (skipArchived) so stale
+            // setups don't read as new/modified noise (#197); the copy-lookup
+            // path leaves them in so an archived version can still be copied.
+            if (skipArchived && wfs[wfName] && wfs[wfName].archived === true) continue;
             out.set(`${childPrefix}${wfName}`, wfs[wfName]);
         }
-        collectWorkflows(child, childPrefix, out);
+        collectWorkflows(child, childPrefix, out, skipArchived);
     }
     return out;
 }
@@ -56,8 +61,8 @@ function graphsEqual(a, b) {
 //   "diff" -> present in both, graph differs ignoring savedAt (red tint)
 //   "same" -> present in both, identical graph (plain)
 export function diffWorkflows(workingStore, comparisonStore) {
-    const working = collectWorkflows(workingStore, "", new Map());
-    const comparison = collectWorkflows(comparisonStore, "", new Map());
+    const working = collectWorkflows(workingStore, "", new Map(), true);
+    const comparison = collectWorkflows(comparisonStore, "", new Map(), true);
     const status = {};
     for (const [path, entry] of comparison) {
         if (!working.has(path)) {
@@ -67,4 +72,16 @@ export function diffWorkflows(workingStore, comparisonStore) {
         }
     }
     return status;
+}
+
+// Resolve a single workflow entry in a raw store by full path
+// ("Basics/txt2img", "Basics/Sub/wf"), or null if absent. Reuses the same
+// flatten the diff uses, so lookups follow identical path semantics. Pure:
+// reads only the passed store. The Compare-mode pull-in (#197) uses this to
+// read a snapshot workflow's graph + tags so it can copy the entry into the
+// live kit WITHOUT first applying the snapshot.
+export function getWorkflowEntryFromStore(store, fullPath) {
+    if (!store || typeof store !== "object" || typeof fullPath !== "string") return null;
+    const all = collectWorkflows(store, "", new Map());
+    return all.has(fullPath) ? all.get(fullPath) : null;
 }
