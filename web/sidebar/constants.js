@@ -126,6 +126,10 @@ export function ensureStyle() {
 .koolook-snap-status-saved { background: #6db86d; }
 .koolook-snap-status-autosaved { background: #6db4ff; }
 .koolook-snap-status-unsaved { background: #e0a64a; }
+/* Drifted (#161) — named-snapshot file diverged from live state at boot.
+   More intense red-orange than "unsaved" because this is a recovery-
+   actionable warning, not just an "edited since last save" indicator. */
+.koolook-snap-status-drifted { background: #d97546; box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 4px rgba(217,117,70,0.55); }
 .koolook-snap-status-none { background: rgba(255,255,255,0.28); }
 .koolook-snap-status-comparing { background: #6db4ff; }
 .koolook-tree-divider { margin: 8px 8px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }

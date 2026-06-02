@@ -2531,6 +2531,29 @@ export function renderPanel(container, options = {}) {
             ? status.lastAutosaveAt
             : status.lastNamedSaveAt;
         const location = snapshotLibraryPath || "loading...";
+        // Drifted (#161): the named snapshot file on disk diverged from the
+        // live state when the session started. Tooltip carries the recovery
+        // instructions so the user understands what the pill colour means
+        // and how to clear it without hunting through docs.
+        if (status.state === "drifted") {
+            // Use ``driftDetectedAt`` (session-noticed-at), NOT
+            // ``lastNamedSaveAt`` — the latter comes from a localStorage
+            // baseline that may have been captured by a prior session
+            // whose live state was already corrupt, and surfacing it
+            // here as "Last named save" would mislead the user about
+            // when the divergence actually started.
+            return (
+                `Tracked snapshot "${status.name || "?"}" diverges from live state.\n` +
+                `Periodic auto-saves are being redirected to _unsaved_autosave/\n` +
+                `to protect the named snapshot's recovery folder.\n` +
+                `\n` +
+                `To resolve: Load the tracked snapshot (discards live changes), or\n` +
+                `Save / Quick Save (overwrites the tracked snapshot with live state).\n` +
+                `\n` +
+                `Drift detected: ${formatLocalTime(status.driftDetectedAt)}\n` +
+                `Location: ${location}`
+            );
+        }
         return `Date: ${formatLocalTime(stamp)}\nLocation: ${location}`;
     }
 
@@ -2555,6 +2578,9 @@ export function renderPanel(container, options = {}) {
                 break;
             case "unsaved":
                 stateText = "· unsaved";
+                break;
+            case "drifted":
+                stateText = "· drifted (reload?)";
                 break;
             case "none":
             default:

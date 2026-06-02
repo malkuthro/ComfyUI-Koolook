@@ -36,7 +36,12 @@
 // the server.
 // =============================================================================
 import { loadUserPicks, setAllPicks, notifyPicksChanged } from "./picks_store.js";
-import { replaceAllWorkflows, getAllWorkflowsForExport } from "./workflows_store.js";
+import {
+    replaceAllWorkflows,
+    getAllWorkflowsForExport,
+    normalizeWorkflowsStore,
+    sortJsonValue,
+} from "./workflows_store.js";
 import {
     STARTER_SEEDED_KEY,
     STARTER_URL,
@@ -44,6 +49,7 @@ import {
     SNAPSHOT_STATUS_CHANGED_EVENT,
     noStoreUrl,
     toast,
+    compareNames,
 } from "./constants.js";
 
 export const SNAPSHOT_KIND = "koolook-snapshot";
@@ -186,7 +192,17 @@ function isoToFsToken(iso) {
 // (fresh session, or user explicitly cleared the tracker) autosaves go
 // to `_unsaved_autosave/`. Sanitizes the preset name through the same
 // filename whitelist so the dirname is server-validation-safe.
+//
+// Boot-time drift override (#161): when the session opened with the
+// tracked snapshot's named file diverging from the live state, route
+// auto-saves to `_unsaved_autosave/` regardless of whether a preset is
+// tracked. This is the core data-loss-prevention move — without it the
+// periodic timer captures the (potentially corrupt) live state INTO the
+// named preset's recovery folder, where the Load dialog will later
+// present it as a "newer recovery" choice and the user can accept it
+// thinking it's a legitimate auto-save of their work.
 function _autosaveSubdir() {
+    if (_bootDrifted) return AUTOSAVE_UNSAVED_SUBDIR;
     const name = getCurrentPresetName();
     if (!name) return AUTOSAVE_UNSAVED_SUBDIR;
     const sanitized = sanitizeName(name);
@@ -220,6 +236,23 @@ let _lastNamedSaveFingerprint = null;
 let _lastNamedSaveAt = null;
 let _lastPeriodicFingerprint = null;
 let _lastPeriodicAt = null;
+
+// =============================================================================
+// Boot-time drift state (#161). Set by `detectBootDrift()` when the live
+// `/userdata` workflow store + picks diverge from the tracked named snapshot
+// file on disk at session start. While set:
+//   • `_autosaveSubdir()` routes periodic auto-saves to `_unsaved_autosave/`
+//     so the named preset's recovery folder is never overwritten with the
+//     corrupted live state (the data-loss surface this whole guard exists
+//     to close).
+//   • `getSnapshotStatus()` returns `state: "drifted"` with highest
+//     precedence so the sidebar pill carries the warning.
+// Cleared by `_clearBootDriftInternal()` whenever `markStateSaved()` runs —
+// a deliberate Save or Load realigns the two stores, so the warning auto-
+// extinguishes without the user having to dismiss it.
+// =============================================================================
+let _bootDrifted = false;
+let _bootDriftDiagnostics = null;
 
 (function _initSavedFingerprintFromStorage() {
     try {
@@ -258,6 +291,21 @@ function _computeFingerprint() {
     });
 }
 
+// Canonical state fingerprint used exclusively by the boot-time drift
+// detector (#161). Sorts picks (set semantics, order irrelevant) and
+// normalize-then-sorts the workflows tree so two state snapshots with
+// the same content but different shapes produce equal fingerprints.
+// See the long comment in ``detectBootDrift`` for why this is distinct
+// from ``_computeFingerprint``.
+function _canonicalStateFingerprint(picks, workflows) {
+    const picksList = Array.isArray(picks) ? [...picks].sort(compareNames) : [];
+    const workflowsTree = workflows && typeof workflows === "object"
+        ? workflows
+        : { directories: {} };
+    const canonicalWorkflows = sortJsonValue(normalizeWorkflowsStore(workflowsTree));
+    return JSON.stringify({ picks: picksList, workflows: canonicalWorkflows });
+}
+
 function _emitStatusChanged() {
     try {
         window.dispatchEvent(new CustomEvent(SNAPSHOT_STATUS_CHANGED_EVENT));
@@ -270,10 +318,17 @@ function _emitStatusChanged() {
 // named save (writePreset for a user-named preset) or successful Load
 // (applySnapshot baseline). Auto-saves do NOT call this; they're not
 // user-initiated saves and shouldn't reset the dirty indicator.
+//
+// Also clears any boot-time drift flag (#161): a successful Save means
+// the named file on disk now matches the live state, so the drift the
+// session opened with is resolved. A successful Load is the other
+// realignment path — both call `markStateSaved()`, so this is the single
+// point that retires the drift warning.
 export function markStateSaved() {
     _lastNamedSaveFingerprint = _computeFingerprint();
     _lastNamedSaveAt = new Date().toISOString();
     _persistSavedFingerprint();
+    _clearBootDriftInternal();
     _emitStatusChanged();
 }
 
@@ -294,17 +349,45 @@ export function markStateAutosaved() {
 }
 
 // Returns one of:
-//   { name: <string|null>, state: "saved" | "autosaved" | "unsaved" | "none",
+//   { name: <string|null>,
+//     state: "drifted" | "saved" | "autosaved" | "unsaved" | "none",
 //     lastNamedSaveAt: <ISO|null>, lastAutosaveAt: <ISO|null> }
 //
 // Status precedence (highest first):
+//   • "drifted"   — boot-time check found the named-snapshot file on disk
+//                   diverged from the live /userdata state; user must
+//                   Reload or re-Save to realign (#161)
 //   • "saved"     — current fingerprint matches the last named save
 //   • "autosaved" — current matches the latest periodic auto-save (only)
 //   • "unsaved"   — there IS a tracked preset but state diverged
 //   • "none"      — no preset tracked, no autosave match
+//
+// "drifted" wins over "saved" because the localStorage fingerprint can be
+// stale — if a previous session baselined against already-corrupt live
+// state, the in-memory fingerprint would falsely satisfy `"saved"`. The
+// disk-file comparison run by `detectBootDrift()` at session start is the
+// authoritative check; until the user Reloads or Saves, we keep flagging.
 export function getSnapshotStatus() {
     const name = getCurrentPresetName();
     const fp = _computeFingerprint();
+    if (_bootDrifted) {
+        // ``lastNamedSaveAt`` is from localStorage and may be a baseline
+        // captured by a PRIOR session whose live state was already corrupt
+        // — surfacing it in the drift tooltip ("Last named save: <stale>")
+        // would mislead users about when the divergence actually happened.
+        // Replace it with ``driftDetectedAt`` (when this session noticed
+        // the disk-vs-live disagreement) so the tooltip's timestamp
+        // anchors on a meaningful event. ``lastAutosaveAt`` stays — it's
+        // session-scoped and the only autosaves landing while drifted go
+        // to ``_unsaved_autosave/`` so the timestamp is still accurate.
+        return {
+            name,
+            state: "drifted",
+            lastNamedSaveAt: null,
+            lastAutosaveAt: _lastPeriodicAt,
+            driftDetectedAt: _bootDriftDiagnostics ? _bootDriftDiagnostics.detectedAt : null,
+        };
+    }
     if (_lastNamedSaveFingerprint && fp === _lastNamedSaveFingerprint) {
         return { name, state: "saved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
     }
@@ -315,6 +398,129 @@ export function getSnapshotStatus() {
         return { name, state: "unsaved", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
     }
     return { name: null, state: "none", lastNamedSaveAt: _lastNamedSaveAt, lastAutosaveAt: _lastPeriodicAt };
+}
+
+// =============================================================================
+// Boot-time drift detection (#161). Invoked once from `koolook_sidebar.js`'s
+// `setup()` immediately after `loadWorkflowsStore()` completes. Reads the
+// tracked named snapshot file from the library, computes its fingerprint
+// using the same shape as the live-state fingerprint (`picks` + `workflows`,
+// dropping the wrapping `name`/`kind`/`version`/`exportedAt` envelope), and
+// compares. On mismatch, sets `_bootDrifted` — see the state block above
+// for what gates on the flag.
+//
+// Skips silently when no preset is tracked (fresh user, nothing to verify
+// against) or when the named file can't be read (renamed, deleted, server
+// down). Those are distinct failure modes from "the named file and live
+// state disagree" and shouldn't trip the warning — the named file's
+// absence already surfaces via the regular Load dialog's empty-state.
+// =============================================================================
+export async function detectBootDrift(trackedName) {
+    if (!trackedName) return null;
+    let snapshot;
+    try {
+        snapshot = await readPreset(trackedName);
+    } catch (e) {
+        // Named file unreadable — log so power users notice, but don't
+        // flag as drifted. The bug this guard catches is "file says X,
+        // live state is Y"; "file is gone" is a separate UX path.
+        console.warn(
+            `[Koolook] boot drift check skipped: tracked snapshot "${trackedName}" ` +
+            `not readable (${e.message}). Status pill will show whatever the ` +
+            `localStorage fingerprint baseline reports.`
+        );
+        return null;
+    }
+    // Canonicalize both sides before fingerprinting. The live cache and
+    // a freshly-imported snapshot file can carry the same content in
+    // different *shapes*:
+    //   • ``archived: "false"`` (string, hand-edit) vs ``false`` (bool).
+    //   • Missing ``directories: {}`` on pre-v0.3 leaf nodes vs present.
+    //   • Picks accumulated in a different order on the source machine.
+    //   • Object keys spread-rewrapped in a different insertion order
+    //     by ``normalizeDirNode`` depending on whether the input already
+    //     had ``archived`` / ``module`` / ``tags`` declared.
+    // None of these differences mean the user's state diverged. Without
+    // the canonicalization below, the first boot after a cross-machine
+    // snapshot import (the documented NFS/SMB/Dropbox sync workflow —
+    // see L13-18) would false-positive as drift, redirecting every
+    // autosave to ``_unsaved_autosave/`` until the user re-saved.
+    //
+    // The canonical form runs:
+    //   1. ``normalizeWorkflowsStore`` — same transforms the live cache
+    //      passes through on every load/persist (idempotent on the
+    //      happy path).
+    //   2. ``sortJsonValue`` — case-insensitive recursive key sort, so
+    //      object key order is stable regardless of how the source
+    //      shape was built.
+    //   3. Sort the picks array — picks-as-set semantics; order is
+    //      irrelevant for equality.
+    // ``_computeFingerprint`` deliberately stays unsorted: it's used as
+    // the localStorage-persisted save baseline for the dirty indicator,
+    // and changing its shape would invalidate every existing user's
+    // baseline on first load post-deploy. The boot-drift comparison is
+    // session-local, so it can canonicalize freely.
+    const fileFingerprint = _canonicalStateFingerprint(
+        snapshot.picks,
+        snapshot.workflows,
+    );
+    const liveFingerprint = _canonicalStateFingerprint(
+        loadUserPicks(),
+        getAllWorkflowsForExport(),
+    );
+    if (fileFingerprint === liveFingerprint) {
+        _clearBootDriftInternal();
+        _emitStatusChanged();
+        return { drifted: false, trackedName };
+    }
+    _bootDrifted = true;
+    _bootDriftDiagnostics = {
+        trackedName,
+        fileFingerprintBytes: fileFingerprint.length,
+        liveFingerprintBytes: liveFingerprint.length,
+        detectedAt: new Date().toISOString(),
+    };
+    console.warn(
+        `[Koolook] DRIFT DETECTED: tracked snapshot "${trackedName}" diverges from ` +
+        `live state at session start.\n` +
+        `  Named snapshot file: ${fileFingerprint.length} bytes (canonical state).\n` +
+        `  Live /userdata + picks: ${liveFingerprint.length} bytes.\n` +
+        `  Periodic auto-saves will redirect to _unsaved_autosave/ until you\n` +
+        `  Reload "${trackedName}" or Save over it. This prevents the live\n` +
+        `  state from contaminating the named snapshot's recovery folder.`
+    );
+    _emitStatusChanged();
+    return { drifted: true, trackedName, diagnostics: _bootDriftDiagnostics };
+}
+
+// True iff `detectBootDrift()` flagged a mismatch this session and no
+// Save/Load has realigned the state since. Read by `_autosaveSubdir()` to
+// gate the periodic-autosave routing, and by the sidebar pill renderer.
+export function isBootDrifted() {
+    return _bootDrifted;
+}
+
+// Diagnostic payload captured at drift detect time — surfaced as part of
+// the sidebar pill tooltip and useful for support-style "what was the
+// drift size?" questions in the console.
+export function getBootDriftDiagnostics() {
+    return _bootDriftDiagnostics;
+}
+
+// Public version of `_clearBootDriftInternal` for callers that have
+// independently realigned the state (e.g. a test that wants to reset
+// state without going through Save/Load). Production code clears via
+// `markStateSaved()`; this is the explicit escape hatch.
+export function clearBootDrift() {
+    if (!_bootDrifted) return;
+    _clearBootDriftInternal();
+    _emitStatusChanged();
+}
+
+function _clearBootDriftInternal() {
+    if (!_bootDrifted) return;
+    _bootDrifted = false;
+    _bootDriftDiagnostics = null;
 }
 
 // Write a pre-load auto-save into the current session's autosave subfolder

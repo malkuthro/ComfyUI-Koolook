@@ -78,6 +78,52 @@ The format is inspired by Keep a Changelog and SemVer.
   `loop-audio` invocation now writes the log row and matching
   `run-NNN_<label>/` evidence folder; scratch renders should be skipped
   explicitly with "no log" / "don't log this" before capture.
+- **Snapshot drift on duplicate installs no longer silently corrupts the
+  workflow store.** Closes
+  [#161](https://github.com/malkuthro/ComfyUI-Koolook/issues/161) and
+  [#162](https://github.com/malkuthro/ComfyUI-Koolook/issues/162) as a paired
+  fix:
+    - **Duplicate-install guard (#162).** When the Comfy Registry/Manager
+      install (`custom_nodes/koolook/`) and a `git clone` checkout
+      (`custom_nodes/ComfyUI-Koolook/`) co-exist, every ComfyUI boot would
+      race two parallel plugins for the same `/koolook/presets/*` routes,
+      the same Kforge Labs sidebar tab, and the same
+      `/userdata/koolook_workflows.json` file — silently reverting workflows
+      to a stale state on every restart. New
+      [`koolook_install_guard.py`](koolook_install_guard.py) scans
+      `custom_nodes/` siblings for `koolook_routes.py` markers at import
+      time, prints a critical log naming both paths + their pyproject
+      versions, and registers nothing (no nodes, no routes, no
+      `WEB_DIRECTORY`) when this install is the alphabetical loser. The
+      scan is fail-safe by construction — an unreadable sibling directory
+      or a non-UTF-8 `pyproject.toml` is skipped rather than allowed to
+      abort the plugin import, so the guard can never itself take Koolook
+      offline. A client-side fallback in
+      [`web/sidebar/extension_guard.js`](web/sidebar/extension_guard.js)
+      catches the residual case where an older sibling without the backend
+      guard still ships its `koolook_sidebar.js` to the browser, sets a
+      `window` sentinel on first load, and skips the second
+      `app.registerExtension` call with a critical toast.
+      [`.env.example`](.env.example), the
+      [dev-iteration loop doc](docs/maintainers/dev-iteration-loop.md), and
+      [`scripts/sync_to_dev.py`](scripts/sync_to_dev.py) now point at
+      `custom_nodes/koolook/` (the Registry-derived path) so dev-sync
+      overwrites the Manager install in place instead of spawning a parallel
+      `ComfyUI-Koolook/` folder.
+    - **Boot-time tracked-snapshot drift guard (#161).** New
+      `detectBootDrift()` in [`web/sidebar/snapshot.js`](web/sidebar/snapshot.js)
+      reads the tracked named snapshot file at session start, fingerprints
+      it the same way the live state is fingerprinted, and flags drift on
+      mismatch. While drifted, `_autosaveSubdir()` routes periodic +
+      pre-load autosaves to `_unsaved_autosave/` instead of
+      `<preset>_autosave/` — so a corrupt live state can never masquerade
+      as a "newer recovery" for the named snapshot. `getSnapshotStatus()`
+      gains a `"drifted"` precedence (above `"saved"`) so the sidebar pill
+      flips to a warning state (`· drifted (reload?)`) with a recovery-
+      instructions tooltip. The flag clears automatically on the next
+      `markStateSaved()` (Save / Quick Save / Load), so a deliberate
+      realignment retires the warning without the user having to dismiss
+      it.
 - **`EasyAIPipeline`: preview resolves connected text-name builders.**
   The path preview buttons now evaluate common connected text nodes such as
   `Text Multiline` and `Text Concatenate` instead of reading the concatenate

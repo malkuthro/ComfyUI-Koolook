@@ -44,7 +44,17 @@ function notifyWorkflowsChanged() {
 // =============================================================================
 // Normalization (with back-compat migration for the pre-v0.3 flat shape)
 // =============================================================================
-function normalizeWorkflowsStore(data) {
+//
+// Exported so callers outside this module (e.g. ``detectBootDrift`` in
+// ``snapshot.js``) can canonicalize a freshly-read JSON blob with the
+// exact same transforms the live ``workflowsCache`` was built from —
+// otherwise a fingerprint comparison of "live cache vs disk file" gets
+// confused by ``archived: "false"`` (string) on disk vs the cache's
+// ``archived: false`` (bool), missing ``directories: {}`` fields on
+// pre-v0.3 nodes, or unsorted/duplicate tags. The transforms are
+// idempotent: passing already-normalized data returns an equivalent
+// (deep-cloned) shape, so calling this on a happy-path read is safe.
+export function normalizeWorkflowsStore(data) {
     if (!data || typeof data !== "object") return { directories: {} };
     const dirs = data.directories;
     if (!dirs || typeof dirs !== "object") return { directories: {} };
@@ -113,11 +123,15 @@ function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-// Exported for reuse by snapshot_diff.js (issue #181) — the Compare view needs
-// the same key-order canonicalization to decide whether two workflow graphs
-// differ. Kept defined here (next to its `compareNames` dependency and
-// `normalizedStoresEqual`) rather than moved, so the store's own callers are
-// untouched.
+// Recursive deep-clone with object keys sorted case-insensitively at every
+// level. Exported for reuse by two callers that both need the same key-order
+// canonicalization: snapshot_diff.js (issue #181, Compare view) deciding
+// whether two workflow graphs differ, and ``detectBootDrift`` in
+// ``snapshot.js`` (issues #161/#162) comparing the live cache against the
+// on-disk snapshot — without it, insertion-order-sensitive ``JSON.stringify``
+// makes equivalent content produce different fingerprints (false-positive
+// drift). Kept defined here next to its `compareNames` dependency rather than
+// moved, so the store's own callers are untouched.
 export function sortJsonValue(value) {
     if (Array.isArray(value)) return value.map(sortJsonValue);
     if (!value || typeof value !== "object") return value;

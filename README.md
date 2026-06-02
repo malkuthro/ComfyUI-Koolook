@@ -71,6 +71,16 @@ git clone https://github.com/malkuthro/ComfyUI-Koolook.git
 
 Restart ComfyUI after installation.
 
+> **One install at a time.** If you already installed Kforge Labs via
+> ComfyUI Manager, it lives at `custom_nodes/koolook/` (the Manager /
+> Registry-derived folder name). A second `custom_nodes/ComfyUI-Koolook/`
+> created by `git clone` is a parallel install — ComfyUI loads BOTH on
+> every boot, both register the same routes and sidebar tab, and the
+> workflow store silently corrupts on every restart. From v0.3.8 the
+> plugin detects this and prints a critical log naming both paths,
+> disabling the non-winning copy — but the cleanest fix is to remove
+> one folder. Pick the install method you want and stick with it.
+
 ## Learn More
 
 - **Public overview:** [kforgelabs.com/comfyui-projects/comfyui-koolook/](https://www.kforgelabs.com/comfyui-projects/comfyui-koolook/)

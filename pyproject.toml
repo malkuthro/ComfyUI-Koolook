@@ -49,6 +49,7 @@ py-modules = [
     "k_timeline_editor",
     "k_video_combine",
     "k_video_load",
+    "koolook_install_guard",
     "koolook_routes",
     "koolook_versioning",
 ]
