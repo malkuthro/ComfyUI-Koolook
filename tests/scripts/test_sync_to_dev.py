@@ -1,13 +1,19 @@
-"""Guard: every root node module is shipped by dev-sync ``RUNTIME_PATHS``.
+"""Guards on which modules ``dev-sync`` ships, so the loader can never point
+at a file the install lacks.
 
-The #183 incident (root cause behind #198) was a node module
-(``k_audio_timeline.py``) that ``__init__.py`` imported but
-``scripts/sync_to_dev.py``'s ``RUNTIME_PATHS`` never copied, so dev installs
-raised ``ImportError`` at startup. This test fails loudly if a new root
-``k_*.py`` node module is ever added without listing it in ``RUNTIME_PATHS``.
+The #183 incident (root cause behind #198): a module that ``__init__.py``
+imported but ``scripts/sync_to_dev.py``'s ``RUNTIME_PATHS`` never copied raised
+``ImportError`` at startup. After the #198 refactor the blast radius of such a
+gap depends on *where* the import sits — a per-group node import degrades to
+"that node absent", but the context probe (``koolook_versioning``) and the
+install guard gate *all* registration. So the real invariant is: every module
+``__init__.py`` imports at load must be shipped by ``RUNTIME_PATHS``. This test
+derives those imports from ``__init__.py`` itself (rather than a ``k_*.py``
+glob, which misses the non-``k_`` gates) so it can't drift.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -19,12 +25,54 @@ sync_to_dev = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sync_to_dev)
 
 
-def test_every_root_node_module_is_in_runtime_paths():
-    root_node_modules = {p.name for p in REPO_ROOT.glob("k_*.py")}
+def _init_load_time_module_deps() -> set[str]:
+    """Top-level package modules/packages ``__init__.py`` imports at load.
+
+    Covers relative ``from .X import ...`` / ``from . import X`` statements and
+    the ``_merge_node_group(label, ".X")`` node-group imports. Returns the
+    first path segment of each (e.g. ``forks.radiance_koolook`` -> ``forks``),
+    the granularity ``RUNTIME_PATHS`` ships at. Absolute imports (the install
+    guard's out-of-package fallback) are level 0 and intentionally ignored.
+    """
+    tree = ast.parse((REPO_ROOT / "__init__.py").read_text(encoding="utf-8"))
+    deps: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.level or 0) >= 1:
+            if node.module:  # from .pkg import ...
+                deps.add(node.module.split(".")[0])
+            else:  # from . import a, b
+                deps.update(alias.name.split(".")[0] for alias in node.names)
+        elif (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "id", None) == "_merge_node_group"
+        ):
+            for arg in node.args:
+                if (
+                    isinstance(arg, ast.Constant)
+                    and isinstance(arg.value, str)
+                    and arg.value.startswith(".")
+                ):
+                    deps.add(arg.value.lstrip(".").split(".")[0])
+    return deps
+
+
+def test_init_load_deps_are_shipped_by_runtime_paths():
     runtime_paths = set(sync_to_dev.RUNTIME_PATHS)
-    missing = sorted(root_node_modules - runtime_paths)
+    deps = _init_load_time_module_deps()
+    # Sanity: the parse actually found the imports (guards against a refactor
+    # that renames _merge_node_group and silently makes this test vacuous).
+    assert "koolook_versioning" in deps and "k_ai_pipeline" in deps, (
+        f"__init__.py import parse looks broken — only found: {sorted(deps)}"
+    )
+    # A single-file module ships as "<dep>.py"; a package (e.g. forks) ships as
+    # its top-level dir entry.
+    missing = sorted(
+        dep
+        for dep in deps
+        if f"{dep}.py" not in runtime_paths and dep not in runtime_paths
+    )
     assert not missing, (
-        "root node module(s) imported by __init__.py but not shipped by "
-        f"dev-sync RUNTIME_PATHS: {missing}. Add them to RUNTIME_PATHS in "
-        "scripts/sync_to_dev.py so a plain dev-sync can't 404 the node again."
+        "__init__.py imports these at load but dev-sync RUNTIME_PATHS does not "
+        f"ship them: {missing}. Add them to RUNTIME_PATHS in "
+        "scripts/sync_to_dev.py so a plain dev-sync can't 404 the loader."
     )

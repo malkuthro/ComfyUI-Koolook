@@ -14,6 +14,15 @@ The format is inspired by Keep a Changelog and SemVer.
   (Koolook)` for a second workflow stage without parsing VHS's mixed
   JSON/video list.
 
+### Removed
+- **Standalone audio-transcript tooling.** Removed the experimental
+  `KoolookAudioTranscriptTimeline` / `KoolookTimelineEditor` nodes, the
+  `scripts/transcribe_audio_timeline.py` CLI, and the `[audio]`
+  (`faster-whisper`) optional dependency — superseded by the Koolook
+  Director's built-in `audio_transcript_json` input (#198). Anyone using
+  `pip install -e '.[audio]'` or that CLI out-of-tree should pin a
+  pre-removal commit.
+
 ### Fixed
 - **Node registry survives one broken or missing module.** The root
   `__init__.py` now imports each node group independently and installs the

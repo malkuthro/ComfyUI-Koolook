@@ -81,3 +81,19 @@ def test_remove_stale_paths_unlinks_symlink_without_touching_target(tmp_path: Pa
 
 def test_target_is_repo_root_detects_source_repo() -> None:
     assert sync_to_dev_audio.target_is_repo_root(sync_to_dev_audio._dev.REPO_ROOT)
+
+
+def test_audio_paths_ship_init_load_gates() -> None:
+    """dev-sync-audio ships ``__init__.py``, so it must also ship the modules
+    ``__init__`` imports at load before any node group. Those gates are not
+    per-group-guarded: a missing ``koolook_install_guard`` makes the absolute
+    import fallback raise uncaught (plugin dead), and a missing
+    ``koolook_versioning`` makes the context probe mislabel its ImportError as
+    a non-Comfy context and register nothing (#198 / #183).
+    """
+    audio_paths = set(sync_to_dev_audio.AUDIO_PATHS)
+    required = {"__init__.py", "koolook_install_guard.py", "koolook_versioning.py"}
+    missing = sorted(required - audio_paths)
+    assert not missing, (
+        f"dev-sync-audio ships __init__.py but not its load-time gate(s): {missing}"
+    )
