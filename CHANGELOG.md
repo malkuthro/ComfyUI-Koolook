@@ -94,8 +94,11 @@ The format is inspired by Keep a Changelog and SemVer.
       `custom_nodes/` siblings for `koolook_routes.py` markers at import
       time, prints a critical log naming both paths + their pyproject
       versions, and registers nothing (no nodes, no routes, no
-      `WEB_DIRECTORY`) when this install is the alphabetical loser. A
-      client-side fallback in
+      `WEB_DIRECTORY`) when this install is the alphabetical loser. The
+      scan is fail-safe by construction — an unreadable sibling directory
+      or a non-UTF-8 `pyproject.toml` is skipped rather than allowed to
+      abort the plugin import, so the guard can never itself take Koolook
+      offline. A client-side fallback in
       [`web/sidebar/extension_guard.js`](web/sidebar/extension_guard.js)
       catches the residual case where an older sibling without the backend
       guard still ships its `koolook_sidebar.js` to the browser, sets a

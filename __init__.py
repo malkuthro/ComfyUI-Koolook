@@ -24,11 +24,23 @@ except ImportError:  # pragma: no cover - exercised only outside package context
     )
 
 _here = Path(__file__).resolve().parent
-_siblings = detect_duplicate_koolook_installs(_here)
+# The guard must never take down the plugin: any failure to scan or parse
+# siblings degrades to "register normally" (fail-safe) instead of aborting
+# the import (fail-silent — the plugin would vanish entirely, taking the
+# alphabetical winner with it). detect_/read_ already swallow per-entry
+# OSError/ValueError; this try is the final backstop for anything unforeseen.
 _is_winning_install = True
-if _siblings:
-    _is_winning_install, _report = build_duplicate_report(_here, _siblings)
-    print(_report)
+try:
+    _siblings = detect_duplicate_koolook_installs(_here)
+    if _siblings:
+        _is_winning_install, _report = build_duplicate_report(_here, _siblings)
+        print(_report)
+except Exception as _guard_err:  # pragma: no cover - defensive backstop
+    print(
+        f"[Koolook] install-guard check failed ({_guard_err!r}); "
+        "registering normally."
+    )
+    _is_winning_install = True
 
 
 if not _is_winning_install:

@@ -47,10 +47,18 @@ def detect_duplicate_koolook_installs(here: Path) -> list[Path]:
         # iteration works in the first place.
         return siblings
     for entry in entries:
-        if entry == here or not entry.is_dir():
+        try:
+            if entry == here or not entry.is_dir():
+                continue
+            if (entry / "koolook_routes.py").is_file():
+                siblings.append(entry)
+        except OSError:
+            # A sibling we can't stat into (restrictive perms, a broken
+            # mount, a special dir) is not our concern — skip it rather
+            # than let one unreadable neighbour raise PermissionError up
+            # into ``__init__.py`` and abort the whole plugin import. A
+            # real duplicate always carries a readable ``koolook_routes.py``.
             continue
-        if (entry / "koolook_routes.py").is_file():
-            siblings.append(entry)
     siblings.sort(key=lambda p: p.name.lower())
     return siblings
 
@@ -86,7 +94,10 @@ def read_pyproject_version(install_dir: Path) -> str:
             if " #" in value:
                 value = value.split(" #", 1)[0].rstrip()
             return value.strip('"').strip("'")
-    except OSError:
+    except (OSError, ValueError):
+        # OSError: unreadable file. ValueError (incl. UnicodeDecodeError):
+        # a non-UTF-8 / binary pyproject.toml. Either way the version is
+        # simply unknown — degrade to "?", never raise into the import.
         pass
     return "?"
 

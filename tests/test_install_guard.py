@@ -91,6 +91,27 @@ def test_detect_orders_siblings_alphabetically(tmp_path: Path) -> None:
     assert later in siblings
 
 
+def test_detect_skips_unreadable_sibling(tmp_path: Path, monkeypatch) -> None:
+    """A sibling directory we can't stat into (restrictive perms / broken
+    mount) must be skipped, not crash the scan. Regression: an unguarded
+    ``is_file()`` raised ``PermissionError`` up into ``__init__.py`` and the
+    whole plugin failed to load when ``custom_nodes/`` held an unreadable
+    neighbour (e.g. a root-owned service dir)."""
+    here = _make_install(tmp_path, "koolook")
+    blocked = tmp_path / "blocked-node"
+    blocked.mkdir()
+    real_is_file = Path.is_file
+
+    def fake_is_file(self: Path) -> bool:
+        if self.name == "koolook_routes.py" and self.parent == blocked:
+            raise PermissionError(13, "Permission denied")
+        return real_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+    # Must not raise; the unreadable sibling is simply skipped.
+    assert detect_duplicate_koolook_installs(here) == []
+
+
 # =============================================================================
 # read_pyproject_version
 # =============================================================================
@@ -145,6 +166,18 @@ def test_read_version_strips_inline_comment(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert read_pyproject_version(install) == "0.3.11"
+
+
+def test_read_version_handles_non_utf8_pyproject(tmp_path: Path) -> None:
+    """A non-UTF-8 / binary ``pyproject.toml`` must not raise
+    ``UnicodeDecodeError`` — the version is simply unknown (``"?"``).
+    Regression: ``read_text(encoding="utf-8")`` raised a ``ValueError``
+    that escaped the ``except OSError`` and crashed the plugin import."""
+    install = tmp_path / "koolook"
+    install.mkdir()
+    (install / "koolook_routes.py").write_text("# marker", encoding="utf-8")
+    (install / "pyproject.toml").write_bytes(b"\xff\xfe version = broken \x00")
+    assert read_pyproject_version(install) == "?"
 
 
 # =============================================================================
@@ -209,3 +242,19 @@ def test_build_report_handles_three_way_collision(tmp_path: Path) -> None:
     siblings_from_a = detect_duplicate_koolook_installs(a)
     is_winning_a, _ = build_duplicate_report(a, siblings_from_a)
     assert is_winning_a is True
+
+
+def test_build_report_survives_non_utf8_sibling_pyproject(tmp_path: Path) -> None:
+    """The full report path must not raise on a duplicate whose
+    ``pyproject.toml`` is non-UTF-8 — it degrades that version to ``"?"``
+    and still names both paths. Regression: this raised ``UnicodeDecodeError``
+    up into ``__init__.py`` and took the whole plugin offline (both copies)."""
+    here = _make_install(tmp_path, "koolook", version="0.3.7")
+    other = tmp_path / "ComfyUI-Koolook"
+    other.mkdir()
+    (other / "koolook_routes.py").write_text("# marker", encoding="utf-8")
+    (other / "pyproject.toml").write_bytes(b"\xffname = broken")
+    is_winning, message = build_duplicate_report(here, [other])
+    assert is_winning is False  # "ComfyUI-Koolook" < "koolook" case-insensitively
+    assert str(other) in message
+    assert "0.3.7" in message  # here's own version is still extracted
