@@ -408,7 +408,7 @@
         }
       },
       "widgets_values": [
-        "e:\\G-Drive-BaconX\\Jobs\\3252_arena\\ComfyUI\\LOOP_tests\\Codex\\"
+        "C:/koolook-loop-demo-output/"
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
@@ -467,6 +467,16 @@
           "name": "server_url",
           "type": "STRING",
           "link": null
+        },
+        {
+          "name": "max_auto_queue_depth",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "remaining_auto_queue_depth",
+          "type": "INT",
+          "link": null
         }
       ],
       "outputs": [
@@ -501,7 +511,9 @@
         "EXR_SAFE",
         true,
         "22",
-        "http://127.0.0.1:8188"
+        "http://127.0.0.1:8188",
+        100,
+        -1
       ],
       "color": "#232",
       "bgcolor": "#353"

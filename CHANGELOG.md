@@ -12,7 +12,10 @@ The format is inspired by Keep a Changelog and SemVer.
   and can queue the next prompt by advancing a connected `easy int` frame
   index. The included loop demo workflow uses it to run one full ComfyUI
   execution per frame so deep subgraphs receive single-frame inputs instead
-  of a sequence batch.
+  of a sequence batch. The controller also caps auto-queue depth, checks
+  ComfyUI `/prompt` responses, guards duplicate queue submissions, and writes
+  an abort marker beside the target sequence when a child prompt cannot be
+  queued.
 - **Workflow Archive cleanup.** The synthetic Archive folder now offers
   `Clean up archive` alongside the existing all-or-nothing delete action.
   Cleanup confirms keep/delete counts, groups archived entries by original

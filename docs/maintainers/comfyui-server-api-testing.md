@@ -14,7 +14,7 @@ The AI session needs three kinds of access:
 2. Read access to the repository and test workflow files. The agent should
    build or load API prompts from repo-local files where possible.
 3. Write access to a safe output folder. Prefer a repo-local ignored folder,
-   such as `agent-tools/comfy-loop-test-output/`, so generated images or EXRs do
+   such as `.tmp/comfy-loop-test-output/`, so generated images or EXRs do
    not land in production show folders while the test is still experimental.
 
 Do not give the agent broad write access to project drives just to test a node.
@@ -113,10 +113,10 @@ the subgraph definition.
 The loop demo has a reusable harness:
 
 ```powershell
-.\.venv-codex\Scripts\python agent-tools\run_loop_demo_api_test.py
+.\.venv-codex\Scripts\python scripts\run_loop_demo_api_test.py
 ```
 
-It writes to `agent-tools/comfy-loop-test-output/run-*/`, which is ignored by
+It writes to `.tmp/comfy-loop-test-output/run-*/`, which is ignored by
 git.
 
 ## Lessons From The Loop Controller Work

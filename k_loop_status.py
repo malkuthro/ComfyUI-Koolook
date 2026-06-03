@@ -9,19 +9,34 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
+from pathlib import Path
+import re
 import threading
-import time
+import traceback
+import urllib.error
 import urllib.request
 
 
+LOGGER = logging.getLogger(__name__)
+MAX_AUTO_QUEUE_DEPTH = 1000
 _ACTIVE_QUEUE_KEYS: set[str] = set()
+_ACTIVE_QUEUE_KEYS_LOCK = threading.Lock()
+
+
+class AnyType(str):
+    """ComfyUI wildcard type that compares as compatible with any socket."""
+
+    def __ne__(self, _other):
+        return False
+
+
+ANY_TYPE = AnyType("*")
 
 
 def _format_write_path(filepath: str, frame: int) -> str:
     text = str(filepath or "").strip()
-    if "%04d" in text:
-        return text.replace("%04d", f"{frame:04d}")
-    return text
+    return re.sub(r"%0?(\d*)d", lambda m: f"{frame:0{m.group(1) or '0'}d}", text)
 
 
 def build_status(label: str, index: int, total: int, filepath: str = "") -> str:
@@ -35,7 +50,7 @@ def build_status(label: str, index: int, total: int, filepath: str = "") -> str:
     return f"{label}: {position}/{total} frame {frame}"
 
 
-def _infer_index_node_id(prompt: dict | None, unique_id) -> str:
+def infer_index_node_id(prompt: dict | None, unique_id) -> str:
     if not isinstance(prompt, dict) or unique_id is None:
         return ""
     node = prompt.get(str(unique_id))
@@ -50,7 +65,20 @@ def _infer_index_node_id(prompt: dict | None, unique_id) -> str:
     return ""
 
 
-def _post_prompt(server_url: str, prompt: dict) -> None:
+_infer_index_node_id = infer_index_node_id
+
+
+def _get_json(url: str, timeout: float = 10) -> dict:
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    return json.loads(body) if body else {}
+
+
+def _probe_server(server_url: str) -> None:
+    _get_json(f"{server_url.rstrip('/')}/system_stats", timeout=10)
+
+
+def _post_prompt(server_url: str, prompt: dict) -> dict:
     data = json.dumps({"prompt": prompt}).encode("utf-8")
     req = urllib.request.Request(
         f"{server_url.rstrip('/')}/prompt",
@@ -60,7 +88,30 @@ def _post_prompt(server_url: str, prompt: dict) -> None:
     )
     with urllib.request.urlopen(req, timeout=30) as response:
         body = response.read().decode("utf-8", errors="replace")
+    payload = json.loads(body) if body else {}
+    if payload.get("error") or not payload.get("prompt_id"):
+        raise RuntimeError(f"ComfyUI rejected child prompt: {payload}")
     print(f"[Koolook Loop Status] queued next prompt: {body}")
+    return payload
+
+
+def _abort_marker_path(filepath: str, frame: int) -> Path:
+    expected = Path(_format_write_path(filepath, frame))
+    parent = expected.parent if str(expected.parent) else Path.cwd()
+    return parent / f"_loop_aborted_at_frame_{frame}.txt"
+
+
+def _write_abort_marker(filepath: str, frame: int, exc: BaseException) -> None:
+    marker = _abort_marker_path(filepath, frame)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        "Koolook Loop Status failed to queue the next prompt.\n\n"
+        f"Frame: {frame}\n"
+        f"Error: {exc}\n\n"
+        f"{traceback.format_exc()}",
+        encoding="utf-8",
+    )
+    print(f"[Koolook Loop Status] wrote abort marker: {marker}")
 
 
 def _queue_next_prompt(
@@ -70,6 +121,8 @@ def _queue_next_prompt(
     next_index: int,
     server_url: str,
     queue_key: str,
+    filepath: str,
+    remaining_auto_queue_depth: int,
 ) -> None:
     try:
         child = copy.deepcopy(prompt)
@@ -78,12 +131,18 @@ def _queue_next_prompt(
             raise RuntimeError(f"index node id {index_node_id!r} is not in prompt")
         inputs = node.setdefault("inputs", {})
         inputs["value"] = int(next_index)
-        time.sleep(0.05)
+        status_node = child.get(str(queue_key.split(":", 1)[0]))
+        if isinstance(status_node, dict):
+            status_inputs = status_node.setdefault("inputs", {})
+            status_inputs["remaining_auto_queue_depth"] = int(remaining_auto_queue_depth)
         _post_prompt(server_url, child)
     except Exception as exc:
+        LOGGER.exception("Koolook Loop Status failed to queue next prompt")
         print(f"[Koolook Loop Status] failed to queue next prompt: {exc}")
+        _write_abort_marker(filepath, next_index, exc)
     finally:
-        _ACTIVE_QUEUE_KEYS.discard(queue_key)
+        with _ACTIVE_QUEUE_KEYS_LOCK:
+            _ACTIVE_QUEUE_KEYS.discard(queue_key)
 
 
 class KoolookLoopStatus:
@@ -93,7 +152,7 @@ class KoolookLoopStatus:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "value": ("*",),
+                "value": (ANY_TYPE,),
                 "index": ("INT", {"default": 0, "min": 0, "max": 999999}),
                 "total": ("INT", {"default": 1, "min": 1, "max": 100000}),
             },
@@ -106,6 +165,14 @@ class KoolookLoopStatus:
                     "STRING",
                     {"default": "http://127.0.0.1:8188", "multiline": False},
                 ),
+                "max_auto_queue_depth": (
+                    "INT",
+                    {"default": 100, "min": 1, "max": MAX_AUTO_QUEUE_DEPTH},
+                ),
+                "remaining_auto_queue_depth": (
+                    "INT",
+                    {"default": -1, "min": -1, "max": MAX_AUTO_QUEUE_DEPTH},
+                ),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -113,7 +180,7 @@ class KoolookLoopStatus:
             },
         }
 
-    RETURN_TYPES = ("*", "STRING")
+    RETURN_TYPES = (ANY_TYPE, "STRING")
     RETURN_NAMES = ("value", "status")
     FUNCTION = "report"
     CATEGORY = "Koolook/Loop"
@@ -128,6 +195,8 @@ class KoolookLoopStatus:
         auto_queue_next=False,
         index_node_id="",
         server_url="http://127.0.0.1:8188",
+        max_auto_queue_depth=100,
+        remaining_auto_queue_depth=-1,
         prompt=None,
         unique_id=None,
     ):
@@ -139,26 +208,58 @@ class KoolookLoopStatus:
         if not index_node_id and label.isdigit():
             index_node_id = label
             label = "EXR_SAFE"
+            print(
+                "[Koolook Loop Status] numeric label treated as index_node_id; "
+                "using label EXR_SAFE"
+            )
         if not index_node_id:
-            index_node_id = _infer_index_node_id(prompt, unique_id)
-        status = build_status(label or "loop", index, total, filepath)
-        print(f"[Koolook Loop Status] {status}")
-        if bool(auto_queue_next) and next_index < total:
+            index_node_id = infer_index_node_id(prompt, unique_id)
+        max_depth = max(1, min(int(max_auto_queue_depth), MAX_AUTO_QUEUE_DEPTH))
+        remaining_depth = int(remaining_auto_queue_depth)
+        if remaining_depth < 0:
+            remaining_depth = max_depth
+        should_queue = bool(auto_queue_next) and next_index < total
+        server_url = str(server_url or "").strip()
+        if should_queue:
+            if total - frame - 1 > max_depth:
+                raise RuntimeError(
+                    f"Refusing to auto-queue {total - frame - 1} remaining prompts; "
+                    f"max_auto_queue_depth is {max_depth}."
+                )
+            if remaining_depth <= 0:
+                raise RuntimeError("Auto-queue depth exhausted before loop completed.")
             if not isinstance(prompt, dict):
                 raise RuntimeError("Koolook Loop Status needs hidden PROMPT data.")
+            if unique_id is None:
+                raise RuntimeError("Koolook Loop Status needs hidden UNIQUE_ID data.")
             if not index_node_id:
                 raise RuntimeError("Set index_node_id to the easy int frame index node.")
+            if not server_url:
+                raise RuntimeError("Set server_url to the running ComfyUI server.")
+            try:
+                _probe_server(server_url)
+            except (OSError, urllib.error.URLError, TimeoutError) as exc:
+                raise RuntimeError(f"ComfyUI server is not reachable: {server_url}") from exc
+        status = build_status(label or "loop", index, total, filepath)
+        print(f"[Koolook Loop Status] {status}")
+        if should_queue:
             queue_key = f"{unique_id or 'loop-status'}:{frame}->{next_index}"
-            if queue_key not in _ACTIVE_QUEUE_KEYS:
-                _ACTIVE_QUEUE_KEYS.add(queue_key)
+            queued = False
+            with _ACTIVE_QUEUE_KEYS_LOCK:
+                if queue_key not in _ACTIVE_QUEUE_KEYS:
+                    _ACTIVE_QUEUE_KEYS.add(queue_key)
+                    queued = True
+            if queued:
                 thread = threading.Thread(
                     target=_queue_next_prompt,
                     kwargs={
                         "prompt": prompt,
                         "index_node_id": index_node_id,
                         "next_index": next_index,
-                        "server_url": str(server_url or "http://127.0.0.1:8188"),
+                        "server_url": server_url,
                         "queue_key": queue_key,
+                        "filepath": str(filepath or ""),
+                        "remaining_auto_queue_depth": remaining_depth - 1,
                     },
                     daemon=True,
                 )

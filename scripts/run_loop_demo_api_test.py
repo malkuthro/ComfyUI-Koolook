@@ -1,7 +1,7 @@
 """Run the loop demo against a local ComfyUI server.
 
 This is a repo-local validation harness for
-`agent-tools/LOOP_demo_pipeline_Codex.json`. It submits an API-format version
+`docs/automations/loop-demo/LOOP_demo_pipeline.json`. It submits an API-format version
 of the queue-controller demo graph to a running ComfyUI server and verifies
 that four EXR files are written across four prompt executions.
 """
@@ -36,6 +36,17 @@ def _assert_inside(parent: Path, child: Path) -> None:
     child = child.resolve()
     if parent != child and parent not in child.parents:
         raise RuntimeError(f"Refusing to touch path outside repo: {child}")
+
+
+def _dump_server_debug(server: str) -> None:
+    for endpoint in ("queue", "history?max_items=20"):
+        try:
+            payload = _get_json(f"{server}/{endpoint}", timeout=10)
+        except Exception as exc:
+            print(f"Could not read /{endpoint}: {exc}")
+            continue
+        print(f"/{endpoint}:")
+        print(json.dumps(payload, indent=2)[:8000])
 
 
 def build_prompt(output_base: Path) -> dict:
@@ -122,6 +133,8 @@ def build_prompt(output_base: Path) -> dict:
                 "auto_queue_next": True,
                 "index_node_id": "22",
                 "server_url": "http://127.0.0.1:8188",
+                "max_auto_queue_depth": 100,
+                "remaining_auto_queue_depth": -1,
             },
         },
         "4": {
@@ -149,7 +162,7 @@ def run(server: str, output_base: Path, repo_root: Path) -> int:
 
     payload = {
         "prompt": build_prompt(run_output.resolve()),
-        "client_id": "codex-loop-test",
+        "client_id": "koolook-loop-test",
     }
     try:
         queued = _post_json(f"{server}/prompt", payload)
@@ -182,6 +195,7 @@ def run(server: str, output_base: Path, repo_root: Path) -> int:
         print(file)
     if len(files) != 4:
         print(f"Expected 4 EXRs, found {len(files)}.")
+        _dump_server_debug(server)
         return 1
     print("OK: wrote 4 EXR frames.")
     return 0
@@ -194,7 +208,7 @@ def main() -> int:
     parser.add_argument(
         "--output-base",
         type=Path,
-        default=repo_root / "agent-tools" / "comfy-loop-test-output",
+        default=repo_root / ".tmp" / "comfy-loop-test-output",
     )
     args = parser.parse_args()
     return run(args.server.rstrip("/"), args.output_base, repo_root)

@@ -29,3 +29,13 @@ Key inputs:
 - `index_node_id`: node id of the connected `easy int` frame-index node. If this
   is blank, the node attempts to infer it from the connected `index` input.
 - `server_url`: local ComfyUI server URL, usually `http://127.0.0.1:8188`.
+- `max_auto_queue_depth`: hard safety cap for how many child prompts this node
+  may chain from the current frame.
+- `remaining_auto_queue_depth`: internal countdown carried into child prompts.
+  Leave this at `-1` in normal canvas use.
+
+If an older saved workflow accidentally shifts widget values and puts a numeric
+node id into `label`, the node treats that numeric label as `index_node_id`,
+prints a recovery note, and uses `EXR_SAFE` as the label. This keeps older loop
+demo saves from crashing, but new workflows should set `label` and
+`index_node_id` explicitly.
