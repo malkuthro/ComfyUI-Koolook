@@ -388,6 +388,20 @@ def test_snapshot_save_writes_named_file_and_clears_dirty() -> None:
     )
 
 
+def test_snapshot_save_guards_overwrite_and_sanitizes() -> None:
+    # writePreset ends in an atomic os.replace, and the name is pre-filled, so
+    # Save must sanitize + confirm before overwriting an existing file (mirrors
+    # the live Save flow) and must not fire overlapping writes.
+    src = _tree_src()
+    start = src.index("function saveCompareSnapshot(")
+    body = src[start:src.index("\nfunction ", start + 10)]
+    assert "sanitizeName(" in body, "Save sanitizes the name like other writePreset callers"
+    assert "presetExists(" in body, "Save checks existence before writing"
+    assert "exists === null" in body, "Save aborts if the library can't be reached"
+    assert "showConfirmModal(" in body, "Save confirms before overwriting an existing snapshot"
+    assert "compareSaving" in body, "Save guards against overlapping in-flight writes"
+
+
 def test_exit_warns_on_unsaved_snapshot_edits() -> None:
     src = _tree_src()
     start = src.index("function exitCompareMode(")

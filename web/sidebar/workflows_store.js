@@ -751,13 +751,6 @@ export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
     return { archivedAs };
 }
 
-// Two graphs are equal when their canonical (key-order-normalized) JSON
-// matches — ignores the sibling savedAt stamp. Local mirror of the diff
-// helper so the copy engine doesn't depend on snapshot_diff.js.
-function graphsEqual(a, b) {
-    return JSON.stringify(sortJsonValue(a)) === JSON.stringify(sortJsonValue(b));
-}
-
 // Path-preserving copy (#197). Copy a workflow into `store` (any `{directories}`
 // object) at `dirSegs` — the SAME folder path it lives at on the source side —
 // creating any missing directories along the way and merging into existing
@@ -792,7 +785,7 @@ export function copyWorkflowIntoStore(store, dirSegs, wfName, graph, { tags = []
     if (!node.workflows) node.workflows = {};
     const existing = node.workflows[wfName];
     const collides = existing && existing.archived !== true;
-    if (collides && graphsEqual(existing.graph, graph)) {
+    if (collides && normalizedStoresEqual(existing.graph, graph)) {
         return { status: "skipped", finalName: wfName };
     }
     let finalName = wfName;

@@ -2383,6 +2383,9 @@ let compareFilter = new Set();
 // footer shows "Not saved" + a Save button; the user saves explicitly to a
 // NAMED file via saveCompareSnapshot. Reset on enter / exit / save. (#197)
 let compareDirty = false;
+// In-flight guard for the explicit Save so rapid Save clicks can't fire
+// overlapping writePreset POSTs (last-writer-wins).
+let compareSaving = false;
 
 // Run `fn` synchronously with the render path pointed at `snapshot`'s data
 // instead of live state. Read-only: always clears the overrides afterwards
@@ -2889,25 +2892,59 @@ function saveCompareSnapshot() {
         placeholder: "snapshot name",
         confirmLabel: "Save",
         onSubmit: async (rawName) => {
-            const name = (rawName || "").trim();
-            if (!name) return;
-            try {
-                await writePreset(name, snapshotRef);   // default library dir — never an autosave subdir
-            } catch (e) {
-                console.error("[Koolook] snapshot save failed:", e);
-                toast(`Could not save snapshot "${name}": ${e.message}`);
+            // Sanitize like every other writePreset caller (clean toast on bad
+            // input instead of an opaque server 400).
+            const name = sanitizeName(rawName);
+            if (!name) {
+                toast("Snapshot name is empty after stripping unsafe characters.");
                 return;
             }
-            // If the user exited / loaded a different snapshot during the write,
-            // the dirty flag + meta now belong to something else — leave them.
-            if (compareSnapshot !== snapshotRef) {
-                toast(`Saved snapshot "${name}".`);
+            const doWrite = async () => {
+                if (compareSaving) {
+                    toast("A snapshot save is already in progress.");
+                    return;
+                }
+                compareSaving = true;
+                try {
+                    await writePreset(name, snapshotRef);   // default library dir — never an autosave subdir
+                } catch (e) {
+                    console.error("[Koolook] snapshot save failed:", e);
+                    toast(`Could not save snapshot "${name}": ${e.message}`);
+                    return;
+                } finally {
+                    compareSaving = false;
+                }
+                // If the user exited / loaded a different snapshot during the
+                // write, the dirty flag + meta now belong to something else.
+                if (compareSnapshot !== snapshotRef) {
+                    toast(`Saved snapshot "${name}".`);
+                    return;
+                }
+                compareMeta = { fileName: name, displayName: name };   // now tracks the named file
+                compareDirty = false;
+                rerenderSidebar();
+                toast(`Saved snapshot "${name}" to disk.`);
+            };
+            // Confirm the destination before writing — `writePreset` ends in an
+            // atomic os.replace, so an accepted default name could otherwise
+            // silently overwrite a DIFFERENT same-named snapshot. Mirrors the
+            // live Save flow's existence guard (modals.js promptForName).
+            const exists = await presetExists(name);
+            if (exists === null) {
+                toast("Cannot reach the preset library to verify the name. Save canceled — check the library path or your connection.");
                 return;
             }
-            compareMeta = { fileName: name, displayName: name };   // now tracks the named file
-            compareDirty = false;
-            rerenderSidebar();
-            toast(`Saved snapshot "${name}" to disk.`);
+            if (exists === true) {
+                showConfirmModal({
+                    title: "Overwrite existing snapshot?",
+                    message: `A snapshot named "${name}" already exists. Overwrite it?`,
+                    confirmLabel: "Overwrite",
+                    danger: true,
+                    onConfirm: doWrite,
+                });
+                return;
+            }
+            await doWrite();
         },
     });
 }
