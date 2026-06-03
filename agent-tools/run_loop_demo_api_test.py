@@ -2,8 +2,8 @@
 
 This is a repo-local validation harness for
 `agent-tools/LOOP_demo_pipeline_Codex.json`. It submits an API-format version
-of the demo graph to a running ComfyUI server and verifies that four EXR files
-are written.
+of the queue-controller demo graph to a running ComfyUI server and verifies
+that four EXR files are written across four prompt executions.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ def _post_json(url: str, payload: dict) -> dict:
         return json.load(response)
 
 
-def _get_json(url: str) -> dict:
-    with urllib.request.urlopen(url, timeout=15) as response:
+def _get_json(url: str, timeout: float = 15) -> dict:
+    with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.load(response)
 
 
@@ -87,10 +87,10 @@ def build_prompt(output_base: Path) -> dict:
                 "no_subfolders": True,
             },
         },
-        "2": {"class_type": "easy forLoopStart", "inputs": {"total": ["12", 0]}},
+        "22": {"class_type": "easy int", "inputs": {"value": 0}},
         "3": {
             "class_type": "ImageFromBatch",
-            "inputs": {"image": ["9", 0], "batch_index": ["2", 1], "length": 1},
+            "inputs": {"image": ["9", 0], "batch_index": ["22", 0], "length": 1},
         },
         "19": {
             "class_type": "EasyResize_Koolook",
@@ -115,19 +115,14 @@ def build_prompt(output_base: Path) -> dict:
             "class_type": "Koolook_LoopStatus",
             "inputs": {
                 "value": ["19", 0],
-                "index": ["2", 1],
+                "index": ["22", 0],
                 "total": ["12", 0],
                 "filepath": ["8", 0],
                 "label": "EXR_SAFE",
+                "auto_queue_next": True,
+                "index_node_id": "22",
+                "server_url": "http://127.0.0.1:8188",
             },
-        },
-        "5": {
-            "class_type": "easy forLoopEnd",
-            "inputs": {"flow": ["2", 0], "initial_value1": ["21", 0]},
-        },
-        "20": {
-            "class_type": "easy showAnything",
-            "inputs": {"anything": ["5", 0]},
         },
         "4": {
             "class_type": "SaveEXRFrames",
@@ -135,7 +130,7 @@ def build_prompt(output_base: Path) -> dict:
                 "images": ["21", 0],
                 "filepath": ["8", 0],
                 "tonemap": "linear",
-                "start_frame": ["2", 1],
+                "start_frame": ["22", 0],
                 "overwrite": True,
                 "save_workflow": "none",
             },
@@ -177,7 +172,12 @@ def run(server: str, output_base: Path, repo_root: Path) -> int:
         print("Timed out waiting for ComfyUI history.")
         return 1
 
-    files = sorted(run_output.rglob("*.exr"))
+    files = []
+    for _ in range(240):
+        files = sorted(run_output.rglob("*.exr"))
+        if len(files) >= 4:
+            break
+        time.sleep(0.5)
     for file in files:
         print(file)
     if len(files) != 4:
