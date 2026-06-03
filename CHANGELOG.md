@@ -78,6 +78,11 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **Loop Status stale frame-index ids.** `Koolook_LoopStatus` now treats
+  `index_node_id` as an advanced override, falls back to the connected
+  `index` input when an old saved workflow points at a missing node id, logs
+  the detected frame-index node class/id, and accepts saved string booleans
+  such as `"true"` for `auto_queue_next`.
 - **Workflow validator wildcard sockets.** `scripts/validate_workflow.py` now
   treats ComfyUI wildcard (`*`) inputs as compatible with concrete link types,
   matching real workflow links such as an `IMAGE` output returning into an
