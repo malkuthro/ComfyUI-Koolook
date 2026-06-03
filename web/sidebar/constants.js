@@ -377,11 +377,18 @@ export function ensureStyle() {
 /* Each column stacks the rendered panel over a SOURCE/TARGET footer stripe. */
 .koolook-compare-col { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
 .koolook-compare-panelhost { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.koolook-compare-colfoot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 6px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); overflow: hidden; }
-.koolook-foot-role { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 3px; }
+/* Two-line footer: line 1 = orientation (SOURCE/TARGET + name), line 2 = save
+   behavior (the kit auto-saves; a snapshot file needs an explicit Save). */
+.koolook-compare-colfoot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; padding: 4px 6px; border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); overflow: hidden; }
+.koolook-foot-line1, .koolook-foot-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.koolook-foot-role { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 3px; flex: 0 0 auto; }
 .koolook-foot-target .koolook-foot-role { background: rgba(123, 224, 138, 0.28); color: #bff0c7; }
 .koolook-foot-source .koolook-foot-role { background: rgba(120, 150, 200, 0.22); color: rgba(205, 218, 240, 0.95); }
 .koolook-foot-name { font-size: 10px; font-weight: 600; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.koolook-foot-save { font-size: 9px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.koolook-foot-unsaved { color: #e0a64a; opacity: 1; font-weight: 700; }
+.koolook-foot-savebtn { flex: 0 0 auto; font: inherit; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; padding: 1px 8px; border-radius: 3px; color: inherit; background: rgba(224, 166, 74, 0.28); border: 1px solid rgba(224, 166, 74, 0.55); }
+.koolook-foot-savebtn:hover { background: rgba(224, 166, 74, 0.45); }
 /* Active (editable TARGET) column — a quiet green outline mirrors the green
    new-item tint so the eye reads "this side is live". */
 .koolook-compare-active { outline: 1px solid rgba(123, 224, 138, 0.5); outline-offset: -1px; border-radius: 4px; }

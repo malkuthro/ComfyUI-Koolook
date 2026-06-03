@@ -24,10 +24,13 @@ The format is inspired by Keep a Changelog and SemVer.
     identical and keep-both (`name (from <source>)`) when they differ. Tags and
     module flag ride along; graphs are deep-cloned so neither side aliases the
     other.
-  - **Both directions. B→A** writes into your live kit (and Save round-trips
-    it). **A→B** writes back into the snapshot **file on disk** (`writePreset`),
-    targeting the exact file the snapshot was loaded from. The write is atomic —
-    a failed write leaves both the file and the in-memory view untouched.
+  - **Both directions. B→A** copies into your live kit (auto-persists, like any
+    sidebar edit). **A→B** edits the snapshot as an **in-memory working copy** —
+    a **Save** button in its footer writes it to a **named** snapshot file
+    (never a rotating autosave), pre-filled with the snapshot's name; exiting
+    with unsaved edits prompts first. Each column footer shows **SOURCE/TARGET**
+    plus whether that side **auto-saves** (your kit) or has **unsaved edits**
+    (the snapshot).
   - **Copy a whole folder across.** Right-click a workflow folder → **"Copy
     folder … (with contents)"** bulk-copies every workflow under it (recursively,
     path-preserving, same collision policy) — the merge-two-snapshots case. The

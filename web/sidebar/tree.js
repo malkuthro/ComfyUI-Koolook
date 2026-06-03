@@ -2377,15 +2377,12 @@ let activeSide = "A";
 // force-expanded, everything else hidden — so the user can review just what's
 // new / modified, then clear the chips to collapse back. Reset on enter/exit.
 let compareFilter = new Set();
-// A->B write-back is async (network writePreset). `compareEpoch` is bumped on
-// every enter/exit so a write that resolves after the user left (or re-entered
-// with a different snapshot) is dropped instead of resurrecting a closed
-// Compare view. `snapshotWriteChain` serializes writes so two quick A->B copies
-// each re-clone from the LATEST snapshot (after the prior write settles) rather
-// than the same pre-write base — without it the second write clobbers the first
-// (lost update). (#197)
-let compareEpoch = 0;
-let snapshotWriteChain = Promise.resolve();
+// The snapshot (B) panel is a working COPY of a file. A->B copies edit it
+// IN MEMORY (no per-copy disk write — autosaves must stay a pure safety net,
+// never an A->B write target). `compareDirty` tracks pending edits so the
+// footer shows "Not saved" + a Save button; the user saves explicitly to a
+// NAMED file via saveCompareSnapshot. Reset on enter / exit / save. (#197)
+let compareDirty = false;
 
 // Run `fn` synchronously with the render path pointed at `snapshot`'s data
 // instead of live state. Read-only: always clears the overrides afterwards
@@ -2488,8 +2485,15 @@ export function renderSidebar(container) {
 
     // Orientation: highlight the active (TARGET) column and label both footers.
     (liveIsActive ? leftCol : rightCol).col.classList.add("koolook-compare-active");
-    labelColumnFoot(leftCol.foot, "A", liveIsActive ? "target" : "source", "your kit (live)");
-    labelColumnFoot(rightCol.foot, "B", liveIsActive ? "source" : "target", snapName);
+    labelColumnFoot(leftCol.foot, {
+        sideLetter: "A", role: liveIsActive ? "target" : "source",
+        name: "your kit", kind: "kit",
+    });
+    labelColumnFoot(rightCol.foot, {
+        sideLetter: "B", role: liveIsActive ? "source" : "target",
+        name: snapName, kind: "snapshot",
+        dirty: compareDirty, onSave: saveCompareSnapshot,
+    });
 
     container.appendChild(buildCompareBar(counts));
 }
@@ -2508,19 +2512,53 @@ function makeCompareColumn() {
     return { col, host, foot };
 }
 
-// Fill a column footer with its side letter + role (SOURCE = read-only side you
-// copy FROM; TARGET = active side you copy INTO).
-function labelColumnFoot(footEl, sideLetter, role, name) {
-    footEl.className = `koolook-compare-colfoot koolook-foot-${role}`;
+// Fill a column footer with two lines: orientation (SOURCE/TARGET + name) and
+// save behavior. `kind` is "kit" (your live working set — auto-saves) or
+// "snapshot" (a file — needs an explicit Save when edited). For a dirty
+// snapshot the save line turns into "Not saved" + a Save button (shown whenever
+// the snapshot has unsaved edits, regardless of which side is the target, so
+// the user can always persist after a swap).
+function labelColumnFoot(footEl, { sideLetter, role, name, kind, dirty = false, onSave = null }) {
+    footEl.className = `koolook-compare-colfoot koolook-foot-${role} koolook-foot-kind-${kind}`;
     footEl.replaceChildren();
+
+    const line1 = document.createElement("div");
+    line1.className = "koolook-foot-line1";
     const roleEl = document.createElement("span");
     roleEl.className = "koolook-foot-role";
     roleEl.textContent = role === "target" ? "TARGET" : "SOURCE";
     const nameEl = document.createElement("span");
     nameEl.className = "koolook-foot-name";
     nameEl.textContent = `${sideLetter} · ${name}`;
-    footEl.appendChild(roleEl);
-    footEl.appendChild(nameEl);
+    line1.appendChild(roleEl);
+    line1.appendChild(nameEl);
+    footEl.appendChild(line1);
+
+    const line2 = document.createElement("div");
+    line2.className = "koolook-foot-line2";
+    const saveEl = document.createElement("span");
+    saveEl.className = "koolook-foot-save";
+    if (kind === "kit") {
+        saveEl.textContent = "Live — changes auto-save";
+    } else if (dirty) {
+        saveEl.classList.add("koolook-foot-unsaved");
+        saveEl.textContent = "● In-memory edits · Not saved";
+    } else if (role === "target") {
+        saveEl.textContent = "Snapshot file — edits need Save";
+    } else {
+        saveEl.textContent = "Read-only file";
+    }
+    line2.appendChild(saveEl);
+    if (kind === "snapshot" && dirty && onSave) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "koolook-foot-savebtn";
+        btn.textContent = "Save";
+        btn.title = "Save the merged snapshot to a named file";
+        btn.addEventListener("click", onSave);
+        line2.appendChild(btn);
+    }
+    footEl.appendChild(line2);
 }
 
 // The bottom bar: the green/red diff legend (doubling as filter chips) plus the
@@ -2629,20 +2667,34 @@ function enterCompareMode() {
             activeSide = "A";   // always (re-)enter in the B->A direction
             compareFilter.clear();
             comparePathStates.clear();   // fresh snapshot starts with default expansion
-            compareEpoch += 1;  // invalidate any in-flight write from a prior session
+            compareDirty = false;        // freshly loaded — no pending edits
             rerenderSidebar();
         },
     });
 }
 
 function exitCompareMode() {
-    compareSnapshot = null;
-    compareMeta = null;
-    activeSide = "A";
-    compareFilter.clear();
-    comparePathStates.clear();
-    compareEpoch += 1;  // a write resolving after exit must not resurrect the view
-    rerenderSidebar();
+    const doExit = () => {
+        compareSnapshot = null;
+        compareMeta = null;
+        activeSide = "A";
+        compareFilter.clear();
+        comparePathStates.clear();
+        compareDirty = false;
+        rerenderSidebar();
+    };
+    // Don't silently lose in-memory A->B merges the user hasn't saved.
+    if (compareDirty) {
+        showConfirmModal({
+            title: "Discard unsaved snapshot edits?",
+            message: "You copied items into the snapshot but haven't saved them to a file yet. Exit Compare and discard those edits?",
+            confirmLabel: "Discard",
+            danger: true,
+            onConfirm: doExit,
+        });
+        return;
+    }
+    doExit();
 }
 
 // Flip which side is the editable destination, then re-render so the read-only
@@ -2761,66 +2813,20 @@ function copyWorkflowToLive(wfPath) {
     });
 }
 
-// ---- A -> B: copy from the live kit back into the snapshot FILE on disk ----
-// Serialized + epoch-guarded write-back. `applyToClone(updated)` mutates a fresh
-// clone of the CURRENT snapshot (taken after any prior queued write settles, so
-// concurrent copies don't clobber each other) and returns its result, or false
-// to abort (skip/dup). The clone is only swapped in — and the panel re-rendered
-// — after writePreset succeeds AND the Compare session is still the one that
-// enqueued the write (so a late write can't resurrect a closed/changed view).
-function persistSnapshotEdit(applyToClone, onOk, failMsg, pinDest) {
-    const epoch = compareEpoch;
-    const run = async () => {
-        if (epoch !== compareEpoch) return;          // session changed before our turn
-        const fileName = compareMeta && compareMeta.fileName;
-        if (!fileName) {
-            toast("Can't write to the snapshot — its file name is unknown.");
-            return;
-        }
-        const updated = JSON.parse(JSON.stringify(compareSnapshot));
-        let res;
-        try {
-            res = applyToClone(updated);
-        } catch (e) {
-            console.error("[Koolook] snapshot copy apply failed:", e);
-            return;
-        }
-        if (res === false) return;                   // nothing to write (skip / duplicate)
-        const dir = compareMeta && compareMeta.dir ? compareMeta.dir : undefined;
-        try {
-            await writePreset(fileName, updated, dir ? { dir } : undefined);
-        } catch (e) {
-            console.error("[Koolook] snapshot write-back failed:", e);
-            toast(`${failMsg} (${e.message})`);
-            return;
-        }
-        if (epoch !== compareEpoch) return;          // user left/re-entered during the write
-        compareSnapshot = updated;
-        if (pinDest) pinDest();                      // open the dest folder before the rerender
-        rerenderSidebar();
-        if (onOk) onOk(res);
-    };
-    // Chain so writes serialize; run on both fulfil and reject so one failure
-    // doesn't wedge the queue. The detached catch silences unhandled rejections.
-    snapshotWriteChain = snapshotWriteChain.then(run, run);
-    snapshotWriteChain.catch(() => {});
-    return snapshotWriteChain;
-}
-
+// ---- A -> B: edit the in-memory snapshot working copy (no disk write) ----
+// The snapshot panel is a working COPY of a file; A->B copies mutate it in
+// memory and mark it dirty. Persisting is an explicit, user-initiated Save to a
+// NAMED file (saveCompareSnapshot) — never a per-copy write, never an autosave.
 function copyNodeToSnapshot(type) {
-    persistSnapshotEdit(
-        (updated) => {
-            const picks = Array.isArray(updated.picks) ? updated.picks : [];
-            if (picks.includes(type)) {
-                toast(`"${type}" is already in the snapshot.`);
-                return false;
-            }
-            updated.picks = [...picks, type];
-            return { status: "added" };
-        },
-        () => toast(`Copied "${type}" into the snapshot${compareMeta && compareMeta.displayName ? ` "${compareMeta.displayName}"` : ""}.`),
-        `Copy failed — could not add "${type}" to the snapshot. See console.`,
-    );
+    const picks = Array.isArray(compareSnapshot.picks) ? compareSnapshot.picks : [];
+    if (picks.includes(type)) {
+        toast(`"${type}" is already in the snapshot.`);
+        return;
+    }
+    compareSnapshot.picks = [...picks, type];
+    compareDirty = true;
+    rerenderSidebar();
+    toast(`Added "${type}" to the snapshot — unsaved (use Save in the footer to keep it).`);
 }
 
 function copyWorkflowToSnapshot(wfPath) {
@@ -2831,22 +2837,69 @@ function copyWorkflowToSnapshot(wfPath) {
     }
     const { dirSegs, wfName } = splitWfPath(wfPath);
     const tags = Array.isArray(entry.tags) ? entry.tags : [];
-    persistSnapshotEdit(
-        (updated) => {
-            if (!updated.workflows || typeof updated.workflows !== "object") updated.workflows = { directories: {} };
-            const res = copyWorkflowIntoStore(updated.workflows, dirSegs, wfName, entry.graph, {
-                tags, module: entry.module === true, sourceLabel: "your kit",
-            });
-            if (res.status === "skipped") {
-                toast(`"${wfName}" is already in the snapshot at that path.`);
-                return false;
+    if (!compareSnapshot.workflows || typeof compareSnapshot.workflows !== "object") {
+        compareSnapshot.workflows = { directories: {} };
+    }
+    const res = copyWorkflowIntoStore(compareSnapshot.workflows, dirSegs, wfName, entry.graph, {
+        tags, module: entry.module === true, sourceLabel: "your kit",
+    });
+    if (res.status === "skipped") {
+        toast(`"${wfName}" is already in the snapshot at that path.`);
+        return;
+    }
+    compareDirty = true;
+    openCompareDestPath(dirSegs);
+    rerenderSidebar();
+    toast(`${copyToast("B", wfName, res)} Unsaved — Save to keep it.`);
+}
+
+// Derive the named snapshot this working copy should Save to: the named file it
+// was loaded from, or — when loaded from an autosave shadow (`Foo_autosave/`) —
+// the named snapshot `Foo` it shadows. Empty when loaded from `_unsaved_autosave`
+// (no named parent) so the user types a fresh name.
+function compareDefaultSaveName() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    if (dir === "_unsaved_autosave") return "";
+    if (dir.endsWith("_autosave")) return dir.slice(0, -"_autosave".length);
+    return compareMeta && compareMeta.fileName ? compareMeta.fileName : "";
+}
+
+// Explicit Save of the in-memory snapshot edits to a NAMED file (never an
+// autosave). Pre-fills the name with the shadowed / loaded name so the user
+// confirms exactly where it lands, writes to the default library dir, and clears
+// the dirty flag. Independent of the LIVE save tracker — this writes a snapshot
+// file; it doesn't change what your live session tracks.
+function saveCompareSnapshot() {
+    if (!compareSnapshot) return;
+    const snapshotRef = compareSnapshot;
+    showInputModal({
+        title: "Save snapshot",
+        label: "Save merged snapshot as",
+        defaultValue: compareDefaultSaveName(),
+        placeholder: "snapshot name",
+        confirmLabel: "Save",
+        onSubmit: async (rawName) => {
+            const name = (rawName || "").trim();
+            if (!name) return;
+            try {
+                await writePreset(name, snapshotRef);   // default library dir — never an autosave subdir
+            } catch (e) {
+                console.error("[Koolook] snapshot save failed:", e);
+                toast(`Could not save snapshot "${name}": ${e.message}`);
+                return;
             }
-            return res;
+            // If the user exited / loaded a different snapshot during the write,
+            // the dirty flag + meta now belong to something else — leave them.
+            if (compareSnapshot !== snapshotRef) {
+                toast(`Saved snapshot "${name}".`);
+                return;
+            }
+            compareMeta = { fileName: name, displayName: name };   // now tracks the named file
+            compareDirty = false;
+            rerenderSidebar();
+            toast(`Saved snapshot "${name}" to disk.`);
         },
-        (res) => toast(copyToast("B", wfName, res)),
-        `Copy failed — could not write "${wfName}" into the snapshot. See console.`,
-        () => openCompareDestPath(dirSegs),
-    );
+    });
 }
 
 // ---- Bulk folder copy (the merge case) ----
@@ -2869,21 +2922,18 @@ function copyFolderToLive(dirSegs, label) {
 
 function copyFolderToSnapshot(dirSegs, label) {
     const sourceStore = getAllWorkflowsForExport();
-    let summary = null;
-    persistSnapshotEdit(
-        (updated) => {
-            if (!updated.workflows || typeof updated.workflows !== "object") updated.workflows = { directories: {} };
-            summary = copyFolderIntoStore(updated.workflows, sourceStore, dirSegs, { sourceLabel: "your kit" });
-            if (summary.added === 0 && summary.keptBoth === 0) {
-                toast(folderCopyToast("B", label, summary));
-                return false;   // nothing changed — skip the write
-            }
-            return summary;
-        },
-        () => toast(folderCopyToast("B", label, summary)),
-        `Folder copy failed — could not write "${label}" into the snapshot. See console.`,
-        () => openCompareDestPath(dirSegs),
-    );
+    if (!compareSnapshot.workflows || typeof compareSnapshot.workflows !== "object") {
+        compareSnapshot.workflows = { directories: {} };
+    }
+    const summary = copyFolderIntoStore(compareSnapshot.workflows, sourceStore, dirSegs, { sourceLabel: "your kit" });
+    if (summary.added === 0 && summary.keptBoth === 0) {
+        toast(folderCopyToast("B", label, summary));   // nothing new — no edit
+        return;
+    }
+    compareDirty = true;
+    openCompareDestPath(dirSegs);
+    rerenderSidebar();
+    toast(`${folderCopyToast("B", label, summary)} Unsaved — Save to keep it.`);
 }
 
 // Tint the SOURCE column from the diff and return the counts for the legend.

@@ -358,26 +358,50 @@ def test_copy_is_path_preserving_without_a_folder_picker() -> None:
     assert "showSaveWorkflowModal" not in layer, "the copy no longer opens a folder-picker modal"
 
 
-def test_snapshot_writeback_serialized_atomic_and_epoch_guarded() -> None:
-    # A->B writes back into the snapshot FILE (writePreset) and only swaps the
-    # in-memory snapshot in AFTER the write succeeds — so a failed write leaves
-    # both the file and the live view untouched.
+def test_snapshot_edits_are_in_memory_not_per_copy_disk_writes() -> None:
+    # A->B copies edit the in-memory snapshot working copy and mark it dirty —
+    # NO per-copy writePreset (autosaves stay a pure safety net, never an A->B
+    # write target).
     src = _tree_src()
-    start = src.index("function persistSnapshotEdit(")
-    body = src[start:src.index("\nfunction copyNodeToSnapshot(", start)]
-    assert "writePreset(" in body, "A->B write-back must persist to the snapshot file"
-    assert "compareSnapshot = updated" in body
-    assert body.index("writePreset(") < body.index("compareSnapshot = updated"), (
-        "writePreset must succeed before the in-memory snapshot is replaced"
+    start = src.index("function copyWorkflowToSnapshot(")
+    body = src[start:src.index("\nfunction ", start + 10)]
+    assert "compareSnapshot.workflows" in body, "A->B edits the in-memory snapshot"
+    assert "compareDirty = true" in body, "A->B marks the snapshot dirty"
+    assert "writePreset" not in body, "A->B must not write to disk per copy"
+
+
+def test_snapshot_save_writes_named_file_and_clears_dirty() -> None:
+    # The explicit Save writes a NAMED snapshot (default library dir — never an
+    # autosave subdir), pre-fills the shadowed name, and clears the dirty flag.
+    src = _tree_src()
+    start = src.index("function saveCompareSnapshot(")
+    body = src[start:src.index("\nfunction ", start + 10)]
+    assert "writePreset(name, snapshotRef)" in body, "Save writes a named file to the default dir"
+    assert "compareDirty = false" in body, "Save clears the dirty flag"
+    assert "compareDefaultSaveName(" in body, "Save pre-fills the shadowed / loaded name"
+    # The default-name helper strips the _autosave suffix -> save to the named
+    # parent, never the rotating autosave shadow.
+    helper_start = src.index("function compareDefaultSaveName(")
+    helper = src[helper_start:src.index("\nfunction ", helper_start + 10)]
+    assert "_autosave" in helper and 'slice(0, -"_autosave".length)' in helper, (
+        "derive the named parent from the autosave dir"
     )
-    # Clones the CURRENT snapshot inside the serialized task (so concurrent
-    # copies re-clone from the latest state, not the same pre-write base).
-    assert "JSON.parse(JSON.stringify(compareSnapshot))" in body, "must clone before mutating"
-    # Epoch-guarded BEFORE the write (skip if the session changed before our
-    # turn) AND after it (don't resurrect a closed/changed Compare view).
-    assert body.count("epoch !== compareEpoch") >= 2, "epoch guard must bracket the await"
-    # Writes are serialized so two quick A->B copies don't clobber each other.
-    assert "snapshotWriteChain = snapshotWriteChain.then(" in src, "A->B writes are serialized"
+
+
+def test_exit_warns_on_unsaved_snapshot_edits() -> None:
+    src = _tree_src()
+    start = src.index("function exitCompareMode(")
+    body = src[start:src.index("\nfunction ", start + 10)]
+    assert "compareDirty" in body and "showConfirmModal" in body, (
+        "exiting with unsaved snapshot edits must confirm before discarding them"
+    )
+
+
+def test_compare_footers_show_save_behavior() -> None:
+    src = _tree_src()
+    assert "Live — changes auto-save" in src, "the kit footer states it auto-saves"
+    assert "koolook-foot-savebtn" in src, "the snapshot footer offers a Save button when dirty"
+    assert "koolook-foot-unsaved" in src, "the snapshot shows an unsaved state"
 
 
 def test_source_target_footers_and_legend_present() -> None:
@@ -427,7 +451,7 @@ def test_compare_panels_have_isolated_expansion_state() -> None:
     )
     # A->B copy opens its destination folder in the snapshot panel's own map.
     assert "function openCompareDestPath(" in src
-    assert "() => openCompareDestPath(dirSegs)" in src, "A->B copy opens its dest folder"
+    assert "openCompareDestPath(dirSegs)" in src, "A->B copy opens its dest folder"
 
 
 def test_folder_pull_in_is_wired() -> None:
