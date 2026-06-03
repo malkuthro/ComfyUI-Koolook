@@ -7,6 +7,12 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Koolook Loop Status queue controller.** Added `Koolook_LoopStatus`, a
+  pass-through node that reports per-frame progress (`1/4`, `2/4`, ...)
+  and can queue the next prompt by advancing a connected `easy int` frame
+  index. The included loop demo workflow uses it to run one full ComfyUI
+  execution per frame so deep subgraphs receive single-frame inputs instead
+  of a sequence batch.
 - **Workflow Archive cleanup.** The synthetic Archive folder now offers
   `Clean up archive` alongside the existing all-or-nothing delete action.
   Cleanup confirms keep/delete counts, groups archived entries by original
@@ -69,6 +75,10 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **Workflow validator wildcard sockets.** `scripts/validate_workflow.py` now
+  treats ComfyUI wildcard (`*`) inputs as compatible with concrete link types,
+  matching real workflow links such as an `IMAGE` output returning into an
+  Easy-Use loop body's wildcard `initial_value` socket.
 - **Node registry survives one broken or missing module.** The root
   `__init__.py` now imports each node group independently and installs the
   Kforge Labs snapshot/preset routes (`/koolook/presets/*`) regardless of

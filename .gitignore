@@ -14,6 +14,7 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .pytest_cache/
+agent-tools/comfy-loop-test-output/
 
 # Generated audio-lipsync run cards are reproducible from each run's
 # runNNN_workflow.json + notes/metadata. Keep delivery copies outside the repo.

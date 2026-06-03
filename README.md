@@ -47,6 +47,7 @@ Using it inside ComfyUI? Open the operational guide:
 | `Easy_LoadVideo` | Easy Load Video (Koolook) | `Koolook/Video` |
 | `Easy_VideoCombine` | Easy Video Combine (Koolook) | `Koolook/Video` |
 | `Easy_Utility` | Easy Utility (Koolook) | `Koolook/Utility` |
+| `Koolook_LoopStatus` | Koolook Loop Status | `Koolook/Loop` |
 | `LTXDirector__koolook` | LTX Director (Koolook) | `Koolook/PromptRelay` |
 
 The root Koolook nodes and the slim Radiance Koolook VAE wrappers have no

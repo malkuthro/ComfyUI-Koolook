@@ -116,6 +116,7 @@ else:
         _merge_node_group("Koolook Camera Loader", ".k_easy_track")
         _merge_node_group("Easy Pattern", ".k_easy_pattern")
         _merge_node_group("Easy Utility", ".k_easy_utility")
+        _merge_node_group("Koolook Loop Status", ".k_loop_status")
         # The VHS-dependent video wrappers degrade to empty mappings when
         # VideoHelperSuite is absent (they catch the import internally); the
         # guard also covers a hard ImportError should one ever slip through.

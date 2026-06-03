@@ -135,6 +135,12 @@ def test_type_mismatch_on_slot_reports() -> None:
     assert any("type mismatch" in p for p in problems), problems
 
 
+def test_wildcard_destination_accepts_concrete_link_type() -> None:
+    data = _minimal_clean()
+    data["nodes"][1]["inputs"][0]["type"] = "*"
+    assert validate(data) == []
+
+
 def test_duplicate_node_ids_report() -> None:
     data = _minimal_clean()
     data["nodes"][1]["id"] = 1  # collision with first node
