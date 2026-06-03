@@ -397,11 +397,27 @@ def test_exit_warns_on_unsaved_snapshot_edits() -> None:
     )
 
 
-def test_compare_footers_show_save_behavior() -> None:
+def test_save_state_is_its_own_stripe_separate_from_orientation() -> None:
+    # The SOURCE/TARGET footers carry orientation only; all save state /
+    # instructions / dirty / Save button live in a SEPARATE stripe.
     src = _tree_src()
-    assert "Live — changes auto-save" in src, "the kit footer states it auto-saves"
-    assert "koolook-foot-savebtn" in src, "the snapshot footer offers a Save button when dirty"
-    assert "koolook-foot-unsaved" in src, "the snapshot shows an unsaved state"
+    assert "function buildSaveStripe(" in src, "a dedicated save stripe exists"
+    assert "koolook-compare-savebar" in src, "the save stripe is its own element"
+    assert "koolook-savebar-btn" in src, "the save stripe carries the Save button"
+    assert "koolook-savebar-unsaved" in src, "the save stripe shows the unsaved state"
+    # The orientation footer no longer carries save behavior.
+    foot_start = src.index("function labelColumnFoot(")
+    foot = src[foot_start:src.index("\nfunction ", foot_start + 10)]
+    assert "savebtn" not in foot and "auto-save" not in foot, "footer is orientation-only now"
+
+
+def test_autosave_target_shows_clean_name_not_long_path() -> None:
+    # An autosave-loaded target must show a clean derived name (parent + marker),
+    # never the long `Foo_autosave/pre_load_...` path.
+    src = _tree_src()
+    assert "function compareSnapName(" in src, "snapshot display name is cleaned"
+    assert "· autosave" in src, "autosave targets are marked, named-parent shown"
+    assert 'slice(0, -"_autosave".length)' in src, "derive the named parent from the autosave dir"
 
 
 def test_source_target_footers_and_legend_present() -> None:

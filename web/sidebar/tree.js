@@ -2430,7 +2430,7 @@ export function renderSidebar(container) {
     container.classList.remove("koolook-sidebar");
     container.classList.add("koolook-compare-host");
 
-    const snapName = compareMeta && compareMeta.displayName ? compareMeta.displayName : "snapshot";
+    const snapName = compareSnapName();   // clean name — never the long autosave path
     const liveIsActive = activeSide === "A";
 
     const split = document.createElement("div");
@@ -2483,18 +2483,13 @@ export function renderSidebar(container) {
     const counts = applyCompareTint(sourceHost, targetPicks, targetStore, sourcePicks, sourceStore);
     applyCompareFilter(sourceHost);
 
-    // Orientation: highlight the active (TARGET) column and label both footers.
+    // Stripe 1 — SOURCE/TARGET orientation only (one line per column).
     (liveIsActive ? leftCol : rightCol).col.classList.add("koolook-compare-active");
-    labelColumnFoot(leftCol.foot, {
-        sideLetter: "A", role: liveIsActive ? "target" : "source",
-        name: "your kit", kind: "kit",
-    });
-    labelColumnFoot(rightCol.foot, {
-        sideLetter: "B", role: liveIsActive ? "source" : "target",
-        name: snapName, kind: "snapshot",
-        dirty: compareDirty, onSave: saveCompareSnapshot,
-    });
+    labelColumnFoot(leftCol.foot, { sideLetter: "A", role: liveIsActive ? "target" : "source", name: "your kit" });
+    labelColumnFoot(rightCol.foot, { sideLetter: "B", role: liveIsActive ? "source" : "target", name: snapName });
 
+    // Stripe 2 — the dedicated SAVE stripe (save state + instructions + button).
+    container.appendChild(buildSaveStripe());
     container.appendChild(buildCompareBar(counts));
 }
 
@@ -2512,53 +2507,68 @@ function makeCompareColumn() {
     return { col, host, foot };
 }
 
-// Fill a column footer with two lines: orientation (SOURCE/TARGET + name) and
-// save behavior. `kind` is "kit" (your live working set — auto-saves) or
-// "snapshot" (a file — needs an explicit Save when edited). For a dirty
-// snapshot the save line turns into "Not saved" + a Save button (shown whenever
-// the snapshot has unsaved edits, regardless of which side is the target, so
-// the user can always persist after a swap).
-function labelColumnFoot(footEl, { sideLetter, role, name, kind, dirty = false, onSave = null }) {
-    footEl.className = `koolook-compare-colfoot koolook-foot-${role} koolook-foot-kind-${kind}`;
+// Stripe 1: the SOURCE/TARGET footer for one column — orientation only (one
+// line). Save state lives in its own stripe (buildSaveStripe), not here.
+function labelColumnFoot(footEl, { sideLetter, role, name }) {
+    footEl.className = `koolook-compare-colfoot koolook-foot-${role}`;
     footEl.replaceChildren();
-
-    const line1 = document.createElement("div");
-    line1.className = "koolook-foot-line1";
     const roleEl = document.createElement("span");
     roleEl.className = "koolook-foot-role";
     roleEl.textContent = role === "target" ? "TARGET" : "SOURCE";
     const nameEl = document.createElement("span");
     nameEl.className = "koolook-foot-name";
     nameEl.textContent = `${sideLetter} · ${name}`;
-    line1.appendChild(roleEl);
-    line1.appendChild(nameEl);
-    footEl.appendChild(line1);
+    footEl.appendChild(roleEl);
+    footEl.appendChild(nameEl);
+}
 
-    const line2 = document.createElement("div");
-    line2.className = "koolook-foot-line2";
-    const saveEl = document.createElement("span");
-    saveEl.className = "koolook-foot-save";
-    if (kind === "kit") {
-        saveEl.textContent = "Live — changes auto-save";
-    } else if (dirty) {
-        saveEl.classList.add("koolook-foot-unsaved");
-        saveEl.textContent = "● In-memory edits · Not saved";
-    } else if (role === "target") {
-        saveEl.textContent = "Snapshot file — edits need Save";
+// True when the loaded snapshot is an autosave shadow (rotating safety file),
+// not a user-named snapshot — A->B edits must Save to a NAMED file, not back
+// into the autosave.
+function isAutosaveTarget() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    return dir.endsWith("_autosave");
+}
+
+// A clean display name for the snapshot — never the long autosave path. For an
+// autosave shadow (`Foo_autosave/...`) show the named parent + an "autosave"
+// marker so the user knows it's the recovery copy, not the named file.
+function compareSnapName() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    if (dir === "_unsaved_autosave") return "unsaved recovery · autosave";
+    if (dir.endsWith("_autosave")) return `${dir.slice(0, -"_autosave".length)} · autosave`;
+    return (compareMeta && compareMeta.fileName) ? compareMeta.fileName : "snapshot";
+}
+
+// Stripe 2: the dedicated SAVE stripe — all the save state + instructions for
+// the snapshot side, separate from the SOURCE/TARGET footers. Your kit auto-
+// saves; the snapshot's A->B edits live in memory until you Save them to a
+// NAMED file. Shows the unsaved state + a Save button whenever the snapshot is
+// dirty (regardless of which side is the target, so it survives a swap).
+function buildSaveStripe() {
+    const stripe = document.createElement("div");
+    stripe.className = "koolook-compare-savebar";
+    const msg = document.createElement("span");
+    msg.className = "koolook-savebar-msg";
+    if (compareDirty) {
+        msg.classList.add("koolook-savebar-unsaved");
+        msg.textContent = isAutosaveTarget()
+            ? "● Snapshot has unsaved edits — it's an autosave, so Save writes a named file."
+            : `● Snapshot "${compareSnapName()}" has unsaved edits — not saved to disk yet.`;
     } else {
-        saveEl.textContent = "Read-only file";
+        msg.textContent = "Your kit auto-saves · the snapshot is a read-only file; edits Save to a named file.";
     }
-    line2.appendChild(saveEl);
-    if (kind === "snapshot" && dirty && onSave) {
+    stripe.appendChild(msg);
+    if (compareDirty) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "koolook-foot-savebtn";
-        btn.textContent = "Save";
+        btn.className = "koolook-savebar-btn";
+        btn.textContent = isAutosaveTarget() ? "Save as file…" : "Save to file";
         btn.title = "Save the merged snapshot to a named file";
-        btn.addEventListener("click", onSave);
-        line2.appendChild(btn);
+        btn.addEventListener("click", saveCompareSnapshot);
+        stripe.appendChild(btn);
     }
-    footEl.appendChild(line2);
+    return stripe;
 }
 
 // The bottom bar: the green/red diff legend (doubling as filter chips) plus the

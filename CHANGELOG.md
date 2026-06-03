@@ -28,9 +28,11 @@ The format is inspired by Keep a Changelog and SemVer.
     sidebar edit). **A→B** edits the snapshot as an **in-memory working copy** —
     a **Save** button in its footer writes it to a **named** snapshot file
     (never a rotating autosave), pre-filled with the snapshot's name; exiting
-    with unsaved edits prompts first. Each column footer shows **SOURCE/TARGET**
-    plus whether that side **auto-saves** (your kit) or has **unsaved edits**
-    (the snapshot).
+    with unsaved edits prompts first. Two bottom stripes keep it clear: a
+    **SOURCE/TARGET** footer under each column, and a separate **save stripe**
+    showing the snapshot's saved / unsaved state, instructions, and the Save
+    button. Autosave-loaded targets show a clean name (the named parent +
+    "autosave"), not the long autosave path.
   - **Copy a whole folder across.** Right-click a workflow folder → **"Copy
     folder … (with contents)"** bulk-copies every workflow under it (recursively,
     path-preserving, same collision policy) — the merge-two-snapshots case. The
