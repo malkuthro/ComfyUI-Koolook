@@ -1693,7 +1693,9 @@ export function showLoadSnapshotDialog({
             try {
                 const snap = await readPreset(item.fileName, { dir: item.dir });
                 close();
-                onChoose(snap, { fileName: item.fileName, displayName: tooltipName });
+                // Pass `dir` so a Compare A->B write-back targets the same
+                // autosave subfolder the snapshot was read from (#197).
+                onChoose(snap, { fileName: item.fileName, displayName: tooltipName, dir: item.dir });
             } catch (e) {
                 console.error("[Koolook] autosave read (compare) failed:", e);
                 toast(`Could not read "${tooltipName}": ${e.message}`);

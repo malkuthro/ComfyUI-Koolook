@@ -751,6 +751,115 @@ export function saveWorkflowEntry(path, wfName, graphData, options = {}) {
     return { archivedAs };
 }
 
+// Path-preserving copy (#197). Copy a workflow into `store` (any `{directories}`
+// object) at `dirSegs` — the SAME folder path it lives at on the source side —
+// creating any missing directories along the way and merging into existing
+// ones (never duplicating a folder that's already there). Deep-clones the graph
+// so the copy never aliases the source object. Collision policy at the
+// destination path + name:
+//   - no active entry there   -> add at `wfName`              (status "added")
+//   - identical graph         -> skip; it's already present   (status "skipped")
+//   - graph differs           -> keep both at "wfName (from <sourceLabel>)"
+//                                (with a #n counter on further collision)
+//                                                             (status "kept-both")
+// Used for BOTH the live store (via copyWorkflowIntoLiveStore, inside a
+// persistMutation) and a loaded snapshot's workflows (Compare A->B write-back).
+// Returns { status, finalName }.
+export function copyWorkflowIntoStore(store, dirSegs, wfName, graph, { tags = [], module = false, sourceLabel = "source" } = {}) {
+    if (!store || typeof store !== "object" || !Array.isArray(dirSegs) || typeof wfName !== "string" || !wfName) {
+        return { status: "failed", finalName: wfName };
+    }
+    // Prototype-pollution guard for the destination keys, matching the other
+    // name-keyed store mutators (#203): a "__proto__"/"constructor"/"prototype"
+    // workflow name or directory segment (from a crafted snapshot) would
+    // otherwise poison Object.prototype on the assignments below.
+    if (!isSafeObjectKey(wfName)) return { status: "failed", finalName: wfName };
+    if (!store.directories) store.directories = {};
+    let node = store;
+    for (const seg of dirSegs) {
+        if (typeof seg !== "string" || !seg || !isSafeObjectKey(seg)) return { status: "failed", finalName: wfName };
+        if (!node.directories) node.directories = {};
+        if (!node.directories[seg]) node.directories[seg] = { workflows: {}, directories: {} };
+        node = node.directories[seg];
+    }
+    if (!node.workflows) node.workflows = {};
+    const existing = node.workflows[wfName];
+    const collides = existing && existing.archived !== true;
+    if (collides && normalizedStoresEqual(existing.graph, graph)) {
+        return { status: "skipped", finalName: wfName };
+    }
+    let finalName = wfName;
+    if (collides) {
+        finalName = `${wfName} (from ${sourceLabel})`;
+        let n = 1;
+        while (node.workflows[finalName]) {
+            n += 1;
+            finalName = `${wfName} (from ${sourceLabel}) #${n}`;
+        }
+    }
+    node.workflows[finalName] = {
+        savedAt: new Date().toISOString(),
+        graph: JSON.parse(JSON.stringify(graph)),
+        module: module === true,
+        tags: Array.isArray(tags) ? [...tags] : [],
+    };
+    return { status: collides ? "kept-both" : "added", finalName };
+}
+
+// Live-store wrapper for the copy engine — mutates the working cache so the
+// result rides the caller's persistMutation commit (and the live panel
+// re-renders off WORKFLOWS_CHANGED_EVENT). Same return shape.
+export function copyWorkflowIntoLiveStore(dirSegs, wfName, graph, opts) {
+    return copyWorkflowIntoStore(workflowsCache, dirSegs, wfName, graph, opts);
+}
+
+// Collect every ACTIVE workflow under `dirSegs` in `store` (recursively), each
+// with its full path segments. Archived versions are skipped — a bulk merge
+// moves live setups, not old versions. Returns [{ segs, wfName, entry }].
+function collectWorkflowsUnderPath(store, dirSegs) {
+    let node = store && typeof store === "object" ? store : { directories: {} };
+    for (const seg of dirSegs) {
+        if (!node.directories || !node.directories[seg]) return [];
+        node = node.directories[seg];
+    }
+    const out = [];
+    const walk = (n, segs) => {
+        const wfs = n && typeof n.workflows === "object" && n.workflows ? n.workflows : {};
+        for (const wfName of Object.keys(wfs)) {
+            if (wfs[wfName] && wfs[wfName].archived === true) continue;
+            out.push({ segs, wfName, entry: wfs[wfName] });
+        }
+        const dirs = n && typeof n.directories === "object" && n.directories ? n.directories : {};
+        for (const dn of Object.keys(dirs)) walk(dirs[dn], [...segs, dn]);
+    };
+    walk(node, [...dirSegs]);
+    return out;
+}
+
+// Bulk path-preserving copy (#197): copy every active workflow under `dirSegs`
+// in `sourceStore` into `targetStore` at the same path (folders auto-created /
+// merged, same skip-identical / keep-both collision policy as the single copy).
+// Powers "Copy folder to the other side" — the merge case for two different
+// snapshots. `dirSegs` = [] copies the entire workflow tree. Returns a summary
+// { total, added, skipped, keptBoth }.
+export function copyFolderIntoStore(targetStore, sourceStore, dirSegs, { sourceLabel = "source" } = {}) {
+    const items = collectWorkflowsUnderPath(sourceStore, Array.isArray(dirSegs) ? dirSegs : []);
+    const summary = { total: items.length, added: 0, skipped: 0, keptBoth: 0 };
+    for (const it of items) {
+        const res = copyWorkflowIntoStore(targetStore, it.segs, it.wfName, it.entry.graph, {
+            tags: it.entry.tags, module: it.entry.module === true, sourceLabel,
+        });
+        if (res.status === "added") summary.added += 1;
+        else if (res.status === "skipped") summary.skipped += 1;
+        else if (res.status === "kept-both") summary.keptBoth += 1;
+    }
+    return summary;
+}
+
+export function copyFolderIntoLiveStore(sourceStore, dirSegs, opts) {
+    return copyFolderIntoStore(workflowsCache, sourceStore, dirSegs, opts);
+}
+
 export function archiveWorkflow(path, wfName, options = {}) {
     if (!isSafeObjectKey(wfName)) return false;
     const dir = dirOf(path);

@@ -47,6 +47,10 @@ import {
     renameDirectory,
     deleteDirectory,
     saveWorkflowEntry,
+    copyWorkflowIntoStore,
+    copyWorkflowIntoLiveStore,
+    copyFolderIntoStore,
+    copyFolderIntoLiveStore,
     archiveWorkflow,
     unarchiveWorkflow,
     renameWorkflow,
@@ -67,7 +71,7 @@ import {
     setWorkflowsRenderSource,
     clearWorkflowsRenderSource,
 } from "./workflows_store.js";
-import { diffPicks, diffWorkflows } from "./snapshot_diff.js";
+import { diffPicks, diffWorkflows, getWorkflowEntryFromStore } from "./snapshot_diff.js";
 import {
     serializeFullCanvas,
     serializeSelection,
@@ -164,8 +168,15 @@ const TOOLBAR_ICONS = {
 // Folder expansion state — Map<path, boolean>; truthy = expanded.
 // Path keys are auto-prefixed by the engine with the owning section's id, so
 // section authors only write segment-relative paths.
-// =============================================================================
-const pathStates = new Map();
+//
+// `pathStates` is the LIVE panel's state. In Compare mode the snapshot panel
+// renders with its OWN `comparePathStates` (swapped in via withComparePathStates
+// for the duration of its render) so the two panels don't share keys: renderTree
+// prunes the active map to the rendering panel's paths, so without separate maps
+// a copy's re-render of one panel would prune (collapse) the other's folders
+// (#197). `let` so the active map can be swapped.
+let pathStates = new Map();
+const comparePathStates = new Map();
 
 // Paths flagged by `pinExpanded` to be force-opened on the next render. The
 // set is consumed each render: kept entries are written to pathStates and the
@@ -1495,6 +1506,14 @@ function buildFolder({
         throw new Error("buildFolder: `path` must be a non-empty string");
     }
 
+    // Bind the active expansion map at BUILD time. In Compare mode the snapshot
+    // panel renders under `comparePathStates` (swapped in by withComparePathStates),
+    // but `onToggle` fires later — at click time, after the swap has restored the
+    // live map. Capturing the map here means a toggle writes back to the same map
+    // the folder was rendered from, so the two panels' expansion never crosses
+    // (#197). Reads below use it too, for symmetry.
+    const stateMap = pathStates;
+
     // Resolution order:
     //   1. forceExpanded (e.g. search active) opens regular folders, but not
     //      Archive folders. A crowded Archive should stay summarized under
@@ -1512,8 +1531,8 @@ function buildFolder({
         forceExpandedWhenFiltered,
         iconKind,
         isPinned: pinnedPaths.has(path),
-        hasStoredState: pathStates.has(path),
-        storedState: pathStates.get(path),
+        hasStoredState: stateMap.has(path),
+        storedState: stateMap.get(path),
         startExpanded,
     });
 
@@ -1542,10 +1561,16 @@ function buildFolder({
             isExpanded = !isExpanded;
             chevron.textContent = isExpanded ? "▾" : "▸";
             children.style.display = isExpanded ? "" : "none";
-            pathStates.set(path, isExpanded);
+            stateMap.set(path, isExpanded);
         },
     });
     if (!initiallyExpanded) chevron.textContent = "▸";
+
+    // Stable identity for the Compare-mode folder pull-in (#197): the read-only
+    // guard reads this to offer "Copy folder … (with contents)" on workflow
+    // folders. Invisible otherwise. The tree path carries the section prefix,
+    // so the handler can tell a workflows folder from a node/tag folder.
+    row.dataset.koolookFolderPath = path;
 
     wrapper.appendChild(row);
     wrapper.appendChild(children);
@@ -2341,6 +2366,26 @@ let compareSnapshot = null;   // null = compare off; else the chosen snapshot ob
 let compareMeta = null;       // { fileName, displayName } of the chosen snapshot
 let sidebarContainer = null;  // remembered so a toggle can re-render in place
 let liveListeners = null;     // AbortController for the live panel's window listeners
+// Which compare panel is the editable DESTINATION (#197). "A" = the live
+// working kit (left, default); "B" = the loaded snapshot (right). The swap
+// toggle flips it; the inactive side becomes the read-only SOURCE and carries
+// the read-only guard + the pull-in context menu. Reset to "A" on every
+// enter/exit so a re-entered Compare always starts from the 80% case (B->A).
+let activeSide = "A";
+// Diff-filter chips (#197). A Set of enabled statuses ("new" | "diff"). When
+// non-empty, the snapshot (B) panel shows only matching items — their folders
+// force-expanded, everything else hidden — so the user can review just what's
+// new / modified, then clear the chips to collapse back. Reset on enter/exit.
+let compareFilter = new Set();
+// The snapshot (B) panel is a working COPY of a file. A->B copies edit it
+// IN MEMORY (no per-copy disk write — autosaves must stay a pure safety net,
+// never an A->B write target). `compareDirty` tracks pending edits so the
+// footer shows "Not saved" + a Save button; the user saves explicitly to a
+// NAMED file via saveCompareSnapshot. Reset on enter / exit / save. (#197)
+let compareDirty = false;
+// In-flight guard for the explicit Save so rapid Save clicks can't fire
+// overlapping writePreset POSTs (last-writer-wins).
+let compareSaving = false;
 
 // Run `fn` synchronously with the render path pointed at `snapshot`'s data
 // instead of live state. Read-only: always clears the overrides afterwards
@@ -2354,6 +2399,19 @@ function withSnapshotSource(snapshot, fn) {
     } finally {
         clearPicksRenderSource();
         clearWorkflowsRenderSource();
+    }
+}
+
+// Run `fn` (a synchronous tree render) with the snapshot panel's own expansion
+// map active, so its folder state never collides with the live panel's. Must
+// wrap only synchronous render work; always restores the live map afterwards.
+function withComparePathStates(fn) {
+    const saved = pathStates;
+    pathStates = comparePathStates;
+    try {
+        return fn();
+    } finally {
+        pathStates = saved;
     }
 }
 
@@ -2375,34 +2433,220 @@ export function renderSidebar(container) {
     container.classList.remove("koolook-sidebar");
     container.classList.add("koolook-compare-host");
 
+    const snapName = compareSnapName();   // clean name — never the long autosave path
+    const liveIsActive = activeSide === "A";
+
     const split = document.createElement("div");
     split.className = "koolook-compare-split";
-    const leftCol = document.createElement("div");
-    leftCol.className = "koolook-compare-col";
-    const rightCol = document.createElement("div");
-    rightCol.className = "koolook-compare-col";
-    split.appendChild(leftCol);
-    split.appendChild(rightCol);
+    // Each column wraps a panel host (the rendered sidebar) plus a SOURCE/TARGET
+    // footer stripe, so the orientation reads at the bottom of each half.
+    const leftCol = makeCompareColumn();
+    const rightCol = makeCompareColumn();
+    split.appendChild(leftCol.col);
+    split.appendChild(rightCol.col);
     container.appendChild(split);
 
-    // Left = live working copy (untouched). Right = the same render, fed the
-    // chosen snapshot read-only, then tinted.
-    renderPanel(leftCol, { onToggleCompare: exitCompareMode, signal });
-    renderPanel(rightCol, {
+    // Exactly one side is the editable TARGET (`activeSide`); the other is the
+    // read-only SOURCE and carries the guard + pull-in. The single pull-in is
+    // handed to whichever side is the source; its copy handlers derive their
+    // direction (B->A into the live kit, or A->B written back into the snapshot
+    // file) from `activeSide` (#197).
+    const pullIn = makePullIn();
+    renderPanel(leftCol.host, {
+        onToggleCompare: exitCompareMode,
+        signal,
+        readOnly: !liveIsActive,
+        pullIn: liveIsActive ? null : pullIn,
+    });
+    renderPanel(rightCol.host, {
         compare: true,
         snapshot: compareSnapshot,
         onToggleCompare: exitCompareMode,
         signal,
-        compareName: compareMeta && compareMeta.displayName ? compareMeta.displayName : "",
+        compareName: snapName,
+        readOnly: true,
+        pullIn: liveIsActive ? pullIn : null,
     });
-    applyCompareTint(rightCol, compareSnapshot);
+    // Diff/tint/filter follow the SOURCE (the read-only side you copy FROM):
+    // "new" = in the source, not the target — the copy candidates — so the
+    // highlight lands where you'd grab them. Default (target=A) → source=B;
+    // after a swap (target=B) → source=A. Live reads here are live (the panel
+    // renders cleared the snapshot override in its finally).
+    const livePicks = loadUserPicks();
+    const liveStore = getAllWorkflowsForExport();
+    const snapPicks = Array.isArray(compareSnapshot.picks) ? compareSnapshot.picks : [];
+    const snapStore = compareSnapshot.workflows && typeof compareSnapshot.workflows === "object"
+        ? compareSnapshot.workflows
+        : { directories: {} };
+    const sourceHost = liveIsActive ? rightCol.host : leftCol.host;
+    const sourcePicks = liveIsActive ? snapPicks : livePicks;
+    const sourceStore = liveIsActive ? snapStore : liveStore;
+    const targetPicks = liveIsActive ? livePicks : snapPicks;
+    const targetStore = liveIsActive ? liveStore : snapStore;
+    const counts = applyCompareTint(sourceHost, targetPicks, targetStore, sourcePicks, sourceStore);
+    applyCompareFilter(sourceHost);
 
-    const status = document.createElement("div");
-    status.className = "koolook-compare-status";
-    status.textContent = compareMeta && compareMeta.displayName
-        ? `Compare mode · ${compareMeta.displayName}`
-        : "Compare mode";
-    container.appendChild(status);
+    // Stripe 1 — SOURCE/TARGET orientation only (one line per column).
+    (liveIsActive ? leftCol : rightCol).col.classList.add("koolook-compare-active");
+    labelColumnFoot(leftCol.foot, { sideLetter: "A", role: liveIsActive ? "target" : "source", name: "your kit" });
+    labelColumnFoot(rightCol.foot, { sideLetter: "B", role: liveIsActive ? "source" : "target", name: snapName });
+
+    // Stripe 2 — the dedicated SAVE stripe (save state + instructions + button).
+    container.appendChild(buildSaveStripe());
+    container.appendChild(buildCompareBar(counts));
+}
+
+// A compare column: a flex-column holding the rendered panel (`host`) and a
+// SOURCE/TARGET footer stripe (`foot`).
+function makeCompareColumn() {
+    const col = document.createElement("div");
+    col.className = "koolook-compare-col";
+    const host = document.createElement("div");
+    host.className = "koolook-compare-panelhost";
+    const foot = document.createElement("div");
+    foot.className = "koolook-compare-colfoot";
+    col.appendChild(host);
+    col.appendChild(foot);
+    return { col, host, foot };
+}
+
+// Stripe 1: the SOURCE/TARGET footer for one column — orientation only (one
+// line). Save state lives in its own stripe (buildSaveStripe), not here.
+function labelColumnFoot(footEl, { sideLetter, role, name }) {
+    footEl.className = `koolook-compare-colfoot koolook-foot-${role}`;
+    footEl.replaceChildren();
+    const roleEl = document.createElement("span");
+    roleEl.className = "koolook-foot-role";
+    roleEl.textContent = role === "target" ? "TARGET" : "SOURCE";
+    const nameEl = document.createElement("span");
+    nameEl.className = "koolook-foot-name";
+    nameEl.textContent = `${sideLetter} · ${name}`;
+    footEl.appendChild(roleEl);
+    footEl.appendChild(nameEl);
+}
+
+// True when the loaded snapshot is an autosave shadow (rotating safety file),
+// not a user-named snapshot — A->B edits must Save to a NAMED file, not back
+// into the autosave.
+function isAutosaveTarget() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    return dir.endsWith("_autosave");
+}
+
+// A clean display name for the snapshot — never the long autosave path. For an
+// autosave shadow (`Foo_autosave/...`) show the named parent + an "autosave"
+// marker so the user knows it's the recovery copy, not the named file.
+function compareSnapName() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    if (dir === "_unsaved_autosave") return "unsaved recovery · autosave";
+    if (dir.endsWith("_autosave")) return `${dir.slice(0, -"_autosave".length)} · autosave`;
+    return (compareMeta && compareMeta.fileName) ? compareMeta.fileName : "snapshot";
+}
+
+// Stripe 2: the dedicated SAVE stripe — all the save state + instructions for
+// the snapshot side, separate from the SOURCE/TARGET footers. Your kit auto-
+// saves; the snapshot's A->B edits live in memory until you Save them to a
+// NAMED file. Shows the unsaved state + a Save button whenever the snapshot is
+// dirty (regardless of which side is the target, so it survives a swap).
+function buildSaveStripe() {
+    const stripe = document.createElement("div");
+    stripe.className = "koolook-compare-savebar";
+    const msg = document.createElement("span");
+    msg.className = "koolook-savebar-msg";
+    if (compareDirty) {
+        msg.classList.add("koolook-savebar-unsaved");
+        msg.textContent = isAutosaveTarget()
+            ? "● Snapshot has unsaved edits — it's an autosave, so Save writes a named file."
+            : `● Snapshot "${compareSnapName()}" has unsaved edits — not saved to disk yet.`;
+    } else {
+        msg.textContent = "Your kit auto-saves · the snapshot is a read-only file; edits Save to a named file.";
+    }
+    stripe.appendChild(msg);
+    if (compareDirty) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "koolook-savebar-btn";
+        btn.textContent = isAutosaveTarget() ? "Save as file…" : "Save to file";
+        btn.title = "Save the merged snapshot to a named file";
+        btn.addEventListener("click", saveCompareSnapshot);
+        stripe.appendChild(btn);
+    }
+    return stripe;
+}
+
+// The bottom bar: the green/red diff legend (doubling as filter chips) plus the
+// A<->B swap toggle.
+function buildCompareBar({ newCount, diffCount }) {
+    const bar = document.createElement("div");
+    bar.className = "koolook-compare-status";
+    bar.appendChild(makeFilterChip(
+        "new", "new", newCount,
+        "In the SOURCE side, not the target — copy candidates. Click to show just these.",
+    ));
+    bar.appendChild(makeFilterChip(
+        "diff", "modified", diffCount,
+        "In both, but the graph differs. Click to show just these.",
+    ));
+    const swapBtn = document.createElement("button");
+    swapBtn.type = "button";
+    swapBtn.className = "koolook-compare-swap";
+    swapBtn.textContent = "⇄ Swap A↔B";
+    swapBtn.title = "Flip source/target — which side you copy into";
+    swapBtn.addEventListener("click", swapCompareSides);
+    bar.appendChild(swapBtn);
+    return bar;
+}
+
+// A legend swatch that doubles as a filter toggle. `status` is "new" | "diff";
+// enabling it filters the SOURCE panel to matching items.
+function makeFilterChip(status, label, count, tip) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "koolook-cmp-chip";
+    if (compareFilter.has(status)) chip.classList.add("koolook-cmp-chip-on");
+    chip.title = tip;
+    const dot = document.createElement("span");
+    dot.className = `koolook-cmp-dot koolook-cmp-dot-${status}`;
+    chip.appendChild(dot);
+    chip.appendChild(document.createTextNode(`${count} ${label}`));
+    chip.addEventListener("click", () => toggleCompareFilter(status));
+    return chip;
+}
+
+function toggleCompareFilter(status) {
+    if (compareFilter.has(status)) compareFilter.delete(status);
+    else compareFilter.add(status);
+    rerenderSidebar();
+}
+
+// Post-render diff filter for the SOURCE panel. With chips enabled, hide
+// every leaf whose status isn't selected, hide folders with no matching
+// descendant, and force-expand the folders that do — leaving a tree of just the
+// new/modified items. A no-op when no chip is active (normal full view). Relies
+// on the tinted classes applyCompareTint added, and on the nested-DOM tree
+// (collapsed children are present, just display:none).
+function applyCompareFilter(panelEl) {
+    if (!panelEl || compareFilter.size === 0) return;
+    const sels = [];
+    if (compareFilter.has("new")) sels.push(".koolook-cmp-new");
+    if (compareFilter.has("diff")) sels.push(".koolook-cmp-diff");
+    const matchSel = sels.join(",");
+    if (!matchSel) return;
+    panelEl.classList.add("koolook-cmp-filtering");
+    for (const leaf of panelEl.querySelectorAll(".koolook-leaf")) {
+        leaf.style.display = leaf.matches(matchSel) ? "" : "none";
+    }
+    // querySelector ignores display, so an ancestor still detects a match in a
+    // (separately shown) descendant regardless of processing order.
+    for (const childrenEl of panelEl.querySelectorAll(".koolook-children")) {
+        const wrapper = childrenEl.parentElement;
+        if (childrenEl.querySelector(matchSel)) {
+            childrenEl.style.display = "";            // force-expand
+            if (wrapper) wrapper.style.display = "";
+        } else if (wrapper) {
+            wrapper.style.display = "none";           // hide the whole folder
+        }
+    }
 }
 
 function rerenderSidebar() {
@@ -2433,51 +2677,356 @@ function enterCompareMode() {
         onChoose: (snap, meta) => {
             compareSnapshot = snap;
             compareMeta = meta || null;
+            activeSide = "A";   // always (re-)enter in the B->A direction
+            compareFilter.clear();
+            comparePathStates.clear();   // fresh snapshot starts with default expansion
+            compareDirty = false;        // freshly loaded — no pending edits
             rerenderSidebar();
         },
     });
 }
 
 function exitCompareMode() {
-    compareSnapshot = null;
-    compareMeta = null;
+    const doExit = () => {
+        compareSnapshot = null;
+        compareMeta = null;
+        activeSide = "A";
+        compareFilter.clear();
+        comparePathStates.clear();
+        compareDirty = false;
+        rerenderSidebar();
+    };
+    // Don't silently lose in-memory A->B merges the user hasn't saved.
+    if (compareDirty) {
+        showConfirmModal({
+            title: "Discard unsaved snapshot edits?",
+            message: "You copied items into the snapshot but haven't saved them to a file yet. Exit Compare and discard those edits?",
+            confirmLabel: "Discard",
+            danger: true,
+            onConfirm: doExit,
+        });
+        return;
+    }
+    doExit();
+}
+
+// Flip which side is the editable destination, then re-render so the read-only
+// guard + pull-in move to the new source side (#197).
+function swapCompareSides() {
+    activeSide = activeSide === "A" ? "B" : "A";
     rerenderSidebar();
 }
 
-// Tint the comparison column from the snapshot diff (text-only, via CSS
-// classes on the existing rows). Nodes: a pick only in the comparison →
-// green/new. Workflows: per full path → green/new or red/diff; identical
-// (ignoring savedAt) stays plain. Runs after the column rendered with the
-// store overrides already cleared, so the working-side reads are live.
-function applyCompareTint(panelEl, snapshot) {
-    if (!panelEl || !snapshot) return;
+// The pull-in for whichever side is the read-only SOURCE. The copy is
+// path-preserving (it lands at the same folder path on the target, creating
+// missing folders / merging into existing ones — see copyWorkflowIntoStore) and
+// directional: TARGET = the active side. B->A writes the LIVE kit; A->B writes
+// back into the snapshot FILE on disk. Reads the source only — never
+// applySnapshot, never aliases a graph (the engine deep-clones).
+function makePullIn() {
+    const targetIsLive = activeSide === "A";
+    return {
+        destLabel: activeSide,                        // "A" or "B" — the target
+        copyNode: (type) => (targetIsLive ? copyNodeToLive(type) : copyNodeToSnapshot(type)),
+        copyWorkflow: (wfPath) => (targetIsLive ? copyWorkflowToLive(wfPath) : copyWorkflowToSnapshot(wfPath)),
+        copyFolder: (dirSegs, label) => (targetIsLive ? copyFolderToLive(dirSegs, label) : copyFolderToSnapshot(dirSegs, label)),
+    };
+}
 
-    const pickDiff = diffPicks(loadUserPicks(), Array.isArray(snapshot.picks) ? snapshot.picks : []);
-    const newPicks = new Set(pickDiff.onlyComparison);
-    for (const row of panelEl.querySelectorAll("[data-koolook-node-type]")) {
-        if (newPicks.has(row.dataset.koolookNodeType)) row.classList.add("koolook-cmp-new");
+// Summarize a bulk folder copy: "3 added, 1 kept-both, 2 already there".
+function folderCopyToast(dest, label, s) {
+    if (!s || s.total === 0) return `"${label}" has no workflows to copy to ${dest}.`;
+    if (s.added === 0 && s.keptBoth === 0) {
+        return `"${label}": all ${s.skipped} already in ${dest} — nothing copied.`;
     }
+    const parts = [];
+    if (s.added) parts.push(`${s.added} added`);
+    if (s.keptBoth) parts.push(`${s.keptBoth} kept-both`);
+    if (s.skipped) parts.push(`${s.skipped} already there`);
+    return `Copied folder "${label}" → ${dest}: ${parts.join(", ")}.`;
+}
 
-    const snapWorkflows = snapshot.workflows && typeof snapshot.workflows === "object"
-        ? snapshot.workflows
-        : { directories: {} };
-    const wfStatus = diffWorkflows(getAllWorkflowsForExport(), snapWorkflows);
-    for (const row of panelEl.querySelectorAll("[data-koolook-wf-path]")) {
-        const status = wfStatus[row.dataset.koolookWfPath];
-        if (status === "new") row.classList.add("koolook-cmp-new");
-        else if (status === "diff") row.classList.add("koolook-cmp-diff");
+function splitWfPath(wfPath) {
+    const segs = String(wfPath).split("/");
+    const wfName = segs.pop();
+    return { dirSegs: segs, wfName };
+}
+
+// Pin the destination path open so the live panel's re-render (off
+// WORKFLOWS_CHANGED_EVENT) lands with the copied item visible, not buried in a
+// collapsed folder. Mirrors the Save-workflow flow's pinning.
+function pinDestPath(dirSegs) {
+    const pinKeys = [SECTION_ID_WORKFLOWS];
+    let cur = SECTION_ID_WORKFLOWS;
+    for (const seg of dirSegs) {
+        cur = `${cur}/${seg}`;
+        pinKeys.push(cur);
+    }
+    pinExpanded(pinKeys);
+}
+
+// A->B equivalent of pinDestPath: open the destination dir chain in the
+// SNAPSHOT panel (its own comparePathStates map) so the copied item is visible
+// after the rerender. Opens only the dir chain — never the synthetic "Archive"
+// child (it has its own collapsed default and isn't in this chain).
+function openCompareDestPath(dirSegs) {
+    comparePathStates.set(SECTION_ID_WORKFLOWS, true);
+    let cur = SECTION_ID_WORKFLOWS;
+    for (const seg of dirSegs) {
+        cur = `${cur}/${seg}`;
+        comparePathStates.set(cur, true);
     }
 }
 
+function copyToast(dest, wfName, res) {
+    if (res && res.status === "kept-both") {
+        return `Copied into ${dest} as "${res.finalName}" — kept both (a different "${wfName}" was already there).`;
+    }
+    return `Copied "${wfName}" into ${dest}.`;
+}
+
+// ---- B -> A: copy from the snapshot into the live working kit ----
+function copyNodeToLive(type) {
+    const result = addToMyPicks(type);
+    if (result === "added") {
+        notifyPicksChanged();
+        toast(`Copied "${type}" into A's favorites.`);
+    } else if (result === "duplicate") {
+        toast(`"${type}" is already in A's favorites.`);
+    } else {
+        toast(`Could not copy "${type}" — favorites write failed.`);
+    }
+}
+
+function copyWorkflowToLive(wfPath) {
+    const entry = getWorkflowEntryFromStore(
+        compareSnapshot && compareSnapshot.workflows ? compareSnapshot.workflows : null,
+        wfPath,
+    );
+    if (!entry || !entry.graph) {
+        toast(`Could not read "${wfPath}" from the snapshot.`);
+        return;
+    }
+    const { dirSegs, wfName } = splitWfPath(wfPath);
+    const tags = Array.isArray(entry.tags) ? entry.tags : [];
+    const sourceLabel = compareMeta && compareMeta.displayName ? compareMeta.displayName : "snapshot";
+    let res = null;
+    persistMutation({
+        mutate: () => {
+            res = copyWorkflowIntoLiveStore(dirSegs, wfName, entry.graph, {
+                tags, module: entry.module === true, sourceLabel,
+            });
+            if (res.status === "skipped") return false;
+            pinDestPath(dirSegs);
+            return res;
+        },
+        onSuccess: () => toast(copyToast("A", wfName, res)),
+        onNoOp: () => toast(`"${wfName}" is already in A at that path.`),
+        persistFailedMessage: `Copy failed — could not write "${wfName}" to A. See console.`,
+    });
+}
+
+// ---- A -> B: edit the in-memory snapshot working copy (no disk write) ----
+// The snapshot panel is a working COPY of a file; A->B copies mutate it in
+// memory and mark it dirty. Persisting is an explicit, user-initiated Save to a
+// NAMED file (saveCompareSnapshot) — never a per-copy write, never an autosave.
+function copyNodeToSnapshot(type) {
+    const picks = Array.isArray(compareSnapshot.picks) ? compareSnapshot.picks : [];
+    if (picks.includes(type)) {
+        toast(`"${type}" is already in the snapshot.`);
+        return;
+    }
+    compareSnapshot.picks = [...picks, type];
+    compareDirty = true;
+    rerenderSidebar();
+    toast(`Added "${type}" to the snapshot — unsaved (use Save in the footer to keep it).`);
+}
+
+function copyWorkflowToSnapshot(wfPath) {
+    const entry = getWorkflowEntryFromStore(getAllWorkflowsForExport(), wfPath);
+    if (!entry || !entry.graph) {
+        toast(`Could not read "${wfPath}" from your kit.`);
+        return;
+    }
+    const { dirSegs, wfName } = splitWfPath(wfPath);
+    const tags = Array.isArray(entry.tags) ? entry.tags : [];
+    if (!compareSnapshot.workflows || typeof compareSnapshot.workflows !== "object") {
+        compareSnapshot.workflows = { directories: {} };
+    }
+    const res = copyWorkflowIntoStore(compareSnapshot.workflows, dirSegs, wfName, entry.graph, {
+        tags, module: entry.module === true, sourceLabel: "your kit",
+    });
+    if (res.status === "skipped") {
+        toast(`"${wfName}" is already in the snapshot at that path.`);
+        return;
+    }
+    compareDirty = true;
+    openCompareDestPath(dirSegs);
+    rerenderSidebar();
+    toast(`${copyToast("B", wfName, res)} Unsaved — Save to keep it.`);
+}
+
+// Derive the named snapshot this working copy should Save to: the named file it
+// was loaded from, or — when loaded from an autosave shadow (`Foo_autosave/`) —
+// the named snapshot `Foo` it shadows. Empty when loaded from `_unsaved_autosave`
+// (no named parent) so the user types a fresh name.
+function compareDefaultSaveName() {
+    const dir = compareMeta && compareMeta.dir ? compareMeta.dir : "";
+    if (dir === "_unsaved_autosave") return "";
+    if (dir.endsWith("_autosave")) return dir.slice(0, -"_autosave".length);
+    return compareMeta && compareMeta.fileName ? compareMeta.fileName : "";
+}
+
+// Explicit Save of the in-memory snapshot edits to a NAMED file (never an
+// autosave). Pre-fills the name with the shadowed / loaded name so the user
+// confirms exactly where it lands, writes to the default library dir, and clears
+// the dirty flag. Independent of the LIVE save tracker — this writes a snapshot
+// file; it doesn't change what your live session tracks.
+function saveCompareSnapshot() {
+    if (!compareSnapshot) return;
+    const snapshotRef = compareSnapshot;
+    showInputModal({
+        title: "Save snapshot",
+        label: "Save merged snapshot as",
+        defaultValue: compareDefaultSaveName(),
+        placeholder: "snapshot name",
+        confirmLabel: "Save",
+        onSubmit: async (rawName) => {
+            // Sanitize like every other writePreset caller (clean toast on bad
+            // input instead of an opaque server 400).
+            const name = sanitizeName(rawName);
+            if (!name) {
+                toast("Snapshot name is empty after stripping unsafe characters.");
+                return;
+            }
+            const doWrite = async () => {
+                if (compareSaving) {
+                    toast("A snapshot save is already in progress.");
+                    return;
+                }
+                compareSaving = true;
+                try {
+                    await writePreset(name, snapshotRef);   // default library dir — never an autosave subdir
+                } catch (e) {
+                    console.error("[Koolook] snapshot save failed:", e);
+                    toast(`Could not save snapshot "${name}": ${e.message}`);
+                    return;
+                } finally {
+                    compareSaving = false;
+                }
+                // If the user exited / loaded a different snapshot during the
+                // write, the dirty flag + meta now belong to something else.
+                if (compareSnapshot !== snapshotRef) {
+                    toast(`Saved snapshot "${name}".`);
+                    return;
+                }
+                compareMeta = { fileName: name, displayName: name };   // now tracks the named file
+                compareDirty = false;
+                rerenderSidebar();
+                toast(`Saved snapshot "${name}" to disk.`);
+            };
+            // Confirm the destination before writing — `writePreset` ends in an
+            // atomic os.replace, so an accepted default name could otherwise
+            // silently overwrite a DIFFERENT same-named snapshot. Mirrors the
+            // live Save flow's existence guard (modals.js promptForName).
+            const exists = await presetExists(name);
+            if (exists === null) {
+                toast("Cannot reach the preset library to verify the name. Save canceled — check the library path or your connection.");
+                return;
+            }
+            if (exists === true) {
+                showConfirmModal({
+                    title: "Overwrite existing snapshot?",
+                    message: `A snapshot named "${name}" already exists. Overwrite it?`,
+                    confirmLabel: "Overwrite",
+                    danger: true,
+                    onConfirm: doWrite,
+                });
+                return;
+            }
+            await doWrite();
+        },
+    });
+}
+
+// ---- Bulk folder copy (the merge case) ----
+function copyFolderToLive(dirSegs, label) {
+    const sourceStore = compareSnapshot && compareSnapshot.workflows ? compareSnapshot.workflows : { directories: {} };
+    const sourceLabel = compareMeta && compareMeta.displayName ? compareMeta.displayName : "snapshot";
+    let summary = null;
+    persistMutation({
+        mutate: () => {
+            summary = copyFolderIntoLiveStore(sourceStore, dirSegs, { sourceLabel });
+            if (summary.added === 0 && summary.keptBoth === 0) return false;   // nothing new landed
+            pinDestPath(dirSegs);
+            return summary;
+        },
+        onSuccess: () => toast(folderCopyToast("A", label, summary)),
+        onNoOp: () => toast(folderCopyToast("A", label, summary)),
+        persistFailedMessage: `Folder copy failed — could not write "${label}" to A. See console.`,
+    });
+}
+
+function copyFolderToSnapshot(dirSegs, label) {
+    const sourceStore = getAllWorkflowsForExport();
+    if (!compareSnapshot.workflows || typeof compareSnapshot.workflows !== "object") {
+        compareSnapshot.workflows = { directories: {} };
+    }
+    const summary = copyFolderIntoStore(compareSnapshot.workflows, sourceStore, dirSegs, { sourceLabel: "your kit" });
+    if (summary.added === 0 && summary.keptBoth === 0) {
+        toast(folderCopyToast("B", label, summary));   // nothing new — no edit
+        return;
+    }
+    compareDirty = true;
+    openCompareDestPath(dirSegs);
+    rerenderSidebar();
+    toast(`${folderCopyToast("B", label, summary)} Unsaved — Save to keep it.`);
+}
+
+// Tint the SOURCE column from the diff and return the counts for the legend.
+// The diff is SOURCE-relative-to-TARGET — green/new = present in the source but
+// NOT the target (a copy candidate you'd grab from this side); red/diff = in
+// both, graph differs (ignoring savedAt). Direction-aware, so it follows the
+// swap: the highlight always lands on the side you copy FROM, marking what's new
+// THERE. Text-only (CSS classes on existing rows). Runs after the column
+// rendered with the store overrides cleared, so live reads are live.
+function applyCompareTint(panelEl, targetPicks, targetStore, sourcePicks, sourceStore) {
+    const newPicks = new Set(diffPicks(targetPicks, sourcePicks).onlyComparison);
+    let newCount = newPicks.size;
+    let diffCount = 0;
+    const wfStatus = diffWorkflows(targetStore, sourceStore);
+    for (const key of Object.keys(wfStatus)) {
+        if (wfStatus[key] === "new") newCount += 1;
+        else if (wfStatus[key] === "diff") diffCount += 1;
+    }
+    if (panelEl) {
+        for (const row of panelEl.querySelectorAll("[data-koolook-node-type]")) {
+            if (newPicks.has(row.dataset.koolookNodeType)) row.classList.add("koolook-cmp-new");
+        }
+        for (const row of panelEl.querySelectorAll("[data-koolook-wf-path]")) {
+            const status = wfStatus[row.dataset.koolookWfPath];
+            if (status === "new") row.classList.add("koolook-cmp-new");
+            else if (status === "diff") row.classList.add("koolook-cmp-diff");
+        }
+    }
+    return { newCount, diffCount };
+}
+
 export function renderPanel(container, options = {}) {
-    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "" } = options;
+    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "", readOnly = compare, pullIn = null } = options;
     // Compare mode (#181): when `compare` is set, every tree (re-)render in
     // this panel reads from the loaded `snapshot` via the read-only store
     // overrides, and the live-change listeners at the bottom are skipped so
     // the snapshot panel stays static. compare=false is byte-identical to the
     // pre-#181 single live panel.
+    //
+    // `readOnly` (#197) is orthogonal: it applies the capture-phase guard and
+    // the optional `pullIn` copy menu. It defaults to `compare` (so existing
+    // callers are unchanged), but the compare host sets it per active side so
+    // the swap can move the guard onto the live panel without changing its
+    // data source.
     const withSource = compare
-        ? (fn) => withSnapshotSource(snapshot, fn)
+        ? (fn) => withSnapshotSource(snapshot, () => withComparePathStates(fn))
         : (fn) => fn();
     // `signal` (from renderSidebar's AbortController) lets a re-render drop the
     // previous mount's window listeners, so toggling Compare never leaks a set.
@@ -2485,18 +3034,22 @@ export function renderPanel(container, options = {}) {
     ensureStyle();
     container.innerHTML = "";
     container.classList.add("koolook-sidebar");
-    if (compare) {
+    if (readOnly) {
         container.classList.add("koolook-compare-panel");
         // Read-only comparison panel (#181): the same interactive renderPanel is
-        // reused (chrome stays visually identical), but the snapshot side must
-        // never mutate or load live state. Capture-phase guards allow navigation
-        // only — folder expand/collapse, search, and the A/B exit button — and
-        // neutralize every mutating/loading affordance: leaf load/insert clicks,
-        // pick ×/+, the snapshot + tools buttons, the grouping mode toggle
-        // (which writes the shared global GROUP_MODE_KEY), context menus, and
-        // drag — dragstart on the source PLUS dragover/drop so a drag begun in
-        // the live panel can't land on (and mutate via) the snapshot column.
-        // Buttons stay visible but inert.
+        // reused (chrome stays visually identical), but the read-only SOURCE side
+        // must never mutate or load live state. Capture-phase guards allow
+        // navigation only — folder expand/collapse, search, and the A/B exit
+        // button — and neutralize every mutating/loading affordance: leaf
+        // load/insert clicks, pick ×/+, the snapshot + tools buttons, the
+        // grouping mode toggle (which writes the shared global GROUP_MODE_KEY),
+        // context menus, and drag — dragstart on the source PLUS dragover/drop so
+        // a drag begun in the live panel can't land on (and mutate via) this
+        // column. Buttons stay visible but inert.
+        //
+        // The ONE affordance allowed through (#197): when a `pullIn` is wired,
+        // right-clicking a node or workflow row opens a single "Copy to <active>"
+        // item. Direction is set by the swap; everything else stays blocked.
         const NAV_ALLOW =
             ".koolook-search, [data-koolook-compare-exit], .koolook-row:not(.koolook-leaf)";
         container.addEventListener("click", (e) => {
@@ -2505,7 +3058,51 @@ export function renderPanel(container, options = {}) {
             e.preventDefault();
             e.stopPropagation();
         }, true);
-        container.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+        container.addEventListener("contextmenu", (e) => {
+            // Always suppress the native menu and stop the row's own (live-
+            // mutating) context-menu handler from firing. Then, if a pull-in is
+            // wired, open the copy menu for the pull-able row under the cursor.
+            e.preventDefault();
+            e.stopPropagation();
+            if (!pullIn) return;
+            const t = e.target instanceof Element ? e.target : null;
+            if (!t) return;
+            const nodeRow = t.closest("[data-koolook-node-type]");
+            if (nodeRow) {
+                showContextMenu(e, [{
+                    label: `Copy to ${pullIn.destLabel}`,
+                    action: () => pullIn.copyNode(nodeRow.dataset.koolookNodeType),
+                }]);
+                return;
+            }
+            const wfRow = t.closest("[data-koolook-wf-path]");
+            if (wfRow) {
+                showContextMenu(e, [{
+                    label: `Copy to ${pullIn.destLabel}`,
+                    action: () => pullIn.copyWorkflow(wfRow.dataset.koolookWfPath),
+                }]);
+                return;
+            }
+            // Folder pull-in (#197): bulk-copy a whole workflow folder (the merge
+            // case). Workflow folders only (node/tag folders aren't real store
+            // dirs); the synthetic "Archive" folder is skipped. The Workflows
+            // section root copies the entire tree.
+            const dirRow = t.closest("[data-koolook-folder-path]");
+            if (dirRow) {
+                const fp = dirRow.dataset.koolookFolderPath || "";
+                const isWfFolder = fp === SECTION_ID_WORKFLOWS || fp.startsWith(`${SECTION_ID_WORKFLOWS}/`);
+                const segs = fp === SECTION_ID_WORKFLOWS
+                    ? []
+                    : fp.slice(SECTION_ID_WORKFLOWS.length + 1).split("/");
+                if (isWfFolder && segs[segs.length - 1] !== "Archive") {
+                    const label = segs.length ? segs[segs.length - 1] : "all workflows";
+                    showContextMenu(e, [{
+                        label: `Copy folder "${label}" → ${pullIn.destLabel} (with contents)`,
+                        action: () => pullIn.copyFolder(segs, label),
+                    }]);
+                }
+            }
+        }, true);
         container.addEventListener("dragstart", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         container.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
         container.addEventListener("drop", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
