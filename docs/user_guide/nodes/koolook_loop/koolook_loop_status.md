@@ -26,8 +26,11 @@ Key inputs:
 - `filepath`: optional sequence path used only for the printed status line.
 - `label`: status label, for example `EXR_SAFE`.
 - `auto_queue_next`: when enabled, submit the next prompt automatically.
-- `index_node_id`: node id of the connected `easy int` frame-index node. If this
-  is blank, the node attempts to infer it from the connected `index` input.
+- `index_node_id`: advanced override for the connected `easy int` frame-index
+  node. Leave this blank for normal use. The node infers the frame-index node
+  from the connected `index` input and logs the detected node class/id when it
+  queues the next frame. If an old saved workflow contains a stale manual id,
+  the connected `index` input is used instead.
 - `server_url`: local ComfyUI server URL, usually `http://127.0.0.1:8188`.
 - `max_auto_queue_depth`: hard safety cap for how many child prompts this node
   may chain from the current frame.
@@ -37,5 +40,5 @@ Key inputs:
 If an older saved workflow accidentally shifts widget values and puts a numeric
 node id into `label`, the node treats that numeric label as `index_node_id`,
 prints a recovery note, and uses `EXR_SAFE` as the label. This keeps older loop
-demo saves from crashing, but new workflows should set `label` and
-`index_node_id` explicitly.
+demo saves from crashing, but new workflows should set `label` explicitly and
+leave `index_node_id` blank unless there is a specific override reason.

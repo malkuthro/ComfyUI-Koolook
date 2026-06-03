@@ -7,7 +7,13 @@ import json
 
 import pytest
 
-from k_loop_status import KoolookLoopStatus, _post_prompt, build_status, infer_index_node_id
+from k_loop_status import (
+    KoolookLoopStatus,
+    _post_prompt,
+    build_status,
+    infer_index_node_id,
+    resolve_index_node_id,
+)
 
 
 def test_build_status_formats_one_based_position_and_frame_path():
@@ -66,6 +72,19 @@ def test_infers_index_node_id_from_connected_index_input():
     assert infer_index_node_id(prompt, "21") == "22"
 
 
+def test_resolve_index_node_id_falls_back_from_stale_manual_id():
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+
+    node_id, note = resolve_index_node_id(prompt, "21", "22")
+
+    assert node_id == "543"
+    assert "configured index node '22' is not in this prompt" in note
+    assert "easy int node 543" in note
+
+
 def test_numeric_label_is_treated_as_shifted_index_node_id(capsys):
     node = KoolookLoopStatus()
 
@@ -93,6 +112,28 @@ def test_depth_guard_raises_before_status_print(capsys):
             index_node_id="22",
             max_auto_queue_depth=2,
             prompt={"21": {"inputs": {}}},
+        )
+
+    assert "[Koolook Loop Status]" not in capsys.readouterr().out
+
+
+def test_string_true_auto_queue_uses_connected_index_before_status_print(capsys):
+    node = KoolookLoopStatus()
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+
+    with pytest.raises(RuntimeError, match="ComfyUI server is not reachable"):
+        node.report(
+            "image",
+            0,
+            2,
+            auto_queue_next="true",
+            index_node_id="22",
+            prompt=prompt,
+            unique_id="21",
+            server_url="http://127.0.0.1:9",
         )
 
     assert "[Koolook Loop Status]" not in capsys.readouterr().out
