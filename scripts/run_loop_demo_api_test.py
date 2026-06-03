@@ -13,21 +13,30 @@ import json
 from pathlib import Path
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
+def _validate_http_url(url: str) -> None:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(f"Only http(s) ComfyUI server URLs are allowed: {url!r}")
+
+
 def _post_json(url: str, payload: dict) -> dict:
+    _validate_http_url(url)
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(request, timeout=30) as response:  # nosec B310
         return json.load(response)
 
 
 def _get_json(url: str, timeout: float = 15) -> dict:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    _validate_http_url(url)
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # nosec B310
         return json.load(response)
 
 

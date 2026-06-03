@@ -15,6 +15,7 @@ import re
 import threading
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -69,9 +70,16 @@ _infer_index_node_id = infer_index_node_id
 
 
 def _get_json(url: str, timeout: float = 10) -> dict:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    _validate_http_url(url)
+    with urllib.request.urlopen(url, timeout=timeout) as response:  # nosec B310
         body = response.read().decode("utf-8", errors="replace")
     return json.loads(body) if body else {}
+
+
+def _validate_http_url(url: str) -> None:
+    parsed = urllib.parse.urlsplit(str(url or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(f"Only http(s) ComfyUI server URLs are allowed: {url!r}")
 
 
 def _probe_server(server_url: str) -> None:
@@ -79,6 +87,7 @@ def _probe_server(server_url: str) -> None:
 
 
 def _post_prompt(server_url: str, prompt: dict) -> dict:
+    _validate_http_url(server_url)
     data = json.dumps({"prompt": prompt}).encode("utf-8")
     req = urllib.request.Request(
         f"{server_url.rstrip('/')}/prompt",
@@ -86,7 +95,7 @@ def _post_prompt(server_url: str, prompt: dict) -> dict:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310
         body = response.read().decode("utf-8", errors="replace")
     payload = json.loads(body) if body else {}
     if payload.get("error") or not payload.get("prompt_id"):

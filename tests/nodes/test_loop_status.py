@@ -113,3 +113,8 @@ def test_post_prompt_rejects_error_payload(monkeypatch):
 
     with pytest.raises(RuntimeError, match="rejected child prompt"):
         _post_prompt("http://127.0.0.1:8188", {})
+
+
+def test_post_prompt_rejects_non_http_url():
+    with pytest.raises(RuntimeError, match=r"Only http\(s\)"):
+        _post_prompt("file:///tmp/comfy.sock", {})
