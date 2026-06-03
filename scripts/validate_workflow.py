@@ -60,6 +60,11 @@ def _sanitize_slots(
     return cleaned
 
 
+def _slot_type_matches(slot_type, link_type) -> bool:
+    """ComfyUI wildcard sockets (`*`) accept any concrete link type."""
+    return slot_type == link_type or slot_type == "*"
+
+
 def validate(data) -> list[str]:
     """Return a list of problem strings; empty list means OK.
 
@@ -208,7 +213,7 @@ def validate(data) -> list[str]:
                 f"link {lid}: src slot {src_slot!r} out of bounds on node {src} "
                 f"(has {len(src_outs)} outputs)"
             )
-        elif src_outs[src_slot].get("type") != ltype:
+        elif not _slot_type_matches(src_outs[src_slot].get("type"), ltype):
             problems.append(
                 f"link {lid}: src type mismatch — link declares {ltype!r}, "
                 f"slot is {src_outs[src_slot].get('type')!r}"
@@ -218,7 +223,7 @@ def validate(data) -> list[str]:
                 f"link {lid}: dst slot {dst_slot!r} out of bounds on node {dst} "
                 f"(has {len(dst_ins)} inputs)"
             )
-        elif dst_ins[dst_slot].get("type") != ltype:
+        elif not _slot_type_matches(dst_ins[dst_slot].get("type"), ltype):
             problems.append(
                 f"link {lid}: dst type mismatch — link declares {ltype!r}, "
                 f"slot is {dst_ins[dst_slot].get('type')!r}"

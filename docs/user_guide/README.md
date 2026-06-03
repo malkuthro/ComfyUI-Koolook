@@ -18,6 +18,7 @@ attribution is visible without needing a fork-shaped directory tree.
 | `Koolook/VAE` | ✅ [`nodes/radiance_koolook_v2_3_3/`](nodes/radiance_koolook_v2_3_3/) | `Easy_hdr_VAE_encode`, `Easy_hdr_VAE_decode` |
 | `Koolook/Video` | ✅ [`Easy_LoadVideo`](nodes/koolook_video/easy_load_video.md) · ✅ [`Easy_VideoCombine`](nodes/koolook_video/easy_video_combine.md) | `Easy_LoadVideo`, `Easy_VideoCombine` |
 | `Koolook/Utility` | ✅ [`Easy_Utility`](nodes/koolook_utility/easy_utility.md) | `Easy_Utility` |
+| `Koolook/Loop` | ✅ [`Koolook_LoopStatus`](nodes/koolook_loop/koolook_loop_status.md) | `Koolook_LoopStatus` |
 | `Koolook/Testing` | ✅ [`Easy_Pattern`](nodes/koolook_testing/easy_pattern.md) | `Easy_Pattern` |
 | `Koolook/PromptRelay` | ✅ [`LTXDirector__koolook`](nodes/whatdreamscost_koolook/ltx_director_koolook.md) | `LTXDirector__koolook` |
 

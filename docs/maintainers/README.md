@@ -18,6 +18,7 @@ and should be kept in sync with these prose docs.
 | [`curated-sidebar.md`](curated-sidebar.md) | The Kforge Labs sidebar starter-preset workflow. How to customize the bundled `web/starter_preset.json` shipped to fresh users (Snapshot → Load → starter). Storage keys, library directory resolution, reset procedure. |
 | [`workflows-sidebar.md`](workflows-sidebar.md) | The "Workflows" section of the same sidebar. Save canvas / save selection / directories / archive on collision / load with named tab. Storage shape, action semantics, reset procedure. |
 | [`dev-iteration-loop.md`](dev-iteration-loop.md) | The fast iteration pattern we used to build the sidebar — the dev-sync loop, agent trigger phrases (`go`, `dev-sync`, paste-JSON), what survives across re-syncs vs what doesn't, push/publish gates. Read this when returning to UI work after a break. |
+| [`comfyui-server-api-testing.md`](comfyui-server-api-testing.md) | How to give an AI session access to a running ComfyUI server, submit API-format prompts, poll `/history`, keep outputs safe, and document real server-side validation in PRs. |
 
 > **Read this first if you're confused about version numbers:**
 > [`../reference/versioning.md`](../reference/versioning.md) explains the three independent version axes in this codebase (pack version, fork wrapper version, upstream pinned commit) and which skill/doc owns each one. Worth a one-time read before starting any version-bump work.

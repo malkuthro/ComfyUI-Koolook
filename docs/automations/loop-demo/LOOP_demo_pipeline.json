@@ -1,0 +1,903 @@
+{
+  "id": "ae39adbb-1ef5-431b-98a2-158624d1bf4b",
+  "revision": 0,
+  "last_node_id": 22,
+  "last_link_id": 32,
+  "nodes": [
+    {
+      "id": 9,
+      "type": "Easy_Pattern",
+      "pos": [
+        259.70356703254146,
+        253.39163152091928
+      ],
+      "size": [
+        283.10203125,
+        396.3821875000001
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "koolook",
+        "ver": "0.2.0",
+        "Node name for S&R": "Easy_Pattern",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        4,
+        512,
+        512,
+        "Custom",
+        true,
+        "White",
+        1,
+        1,
+        256,
+        "center",
+        0,
+        "#C71585",
+        "#FFFFFF",
+        "",
+        ""
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 19,
+      "type": "080262da-00ac-4706-a0b7-493456f332c0",
+      "pos": [
+        1051.0711732934637,
+        -110.29401951478762
+      ],
+      "size": [
+        308.6231421874995,
+        469.89681874999826
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [],
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 12,
+      "type": "easy int",
+      "pos": [
+        2.5181613396079383,
+        140.12744603952612
+      ],
+      "size": [
+        210,
+        59.19109375000005
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "int",
+          "type": "INT",
+          "links": [
+            12,
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "1.3.4",
+        "Node name for S&R": "easy int",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        4
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 3,
+      "type": "ImageFromBatch",
+      "pos": [
+        566.9834143750005,
+        95.06833875
+      ],
+      "size": [
+        270,
+        100
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "name": "batch_index",
+          "type": "INT",
+          "widget": {
+            "name": "batch_index"
+          },
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            20
+          ]
+        }
+      ],
+      "title": "Pick frame [Frame Index]  (length = 1)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.22.0",
+        "Node name for S&R": "ImageFromBatch",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "batch_index": true
+          },
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        0,
+        1
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 4,
+      "type": "SaveEXRFrames",
+      "pos": [
+        1999.759703098124,
+        -113.48433703031256
+      ],
+      "size": [
+        368.0438239062498,
+        841.8126378124991
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 31
+        },
+        {
+          "name": "filepath",
+          "type": "STRING",
+          "widget": {
+            "name": "filepath"
+          },
+          "link": 7
+        },
+        {
+          "name": "start_frame",
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "title": "Save EXR (one frame per queued prompt)",
+      "properties": {
+        "cnr_id": "ComfyUI-HQ-Image-Save",
+        "ver": "52b4579a195727729bf768032737a67220512128",
+        "Node name for S&R": "SaveEXRFrames",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "filepath": true,
+            "start_frame": true
+          },
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "path/to/frame%04d.exr",
+        "linear",
+        0,
+        true,
+        "none"
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 8,
+      "type": "EasyAIPipeline",
+      "pos": [
+        1514.2760548168735,
+        46.94608453218766
+      ],
+      "size": [
+        449.2837890625,
+        678.6578124999999
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "base_directory_path",
+          "type": "STRING",
+          "widget": {
+            "name": "base_directory_path"
+          },
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "WRITE_file_path",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": [
+            7,
+            30
+          ]
+        },
+        {
+          "name": "output_name",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": null
+        },
+        {
+          "name": "version_string",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": null
+        },
+        {
+          "name": "output_directory",
+          "type": "STRING",
+          "slot_index": 3,
+          "links": null
+        },
+        {
+          "name": "shot_duration",
+          "type": "INT",
+          "slot_index": 4,
+          "links": null
+        },
+        {
+          "name": "seed_value",
+          "type": "INT",
+          "slot_index": 5,
+          "links": null
+        },
+        {
+          "name": "shot_name",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": null
+        }
+      ],
+      "title": "Easy AI Pipeline (Koolook) - path / name / folders / version",
+      "properties": {
+        "cnr_id": "koolook",
+        "ver": "0.2.0",
+        "Node name for S&R": "EasyAIPipeline",
+        "aux_id": "malkuthro/Koolook_Wan_22",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        81,
+        453453453,
+        "Place your base folder path in the FIELD below",
+        "W:/projects/arena_club_the_chase_3252/sequences/testSequence/ComfyUI_faceReplacement/keyFrames",
+        ".%04d.exr",
+        "faceLoop",
+        "",
+        "1",
+        false,
+        false,
+        true,
+        "W:/projects/arena_club_the_chase_3252/sequences/testSequence/ComfyUI_faceReplacement/keyFrames/loop-test/v003/faceLoop_v003.%04d.exr",
+        null,
+        null
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 10,
+      "type": "Text Multiline",
+      "pos": [
+        1519.7489649737688,
+        782.3439080691186
+      ],
+      "size": [
+        442.80433609374995,
+        121.42861273055792
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "was-node-suite-comfyui",
+        "ver": "1.0.2",
+        "Node name for S&R": "Text Multiline",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "C:/koolook-loop-demo-output/"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 21,
+      "type": "Koolook_LoopStatus",
+      "pos": [
+        1365,
+        -120
+      ],
+      "size": [
+        330,
+        210
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "*",
+          "link": 21
+        },
+        {
+          "name": "index",
+          "type": "INT",
+          "link": 28
+        },
+        {
+          "name": "total",
+          "type": "INT",
+          "link": 29
+        },
+        {
+          "name": "filepath",
+          "type": "STRING",
+          "link": 30
+        },
+        {
+          "name": "label",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "auto_queue_next",
+          "type": "BOOLEAN",
+          "link": null
+        },
+        {
+          "name": "index_node_id",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "server_url",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "max_auto_queue_depth",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "remaining_auto_queue_depth",
+          "type": "INT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "*",
+          "links": [
+            31
+          ]
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Loop Status + Queue Next  (1/4, 2/4...)",
+      "properties": {
+        "Node name for S&R": "Koolook_LoopStatus",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "filepath": true,
+            "label": true,
+            "index_node_id": true,
+            "server_url": true
+          },
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "EXR_SAFE",
+        true,
+        "22",
+        "http://127.0.0.1:8188",
+        100,
+        -1
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 22,
+      "type": "easy int",
+      "pos": [
+        245,
+        115
+      ],
+      "size": [
+        210,
+        58
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "int",
+          "type": "INT",
+          "links": [
+            3,
+            17,
+            28
+          ]
+        }
+      ],
+      "title": "Frame Index  (auto-queued by Loop Status)",
+      "properties": {
+        "Node name for S&R": "easy int",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        0
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    }
+  ],
+  "links": [
+    [
+      7,
+      8,
+      0,
+      4,
+      1,
+      "STRING"
+    ],
+    [
+      8,
+      9,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      10,
+      0,
+      8,
+      0,
+      "STRING"
+    ],
+    [
+      12,
+      12,
+      0,
+      9,
+      0,
+      "INT"
+    ],
+    [
+      20,
+      3,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      22,
+      0,
+      3,
+      1,
+      "INT"
+    ],
+    [
+      17,
+      22,
+      0,
+      4,
+      2,
+      "INT"
+    ],
+    [
+      28,
+      22,
+      0,
+      21,
+      1,
+      "INT"
+    ],
+    [
+      21,
+      19,
+      0,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      29,
+      12,
+      0,
+      21,
+      2,
+      "INT"
+    ],
+    [
+      30,
+      8,
+      0,
+      21,
+      3,
+      "STRING"
+    ],
+    [
+      31,
+      21,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Pipeline-driven per-frame loop  ->  EXR sequence",
+      "bounding": [
+        -20,
+        -300,
+        2878.894810443279,
+        1277.9526956315626
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "080262da-00ac-4706-a0b7-493456f332c0",
+        "version": 1,
+        "state": {
+          "lastGroupId": 1,
+          "lastNodeId": 19,
+          "lastLinkId": 22,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "New Subgraph",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            811.0544128247141,
+            237.50378189146102,
+            128,
+            68
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1361.025115949714,
+            237.50378189146102,
+            128,
+            68
+          ]
+        },
+        "inputs": [
+          {
+            "id": "fe369bcb-6561-4b7b-afa3-147b55de3826",
+            "name": "image",
+            "type": "IMAGE",
+            "linkIds": [
+              18
+            ],
+            "localized_name": "image",
+            "pos": [
+              51,
+              24
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "94b00acd-d5b7-4787-8dbb-aeb00cef86d5",
+            "name": "IMAGE",
+            "type": "IMAGE",
+            "linkIds": [
+              19
+            ],
+            "localized_name": "IMAGE",
+            "pos": [
+              24,
+              24
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 18,
+            "type": "EasyResize_Koolook",
+            "pos": [
+              999.0544128247141,
+              23.503781891460996
+            ],
+            "size": [
+              301.970703125,
+              526
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 18
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "shape": 7,
+                "type": "MASK",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  19
+                ]
+              },
+              {
+                "localized_name": "composed_IMAGE",
+                "name": "composed_IMAGE",
+                "type": "IMAGE",
+                "links": null
+              },
+              {
+                "localized_name": "MASK",
+                "name": "MASK",
+                "type": "MASK",
+                "links": null
+              },
+              {
+                "localized_name": "inverted_MASK",
+                "name": "inverted_MASK",
+                "type": "MASK",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "COLOR_PANEL",
+                "name": "COLOR_PANEL",
+                "type": "IMAGE",
+                "links": null
+              },
+              {
+                "localized_name": "original_width",
+                "name": "original_width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "original_height",
+                "name": "original_height",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "original_aspect_ratio",
+                "name": "original_aspect_ratio",
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "cnr_id": "koolook",
+              "ver": "0.2.0",
+              "Node name for S&R": "EasyResize_Koolook",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.8"
+              }
+            },
+            "widgets_values": [
+              "Width",
+              512,
+              "16:9",
+              32,
+              "nearest-exact",
+              "stretch",
+              "center",
+              "Black",
+              "Black",
+              "cpu",
+              "0, 0, 0",
+              "0, 0, 0",
+              false
+            ]
+          }
+        ],
+        "groups": [],
+        "links": [
+          {
+            "id": 18,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 18,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 19,
+            "origin_id": 18,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          }
+        ],
+        "extra": {
+          "ue_links": [],
+          "links_added_by_ue": []
+        }
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "ds": {
+      "scale": 0.7632404326619254,
+      "offset": [
+        197.61328265296518,
+        553.4542872470004
+      ]
+    },
+    "links_added_by_ue": [],
+    "frontendVersion": "1.44.19",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

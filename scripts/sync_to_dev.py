@@ -159,6 +159,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "k_easy_track.py",
     "k_easy_utility.py",
     "k_easy_wan22_prompt.py",
+    "k_loop_status.py",
     "k_video_combine.py",
     "k_video_load.py",
     "koolook_install_guard.py",
