@@ -79,6 +79,7 @@ def test_validate_setup_rejects_missing_required_fields(missing_key: str) -> Non
         (lambda setup: setup["inputContract"]["inputs"][0].pop("target"), "inputContract.inputs[0].target"),
         (lambda setup: setup["validation"].__setitem__("status", "unknown"), "validation.status"),
         (lambda setup: setup.__setitem__("updatedAt", "06/06/2026"), "updatedAt"),
+        (lambda setup: setup.__setitem__("schemaVersion", 2), "unsupported schemaVersion: 2"),
     ],
 )
 def test_validate_setup_rejects_malformed_schema_fields(mutator, expected: str) -> None:
@@ -132,6 +133,21 @@ def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> 
 
     primary.write_text('{"setups": []}', encoding="utf-8")
     assert storage.load_setups() == []
+
+
+def test_file_storage_reports_corrupt_primary_without_falling_back(tmp_path) -> None:
+    primary = tmp_path / "setups.json"
+    fallback = tmp_path / "sample.json"
+    primary.write_text("{not json", encoding="utf-8")
+    fallback.write_text('{"setups": [%s]}' % _json(_valid_setup()), encoding="utf-8")
+    storage = FileSetupStorage(primary, fallback_path=fallback)
+
+    registry = PublishedSetupRegistry(storage)
+
+    assert registry.listSetups() == []
+    assert len(registry.diagnostics) == 1
+    assert str(primary) in registry.diagnostics[0]
+    assert "could not read published setups" in registry.diagnostics[0]
 
 
 def _json(value: dict) -> str:

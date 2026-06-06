@@ -25,7 +25,10 @@ The file may be either a bare array of setup objects or an object with a
 When the user registry file does not exist, the catalog falls back to the
 bundled sample at [`../../web/published_setups_sample.json`](../../web/published_setups_sample.json).
 An existing empty `setups.json` remains empty; the sample is only a demo
-fallback until the sidebar publish UX exists.
+fallback until the sidebar publish UX exists. A corrupt or unreadable primary
+`setups.json` does not fall back to the sample, because that would hide the
+operator's real registry problem; the catalog returns no rows and logs a
+diagnostic instead.
 
 ## Schema
 
@@ -83,6 +86,8 @@ Each published setup object uses this shape:
 `apiPrompt` is nullable in this first slice so a backend-created fixture can
 prove the registry and catalog shape before visual-to-API conversion lands.
 Execution slices should require a concrete API prompt before a setup can run.
+Only `schemaVersion: 1` is accepted by this first registry; future schema
+versions must add explicit migration or validation support before they pass.
 
 ## Public Boundary
 
@@ -93,7 +98,9 @@ External callers should use:
 - `PublishedSetupRegistry.getSetup(id)`
 
 Invalid setup objects are omitted from list/detail results. Diagnostics are
-kept on `registry.diagnostics` and logged by the HTTP adapter.
+kept on `registry.diagnostics` and logged by the HTTP adapter. File-level
+storage diagnostics, such as unreadable JSON, are reported through the same
+channel.
 
 ## Catalog API
 

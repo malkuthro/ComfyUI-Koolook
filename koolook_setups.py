@@ -19,6 +19,7 @@ DEFAULT_SETUPS_FILENAME = "setups.json"
 SAMPLE_SETUPS_PATH = (
     Path(__file__).resolve().parent / "web" / "published_setups_sample.json"
 )
+SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
 
@@ -49,6 +50,7 @@ class StaticSetupStorage:
 
     def __init__(self, records: list[dict[str, Any]]) -> None:
         self._records = records
+        self.diagnostics: list[str] = []
 
     def load_setups(self) -> list[dict[str, Any]]:
         return list(self._records)
@@ -60,18 +62,30 @@ class FileSetupStorage:
     def __init__(self, path: Path, fallback_path: Path | None = None) -> None:
         self.path = path
         self.fallback_path = fallback_path
+        self.diagnostics: list[str] = []
 
     def load_setups(self) -> list[dict[str, Any]]:
+        self.diagnostics = []
         path = self.path
         if not path.is_file() and self.fallback_path is not None:
             path = self.fallback_path
+            self.diagnostics.append(
+                f"{self.path}: missing; using bundled sample {self.fallback_path}"
+            )
         if not path.is_file():
             return []
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self.diagnostics.append(f"{path}: could not read published setups: {exc}")
+            return []
         if isinstance(raw, dict):
             raw = raw.get("setups", [])
         if not isinstance(raw, list):
-            raise ValueError("published setup storage must be a list or {setups: [...]}")
+            self.diagnostics.append(
+                f"{path}: published setup storage must be a list or {{setups: [...]}}"
+            )
+            return []
         return [item for item in raw if isinstance(item, dict)]
 
 
@@ -93,6 +107,7 @@ class PublishedSetupRegistry:
             setup_id = raw.get("id", "<unknown>") if isinstance(raw, dict) else "<unknown>"
             for diagnostic in result.diagnostics:
                 self.diagnostics.append(f"{setup_id}: {diagnostic}")
+        self.diagnostics.extend(getattr(self._storage, "diagnostics", []))
         out.sort(key=lambda setup: str(setup["metadata"]["title"]).lower())
         return out
 
@@ -123,6 +138,11 @@ def validate_setup(value: Any) -> ValidationResult:
     if isinstance(value.get("id"), str) and not SETUP_ID_RE.match(value["id"]):
         diagnostics.append("id must be stable URL-safe text")
     _validate_scalar(value, "schemaVersion", int, diagnostics)
+    if value.get("schemaVersion") != SUPPORTED_SCHEMA_VERSION:
+        diagnostics.append(
+            f"unsupported schemaVersion: {value.get('schemaVersion')}; "
+            f"expected {SUPPORTED_SCHEMA_VERSION}"
+        )
     _validate_scalar(value, "version", (int, str), diagnostics)
     _validate_iso_timestamp(value.get("updatedAt"), diagnostics)
     _validate_metadata(value.get("metadata"), diagnostics)

@@ -10,7 +10,8 @@ The format is inspired by Keep a Changelog and SemVer.
 - **Published setup registry + catalog API.** Added the first server-side
   Published Workflow Setup registry boundary (`listSetups()` /
   `getSetup(id)`), schema validation with invalid-record diagnostics,
-  file-backed storage at `<ComfyUI user directory>/koolook-published-setups/setups.json`,
+  file-backed storage with file-level diagnostics at
+  `<ComfyUI user directory>/koolook-published-setups/setups.json`,
   a bundled sample fixture, and read-only external catalog endpoints:
   `GET /koolook/api/setups` for summaries and
   `GET /koolook/api/setups/{id}` for detail contracts.

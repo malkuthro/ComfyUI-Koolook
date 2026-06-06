@@ -394,12 +394,15 @@ def register_routes(routes, setup_registry_factory=None) -> None:
     if setup_registry_factory is None:
         setup_registry_factory = default_registry
 
+    def _log_setup_diagnostics(registry: PublishedSetupRegistry) -> None:
+        for diagnostic in registry.diagnostics:
+            print(f"[Koolook] published setup skipped: {diagnostic}")
+
     @routes.get("/koolook/api/setups")
     async def list_published_setups(_request):
         registry: PublishedSetupRegistry = setup_registry_factory()
         rows = registry.listSetups()
-        for diagnostic in registry.diagnostics:
-            print(f"[Koolook] published setup skipped: {diagnostic}")
+        _log_setup_diagnostics(registry)
         return web.json_response(rows)
 
     @routes.get("/koolook/api/setups/{setup_id}")
@@ -407,8 +410,7 @@ def register_routes(routes, setup_registry_factory=None) -> None:
         registry: PublishedSetupRegistry = setup_registry_factory()
         setup_id = request.match_info["setup_id"]
         setup = registry.getSetup(setup_id)
-        for diagnostic in registry.diagnostics:
-            print(f"[Koolook] published setup skipped: {diagnostic}")
+        _log_setup_diagnostics(registry)
         if setup is None:
             raise web.HTTPNotFound(reason=f"Published setup '{setup_id}' not found.")
         return web.json_response(setup)
