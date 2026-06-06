@@ -56,9 +56,21 @@ def _init_load_time_module_deps() -> set[str]:
     return deps
 
 
+def _route_load_time_module_deps() -> set[str]:
+    tree = ast.parse((REPO_ROOT / "koolook_routes.py").read_text(encoding="utf-8"))
+    deps: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if (node.level or 0) >= 1 and node.module:
+                deps.add(node.module.split(".")[0])
+            elif node.module and node.module.startswith("koolook_"):
+                deps.add(node.module.split(".")[0])
+    return deps
+
+
 def test_init_load_deps_are_shipped_by_runtime_paths():
     runtime_paths = set(sync_to_dev.RUNTIME_PATHS)
-    deps = _init_load_time_module_deps()
+    deps = _init_load_time_module_deps() | _route_load_time_module_deps()
     # Sanity: the parse actually found the imports (guards against a refactor
     # that renames _merge_node_group and silently makes this test vacuous).
     assert "koolook_versioning" in deps and "k_ai_pipeline" in deps, (

@@ -7,6 +7,13 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Published setup registry + catalog API.** Added the first server-side
+  Published Workflow Setup registry boundary (`listSetups()` /
+  `getSetup(id)`), schema validation with invalid-record diagnostics,
+  file-backed storage at `<ComfyUI user directory>/koolook-published-setups/setups.json`,
+  a bundled sample fixture, and read-only external catalog endpoints:
+  `GET /koolook/api/setups` for summaries and
+  `GET /koolook/api/setups/{id}` for detail contracts.
 - **Koolook Loop Status queue controller.** Added `Koolook_LoopStatus`, a
   pass-through node that reports per-frame progress (`1/4`, `2/4`, ...)
   and can queue the next prompt by advancing a connected `easy int` frame
