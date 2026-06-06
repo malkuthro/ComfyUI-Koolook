@@ -36,6 +36,13 @@ explain the ambiguity in plain language, and ask for confirmation before
 acting. This is especially important for filesystem operations, sync targets,
 workflow paths, and anything outside the repository.
 
+## Review Session Default
+
+When running a PR review for this repository, approve by default if the review
+finds no actionable concerns that need to be flagged. If the review finds
+blockers, risks, missing validation, or anything that needs maintainer
+judgment, flag those items clearly to the user instead of approving silently.
+
 ## Visual QA Is Mandatory For UI Work
 
 For any change that affects rendered UI, guide pages, screenshots,
