@@ -34,6 +34,11 @@ from pathlib import Path
 
 from aiohttp import web
 
+try:
+    from .koolook_setups import PublishedSetupRegistry, default_registry
+except ImportError:  # pragma: no cover - standalone test/import context
+    from koolook_setups import PublishedSetupRegistry, default_registry
+
 ENV_VAR = "KFORGELABS_PRESETS"
 DEFAULT_SUBDIR = "koolook-presets"
 SETTINGS_FILENAME = "koolook-settings.json"
@@ -379,13 +384,36 @@ def _resolve_target(lib_base: Path, subdir: str, name: str) -> tuple[Path, Path]
     return target_dir, file_path
 
 
-def register_routes(routes) -> None:
+def register_routes(routes, setup_registry_factory=None) -> None:
     """Attach the preset endpoints to the given aiohttp ``RouteTableDef``.
 
     Called once from ``__init__.py`` at custom-node load time. Splitting
     registration from the route handlers keeps this file unit-testable
     without an aiohttp app fixture.
     """
+    if setup_registry_factory is None:
+        setup_registry_factory = default_registry
+
+    def _log_setup_diagnostics(registry: PublishedSetupRegistry) -> None:
+        for diagnostic in registry.diagnostics:
+            print(f"[Koolook] published setup skipped: {diagnostic}")
+
+    @routes.get("/koolook/api/setups")
+    async def list_published_setups(_request):
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        rows = registry.listSetups()
+        _log_setup_diagnostics(registry)
+        return web.json_response(rows)
+
+    @routes.get("/koolook/api/setups/{setup_id}")
+    async def get_published_setup(request):
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        setup_id = request.match_info["setup_id"]
+        setup = registry.getSetup(setup_id)
+        _log_setup_diagnostics(registry)
+        if setup is None:
+            raise web.HTTPNotFound(reason=f"Published setup '{setup_id}' not found.")
+        return web.json_response(setup)
 
     @routes.get("/koolook/presets/info")
     async def info(_request):

@@ -1,0 +1,59 @@
+{
+  "setups": [
+    {
+      "schemaVersion": 1,
+      "id": "sample-ltx-director",
+      "version": 1,
+      "updatedAt": "2026-06-06T08:00:00Z",
+      "metadata": {
+        "title": "Sample LTX Director Setup",
+        "description": "Bundled read-only sample for the published setup catalog API.",
+        "category": "Video",
+        "tags": ["sample", "ltx"],
+        "previewImage": ""
+      },
+      "visualGraph": {
+        "nodes": [
+          {
+            "id": 1,
+            "type": "Text Multiline",
+            "title": "Prompt"
+          }
+        ],
+        "links": []
+      },
+      "apiPrompt": null,
+      "inputContract": {
+        "inputs": [
+          {
+            "key": "prompt",
+            "label": "Prompt",
+            "type": "text",
+            "required": true,
+            "target": {
+              "node": "1",
+              "input": "text"
+            }
+          }
+        ]
+      },
+      "outputContract": {
+        "outputs": [
+          {
+            "key": "preview",
+            "label": "Preview",
+            "type": "image"
+          }
+        ]
+      },
+      "source": {
+        "kind": "bundled-sample",
+        "path": "web/published_setups_sample.json"
+      },
+      "validation": {
+        "status": "draft",
+        "diagnostics": ["Sample record for catalog API smoke testing; not executable yet."]
+      }
+    }
+  ]
+}
