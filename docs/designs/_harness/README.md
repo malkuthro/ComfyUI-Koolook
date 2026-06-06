@@ -47,6 +47,7 @@ Then open one of the harness pages alongside the mockup:
 - Folder picker (mockup §6): http://127.0.0.1:8765/docs/designs/_harness/folder-picker.html
 - Mockup reference (§6):     http://127.0.0.1:8765/docs/designs/snapshot-dialogs.html#
 - Archive cleanup:          http://127.0.0.1:8765/docs/designs/_harness/archive-cleanup.html
+- Publish setup dialog:     http://127.0.0.1:8765/docs/designs/_harness/publish-setup.html
 
 `archive-cleanup.html` is not tied to a design mockup; it mounts the real
 sidebar panel against canned workflow-store data so Archive row labels and

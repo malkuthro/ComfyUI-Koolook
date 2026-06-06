@@ -415,6 +415,36 @@ def register_routes(routes, setup_registry_factory=None) -> None:
             raise web.HTTPNotFound(reason=f"Published setup '{setup_id}' not found.")
         return web.json_response(setup)
 
+    @routes.post("/koolook/api/setups")
+    async def publish_setup(request):
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            return web.json_response(
+                {"ok": False, "errors": [f"Body must be JSON: {exc}"]},
+                status=400,
+            )
+        if not isinstance(payload, dict):
+            return web.json_response(
+                {"ok": False, "errors": ["Body must be a JSON object."]},
+                status=400,
+            )
+
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        result = registry.publishSetup(
+            visualGraph=payload.get("visualGraph"),
+            metadata=payload.get("metadata"),
+            inputContract=payload.get("inputContract"),
+            outputContract=payload.get("outputContract"),
+            source=payload.get("source"),
+        )
+        if not result.valid:
+            return web.json_response(
+                {"ok": False, "errors": result.diagnostics},
+                status=400,
+            )
+        return web.json_response({"ok": True, "setup": result.setup})
+
     @routes.get("/koolook/presets/info")
     async def info(_request):
         base, source = _configured_dir()

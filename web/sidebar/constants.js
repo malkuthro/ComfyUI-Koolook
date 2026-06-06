@@ -195,8 +195,13 @@ export function ensureStyle() {
 .koolook-confirm-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .koolook-confirm-list li { padding-left: 2px; }
 .koolook-modal-label { font-size: 11px; opacity: 0.7; margin: 6px 0 4px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
-.koolook-modal-input, .koolook-modal-select { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, #111111); border: 1px solid var(--border-color, #302f2f); border-radius: 4px; color: var(--input-text, #e6e8ec); font-size: 13px; box-sizing: border-box; outline: none; }
-.koolook-modal-input:focus, .koolook-modal-select:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
+.koolook-modal-input, .koolook-modal-select, .koolook-modal-textarea { width: 100%; padding: 6px 8px; background: var(--comfy-input-bg, #111111); border: 1px solid var(--border-color, #302f2f); border-radius: 4px; color: var(--input-text, #e6e8ec); font-size: 13px; box-sizing: border-box; outline: none; }
+.koolook-modal-input:focus, .koolook-modal-select:focus, .koolook-modal-textarea:focus { border-color: var(--p-primary-color, rgba(100,150,255,0.5)); }
+.koolook-modal-textarea { min-height: 84px; resize: vertical; font: 12px/1.35 ui-monospace, "Cascadia Mono", Menlo, monospace; }
+.koolook-publish-modal { width: min(620px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: auto; }
+.koolook-publish-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.koolook-publish-wide { grid-column: 1 / -1; }
+.koolook-publish-message { min-height: 16px; margin-top: 8px; color: #ffb4a8; font-size: 12px; line-height: 1.35; }
 /* Library-folder name + path pair used by the redesigned Save and Load
    dialogs to render the inline 'Saved to' / 'Loaded from' info row.
    Naming kept from the (deleted) Settings dialog for git-blame continuity;

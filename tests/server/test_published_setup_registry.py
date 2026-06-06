@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
+import json
 
 import pytest
 
-from koolook_setups import FileSetupStorage, PublishedSetupRegistry, StaticSetupStorage, validate_setup
+from koolook_setups import (
+    FileSetupStorage,
+    PublishedSetupRegistry,
+    StaticSetupStorage,
+    validate_setup,
+)
 
 
 def _valid_setup() -> dict:
@@ -148,6 +155,115 @@ def test_file_storage_reports_corrupt_primary_without_falling_back(tmp_path) -> 
     assert len(registry.diagnostics) == 1
     assert str(primary) in registry.diagnostics[0]
     assert "could not read published setups" in registry.diagnostics[0]
+
+
+def test_publish_setup_does_not_copy_sample_fallback_into_primary(tmp_path) -> None:
+    primary = tmp_path / "user" / "setups.json"
+    fallback = tmp_path / "sample.json"
+    fallback.write_text(json.dumps({"setups": [_valid_setup()]}), encoding="utf-8")
+
+    registry = PublishedSetupRegistry(FileSetupStorage(primary, fallback_path=fallback))
+    result = registry.publishSetup(
+        visualGraph={"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+        metadata={
+            "id": "first-curated-setup",
+            "title": "First Curated Setup",
+            "description": "The first real user-published setup.",
+        },
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "type": "text",
+                    "target": {"node": "12", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/First"},
+    )
+
+    assert result.valid is True
+    stored = json.loads(primary.read_text(encoding="utf-8"))
+    assert [setup["id"] for setup in stored["setups"]] == ["first-curated-setup"]
+
+
+def test_publish_setup_persists_draft_and_catalog_reflects_it() -> None:
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 12,
+                "type": "Text Multiline",
+                "inputs": [{"name": "text", "type": "STRING"}],
+            }
+        ],
+        "links": [],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "my-callable-flow",
+            "title": "My Callable Flow",
+            "description": "External users can run this curated setup.",
+            "category": "Video",
+            "tags": ["demo", "publish"],
+            "previewImage": "koolook://preview/card.png",
+        },
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "label": "Prompt",
+                    "type": "text",
+                    "required": True,
+                    "target": {"node": "12", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "label": "Preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/My Callable Flow"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("my-callable-flow")
+    assert setup is not None
+    assert setup["visualGraph"] == visual_graph
+    assert setup["apiPrompt"] is None
+    assert setup["source"] == {"kind": "sidebar-workflow", "path": "Demos/My Callable Flow"}
+    assert setup["updatedAt"].endswith("Z")
+    assert "+00:00" in datetime.fromisoformat(setup["updatedAt"].replace("Z", "+00:00")).isoformat()
+    assert setup["validation"] == {
+        "status": "draft",
+        "diagnostics": ["API prompt conversion pending."],
+    }
+    assert registry.listSetups()[0]["id"] == "my-callable-flow"
+
+
+def test_publish_setup_rejects_missing_contract_target() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Bad target"},
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "type": "text",
+                    "target": {"node": "99", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "inputContract.inputs[0].target.node not found in visualGraph" in result.diagnostics
+    assert registry.listSetups() == []
 
 
 def _json(value: dict) -> str:

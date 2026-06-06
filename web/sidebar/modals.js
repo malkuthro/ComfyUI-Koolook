@@ -749,6 +749,147 @@ export function showTagsModal({ wfName, getCurrentTags, onAddTag, onRemoveTag })
     setTimeout(() => { if (!input.disabled) input.focus(); }, 0);
 }
 
+function slugForSetupId(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_.-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+function makeLabeledInput(body, label, value, placeholder = "") {
+    body.appendChild(modalLabel(label));
+    const input = document.createElement("input");
+    input.className = "koolook-modal-input";
+    input.value = value || "";
+    input.placeholder = placeholder;
+    body.appendChild(input);
+    return input;
+}
+
+function makeLabeledTextarea(body, label, value) {
+    body.appendChild(modalLabel(label));
+    const input = document.createElement("textarea");
+    input.className = "koolook-modal-textarea";
+    input.value = value;
+    body.appendChild(input);
+    return input;
+}
+
+export function showPublishSetupModal({ wfName, dirPath, currentTags = [], onPublish }) {
+    const body = document.createElement("div");
+    body.className = "koolook-publish-grid";
+
+    const setupId = makeLabeledInput(body, "Setup id", slugForSetupId(wfName), "director-demo");
+    const title = makeLabeledInput(body, "Title", wfName, "Director demo");
+
+    const descriptionWrap = document.createElement("div");
+    descriptionWrap.className = "koolook-publish-wide";
+    const description = makeLabeledInput(descriptionWrap, "Description", "", "What this setup is for");
+    body.appendChild(descriptionWrap);
+
+    const category = makeLabeledInput(body, "Category", "", "Video");
+    const tags = makeLabeledInput(
+        body,
+        "Tags",
+        Array.isArray(currentTags) ? currentTags.join(", ") : "",
+        "video, director"
+    );
+
+    const sourceWrap = document.createElement("div");
+    sourceWrap.className = "koolook-publish-wide";
+    const source = makeLabeledInput(sourceWrap, "Source workflow", [...(dirPath || []), wfName].join("/"));
+    source.disabled = true;
+    body.appendChild(sourceWrap);
+
+    const previewWrap = document.createElement("div");
+    previewWrap.className = "koolook-publish-wide";
+    const previewImage = makeLabeledInput(previewWrap, "Preview/card reference", "", "optional image or card URL");
+    body.appendChild(previewWrap);
+
+    const inputWrap = document.createElement("div");
+    inputWrap.className = "koolook-publish-wide";
+    const inputContract = makeLabeledTextarea(
+        inputWrap,
+        "Input contract JSON",
+        JSON.stringify({
+            inputs: [
+                {
+                    key: "prompt",
+                    label: "Prompt",
+                    type: "text",
+                    required: true,
+                    target: { node: "", input: "" },
+                },
+            ],
+        }, null, 2)
+    );
+    body.appendChild(inputWrap);
+
+    const outputWrap = document.createElement("div");
+    outputWrap.className = "koolook-publish-wide";
+    const outputContract = makeLabeledTextarea(
+        outputWrap,
+        "Output contract JSON",
+        JSON.stringify({ outputs: [{ key: "preview", type: "image" }] }, null, 2)
+    );
+    body.appendChild(outputWrap);
+
+    const msg = document.createElement("div");
+    msg.className = "koolook-publish-message koolook-publish-wide";
+    body.appendChild(msg);
+
+    let overlay;
+    const cancelBtn = makeModalButton({ label: "Cancel", onClick: () => overlay.remove() });
+    const publishBtn = makeModalButton({
+        label: "Publish setup",
+        primary: true,
+        onClick: async () => {
+            msg.textContent = "";
+            let parsedInput;
+            let parsedOutput;
+            try {
+                parsedInput = JSON.parse(inputContract.value || "{}");
+                parsedOutput = JSON.parse(outputContract.value || "{}");
+            } catch (e) {
+                msg.textContent = `Contract JSON is invalid: ${e.message}`;
+                return;
+            }
+            publishBtn.disabled = true;
+            publishBtn.textContent = "Publishing...";
+            try {
+                await onPublish({
+                    metadata: {
+                        id: setupId.value,
+                        title: title.value,
+                        description: description.value,
+                        category: category.value,
+                        tags: tags.value,
+                        previewImage: previewImage.value,
+                    },
+                    inputContract: parsedInput,
+                    outputContract: parsedOutput,
+                });
+                overlay.remove();
+            } catch (e) {
+                msg.textContent = e.message || "Publish failed.";
+                publishBtn.disabled = false;
+                publishBtn.textContent = "Publish setup";
+            }
+        },
+    });
+
+    let modal;
+    ({ overlay, modal } = makeModalShell({
+        title: "Publish setup",
+        titleTooltip: "Publish a saved sidebar workflow into the callable setup registry.",
+        body,
+        actions: [cancelBtn, publishBtn],
+    }));
+    modal.classList.add("koolook-publish-modal");
+    setupId.focus();
+}
+
 // =============================================================================
 // Install missing nodes modal — three phases driven by ComfyUI-Manager's HTTP
 // API.
