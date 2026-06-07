@@ -124,6 +124,16 @@ External callers should use:
 - `PublishedSetupRegistry.getSetup(id)`
 - `PublishedSetupRegistry.publishSetup(visualGraph, metadata, inputContract, outputContract, source)`
 
+Execution lives behind [`../../koolook_setup_runner.py`](../../koolook_setup_runner.py).
+External routes and future app adapters should use:
+
+- `PublishedSetupRunner.runSetup(id, inputs)`
+- `PublishedSetupRunner.getRun(runId)`
+
+The runner hides prompt cloning, input injection, ComfyUI `/prompt`
+submission, run-id mapping, history/queue polling, and output flattening from
+route callers.
+
 Invalid setup objects are omitted from list/detail results. Diagnostics are
 kept on `registry.diagnostics` and logged by the HTTP adapter. File-level
 storage diagnostics, such as unreadable JSON, are reported through the same
@@ -191,6 +201,90 @@ Publishes one setup. Body:
 Success returns `{ "ok": true, "setup": { ... } }` with the generated
 `apiPrompt` stored alongside the original `visualGraph`. Validation failures
 return HTTP `400` with `{ "ok": false, "errors": [...] }`.
+
+## Run API
+
+`POST /koolook/api/setups/{id}/run`
+
+Queues a callable published setup on the managed ComfyUI server. The body must
+be a JSON object with an `inputs` object:
+
+```json
+{
+  "inputs": {
+    "prompt": "A cinematic close-up"
+  }
+}
+```
+
+Only fields declared by `inputContract.inputs` or `setupSurface.app.inputs`
+are accepted. `setupSurface.app.switch` is also accepted when present. The
+runner deep-clones the stored `apiPrompt`, injects approved values into their
+declared targets, and submits `{ "prompt": <cloned prompt> }` to ComfyUI
+`/prompt`; the stored setup record is not mutated by a run request.
+
+Success returns:
+
+```json
+{
+  "ok": true,
+  "run": {
+    "runId": "run-000001",
+    "promptId": "f0c2...",
+    "status": "queued"
+  }
+}
+```
+
+Failure responses use the standard route error shape:
+
+```json
+{
+  "ok": false,
+  "errors": ["input 'seed' is not declared by this setup"]
+}
+```
+
+Missing setup ids return `404`; invalid inputs and non-callable draft setups
+return `400`; ComfyUI queue failures return `502`.
+
+`GET /koolook/api/runs/{runId}`
+
+Looks up a stable Koolook run id and translates ComfyUI history/queue data into
+external state:
+
+```json
+{
+  "ok": true,
+  "run": {
+    "runId": "run-000001",
+    "setupId": "ltx-director-demo",
+    "promptId": "f0c2...",
+    "status": "succeeded",
+    "outputs": [
+      {
+        "key": "video",
+        "label": "Video",
+        "type": "video",
+        "items": [
+          {
+            "nodeId": "20",
+            "kind": "videos",
+            "filename": "demo.mp4",
+            "subfolder": "koolook",
+            "type": "output"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Status is one of `queued`, `running`, `succeeded`, or `failed`. History entries
+produce terminal state and output items; otherwise the runner checks ComfyUI
+queue data to distinguish `running` from still `queued`. Unknown run ids return
+`404`; ComfyUI status lookup failures return `502`.
 
 ## Comfy-Native Setup Surface
 

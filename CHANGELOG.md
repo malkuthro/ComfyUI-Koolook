@@ -15,6 +15,13 @@ The format is inspired by Keep a Changelog and SemVer.
   a bundled sample fixture, and read-only external catalog endpoints:
   `GET /koolook/api/setups` for summaries and
   `GET /koolook/api/setups/{id}` for detail contracts.
+- **Published setup execution API.** Added the first external run path for
+  callable published setups: `POST /koolook/api/setups/{id}/run` clones the
+  stored API prompt, accepts only declared setup/app inputs, injects approved
+  values, submits the prompt to ComfyUI `/prompt`, and returns a stable Koolook
+  run id plus ComfyUI prompt id. `GET /koolook/api/runs/{runId}` translates
+  ComfyUI history/queue data into queued/running/succeeded/failed state and
+  exposes published output-contract items for external frontends.
 - **Sidebar publish flow for callable setups.** Saved sidebar workflows now
   expose an explicit **Publish setup...** context-menu action that captures
   setup metadata, source workflow reference, input/output contract JSON, and
