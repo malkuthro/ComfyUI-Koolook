@@ -36,8 +36,20 @@ from aiohttp import web
 
 try:
     from .koolook_setups import PublishedSetupRegistry, default_registry
+    from .koolook_setup_runner import (
+        AiohttpComfyClient,
+        InMemorySetupRunStore,
+        PublishedSetupRunner,
+        SetupRunError,
+    )
 except ImportError:  # pragma: no cover - standalone test/import context
     from koolook_setups import PublishedSetupRegistry, default_registry
+    from koolook_setup_runner import (
+        AiohttpComfyClient,
+        InMemorySetupRunStore,
+        PublishedSetupRunner,
+        SetupRunError,
+    )
 
 ENV_VAR = "KFORGELABS_PRESETS"
 DEFAULT_SUBDIR = "koolook-presets"
@@ -384,7 +396,7 @@ def _resolve_target(lib_base: Path, subdir: str, name: str) -> tuple[Path, Path]
     return target_dir, file_path
 
 
-def register_routes(routes, setup_registry_factory=None) -> None:
+def register_routes(routes, setup_registry_factory=None, setup_runner_factory=None) -> None:
     """Attach the preset endpoints to the given aiohttp ``RouteTableDef``.
 
     Called once from ``__init__.py`` at custom-node load time. Splitting
@@ -393,6 +405,16 @@ def register_routes(routes, setup_registry_factory=None) -> None:
     """
     if setup_registry_factory is None:
         setup_registry_factory = default_registry
+    run_store = InMemorySetupRunStore()
+
+    def _default_setup_runner(request, registry: PublishedSetupRegistry) -> PublishedSetupRunner:
+        base_url = f"{request.scheme}://{request.host}"
+        return PublishedSetupRunner(registry, AiohttpComfyClient(base_url), run_store)
+
+    def _setup_runner(request, registry: PublishedSetupRegistry):
+        if setup_runner_factory is not None:
+            return setup_runner_factory()
+        return _default_setup_runner(request, registry)
 
     def _log_setup_diagnostics(registry: PublishedSetupRegistry) -> None:
         for diagnostic in registry.diagnostics:
@@ -444,6 +466,47 @@ def register_routes(routes, setup_registry_factory=None) -> None:
                 status=400,
             )
         return web.json_response({"ok": True, "setup": result.setup})
+
+    @routes.post("/koolook/api/setups/{setup_id}/run")
+    async def run_published_setup(request):
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            return web.json_response(
+                {"ok": False, "errors": [f"Body must be JSON: {exc}"]},
+                status=400,
+            )
+        if not isinstance(payload, dict):
+            return web.json_response(
+                {"ok": False, "errors": ["Body must be a JSON object."]},
+                status=400,
+            )
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        runner = _setup_runner(request, registry)
+        try:
+            result = await runner.runSetup(
+                request.match_info["setup_id"],
+                payload.get("inputs", {}),
+            )
+        except SetupRunError as exc:
+            return web.json_response(
+                {"ok": False, "errors": exc.errors},
+                status=exc.status_code,
+            )
+        return web.json_response({"ok": True, "run": result})
+
+    @routes.get("/koolook/api/runs/{run_id}")
+    async def get_published_setup_run(request):
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        runner = _setup_runner(request, registry)
+        try:
+            result = await runner.getRun(request.match_info["run_id"])
+        except SetupRunError as exc:
+            return web.json_response(
+                {"ok": False, "errors": exc.errors},
+                status=exc.status_code,
+            )
+        return web.json_response({"ok": True, "run": result})
 
     @routes.get("/koolook/presets/info")
     async def info(_request):

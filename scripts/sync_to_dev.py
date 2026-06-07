@@ -165,6 +165,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "k_video_load.py",
     "koolook_install_guard.py",
     "koolook_routes.py",
+    "koolook_setup_runner.py",
     "koolook_setups.py",
     "koolook_versioning.py",
     "forks",
