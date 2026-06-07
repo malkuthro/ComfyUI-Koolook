@@ -4,6 +4,15 @@ This document captures the product intent for published setups as of the
 issue #224 runner-simulator PR. It is intentionally about the external
 application contract, not only the ComfyUI execution mechanics.
 
+Companion docs:
+
+- [`published-setup-full-circle-plan.md`](published-setup-full-circle-plan.md)
+  tracks the remaining implementation work needed to complete the authoring,
+  publish, export, simulator, and run loop.
+- [`external-frontend-job-submitter-brief.md`](external-frontend-job-submitter-brief.md)
+  is the handoff brief for an AI or developer session building the production
+  external frontend.
+
 ## Problem Statement
 
 A setup author builds a visual workflow inside ComfyUI. The author places
