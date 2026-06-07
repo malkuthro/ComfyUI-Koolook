@@ -138,3 +138,77 @@ def test_simulator_preserves_error_payload_for_debugging() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_simulator_builds_external_app_inputs_from_setup_surface() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          defaultRunInputsFromSetup,
+          runInputsFromAppValues,
+          setupHasAppSurface,
+          summarizeRunResultLines,
+        } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          setupSurface: {
+            app: {
+              switch: {
+                key: "switch",
+                default: 2,
+                options: [
+                  { value: 0, label: "EXR", input: "sequence_folder", visible: true },
+                  { value: 1, label: "QT", input: "qt_file", visible: true },
+                  { value: 2, label: "Img", input: "single_file", visible: true },
+                  { value: 3, label: "Prompt", input: "prompt", visible: false },
+                ],
+              },
+              inputs: [
+                { key: "sequence_folder", default: "/plates/demo" },
+                { key: "qt_file", default: "/plates/demo/source.mov" },
+                { key: "single_file", default: "/plates/demo/source.png" },
+                { key: "prompt", visible: false, default: "hidden prompt" },
+              ],
+              outputs: [
+                { key: "folder", default: "/renders/demo" },
+                { key: "name", default: "demo" },
+                { key: "version", default: "1" },
+              ],
+            },
+          },
+        };
+
+        assert.equal(setupHasAppSurface(setup), true);
+        assert.deepEqual(defaultRunInputsFromSetup(setup), {
+          switch: 2,
+          single_file: "/plates/demo/source.png",
+          folder: "/renders/demo",
+          name: "demo",
+          version: "1",
+        });
+        assert.deepEqual(runInputsFromAppValues(setup, {
+          switch: 1,
+          qt_file: "/plates/demo/shot_010.mov",
+          folder: "/custom/out",
+        }), {
+          switch: 1,
+          qt_file: "/plates/demo/shot_010.mov",
+          folder: "/custom/out",
+          name: "demo",
+          version: "1",
+        });
+        assert.deepEqual(summarizeRunResultLines({
+          outputs: [
+            {
+              key: "result",
+              label: "Result",
+              items: [{ nodeId: "300", kind: "text", value: "/custom/out/demo_v001.mov" }],
+            },
+          ],
+        }), ["Result: /custom/out/demo_v001.mov"]);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr

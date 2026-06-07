@@ -35,10 +35,12 @@ The format is inspired by Keep a Changelog and SemVer.
   reroutes, expands subgraphs, and repairs older prompts that accidentally
   stored editor-only artifacts.
 - **External setup runner simulator.** Added `web/setup_runner_simulator.html`,
-  a small external-app harness for maintainers to load published setups, queue
+  a small external-app harness for maintainers to load published setups,
+  render the `setupSurface.app` mode switch/source path/output controls, queue
   the stored `apiPrompt` through the public Koolook run API, watch
-  queued/running/final status, see the ComfyUI prompt id, and inspect returned
-  outputs or error payloads without adding debug-only controls to the sidebar.
+  queued/running/final status, see the ComfyUI prompt id, and inspect the
+  returned result path or error payloads without adding debug-only controls to
+  the sidebar.
 - **Koolook Loop Status queue controller.** Added `Koolook_LoopStatus`, a
   pass-through node that reports per-frame progress (`1/4`, `2/4`, ...)
   and can queue the next prompt by advancing a connected `easy int` frame

@@ -207,6 +207,79 @@ def test_run_setup_accepts_inputs_declared_by_app_surface_contract() -> None:
     asyncio.run(exercise())
 
 
+def test_run_setup_accepts_output_controls_declared_by_app_surface() -> None:
+    async def exercise() -> None:
+        setup = _valid_setup()
+        setup["inputContract"] = {"inputs": []}
+        setup["outputContract"] = {"outputs": []}
+        setup["visualGraph"] = {
+            "nodes": [
+                {
+                    "id": 200,
+                    "type": "Koolook_PublishOutput",
+                    "title": "Koolook Publish Output",
+                    "pos": [20, 20],
+                    "size": [320, 160],
+                    "inputs": [],
+                    "widgets_values": ["/shots/example/output", "demo", "1"],
+                }
+            ],
+            "links": [],
+            "groups": [
+                {"title": "Koolook Input", "bounding": [0, 0, 80, 80]},
+                {"title": "Koolook Output", "bounding": [0, 0, 380, 220]},
+            ],
+        }
+        setup["apiPrompt"] = {
+            "200": {
+                "class_type": "Koolook_PublishOutput",
+                "inputs": {
+                    "folder": "/shots/example/output",
+                    "name": "demo",
+                    "version": "1",
+                },
+            }
+        }
+        setup["setupSurface"] = {
+            "sourceInputs": [{"group": "Koolook Input", "nodes": [{"id": "200", "type": "Koolook_PublishOutput", "title": "Koolook Publish Output"}]}],
+            "outputs": [{"group": "Koolook Output", "nodes": [{"id": "200", "type": "Koolook_PublishOutput", "title": "Koolook Publish Output"}]}],
+            "controls": [],
+            "app": {
+                "inputs": [],
+                "outputs": [
+                    {
+                        "key": "folder",
+                        "label": "Output folder",
+                        "visible": True,
+                        "target": {"node": "200", "input": "folder"},
+                        "default": "/shots/example/output",
+                    }
+                ],
+                "results": [],
+            },
+        }
+        registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(registry, comfy)
+
+        await runner.runSetup("ltx-director-demo", {"folder": "/tmp/custom-output"})
+
+        assert comfy.submitted_prompts == [
+            {
+                "200": {
+                    "class_type": "Koolook_PublishOutput",
+                    "inputs": {
+                        "folder": "/tmp/custom-output",
+                        "name": "demo",
+                        "version": "1",
+                    },
+                }
+            }
+        ]
+
+    asyncio.run(exercise())
+
+
 def test_get_run_reports_app_surface_results_without_output_contract() -> None:
     async def exercise() -> None:
         setup = _valid_setup()
@@ -320,9 +393,7 @@ def test_get_run_reports_app_surface_results_without_output_contract() -> None:
                         "status": {"completed": True, "status_str": "success"},
                         "outputs": {
                             "300": {
-                                "strings": [
-                                    {"value": "/shots/example/output/generated.mov"}
-                                ]
+                                "text": ["/shots/example/output/generated.mov"]
                             }
                         },
                     }
@@ -353,7 +424,7 @@ def test_get_run_reports_app_surface_results_without_output_contract() -> None:
                 "items": [
                     {
                         "nodeId": "300",
-                        "kind": "strings",
+                        "kind": "text",
                         "value": "/shots/example/output/generated.mov",
                     }
                 ],

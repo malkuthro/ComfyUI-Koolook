@@ -115,6 +115,12 @@ export function formatRun(run) {
     if (run.setupId) lines.push(`Setup: ${run.setupId}`);
     if (run.promptId) lines.push(`Prompt: ${run.promptId}`);
     if (run.status) lines.push(`Status: ${run.status}`);
+    const resultLines = summarizeRunResultLines(run);
+    if (resultLines.length) {
+        lines.push("");
+        lines.push("Result:");
+        lines.push(...resultLines);
+    }
     if (Array.isArray(run.outputs) && run.outputs.length) {
         lines.push("");
         lines.push("Outputs:");
@@ -144,6 +150,118 @@ export function formatError(error) {
     return error?.message || "Request failed.";
 }
 
+export function summarizeRunResultLines(run) {
+    if (!Array.isArray(run?.outputs)) return [];
+    const lines = [];
+    for (const output of run.outputs) {
+        const label = output?.label || output?.key || "Output";
+        const items = Array.isArray(output?.items) ? output.items : [];
+        for (const item of items) {
+            if (item?.value == null || item.value === "") continue;
+            lines.push(`${label}: ${String(item.value)}`);
+        }
+    }
+    return lines;
+}
+
+function appSurface(setup) {
+    const app = setup?.setupSurface?.app;
+    return app && typeof app === "object" ? app : {};
+}
+
+export function setupHasAppSurface(setup) {
+    const app = appSurface(setup);
+    return Boolean(
+        app.switch
+        || (Array.isArray(app.inputs) && app.inputs.length)
+        || (Array.isArray(app.outputs) && app.outputs.length)
+    );
+}
+
+function fieldsByKey(fields) {
+    const out = {};
+    if (!Array.isArray(fields)) return out;
+    for (const field of fields) {
+        if (field && typeof field === "object" && typeof field.key === "string" && field.key) {
+            out[field.key] = field;
+        }
+    }
+    return out;
+}
+
+function visibleSwitchOptions(app) {
+    const options = Array.isArray(app?.switch?.options) ? app.switch.options : [];
+    return options.filter(option => option && typeof option === "object" && option.visible !== false);
+}
+
+function defaultSwitchValue(app) {
+    const visibleOptions = visibleSwitchOptions(app);
+    const defaultValue = app?.switch?.default;
+    if (visibleOptions.some(option => option.value === defaultValue)) return defaultValue;
+    return visibleOptions.length ? visibleOptions[0].value : defaultValue;
+}
+
+function fieldDefault(field) {
+    return field?.default == null ? "" : field.default;
+}
+
+export function defaultRunInputsFromSetup(setup) {
+    const app = appSurface(setup);
+    const inputs = {};
+    const switchField = app.switch && typeof app.switch === "object" ? app.switch : null;
+    const selectedSwitch = switchField ? defaultSwitchValue(app) : undefined;
+    if (switchField?.key && selectedSwitch !== undefined) {
+        inputs[switchField.key] = selectedSwitch;
+    }
+
+    const inputFields = fieldsByKey(app.inputs);
+    const selectedOption = visibleSwitchOptions(app).find(option => option.value === selectedSwitch);
+    if (selectedOption?.input && inputFields[selectedOption.input]) {
+        inputs[selectedOption.input] = fieldDefault(inputFields[selectedOption.input]);
+    } else if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
+        }
+    }
+    if (Array.isArray(app.outputs)) {
+        for (const field of app.outputs) {
+            if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
+        }
+    }
+    return inputs;
+}
+
+export function runInputsFromAppValues(setup, values = {}) {
+    const app = appSurface(setup);
+    const inputs = {};
+    const switchField = app.switch && typeof app.switch === "object" ? app.switch : null;
+    const selectedSwitch = switchField?.key && switchField.key in values
+        ? values[switchField.key]
+        : defaultSwitchValue(app);
+    if (switchField?.key && selectedSwitch !== undefined) {
+        inputs[switchField.key] = selectedSwitch;
+    }
+    const inputFields = fieldsByKey(app.inputs);
+    const selectedOption = visibleSwitchOptions(app).find(option => String(option.value) === String(selectedSwitch));
+    if (selectedOption?.input && inputFields[selectedOption.input]) {
+        inputs[selectedOption.input] = values[selectedOption.input] ?? fieldDefault(inputFields[selectedOption.input]);
+    } else if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.visible !== false && field?.key) {
+                inputs[field.key] = values[field.key] ?? fieldDefault(field);
+            }
+        }
+    }
+    if (Array.isArray(app.outputs)) {
+        for (const field of app.outputs) {
+            if (field?.visible !== false && field?.key) {
+                inputs[field.key] = values[field.key] ?? fieldDefault(field);
+            }
+        }
+    }
+    return inputs;
+}
+
 function formatFetchFailure(error, baseUrl) {
     const message = formatError(error);
     if (!/failed to fetch|load failed|networkerror/i.test(message)) return message;
@@ -156,6 +274,8 @@ function formatFetchFailure(error, baseUrl) {
         `${base}/koolook/setup_runner_simulator.html`,
     ].join("\n");
 }
+
+let demoRunInputs = {};
 
 function demoFetch(url, options = {}) {
     const path = String(url).replace(/^https?:\/\/[^/]+/, "");
@@ -181,13 +301,47 @@ function demoFetch(url, options = {}) {
             metadata: { title: "Director Demo", description: "Sample published setup" },
             inputContract: { inputs: [] },
             outputContract: { outputs: [{ key: "video", label: "Video", type: "video" }] },
+            setupSurface: {
+                app: {
+                    switch: {
+                        key: "switch",
+                        label: "Input type",
+                        default: 2,
+                        options: [
+                            { value: 0, label: "EXR", input: "sequence_folder", visible: true },
+                            { value: 1, label: "QT", input: "qt_file", visible: true },
+                            { value: 2, label: "Img", input: "single_file", visible: true },
+                            { value: 3, label: "Prompt", input: "prompt", visible: false },
+                        ],
+                    },
+                    inputs: [
+                        { key: "sequence_folder", label: "Sequence folder", visible: true, default: "/shots/demo/plates" },
+                        { key: "qt_file", label: "QT file", visible: true, default: "/shots/demo/source.mov" },
+                        { key: "single_file", label: "Single file", visible: true, default: "/shots/demo/source.png" },
+                        { key: "prompt", label: "Prompt", visible: false, default: "" },
+                    ],
+                    outputs: [
+                        { key: "folder", label: "Output folder", visible: true, default: "/shots/demo/output" },
+                        { key: "name", label: "Output name", visible: true, default: "demo" },
+                        { key: "version", label: "Version", visible: true, default: "1" },
+                    ],
+                    results: [{ key: "result", label: "Result", visible: true, default: "" }],
+                },
+            },
             validation: { status: "valid" },
         });
     }
     if (path.endsWith("/koolook/api/setups/director-demo/run")) {
+        const request = JSON.parse(options.body || "{}");
+        demoRunInputs = request.inputs && typeof request.inputs === "object" ? request.inputs : {};
         return ok({ ok: true, run: { runId: "run-000001", promptId: "prompt-123", status: "queued" } });
     }
     if (path.endsWith("/koolook/api/runs/run-000001")) {
+        const folder = String(demoRunInputs.folder || "/shots/demo/output").replace(/\/+$/, "");
+        const name = String(demoRunInputs.name || "demo");
+        const rawVersion = String(demoRunInputs.version || "1");
+        const version = rawVersion.padStart(3, "0");
+        const extension = Number(demoRunInputs.switch) === 1 ? "mov" : "png";
         return ok({
             ok: true,
             run: {
@@ -196,7 +350,14 @@ function demoFetch(url, options = {}) {
                 promptId: "prompt-123",
                 status: "succeeded",
                 comfyStatus: { completed: true, status_str: "success" },
-                outputs: [{ key: "video", label: "Video", type: "video", items: [{ filename: "demo.mp4" }] }],
+                outputs: [
+                    {
+                        key: "result",
+                        label: "Result",
+                        type: "result",
+                        items: [{ nodeId: "300", kind: "text", value: `${folder}/${name}_v${version}.${extension}` }],
+                    },
+                ],
             },
         });
     }
@@ -210,15 +371,128 @@ function bindSimulator(documentRef, fetchImpl) {
     const loadBtn = root.querySelector("[data-load-setups]");
     const setupSelect = root.querySelector("[data-setup-select]");
     const inputsText = root.querySelector("[data-inputs-json]");
+    const appForm = root.querySelector("[data-app-form]");
+    const rawInputs = root.querySelector("[data-raw-inputs]");
     const runBtn = root.querySelector("[data-run-setup]");
     const statusText = root.querySelector("[data-status]");
     const detailText = root.querySelector("[data-detail]");
     const routeLink = root.querySelector("[data-route-link]");
 
-    const state = { setups: [] };
+    const state = { setups: [], selectedSetup: null, formActive: false };
     const baseUrl = () => baseInput.value.trim();
     const setStatus = value => { statusText.textContent = value; };
     const setDetail = value => { detailText.textContent = value; };
+
+    function updatePayloadPreview() {
+        if (!state.selectedSetup) {
+            inputsText.value = "{}";
+            return;
+        }
+        if (state.formActive) {
+            inputsText.value = JSON.stringify(collectFormInputs(), null, 2);
+        }
+    }
+
+    function fieldLabelText(field) {
+        return field?.label || field?.key || "Field";
+    }
+
+    function createInputField(field, { name, value } = {}) {
+        const label = documentRef.createElement("label");
+        label.dataset.fieldKey = name || field.key;
+        label.textContent = fieldLabelText(field);
+        const input = documentRef.createElement("input");
+        input.dataset.appField = name || field.key;
+        input.value = value == null ? "" : String(value);
+        label.appendChild(input);
+        input.addEventListener("input", updatePayloadPreview);
+        return label;
+    }
+
+    function renderAppForm(setup) {
+        if (!appForm) return;
+        appForm.innerHTML = "";
+        state.selectedSetup = setup;
+        state.formActive = setupHasAppSurface(setup);
+        if (inputsText) inputsText.readOnly = state.formActive;
+        if (rawInputs) rawInputs.open = !state.formActive;
+        const app = appSurface(setup);
+        const inputFields = fieldsByKey(app.inputs);
+        const options = visibleSwitchOptions(app);
+        if (!state.formActive) {
+            appForm.textContent = "This setup does not expose an app form yet. Use raw inputs JSON below.";
+            if (inputsText) inputsText.value = "{}";
+            return;
+        }
+
+        const heading = documentRef.createElement("div");
+        heading.className = "form-heading";
+        heading.textContent = "External app form";
+        appForm.appendChild(heading);
+
+        if (app.switch && options.length) {
+            const switchLabel = documentRef.createElement("label");
+            switchLabel.textContent = app.switch.label || "Input type";
+            const select = documentRef.createElement("select");
+            select.dataset.appSwitch = app.switch.key || "switch";
+            const selectedDefault = defaultSwitchValue(app);
+            for (const option of options) {
+                const opt = documentRef.createElement("option");
+                opt.value = String(option.value);
+                opt.textContent = option.label || String(option.value);
+                if (String(option.value) === String(selectedDefault)) opt.selected = true;
+                select.appendChild(opt);
+            }
+            switchLabel.appendChild(select);
+            appForm.appendChild(switchLabel);
+            const sourceWrap = documentRef.createElement("div");
+            sourceWrap.dataset.sourceFieldWrap = "1";
+            appForm.appendChild(sourceWrap);
+            const renderSourceField = () => {
+                sourceWrap.innerHTML = "";
+                const selected = options.find(option => String(option.value) === String(select.value));
+                const field = selected?.input ? inputFields[selected.input] : null;
+                if (field) sourceWrap.appendChild(createInputField(field, { name: selected.input, value: fieldDefault(field) }));
+                updatePayloadPreview();
+            };
+            select.addEventListener("change", renderSourceField);
+            renderSourceField();
+        } else if (Array.isArray(app.inputs)) {
+            for (const field of app.inputs) {
+                if (field?.visible !== false && field?.key) {
+                    appForm.appendChild(createInputField(field, { value: fieldDefault(field) }));
+                }
+            }
+        }
+
+        const visibleOutputs = Array.isArray(app.outputs)
+            ? app.outputs.filter(field => field?.visible !== false && field?.key)
+            : [];
+        if (visibleOutputs.length) {
+            const outputHeading = documentRef.createElement("div");
+            outputHeading.className = "form-heading";
+            outputHeading.textContent = "Output";
+            appForm.appendChild(outputHeading);
+            for (const field of visibleOutputs) {
+                appForm.appendChild(createInputField(field, { value: fieldDefault(field) }));
+            }
+        }
+        updatePayloadPreview();
+    }
+
+    function collectFormInputs() {
+        if (!state.selectedSetup) return {};
+        const values = {};
+        const switchEl = appForm?.querySelector("[data-app-switch]");
+        if (switchEl) {
+            const numeric = Number(switchEl.value);
+            values[switchEl.dataset.appSwitch] = Number.isNaN(numeric) ? switchEl.value : numeric;
+        }
+        for (const input of appForm?.querySelectorAll("[data-app-field]") || []) {
+            values[input.dataset.appField] = input.value;
+        }
+        return runInputsFromAppValues(state.selectedSetup, values);
+    }
 
     async function loadSetups() {
         setStatus("Loading setups...");
@@ -246,6 +520,7 @@ function bindSimulator(documentRef, fetchImpl) {
         if (!setupSelect.value) return;
         try {
             const setup = await getPublishedSetup({ setupId: setupSelect.value, baseUrl: baseUrl(), fetchImpl });
+            renderAppForm(setup);
             setDetail(JSON.stringify(setup, null, 2));
         } catch (error) {
             setDetail(formatFetchFailure(error, baseUrl()));
@@ -256,7 +531,7 @@ function bindSimulator(documentRef, fetchImpl) {
         if (!setupSelect.value) return;
         let inputs;
         try {
-            inputs = JSON.parse(inputsText.value || "{}");
+            inputs = state.formActive ? collectFormInputs() : JSON.parse(inputsText.value || "{}");
         } catch (error) {
             setStatus("Inputs JSON is invalid.");
             setDetail(error.message);

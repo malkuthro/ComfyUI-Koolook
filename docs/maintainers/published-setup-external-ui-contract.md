@@ -246,7 +246,10 @@ Implemented:
 - Catalog and detail routes for published setup records.
 - Run routes that clone the stored `apiPrompt`, inject declared inputs, queue
   ComfyUI `/prompt`, and poll history/queue status.
-- External runner simulator as a separate app under `web/`.
+- External runner simulator as a separate app under `web/`; it renders the
+  `setupSurface.app` mode switch, active source path field, output controls,
+  generated JSON payload, run status, ComfyUI prompt id, and returned result
+  path.
 - Optional `apiPrompt` in publish requests; supplied API prompts are preserved
   as the execution source of truth.
 - Fallback visual-to-API conversion repairs some legacy/editor artifacts such
@@ -262,16 +265,12 @@ Known gaps:
 - The sidebar publish action does not yet automatically capture ComfyUI's API
   export prompt and pass it as `apiPrompt`. The server/client boundary can
   accept it, but the right-click publish UI integration is not complete.
-- The simulator is currently a technical harness. It does not yet render the
-  polished external-app form from `setupSurface.app`; it still asks for raw
-  inputs JSON.
 - The publish modal still exposes advanced contract JSON. For publish-node
   setups, this should become secondary because the graph nodes should define
   the app surface.
-- Returning the final result path after execution needs a stable contract. The
-  intended public contract is `setupSurface.app.results`; the implementation
-  must ensure the selected/resolved result value is available to the runner and
-  external frontend.
+- The simulator is still a maintainer harness rather than the polished
+  production external app, but the normal path is now the app-surface form
+  instead of raw JSON.
 
 ## Non-Goals
 

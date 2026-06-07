@@ -228,11 +228,12 @@ be a JSON object with an `inputs` object:
 }
 ```
 
-Only fields declared by `inputContract.inputs` or `setupSurface.app.inputs`
-are accepted. `setupSurface.app.switch` is also accepted when present. The
-runner deep-clones the stored `apiPrompt`, injects approved values into their
-declared targets, and submits `{ "prompt": <cloned prompt> }` to ComfyUI
-`/prompt`; the stored setup record is not mutated by a run request.
+Only fields declared by `inputContract.inputs`, `setupSurface.app.inputs`, or
+`setupSurface.app.outputs` are accepted. `setupSurface.app.switch` is also
+accepted when present. The runner deep-clones the stored `apiPrompt`, injects
+approved values into their declared targets, and submits
+`{ "prompt": <cloned prompt> }` to ComfyUI `/prompt`; the stored setup record
+is not mutated by a run request.
 
 Success returns:
 
@@ -307,7 +308,9 @@ For group-authored setups, status output summaries also include
 external app aligned with the publish-contract-node surface even when
 `outputContract.outputs` is empty. Result fields include their declared target,
 default value, visibility, and any matching ComfyUI history items for the
-target node.
+target node. `Koolook_PublishResult` emits its resolved string through
+ComfyUI UI text history, and the runner flattens that into a result item whose
+`value` is the selected output path.
 
 ## Comfy-Native Setup Surface
 

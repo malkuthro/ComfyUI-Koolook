@@ -219,6 +219,13 @@ def _declared_input_fields(setup: dict[str, Any]) -> dict[str, dict[str, Any]]:
             target = field.get("target")
             if isinstance(key, str) and key and isinstance(target, dict):
                 fields.setdefault(key, field)
+        for field in app.get("outputs", []):
+            if not isinstance(field, dict):
+                continue
+            key = field.get("key")
+            target = field.get("target")
+            if isinstance(key, str) and key and isinstance(target, dict):
+                fields.setdefault(key, field)
         switch = app.get("switch")
         if isinstance(switch, dict):
             key = switch.get("key")
@@ -336,10 +343,12 @@ def _flatten_history_outputs(raw_outputs: Any) -> list[dict[str, Any]]:
             if not isinstance(values, list):
                 continue
             for value in values:
+                item = {"nodeId": str(node_id), "kind": str(kind)}
                 if isinstance(value, dict):
-                    item = {"nodeId": str(node_id), "kind": str(kind)}
                     item.update(value)
-                    items.append(item)
+                else:
+                    item["value"] = value
+                items.append(item)
     return items
 
 
