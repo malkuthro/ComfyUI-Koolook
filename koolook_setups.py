@@ -47,6 +47,12 @@ class ValidationResult:
     diagnostics: list[str]
 
 
+@dataclass(frozen=True)
+class ApiPromptConversionResult:
+    api_prompt: dict[str, Any] | None
+    diagnostics: list[str]
+
+
 class StaticSetupStorage:
     """In-memory setup storage adapter for tests and seeded fixtures."""
 
@@ -187,8 +193,12 @@ class PublishedSetupRegistry:
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
 
+        conversion = _convert_visual_graph_to_api_prompt(visualGraph)
+        if conversion.diagnostics:
+            return ValidationResult(False, {}, conversion.diagnostics)
         setup = _build_draft_setup(
             visualGraph=visualGraph,
+            apiPrompt=conversion.api_prompt,
             metadata=metadata,
             inputContract=inputContract,
             outputContract=outputContract,
@@ -197,6 +207,7 @@ class PublishedSetupRegistry:
         result = validate_setup(setup)
         diagnostics = list(result.diagnostics)
         diagnostics.extend(_validate_contract_targets(visualGraph, inputContract))
+        diagnostics.extend(_validate_api_prompt_contract_targets(conversion.api_prompt, inputContract))
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
 
@@ -239,10 +250,22 @@ def validate_setup(value: Any) -> ValidationResult:
     _validate_mapping(value.get("visualGraph"), "visualGraph", diagnostics)
     if value.get("apiPrompt") is not None:
         _validate_mapping(value.get("apiPrompt"), "apiPrompt", diagnostics)
+        if isinstance(value.get("visualGraph"), dict) and isinstance(value.get("apiPrompt"), dict):
+            conversion = _convert_visual_graph_to_api_prompt(value["visualGraph"])
+            if conversion.diagnostics:
+                diagnostics.extend(conversion.diagnostics)
+            elif conversion.api_prompt != value["apiPrompt"]:
+                diagnostics.append("apiPrompt is stale for visualGraph")
     _validate_contract(value.get("inputContract"), "inputContract", "inputs", diagnostics)
     _validate_contract(value.get("outputContract"), "outputContract", "outputs", diagnostics)
     _validate_source(value.get("source"), diagnostics)
     _validate_validation(value.get("validation"), diagnostics)
+    if (
+        isinstance(value.get("validation"), dict)
+        and value["validation"].get("status") == "valid"
+        and value.get("apiPrompt") is None
+    ):
+        diagnostics.append("validation.status valid requires apiPrompt")
 
     return ValidationResult(
         valid=not diagnostics,
@@ -254,6 +277,7 @@ def validate_setup(value: Any) -> ValidationResult:
 def _build_draft_setup(
     *,
     visualGraph: dict[str, Any],
+    apiPrompt: dict[str, Any] | None,
     metadata: dict[str, Any],
     inputContract: dict[str, Any],
     outputContract: dict[str, Any],
@@ -274,15 +298,119 @@ def _build_draft_setup(
             "previewImage": metadata.get("previewImage", ""),
         },
         "visualGraph": visualGraph,
-        "apiPrompt": None,
+        "apiPrompt": apiPrompt,
         "inputContract": inputContract,
         "outputContract": outputContract,
         "source": source,
         "validation": {
-            "status": "draft",
-            "diagnostics": ["API prompt conversion pending."],
+            "status": "valid" if apiPrompt is not None else "draft",
+            "diagnostics": [] if apiPrompt is not None else ["API prompt conversion pending."],
         },
     }
+
+
+def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiPromptConversionResult:
+    nodes = visual_graph.get("nodes")
+    if not isinstance(nodes, list):
+        return ApiPromptConversionResult(None, ["visualGraph.nodes must be a list"])
+    links = _visual_link_index(visual_graph.get("links"))
+
+    api_prompt: dict[str, Any] = {}
+    for node_index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            return ApiPromptConversionResult(None, [f"visualGraph.nodes[{node_index}] must be an object"])
+        node_id = node.get("id")
+        class_type = node.get("type")
+        node_inputs = node.get("inputs")
+        if node_id is None or not isinstance(class_type, str) or not class_type.strip():
+            return ApiPromptConversionResult(
+                None,
+                [f"visualGraph.nodes[{node_index}].type must be non-empty text"],
+            )
+        if not isinstance(node_inputs, list):
+            node_inputs = []
+
+        widget_values = node.get("widgets_values")
+        if not isinstance(widget_values, list):
+            widget_values = []
+        widget_index = 0
+        api_inputs: dict[str, Any] = {}
+        for input_port in node_inputs:
+            if not isinstance(input_port, dict):
+                return ApiPromptConversionResult(
+                    None,
+                    [f"visualGraph.nodes[{node_index}].inputs must contain objects"],
+                )
+            name = input_port.get("name")
+            if not isinstance(name, str) or not name.strip():
+                return ApiPromptConversionResult(
+                    None,
+                    [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
+                )
+            link_id = input_port.get("link")
+            if link_id is not None:
+                link = links.get(str(link_id))
+                if link is None:
+                    return ApiPromptConversionResult(
+                        None,
+                        [f"visualGraph.nodes[{node_index}].inputs.{name} references missing link"],
+                    )
+                if _is_module_sentinel_id(link["origin_id"]):
+                    return ApiPromptConversionResult(
+                        None,
+                        [
+                            f"visualGraph.links[{link_id}] uses unsupported module graph sentinel node"
+                        ],
+                    )
+                api_inputs[name] = [str(link["origin_id"]), link["origin_slot"]]
+                continue
+            widget = input_port.get("widget")
+            if isinstance(widget, dict):
+                if widget_index >= len(widget_values):
+                    return ApiPromptConversionResult(
+                        None,
+                        [
+                            f"visualGraph.nodes[{node_index}].widgets_values is missing a value "
+                            f"for input {name}"
+                        ],
+                    )
+                api_inputs[name] = widget_values[widget_index]
+                widget_index += 1
+
+        api_prompt[str(node_id)] = {"class_type": class_type, "inputs": api_inputs}
+
+    return ApiPromptConversionResult(api_prompt, [])
+
+
+def _visual_link_index(value: Any) -> dict[str, dict[str, Any]]:
+    links: dict[str, dict[str, Any]] = {}
+    if not isinstance(value, list):
+        return links
+    for item in value:
+        if isinstance(item, dict):
+            link_id = item.get("id")
+            origin_id = item.get("origin_id")
+            origin_slot = item.get("origin_slot")
+        elif isinstance(item, list) and len(item) >= 3:
+            link_id = item[0]
+            origin_id = item[1]
+            origin_slot = item[2]
+        else:
+            continue
+        if link_id is None or origin_id is None or origin_slot is None:
+            continue
+        links[str(link_id)] = {
+            "origin_id": origin_id,
+            "origin_slot": origin_slot,
+        }
+    return links
+
+
+def _is_module_sentinel_id(value: Any) -> bool:
+    try:
+        return int(value) < 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _validate_contract_targets(
@@ -325,6 +453,38 @@ def _validate_contract_targets(
         ):
             diagnostics.append(
                 f"inputContract.inputs[{index}].target.input not found in visualGraph node"
+            )
+    return diagnostics
+
+
+def _validate_api_prompt_contract_targets(
+    api_prompt: dict[str, Any] | None,
+    input_contract: dict[str, Any],
+) -> list[str]:
+    diagnostics: list[str] = []
+    if api_prompt is None:
+        return diagnostics
+    inputs = input_contract.get("inputs") if isinstance(input_contract, dict) else None
+    if not isinstance(inputs, list):
+        return diagnostics
+    for index, item in enumerate(inputs):
+        if not isinstance(item, dict):
+            continue
+        target = item.get("target")
+        if not isinstance(target, dict):
+            continue
+        node_id = str(target.get("node", ""))
+        input_name = str(target.get("input", ""))
+        api_node = api_prompt.get(node_id)
+        if not isinstance(api_node, dict):
+            diagnostics.append(
+                f"inputContract.inputs[{index}].target.node not found in generated apiPrompt"
+            )
+            continue
+        api_inputs = api_node.get("inputs")
+        if not isinstance(api_inputs, dict) or input_name not in api_inputs:
+            diagnostics.append(
+                f"inputContract.inputs[{index}].target.input not found in generated apiPrompt"
             )
     return diagnostics
 
