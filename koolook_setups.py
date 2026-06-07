@@ -25,8 +25,34 @@ SAMPLE_SETUPS_PATH = (
 SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
+PUBLISH_INPUT_CLASS = "Koolook_PublishInput"
+PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput"
+PUBLISH_RESULT_CLASS = "Koolook_PublishResult"
+PUBLISH_INPUT_FIELDS = (
+    ("sequence_folder", "Sequence folder", True),
+    ("qt_file", "QT file", True),
+    ("single_file", "Single file", True),
+    ("prompt", "Prompt", False),
+)
+PUBLISH_INPUT_MODES = (
+    (0, "EXR", "sequence_folder"),
+    (1, "QT", "qt_file"),
+    (2, "Img", "single_file"),
+    (3, "Prompt", "prompt"),
+)
+PUBLISH_OUTPUT_FIELDS = (
+    ("folder", "Output folder", True),
+    ("name", "Output name", True),
+    ("version", "Version", True),
+)
+PUBLISH_RESULT_FIELDS = (
+    ("result", "Result", True),
+)
 WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Text Multiline": ("text",),
+    "Koolook_PublishInput": ("mode", "sequence_folder", "qt_file", "single_file", "prompt"),
+    "Koolook_PublishOutput": ("folder", "name", "version"),
+    "Koolook_PublishResult": ("result",),
     "EasyAIPipeline": (
         "shot_duration",
         "seed_value",
@@ -345,7 +371,134 @@ def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
         "sourceInputs": _nodes_in_named_groups(visual_graph, "Koolook Input"),
         "outputs": _nodes_in_named_groups(visual_graph, "Koolook Output"),
         "controls": [],
+        "app": _infer_app_surface(visual_graph),
     }
+
+
+def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+    input_nodes = _nodes_in_group(visual_graph, "Koolook Input")
+    output_nodes = _nodes_in_group(visual_graph, "Koolook Output")
+    input_node = _first_node_of_type(input_nodes, PUBLISH_INPUT_CLASS)
+    output_node = _first_node_of_type(output_nodes, PUBLISH_OUTPUT_CLASS)
+    result_node = _first_node_of_type(output_nodes, PUBLISH_RESULT_CLASS)
+    inputs = _publish_input_fields(input_node)
+    outputs = _publish_output_fields(output_node)
+    app: dict[str, Any] = {
+        "inputs": inputs,
+        "outputs": outputs,
+        "results": _publish_result_fields(result_node),
+    }
+    if input_node is not None:
+        app["switch"] = _publish_input_switch(input_node, inputs)
+    return app
+
+
+def _first_node_of_type(
+    nodes: list[dict[str, Any]],
+    class_type: str,
+) -> dict[str, Any] | None:
+    for node in nodes:
+        if node.get("type") == class_type:
+            return node
+    return None
+
+
+def _publish_input_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_INPUT_FIELDS
+    ]
+
+
+def _publish_output_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_OUTPUT_FIELDS
+    ]
+
+
+def _publish_result_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_RESULT_FIELDS
+    ]
+
+
+def _publish_input_switch(
+    node: dict[str, Any],
+    inputs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    inputs_by_key = {item["key"]: item for item in inputs}
+    return {
+        "key": "switch",
+        "label": "Input type",
+        "visible": True,
+        "target": {"node": str(node.get("id")), "input": "mode"},
+        "default": _publish_input_mode_index(_app_widget_value(node, "mode")),
+        "options": [
+            {
+                "value": value,
+                "label": label,
+                "visible": bool(inputs_by_key[input_key].get("visible")),
+                "input": input_key,
+            }
+            for value, label, input_key in PUBLISH_INPUT_MODES
+        ],
+    }
+
+
+def _publish_input_mode_index(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    for mode_value, label, _input_key in PUBLISH_INPUT_MODES:
+        if str(value).strip().lower() == label.lower():
+            return mode_value
+    return 2
+
+
+def _app_widget_value(node: dict[str, Any], key: str) -> Any:
+    widget_values = node.get("widgets_values")
+    if isinstance(widget_values, dict):
+        return widget_values.get(key)
+    if isinstance(widget_values, list):
+        widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(str(node.get("type")), ())
+        for index, name in enumerate(widget_names):
+            if name == key and index < len(widget_values):
+                return widget_values[index]
+    return None
 
 
 def _validate_setup_surface(
@@ -395,6 +548,14 @@ def _validate_persisted_setup_surface(
         items = surface.get(key)
         if isinstance(items, list):
             _validate_surface_entries(items, f"setupSurface.{key}", diagnostics)
+    if "app" in surface:
+        _validate_surface_app(
+            surface["app"],
+            "setupSurface.app",
+            diagnostics,
+            setup.get("visualGraph"),
+            setup.get("apiPrompt"),
+        )
 
 
 def _validate_surface_entries(
@@ -423,6 +584,190 @@ def _validate_surface_entries(
                     diagnostics.append(f"{node_path}.{field} must be non-empty text")
 
 
+def _validate_surface_app(
+    app: Any,
+    path: str,
+    diagnostics: list[str],
+    visual_graph: Any,
+    api_prompt: Any,
+) -> None:
+    if not isinstance(app, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    node_by_id = _visual_node_index(visual_graph)
+    api_prompt = api_prompt if isinstance(api_prompt, dict) else None
+    input_keys: set[str] = set()
+    for key in ("inputs", "outputs", "results"):
+        value = app.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            diagnostics.append(f"{path}.{key} must be a list")
+            continue
+        keys = _validate_surface_app_fields(
+            value,
+            f"{path}.{key}",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+        )
+        if key == "inputs":
+            input_keys = keys
+    if "switch" in app:
+        _validate_surface_app_switch(
+            app["switch"],
+            f"{path}.switch",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+            input_keys,
+        )
+
+
+def _validate_surface_app_fields(
+    fields: list[Any],
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+) -> set[str]:
+    keys: set[str] = set()
+    for field_index, field in enumerate(fields):
+        field_path = f"{path}[{field_index}]"
+        if not isinstance(field, dict):
+            diagnostics.append(f"{field_path} must be a JSON object")
+            continue
+        _validate_non_empty_text(field.get("key"), f"{field_path}.key", diagnostics)
+        if isinstance(field.get("key"), str) and field["key"].strip():
+            keys.add(field["key"])
+        _validate_non_empty_text(field.get("label"), f"{field_path}.label", diagnostics)
+        if "visible" in field and not isinstance(field["visible"], bool):
+            diagnostics.append(f"{field_path}.visible must be a boolean")
+        _validate_surface_app_target(
+            field.get("target"),
+            f"{field_path}.target",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+        )
+    return keys
+
+
+def _validate_surface_app_switch(
+    switch: Any,
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+    input_keys: set[str],
+) -> None:
+    if not isinstance(switch, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    _validate_non_empty_text(switch.get("key"), f"{path}.key", diagnostics)
+    _validate_non_empty_text(switch.get("label"), f"{path}.label", diagnostics)
+    if "visible" in switch and not isinstance(switch["visible"], bool):
+        diagnostics.append(f"{path}.visible must be a boolean")
+    _validate_surface_app_target(
+        switch.get("target"),
+        f"{path}.target",
+        diagnostics,
+        node_by_id,
+        api_prompt,
+    )
+    default = switch.get("default")
+    if default is not None and (isinstance(default, bool) or not isinstance(default, int)):
+        diagnostics.append(f"{path}.default must be an integer")
+    options = switch.get("options")
+    if not isinstance(options, list):
+        diagnostics.append(f"{path}.options must be a list")
+        return
+    for option_index, option in enumerate(options):
+        option_path = f"{path}.options[{option_index}]"
+        if not isinstance(option, dict):
+            diagnostics.append(f"{option_path} must be a JSON object")
+            continue
+        if isinstance(option.get("value"), bool) or not isinstance(option.get("value"), int):
+            diagnostics.append(f"{option_path}.value must be an integer")
+        _validate_non_empty_text(option.get("label"), f"{option_path}.label", diagnostics)
+        _validate_non_empty_text(option.get("input"), f"{option_path}.input", diagnostics)
+        if (
+            isinstance(option.get("input"), str)
+            and option["input"].strip()
+            and input_keys
+            and option["input"] not in input_keys
+        ):
+            diagnostics.append(f"{option_path}.input must match a setupSurface.app.inputs key")
+        if "visible" in option and not isinstance(option["visible"], bool):
+            diagnostics.append(f"{option_path}.visible must be a boolean")
+
+
+def _validate_surface_app_target(
+    target: Any,
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+) -> None:
+    if not isinstance(target, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    _validate_non_empty_text(target.get("node"), f"{path}.node", diagnostics)
+    _validate_non_empty_text(target.get("input"), f"{path}.input", diagnostics)
+    node_id = target.get("node")
+    input_name = target.get("input")
+    if not isinstance(node_id, str) or not node_id.strip():
+        return
+    if not isinstance(input_name, str) or not input_name.strip():
+        return
+    node = node_by_id.get(node_id)
+    if node is None:
+        diagnostics.append(f"{path}.node not found in visualGraph")
+        return
+    if not _visual_node_has_input(node, input_name):
+        diagnostics.append(f"{path}.input not found in visualGraph node")
+    if api_prompt is None:
+        return
+    api_node = api_prompt.get(node_id)
+    if not isinstance(api_node, dict):
+        diagnostics.append(f"{path}.node not found in apiPrompt")
+        return
+    api_inputs = api_node.get("inputs")
+    if not isinstance(api_inputs, dict) or input_name not in api_inputs:
+        diagnostics.append(f"{path}.input not found in apiPrompt")
+
+
+def _validate_non_empty_text(value: Any, path: str, diagnostics: list[str]) -> None:
+    if not isinstance(value, str) or not value.strip():
+        diagnostics.append(f"{path} must be non-empty text")
+
+
+def _visual_node_index(visual_graph: Any) -> dict[str, dict[str, Any]]:
+    nodes = visual_graph.get("nodes") if isinstance(visual_graph, dict) else None
+    if not isinstance(nodes, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        if node_id is not None:
+            out[str(node_id)] = node
+    return out
+
+
+def _visual_node_has_input(node: dict[str, Any], input_name: str) -> bool:
+    inputs = node.get("inputs")
+    if isinstance(inputs, list) and any(
+        isinstance(port, dict) and str(port.get("name", "")) == input_name
+        for port in inputs
+    ):
+        return True
+    class_type = node.get("type")
+    widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(str(class_type), ())
+    return input_name in widget_names
+
+
 def _uses_group_authored_surface(
     input_contract: dict[str, Any],
     output_contract: dict[str, Any],
@@ -433,6 +778,23 @@ def _uses_group_authored_surface(
 
 
 def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = _nodes_in_group_sections(visual_graph, group_title)
+    return [
+        {"group": group_title, "nodes": [_surface_node_summary(node) for node in group_nodes]}
+        for group_nodes in groups
+        if group_nodes
+    ]
+
+
+def _nodes_in_group(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = _nodes_in_group_sections(visual_graph, group_title)
+    return [node for group_nodes in groups for node in group_nodes]
+
+
+def _nodes_in_group_sections(
+    visual_graph: dict[str, Any],
+    group_title: str,
+) -> list[list[dict[str, Any]]]:
     groups = visual_graph.get("groups")
     nodes = visual_graph.get("nodes")
     if not isinstance(groups, list) or not isinstance(nodes, list):
@@ -443,18 +805,18 @@ def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> li
         for node in nodes
         if isinstance(node, dict)
     ]
-    out: list[dict[str, Any]] = []
+    out: list[list[dict[str, Any]]] = []
     for group in groups:
         if not isinstance(group, dict) or group.get("title") != group_title:
             continue
         group_rect = _rect_from_group(group)
         group_nodes = [
-            _surface_node_summary(node)
+            node
             for node, node_rect in node_rects
             if _rects_overlap(group_rect, node_rect)
         ]
         if group_nodes:
-            out.append({"group": group_title, "nodes": group_nodes})
+            out.append(sorted(group_nodes, key=lambda node: (_rect_from_node(node)["y"], _rect_from_node(node)["x"])))
     return out
 
 
@@ -654,10 +1016,11 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 )
             name = input_port.get("name")
             if not isinstance(name, str) or not name.strip():
-                return ApiPromptConversionResult(
-                    None,
-                    [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
-                )
+                if class_type != "Reroute" or not isinstance(name, str):
+                    return ApiPromptConversionResult(
+                        None,
+                        [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
+                    )
             link_id = input_port.get("link")
             if link_id is not None:
                 link = links.links.get(str(link_id))

@@ -223,7 +223,11 @@ Publish infers a machine-readable `setupSurface` from the reserved groups:
       "nodes": [{ "id": "20", "type": "Preview Image", "title": "Preview" }]
     }
   ],
-  "controls": []
+  "controls": [],
+  "app": {
+    "inputs": [],
+    "outputs": []
+  }
 }
 ```
 
@@ -231,6 +235,49 @@ When the publish dialog uses the group-first path, `inputContract.inputs` and
 `outputContract.outputs` are submitted as empty arrays and the server requires
 non-empty `Koolook Input` and `Koolook Output` groups. Explicit JSON contracts
 still work as the advanced fallback for older or unusual workflows.
+
+### Publish Contract Nodes
+
+Use the controlled Koolook publish nodes instead of scattered third-party text
+nodes when a setup should be callable from an external app:
+
+```text
+Koolook Publish Input   -> place in Koolook Input
+Koolook Publish Output  -> place in Koolook Output
+Koolook Publish Result  -> place in Koolook Output
+```
+
+`Koolook Publish Input` exposes stable multiline fields and outputs:
+
+```text
+mode             dropdown: EXR, QT, Img, Prompt
+sequence_folder  STRING
+qt_file          STRING
+single_file      STRING
+prompt           STRING
+switch           INT output derived from mode
+```
+
+`Koolook Publish Output` exposes stable fields and outputs:
+
+```text
+folder   STRING
+name     STRING
+version  STRING
+```
+
+`Koolook Publish Result` exposes the resolved result value after workflow
+writer/path logic has run:
+
+```text
+result   STRING
+```
+
+Publish detects these node classes and stores `setupSurface.app` with stable
+keys, user-facing labels, defaults, injection targets, result targets, and
+switch options. The external app should render the switch first, preserve the
+numeric switch values, and hide internal-only options such as Prompt while
+keeping their index stable for the workflow.
 
 ## Callable Visual Workflow Standard
 
@@ -256,6 +303,8 @@ The first supported conversion shape is intentionally narrow:
   Array links such as `[101, 12, 0, 20, 0, "STRING"]` and object links with
   `origin_id` / `origin_slot` are supported. The API prompt value becomes
   `["12", 0]`.
+- `Reroute` nodes may use ComfyUI's unnamed `""` input port; other nodes still
+  require named input ports.
 - Partial/module workflow sentinel links, such as links from node `-10`, are
   not callable yet and fail publish.
 

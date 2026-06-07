@@ -156,6 +156,11 @@ app.registerExtension({
                     }) ?? null;
                 };
 
+                const isRerouteNode = (node) => {
+                    const type = node?.type ?? node?.comfyClass;
+                    return type === "Reroute" || type === "PrimitiveNode";
+                };
+
                 const resolveSubgraphInputValue = (hostNode, inputSlot, seen) => {
                     if (!hostNode) return null;
                     const hostInput = hostNode.inputs?.[inputSlot];
@@ -246,6 +251,13 @@ app.registerExtension({
 
                     const originNode = getGraphNodeById(graph, originId);
                     if (!originNode) return fallback;
+
+                    if (isRerouteNode(originNode)) {
+                        const upstreamLink = originNode.inputs?.[originSlot]?.link
+                            ?? originNode.inputs?.[0]?.link;
+                        const value = resolveLinkValue(upstreamLink, null, seen, graph, subgraphHost);
+                        return value ?? fallback;
+                    }
 
                     const subgraphValue = resolveSubgraphOutputValue(originNode, originSlot, seen);
                     if (subgraphValue !== null && subgraphValue !== undefined) return subgraphValue;

@@ -196,6 +196,139 @@ def test_registry_omits_malformed_persisted_setup_surface() -> None:
     assert "ltx-director-demo: setupSurface.outputs must be a list" in registry.diagnostics
 
 
+def test_registry_omits_malformed_persisted_setup_surface_app() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": "not-object",
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert "ltx-director-demo: setupSurface.app must be a JSON object" in registry.diagnostics
+
+
+def test_registry_omits_malformed_persisted_setup_surface_app_fields() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "single_file",
+                    "label": "Single file",
+                    "visible": True,
+                    "target": {"node": "12"},
+                    "default": "/image.png",
+                }
+            ],
+            "outputs": "not-list",
+            "results": [],
+            "switch": {
+                "key": "switch",
+                "label": "Input type",
+                "visible": True,
+                "target": {"node": "12", "input": "mode"},
+                "default": 2,
+                "options": [{"value": True, "label": "Img", "visible": True, "input": "single_file"}],
+            },
+        },
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert "ltx-director-demo: setupSurface.app.outputs must be a list" in registry.diagnostics
+    assert (
+        "ltx-director-demo: setupSurface.app.inputs[0].target.input must be non-empty text"
+        in registry.diagnostics
+    )
+    assert (
+        "ltx-director-demo: setupSurface.app.switch.options[0].value must be an integer"
+        in registry.diagnostics
+    )
+
+
+def test_registry_omits_persisted_setup_surface_app_targets_missing_from_graph() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "single_file",
+                    "label": "Single file",
+                    "visible": True,
+                    "target": {"node": "999", "input": "missing"},
+                    "default": "/image.png",
+                }
+            ],
+            "outputs": [],
+            "results": [],
+            "switch": {
+                "key": "switch",
+                "label": "Input type",
+                "visible": True,
+                "target": {"node": "12", "input": "mode"},
+                "default": 2,
+                "options": [{"value": 2, "label": "Img", "visible": True, "input": "missing_key"}],
+            },
+        },
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert (
+        "ltx-director-demo: setupSurface.app.inputs[0].target.node not found in visualGraph"
+        in registry.diagnostics
+    )
+    assert (
+        "ltx-director-demo: setupSurface.app.switch.options[0].input must match a setupSurface.app.inputs key"
+        in registry.diagnostics
+    )
+
+
 def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> None:
     primary = tmp_path / "setups.json"
     fallback = tmp_path / "sample.json"
@@ -678,6 +811,48 @@ def test_publish_setup_converts_widget_values_saved_as_mapping() -> None:
     }
 
 
+def test_publish_setup_converts_reroute_with_unnamed_input() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "Text Multiline",
+                "inputs": [],
+                "outputs": [{"name": "STRING", "type": "STRING", "links": [10]}],
+                "widgets_values": ["example"],
+            },
+            {
+                "id": 170,
+                "type": "Reroute",
+                "inputs": [{"name": "", "type": "*", "link": 10}],
+                "outputs": [{"name": "", "type": "*", "links": []}],
+            },
+        ],
+        "links": [[10, 1, 0, 170, 0, "*"]],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "reroute-flow",
+            "title": "Reroute Flow",
+            "description": "A workflow with an unnamed reroute input.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "text"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Reroute"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("reroute-flow")
+    assert setup is not None
+    assert setup["apiPrompt"]["170"] == {
+        "class_type": "Reroute",
+        "inputs": {"": ["1", 0]},
+    }
+
+
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)
@@ -736,6 +911,175 @@ def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
             }
         ],
         "controls": [],
+        "app": {"inputs": [], "outputs": [], "results": []},
+    }
+
+
+def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 100,
+                "type": "Koolook_PublishInput",
+                "title": "Koolook Publish Input",
+                "pos": [40, 60],
+                "size": [360, 320],
+                "inputs": [],
+                "widgets_values": [
+                    "Img",
+                    "/shots/example/frames",
+                    "/shots/example/movie.mov",
+                    "/shots/example/image.png",
+                    "unused prompt",
+                ],
+                "outputs": [
+                    {"name": "sequence_folder", "type": "STRING", "links": []},
+                    {"name": "qt_file", "type": "STRING", "links": []},
+                    {"name": "single_file", "type": "STRING", "links": []},
+                    {"name": "prompt", "type": "STRING", "links": []},
+                    {"name": "switch", "type": "INT", "links": []},
+                ],
+            },
+            {
+                "id": 200,
+                "type": "Koolook_PublishOutput",
+                "title": "Koolook Publish Output",
+                "pos": [520, 60],
+                "size": [360, 240],
+                "inputs": [],
+                "widgets_values": [
+                    "/shots/example/output",
+                    "publish-OUT",
+                    "1",
+                ],
+                "outputs": [
+                    {"name": "folder", "type": "STRING", "links": []},
+                    {"name": "name", "type": "STRING", "links": []},
+                    {"name": "version", "type": "STRING", "links": []},
+                ],
+            },
+            {
+                "id": 300,
+                "type": "Koolook_PublishResult",
+                "title": "Koolook Publish Result",
+                "pos": [520, 340],
+                "size": [360, 160],
+                "inputs": [
+                    {
+                        "name": "result",
+                        "type": "STRING",
+                        "widget": {"name": "result"},
+                        "link": None,
+                    }
+                ],
+                "widgets_values": [
+                    "/shots/example/output/publish-OUT_v001.mov",
+                ],
+                "outputs": [
+                    {"name": "result", "type": "STRING", "links": []},
+                ],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 440, 420]},
+            {"title": "Koolook Output", "bounding": [500, 20, 360, 560]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "app-contract-flow",
+            "title": "App Contract Flow",
+            "description": "A setup authored with Koolook publish nodes.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/App Contract"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("app-contract-flow")
+    assert setup is not None
+    assert setup["setupSurface"]["app"] == {
+        "inputs": [
+            {
+                "key": "sequence_folder",
+                "label": "Sequence folder",
+                "visible": True,
+                "target": {"node": "100", "input": "sequence_folder"},
+                "default": "/shots/example/frames",
+            },
+            {
+                "key": "qt_file",
+                "label": "QT file",
+                "visible": True,
+                "target": {"node": "100", "input": "qt_file"},
+                "default": "/shots/example/movie.mov",
+            },
+            {
+                "key": "single_file",
+                "label": "Single file",
+                "visible": True,
+                "target": {"node": "100", "input": "single_file"},
+                "default": "/shots/example/image.png",
+            },
+            {
+                "key": "prompt",
+                "label": "Prompt",
+                "visible": False,
+                "target": {"node": "100", "input": "prompt"},
+                "default": "unused prompt",
+            },
+        ],
+        "outputs": [
+            {
+                "key": "folder",
+                "label": "Output folder",
+                "visible": True,
+                "target": {"node": "200", "input": "folder"},
+                "default": "/shots/example/output",
+            },
+            {
+                "key": "name",
+                "label": "Output name",
+                "visible": True,
+                "target": {"node": "200", "input": "name"},
+                "default": "publish-OUT",
+            },
+            {
+                "key": "version",
+                "label": "Version",
+                "visible": True,
+                "target": {"node": "200", "input": "version"},
+                "default": "1",
+            },
+        ],
+        "results": [
+            {
+                "key": "result",
+                "label": "Result",
+                "visible": True,
+                "target": {"node": "300", "input": "result"},
+                "default": "/shots/example/output/publish-OUT_v001.mov",
+            },
+        ],
+        "switch": {
+            "key": "switch",
+            "label": "Input type",
+            "visible": True,
+            "target": {"node": "100", "input": "mode"},
+            "default": 2,
+            "options": [
+                {"value": 0, "label": "EXR", "visible": True, "input": "sequence_folder"},
+                {"value": 1, "label": "QT", "visible": True, "input": "qt_file"},
+                {"value": 2, "label": "Img", "visible": True, "input": "single_file"},
+                {"value": 3, "label": "Prompt", "visible": False, "input": "prompt"},
+            ],
+        },
     }
 
 
