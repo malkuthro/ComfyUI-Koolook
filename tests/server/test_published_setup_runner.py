@@ -121,6 +121,41 @@ def test_get_run_reports_running_state_from_comfy_queue() -> None:
     asyncio.run(exercise())
 
 
+def test_get_run_preserves_comfy_history_status_payload() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        comfy_status = {
+            "completed": False,
+            "status_str": "error",
+            "messages": [["execution_error", {"node_id": "12", "exception_message": "missing file"}]],
+        }
+        runner = PublishedSetupRunner(
+            registry,
+            FakeComfyClient(
+                history={
+                    "comfy-prompt-1": {
+                        "status": comfy_status,
+                        "outputs": {},
+                    }
+                }
+            ),
+        )
+
+        queued = await runner.runSetup("ltx-director-demo", {"prompt": "external prompt"})
+        status = await runner.getRun(queued["runId"])
+
+        assert status == {
+            "runId": "run-000001",
+            "setupId": "ltx-director-demo",
+            "promptId": "comfy-prompt-1",
+            "status": "failed",
+            "comfyStatus": comfy_status,
+            "outputs": [{"key": "video", "label": "Video", "type": "video", "items": []}],
+        }
+
+    asyncio.run(exercise())
+
+
 def test_run_setup_accepts_inputs_declared_by_app_surface_contract() -> None:
     async def exercise() -> None:
         setup = _valid_setup()

@@ -6,6 +6,7 @@ snapshot storage directly.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -28,6 +29,8 @@ VALIDATION_STATUSES = {"valid", "draft", "invalid"}
 PUBLISH_INPUT_CLASS = "Koolook_PublishInput"
 PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput"
 PUBLISH_RESULT_CLASS = "Koolook_PublishResult"
+VISUAL_ONLY_API_NODE_TYPES = {"Label (rgthree)", "Note"}
+SINK_ONLY_API_NODE_TYPES = {"SetNode"}
 PUBLISH_INPUT_FIELDS = (
     ("sequence_folder", "Sequence folder", True),
     ("qt_file", "QT file", True),
@@ -227,6 +230,7 @@ class PublishedSetupRegistry:
         inputContract: Any,
         outputContract: Any,
         source: Any,
+        apiPrompt: Any = None,
     ) -> ValidationResult:
         diagnostics = []
         for name, value in (
@@ -241,9 +245,15 @@ class PublishedSetupRegistry:
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
 
-        conversion = _convert_visual_graph_to_api_prompt(visualGraph)
-        if conversion.diagnostics:
-            return ValidationResult(False, {}, conversion.diagnostics)
+        if apiPrompt is None:
+            conversion = _convert_visual_graph_to_api_prompt(visualGraph)
+            if conversion.diagnostics:
+                return ValidationResult(False, {}, conversion.diagnostics)
+            api_prompt = conversion.api_prompt
+        elif isinstance(apiPrompt, dict):
+            api_prompt = deepcopy(apiPrompt)
+        else:
+            return ValidationResult(False, {}, ["apiPrompt must be an object when present"])
         surface_geometry_diagnostics = []
         if _uses_group_authored_surface(inputContract, outputContract):
             surface_geometry_diagnostics = _validate_setup_surface_geometry(visualGraph)
@@ -251,7 +261,7 @@ class PublishedSetupRegistry:
             return ValidationResult(False, {}, surface_geometry_diagnostics)
         setup = _build_draft_setup(
             visualGraph=visualGraph,
-            apiPrompt=conversion.api_prompt,
+            apiPrompt=api_prompt,
             metadata=metadata,
             inputContract=inputContract,
             outputContract=outputContract,
@@ -259,8 +269,10 @@ class PublishedSetupRegistry:
         )
         result = validate_setup(setup)
         diagnostics = list(result.diagnostics)
+        if result.valid:
+            setup = result.setup
         diagnostics.extend(_validate_contract_targets(visualGraph, inputContract))
-        diagnostics.extend(_validate_api_prompt_contract_targets(conversion.api_prompt, inputContract))
+        diagnostics.extend(_validate_api_prompt_contract_targets(setup.get("apiPrompt"), inputContract))
         diagnostics.extend(_validate_setup_surface(setup, inputContract, outputContract))
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
@@ -281,6 +293,7 @@ def validate_setup(value: Any) -> ValidationResult:
     diagnostics: list[str] = []
     if not isinstance(value, dict):
         return ValidationResult(False, {}, ["setup must be a JSON object"])
+    setup = deepcopy(value)
 
     for key in REQUIRED_SETUP_KEYS:
         if key not in value:
@@ -289,42 +302,44 @@ def validate_setup(value: Any) -> ValidationResult:
     if diagnostics:
         return ValidationResult(False, {}, diagnostics)
 
-    _validate_scalar(value, "id", str, diagnostics)
-    if isinstance(value.get("id"), str) and not SETUP_ID_RE.match(value["id"]):
+    _validate_scalar(setup, "id", str, diagnostics)
+    if isinstance(setup.get("id"), str) and not SETUP_ID_RE.match(setup["id"]):
         diagnostics.append("id must be stable URL-safe text")
-    _validate_scalar(value, "schemaVersion", int, diagnostics)
-    if value.get("schemaVersion") != SUPPORTED_SCHEMA_VERSION:
+    _validate_scalar(setup, "schemaVersion", int, diagnostics)
+    if setup.get("schemaVersion") != SUPPORTED_SCHEMA_VERSION:
         diagnostics.append(
-            f"unsupported schemaVersion: {value.get('schemaVersion')}; "
+            f"unsupported schemaVersion: {setup.get('schemaVersion')}; "
             f"expected {SUPPORTED_SCHEMA_VERSION}"
         )
-    _validate_scalar(value, "version", (int, str), diagnostics)
-    _validate_iso_timestamp(value.get("updatedAt"), diagnostics)
-    _validate_metadata(value.get("metadata"), diagnostics)
-    _validate_mapping(value.get("visualGraph"), "visualGraph", diagnostics)
-    if value.get("apiPrompt") is not None:
-        _validate_mapping(value.get("apiPrompt"), "apiPrompt", diagnostics)
-        if isinstance(value.get("visualGraph"), dict) and isinstance(value.get("apiPrompt"), dict):
-            conversion = _convert_visual_graph_to_api_prompt(value["visualGraph"])
-            if conversion.diagnostics:
+    _validate_scalar(setup, "version", (int, str), diagnostics)
+    _validate_iso_timestamp(setup.get("updatedAt"), diagnostics)
+    _validate_metadata(setup.get("metadata"), diagnostics)
+    _validate_mapping(setup.get("visualGraph"), "visualGraph", diagnostics)
+    if setup.get("apiPrompt") is not None:
+        _validate_mapping(setup.get("apiPrompt"), "apiPrompt", diagnostics)
+        if isinstance(setup.get("visualGraph"), dict) and isinstance(setup.get("apiPrompt"), dict):
+            conversion = None
+            if _api_prompt_needs_visual_normalization(setup["apiPrompt"], setup["visualGraph"]):
+                conversion = _convert_visual_graph_to_api_prompt(setup["visualGraph"])
+            if conversion is not None and conversion.diagnostics:
                 diagnostics.extend(conversion.diagnostics)
-            elif conversion.api_prompt != value["apiPrompt"]:
-                diagnostics.append("apiPrompt is stale for visualGraph")
-    _validate_contract(value.get("inputContract"), "inputContract", "inputs", diagnostics)
-    _validate_contract(value.get("outputContract"), "outputContract", "outputs", diagnostics)
-    _validate_persisted_setup_surface(value, diagnostics)
-    _validate_source(value.get("source"), diagnostics)
-    _validate_validation(value.get("validation"), diagnostics)
+            elif conversion is not None and conversion.api_prompt is not None:
+                setup["apiPrompt"] = conversion.api_prompt
+    _validate_contract(setup.get("inputContract"), "inputContract", "inputs", diagnostics)
+    _validate_contract(setup.get("outputContract"), "outputContract", "outputs", diagnostics)
+    _validate_persisted_setup_surface(setup, diagnostics)
+    _validate_source(setup.get("source"), diagnostics)
+    _validate_validation(setup.get("validation"), diagnostics)
     if (
-        isinstance(value.get("validation"), dict)
-        and value["validation"].get("status") == "valid"
-        and value.get("apiPrompt") is None
+        isinstance(setup.get("validation"), dict)
+        and setup["validation"].get("status") == "valid"
+        and setup.get("apiPrompt") is None
     ):
         diagnostics.append("validation.status valid requires apiPrompt")
 
     return ValidationResult(
         valid=not diagnostics,
-        setup=value if not diagnostics else {},
+        setup=setup if not diagnostics else {},
         diagnostics=diagnostics,
     )
 
@@ -988,18 +1003,73 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
         node_indexes_by_id[node_id_key] = node_index
         node_ids.add(node_id_key)
 
+    node_by_id = {str(node["id"]): node for node in nodes}
+    subgraphs_by_id = _subgraph_definitions_by_id(visual_graph)
     api_prompt: dict[str, Any] = {}
-    for node_index, node in enumerate(nodes):
-        node_id_key = str(node["id"])
-        class_type = node["type"]
+    subgraph_output_refs: dict[str, dict[int, Any]] = {}
+    skipped_node_ids: set[str] = set()
+    expanded_node_ids: set[str] = set()
+    diagnostics: list[str] = []
+
+    def resolve_outer_link(link_id: Any, seen: set[str] | None = None) -> Any:
+        link_id_key = str(link_id)
+        seen = set() if seen is None else seen
+        if link_id_key in seen:
+            diagnostics.append(f"visualGraph.links[{link_id_key}] has a reroute cycle")
+            return None
+        seen.add(link_id_key)
+        link = links.links.get(link_id_key)
+        if link is None:
+            diagnostics.append(f"visualGraph.links[{link_id_key}] is missing")
+            return None
+        origin_id = str(link["origin_id"])
+        if _is_module_sentinel_id(link["origin_id"]):
+            diagnostics.append(f"visualGraph.links[{link_id_key}] uses unsupported module graph sentinel node")
+            return None
+        if not _is_non_negative_int(link["origin_slot"]):
+            diagnostics.append(
+                f"visualGraph.links[{link_id_key}].origin_slot must be a non-negative integer"
+            )
+            return None
+        origin_slot = int(link["origin_slot"])
+        origin_node = node_by_id.get(origin_id)
+        if origin_node is None:
+            diagnostics.append(f"visualGraph.links[{link_id_key}].origin_id not found in visualGraph")
+            return None
+        if origin_node.get("type") == "Reroute":
+            reroute_input = _first_linked_input(origin_node)
+            if reroute_input is None:
+                diagnostics.append(f"visualGraph.nodes[{node_indexes_by_id[origin_id]}] Reroute is unconnected")
+                return None
+            return resolve_outer_link(reroute_input, seen)
+        if origin_id in subgraph_output_refs:
+            ref = subgraph_output_refs[origin_id].get(origin_slot)
+            if ref is None:
+                diagnostics.append(
+                    f"visualGraph.links[{link_id_key}] references missing subgraph output {origin_slot}"
+                )
+            return ref
+        if origin_id in skipped_node_ids or origin_id in expanded_node_ids:
+            diagnostics.append(
+                f"visualGraph.links[{link_id_key}] references non-executable node {origin_id}"
+            )
+            return None
+        return [origin_id, origin_slot]
+
+    def add_node_api(
+        *,
+        node: dict[str, Any],
+        node_index: int,
+        node_id_key: str,
+        class_type: str,
+        link_resolver,
+    ) -> None:
         node_inputs = node.get("inputs")
         if node_inputs is None:
             node_inputs = []
         elif not isinstance(node_inputs, list):
-            return ApiPromptConversionResult(
-                None,
-                [f"visualGraph.nodes[{node_index}].inputs must be a list when present"],
-            )
+            diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must be a list when present")
+            return
 
         raw_widget_values = node.get("widgets_values")
         widget_values_by_name = raw_widget_values if isinstance(raw_widget_values, dict) else {}
@@ -1010,68 +1080,39 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
         api_inputs: dict[str, Any] = {}
         for input_index, input_port in enumerate(node_inputs):
             if not isinstance(input_port, dict):
-                return ApiPromptConversionResult(
-                    None,
-                    [f"visualGraph.nodes[{node_index}].inputs must contain objects"],
-                )
+                diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must contain objects")
+                return
             name = input_port.get("name")
             if not isinstance(name, str) or not name.strip():
                 if class_type != "Reroute" or not isinstance(name, str):
-                    return ApiPromptConversionResult(
-                        None,
-                        [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
-                    )
+                    diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must have named ports")
+                    return
             link_id = input_port.get("link")
             if link_id is not None:
                 link = links.links.get(str(link_id))
-                if link is None:
-                    return ApiPromptConversionResult(
-                        None,
-                        [f"visualGraph.nodes[{node_index}].inputs.{name} references missing link"],
+                if link is not None and link["target_id"] is not None and str(link["target_id"]) != node_id_key:
+                    diagnostics.append(
+                        f"visualGraph.links[{link_id}].target does not match "
+                        f"visualGraph.nodes[{node_index}].inputs[{input_index}]"
                     )
-                if _is_module_sentinel_id(link["origin_id"]):
-                    return ApiPromptConversionResult(
-                        None,
-                        [
-                            f"visualGraph.links[{link_id}] uses unsupported module graph sentinel node"
-                        ],
-                    )
-                if str(link["origin_id"]) not in node_ids:
-                    return ApiPromptConversionResult(
-                        None,
-                        [f"visualGraph.links[{link_id}].origin_id not found in visualGraph"],
-                    )
-                if not _is_non_negative_int(link["origin_slot"]):
-                    return ApiPromptConversionResult(
-                        None,
-                        [
-                            f"visualGraph.links[{link_id}].origin_slot must be "
-                            "a non-negative integer"
-                        ],
-                    )
-                if link["target_id"] is not None and str(link["target_id"]) != node_id_key:
-                    return ApiPromptConversionResult(
-                        None,
-                        [
-                            f"visualGraph.links[{link_id}].target does not match "
-                            f"visualGraph.nodes[{node_index}].inputs[{input_index}]"
-                        ],
-                    )
+                    return
                 if (
-                    link["target_slot"] is not None
+                    link is not None
+                    and link["target_slot"] is not None
                     and (
                         not _is_non_negative_int(link["target_slot"])
                         or int(link["target_slot"]) != input_index
                     )
                 ):
-                    return ApiPromptConversionResult(
-                        None,
-                        [
-                            f"visualGraph.links[{link_id}].target does not match "
-                            f"visualGraph.nodes[{node_index}].inputs[{input_index}]"
-                        ],
+                    diagnostics.append(
+                        f"visualGraph.links[{link_id}].target does not match "
+                        f"visualGraph.nodes[{node_index}].inputs[{input_index}]"
                     )
-                api_inputs[name] = [str(link["origin_id"]), int(link["origin_slot"])]
+                    return
+                resolved = link_resolver(link_id)
+                if resolved is None:
+                    return
+                api_inputs[name] = resolved
                 continue
             widget = input_port.get("widget")
             if isinstance(widget, dict):
@@ -1079,13 +1120,11 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                     api_inputs[name] = widget_values_by_name[name]
                     continue
                 if widget_index >= len(widget_values):
-                    return ApiPromptConversionResult(
-                        None,
-                        [
-                            f"visualGraph.nodes[{node_index}].widgets_values is missing a value "
-                            f"for input {name}"
-                        ],
+                    diagnostics.append(
+                        f"visualGraph.nodes[{node_index}].widgets_values is missing a value "
+                        f"for input {name}"
                     )
+                    return
                 api_inputs[name] = widget_values[widget_index]
                 widget_index += 1
 
@@ -1096,11 +1135,310 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 api_inputs,
                 node_index,
             )
+            diagnostics.extend(widget_only_diagnostics)
             if widget_only_diagnostics:
-                return ApiPromptConversionResult(None, widget_only_diagnostics)
+                return
         api_prompt[node_id_key] = {"class_type": class_type, "inputs": api_inputs}
 
-    return ApiPromptConversionResult(api_prompt, [])
+    def expand_subgraph_node(node: dict[str, Any], node_index: int) -> None:
+        node_id_key = str(node["id"])
+        subgraph = subgraphs_by_id.get(str(node["type"]))
+        if subgraph is None:
+            return
+        subgraph_links = _visual_link_index(subgraph.get("links"))
+        if subgraph_links.diagnostics:
+            diagnostics.extend(subgraph_links.diagnostics)
+            return
+        subgraph_nodes = subgraph.get("nodes")
+        if not isinstance(subgraph_nodes, list):
+            diagnostics.append(f"visualGraph.definitions.subgraphs[{node['type']}].nodes must be a list")
+            return
+        subgraph_inputs = subgraph.get("inputs")
+        if not isinstance(subgraph_inputs, list):
+            subgraph_inputs = []
+        subgraph_nodes_by_id = {
+            str(subgraph_node.get("id")): subgraph_node
+            for subgraph_node in subgraph_nodes
+            if isinstance(subgraph_node, dict) and subgraph_node.get("id") is not None
+        }
+        wrapper_inputs = _api_inputs_for_wrapper_node(
+            visual_graph,
+            node,
+            node_index,
+            links,
+            resolve_outer_link,
+            diagnostics,
+        )
+        skipped_internal_ids: set[str] = set()
+        for internal_node in subgraph_nodes:
+            if not isinstance(internal_node, dict):
+                continue
+            internal_id = str(internal_node.get("id"))
+            if _should_omit_api_node(internal_node):
+                skipped_internal_ids.add(internal_id)
+
+        def resolve_subgraph_link(link_id: Any, seen: set[str] | None = None) -> Any:
+            link_id_key = str(link_id)
+            seen = set() if seen is None else seen
+            if link_id_key in seen:
+                diagnostics.append(f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}] has a reroute cycle")
+                return None
+            seen.add(link_id_key)
+            link = subgraph_links.links.get(link_id_key)
+            if link is None:
+                diagnostics.append(f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}] is missing")
+                return None
+            origin_id = link["origin_id"]
+            if not _is_non_negative_int(link["origin_slot"]):
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}].origin_slot "
+                    "must be a non-negative integer"
+                )
+                return None
+            origin_slot = int(link["origin_slot"])
+            if _is_module_sentinel_id(origin_id):
+                if int(origin_id) != -10:
+                    diagnostics.append(
+                        f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}] "
+                        "uses unsupported module graph sentinel node"
+                    )
+                    return None
+                if origin_slot >= len(subgraph_inputs):
+                    diagnostics.append(
+                        f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}] "
+                        "references missing subgraph input"
+                    )
+                    return None
+                input_name = subgraph_inputs[origin_slot].get("name")
+                if not isinstance(input_name, str) or input_name not in wrapper_inputs:
+                    return None
+                return wrapper_inputs[input_name]
+            origin_id_key = str(origin_id)
+            origin_node = subgraph_nodes_by_id.get(origin_id_key)
+            if origin_node is None:
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}].origin_id not found"
+                )
+                return None
+            if origin_node.get("type") == "Reroute":
+                reroute_input = _first_linked_input(origin_node)
+                if reroute_input is None:
+                    diagnostics.append(
+                        f"visualGraph.definitions.subgraphs[{node['type']}].nodes[{origin_id_key}] Reroute is unconnected"
+                    )
+                    return None
+                return resolve_subgraph_link(reroute_input, seen)
+            if origin_id_key in skipped_internal_ids:
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].links[{link_id_key}] "
+                    f"references non-executable node {origin_id_key}"
+                )
+                return None
+            return [f"{node_id_key}:{origin_id_key}", origin_slot]
+
+        for internal_index, internal_node in enumerate(subgraph_nodes):
+            if not isinstance(internal_node, dict):
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].nodes[{internal_index}] must be an object"
+                )
+                return
+            internal_class_type = internal_node.get("type")
+            internal_id = internal_node.get("id")
+            if internal_id is None or not isinstance(internal_class_type, str) or not internal_class_type.strip():
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].nodes[{internal_index}].type "
+                    "must be non-empty text"
+                )
+                return
+            if str(internal_class_type) in subgraphs_by_id:
+                diagnostics.append(
+                    f"visualGraph.definitions.subgraphs[{node['type']}].nodes[{internal_index}] "
+                    "nested subgraphs are not supported"
+                )
+                return
+            if str(internal_id) in skipped_internal_ids:
+                continue
+            add_node_api(
+                node=internal_node,
+                node_index=node_index,
+                node_id_key=f"{node_id_key}:{internal_id}",
+                class_type=internal_class_type,
+                link_resolver=resolve_subgraph_link,
+            )
+            if diagnostics:
+                return
+
+        output_refs: dict[int, Any] = {}
+        for link_id, link in subgraph_links.links.items():
+            if not _is_module_sentinel_id(link["target_id"]) or int(link["target_id"]) != -20:
+                continue
+            target_slot = link.get("target_slot")
+            if not _is_non_negative_int(target_slot):
+                continue
+            ref = resolve_subgraph_link(link_id)
+            if ref is not None:
+                output_refs[int(target_slot)] = ref
+        subgraph_output_refs[node_id_key] = output_refs
+        expanded_node_ids.add(node_id_key)
+
+    for node_index, node in enumerate(nodes):
+        node_id_key = str(node["id"])
+        class_type = node["type"]
+        if _should_omit_api_node(node):
+            skipped_node_ids.add(node_id_key)
+            continue
+        if class_type == "Reroute":
+            skipped_node_ids.add(node_id_key)
+            continue
+        if class_type in subgraphs_by_id:
+            expand_subgraph_node(node, node_index)
+            if diagnostics:
+                return ApiPromptConversionResult(None, diagnostics)
+            continue
+        add_node_api(
+            node=node,
+            node_index=node_index,
+            node_id_key=node_id_key,
+            class_type=class_type,
+            link_resolver=resolve_outer_link,
+        )
+        if diagnostics:
+            return ApiPromptConversionResult(None, diagnostics)
+
+    return ApiPromptConversionResult(api_prompt, diagnostics)
+
+
+def _api_inputs_for_wrapper_node(
+    visual_graph: dict[str, Any],
+    node: dict[str, Any],
+    node_index: int,
+    links: VisualLinkIndex,
+    link_resolver,
+    diagnostics: list[str],
+) -> dict[str, Any]:
+    node_inputs = node.get("inputs")
+    if node_inputs is None:
+        return {}
+    if not isinstance(node_inputs, list):
+        diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must be a list when present")
+        return {}
+    raw_widget_values = node.get("widgets_values")
+    widget_values_by_name = raw_widget_values if isinstance(raw_widget_values, dict) else {}
+    widget_values = raw_widget_values if isinstance(raw_widget_values, list) else []
+    widget_index = 0
+    values: dict[str, Any] = {}
+    for input_index, input_port in enumerate(node_inputs):
+        if not isinstance(input_port, dict):
+            diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must contain objects")
+            return values
+        name = input_port.get("name")
+        if not isinstance(name, str) or not name.strip():
+            diagnostics.append(f"visualGraph.nodes[{node_index}].inputs must have named ports")
+            return values
+        link_id = input_port.get("link")
+        if link_id is not None:
+            link = links.links.get(str(link_id))
+            if link is not None and link["target_id"] is not None and str(link["target_id"]) != str(node.get("id")):
+                diagnostics.append(
+                    f"visualGraph.links[{link_id}].target does not match "
+                    f"visualGraph.nodes[{node_index}].inputs[{input_index}]"
+                )
+                return values
+            resolved = link_resolver(link_id)
+            if resolved is not None:
+                values[name] = resolved
+            continue
+        widget = input_port.get("widget")
+        if not isinstance(widget, dict):
+            continue
+        if name in widget_values_by_name:
+            values[name] = widget_values_by_name[name]
+            continue
+        if widget_index < len(widget_values):
+            values[name] = widget_values[widget_index]
+        widget_index += 1
+    proxy_values = _proxy_widget_values_from_subgraph(visual_graph, node)
+    proxy_index = 0
+    for input_port in node_inputs:
+        if proxy_index >= len(proxy_values) or not isinstance(input_port, dict):
+            continue
+        name = input_port.get("name")
+        if isinstance(name, str) and name not in values and input_port.get("widget"):
+            values[name] = proxy_values[proxy_index]
+        if input_port.get("widget"):
+            proxy_index += 1
+    return values
+
+
+def _api_prompt_needs_visual_normalization(
+    api_prompt: dict[str, Any],
+    visual_graph: dict[str, Any],
+) -> bool:
+    subgraph_ids = set(_subgraph_definitions_by_id(visual_graph))
+    for node in api_prompt.values():
+        if not isinstance(node, dict):
+            continue
+        class_type = node.get("class_type")
+        if not isinstance(class_type, str):
+            continue
+        if class_type == "Reroute":
+            return True
+        if class_type in VISUAL_ONLY_API_NODE_TYPES:
+            return True
+        if class_type in SINK_ONLY_API_NODE_TYPES:
+            return True
+        if class_type in subgraph_ids:
+            return True
+    return False
+
+
+def _subgraph_definitions_by_id(visual_graph: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    definitions = visual_graph.get("definitions")
+    if not isinstance(definitions, dict):
+        return {}
+    subgraphs = definitions.get("subgraphs")
+    if not isinstance(subgraphs, list):
+        return {}
+    return {
+        str(subgraph.get("id")): subgraph
+        for subgraph in subgraphs
+        if isinstance(subgraph, dict) and subgraph.get("id") is not None
+    }
+
+
+def _should_omit_api_node(node: dict[str, Any]) -> bool:
+    class_type = str(node.get("type", ""))
+    if class_type in VISUAL_ONLY_API_NODE_TYPES:
+        return True
+    if class_type in SINK_ONLY_API_NODE_TYPES:
+        return not _node_has_linked_outputs(node)
+    return False
+
+
+def _node_has_linked_outputs(node: dict[str, Any]) -> bool:
+    outputs = node.get("outputs")
+    if not isinstance(outputs, list):
+        return False
+    for output in outputs:
+        if not isinstance(output, dict):
+            continue
+        links = output.get("links")
+        if isinstance(links, list) and links:
+            return True
+    return False
+
+
+def _first_linked_input(node: dict[str, Any]) -> Any | None:
+    node_inputs = node.get("inputs")
+    if not isinstance(node_inputs, list):
+        return None
+    for input_port in node_inputs:
+        if not isinstance(input_port, dict):
+            continue
+        link_id = input_port.get("link")
+        if link_id is not None:
+            return link_id
+    return None
 
 
 def _apply_widget_only_inputs(

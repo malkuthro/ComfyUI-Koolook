@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Koolook Setup Runner Simulator</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --bg: #161719;
+        --panel: #242629;
+        --panel-2: #1d1f22;
+        --line: rgba(255,255,255,0.13);
+        --text: #eceff3;
+        --muted: #a2a9b2;
+        --accent: #7aa7ff;
+        --danger: #ffb4a8;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+        gap: 14px;
+    }
+    header {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+    }
+    h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+    .status {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+    }
+    .hint {
+        grid-column: 1 / -1;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(122,167,255,0.08);
+        color: var(--muted);
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+    .hint a {
+        color: var(--accent);
+        text-decoration: none;
+    }
+    .hint a:hover { text-decoration: underline; }
+    section {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        min-width: 0;
+    }
+    .controls {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+    }
+    label {
+        display: grid;
+        gap: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    input, select, textarea, button {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--panel-2);
+        color: var(--text);
+        font: inherit;
+    }
+    input, select, textarea {
+        padding: 8px 9px;
+        outline: none;
+    }
+    textarea {
+        min-height: 146px;
+        resize: vertical;
+        font: 12px/1.4 ui-monospace, "Cascadia Mono", Menlo, monospace;
+    }
+    input:focus, select:focus, textarea:focus {
+        border-color: var(--accent);
+    }
+    button {
+        min-height: 34px;
+        padding: 7px 10px;
+        cursor: pointer;
+        font-weight: 700;
+    }
+    button.primary {
+        background: #335ca1;
+        border-color: #4774c2;
+    }
+    button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+    }
+    .button-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .output {
+        min-height: 620px;
+        padding: 0;
+        overflow: hidden;
+    }
+    pre {
+        margin: 0;
+        height: 100%;
+        min-height: 620px;
+        overflow: auto;
+        padding: 14px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #dce2ea;
+        font: 12px/1.45 ui-monospace, "Cascadia Mono", Menlo, monospace;
+    }
+    @media (max-width: 820px) {
+        main { grid-template-columns: 1fr; padding: 12px; }
+        header { display: grid; }
+        .status { text-align: left; }
+        .hint { grid-column: auto; }
+        .output, pre { min-height: 420px; }
+    }
+</style>
+</head>
+<body>
+<main data-simulator>
+    <header>
+        <h1>Koolook Setup Runner Simulator</h1>
+        <div class="status" data-status>Idle</div>
+    </header>
+
+    <div class="hint" data-hint>
+        This page runs published setups through the Koolook API. Open it from the
+        <a href="/koolook/setup_runner_simulator.html" data-route-link>Koolook simulator route</a>
+        when possible, or enter the ComfyUI API base below. Use
+        <a href="./setup_runner_simulator.html?demo=1" data-demo-link>demo mode</a>
+        to verify the simulator UI without a published setup.
+    </div>
+
+    <section class="controls">
+        <label>
+            ComfyUI API base
+            <input data-base-url placeholder="same origin or http://127.0.0.1:8188" />
+        </label>
+
+        <div class="button-row">
+            <button data-load-setups>Load setups</button>
+            <button class="primary" data-run-setup disabled>Run setup</button>
+        </div>
+
+        <label>
+            Published setup
+            <select data-setup-select></select>
+        </label>
+
+        <label>
+            Inputs JSON
+            <textarea data-inputs-json>{}</textarea>
+        </label>
+    </section>
+
+    <section class="output">
+        <pre data-detail>Select a published setup to inspect its contract, then run it through the public setup API.</pre>
+    </section>
+</main>
+<script type="module" src="./setup_runner_simulator.js"></script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+// SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
+// SPDX-License-Identifier: GPL-3.0-only
+
+const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed"]);
+const DEFAULT_LOCAL_COMFY_BASE = "http://127.0.0.1:8188";
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeBaseUrl(value) {
+    return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function apiUrl(baseUrl, path) {
+    return `${normalizeBaseUrl(baseUrl)}${path}`;
+}
+
+function isFilePage() {
+    return globalThis.location?.protocol === "file:";
+}
+
+function defaultBaseUrl() {
+    return isFilePage() ? DEFAULT_LOCAL_COMFY_BASE : "";
+}
+
+async function readJsonResponse(response, fallbackMessage) {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.ok === false) {
+        const errors = Array.isArray(body.errors) && body.errors.length
+            ? body.errors
+            : [fallbackMessage || `Request failed (${response.status}).`];
+        const error = new Error(errors.join("; "));
+        error.payload = body;
+        error.status = response.status;
+        throw error;
+    }
+    return body;
+}
+
+export async function listPublishedSetups({ baseUrl = "", fetchImpl = fetch } = {}) {
+    const response = await fetchImpl(apiUrl(baseUrl, "/koolook/api/setups"));
+    const body = await readJsonResponse(response, `Setup list request failed (${response.status}).`);
+    if (Array.isArray(body)) return body;
+    return Array.isArray(body.setups) ? body.setups : [];
+}
+
+export async function getPublishedSetup({ setupId, baseUrl = "", fetchImpl = fetch }) {
+    const id = typeof setupId === "string" ? setupId.trim() : "";
+    if (!id) throw new Error("Published setup id is required.");
+    const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/setups/${encodeURIComponent(id)}`));
+    return readJsonResponse(response, `Setup detail request failed (${response.status}).`);
+}
+
+export async function runPublishedSetup({
+    setupId,
+    inputs = {},
+    baseUrl = "",
+    fetchImpl = fetch,
+}) {
+    const id = typeof setupId === "string" ? setupId.trim() : "";
+    if (!id) throw new Error("Published setup id is required.");
+    const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/setups/${encodeURIComponent(id)}/run`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs: inputs && typeof inputs === "object" ? inputs : {} }),
+    });
+    const body = await readJsonResponse(response, `Run request failed (${response.status}).`);
+    return body.run;
+}
+
+export async function getPublishedSetupRun({ runId, baseUrl = "", fetchImpl = fetch }) {
+    const id = typeof runId === "string" ? runId.trim() : "";
+    if (!id) throw new Error("Published setup run id is required.");
+    const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/runs/${encodeURIComponent(id)}`));
+    const body = await readJsonResponse(response, `Run status request failed (${response.status}).`);
+    return body.run;
+}
+
+export async function runAndPollPublishedSetup({
+    setupId,
+    inputs = {},
+    baseUrl = "",
+    fetchImpl = fetch,
+    intervalMs = 1000,
+    timeoutMs = 30000,
+    sleepImpl = sleep,
+    onUpdate,
+}) {
+    const queued = await runPublishedSetup({ setupId, inputs, baseUrl, fetchImpl });
+    if (typeof onUpdate === "function") onUpdate(queued);
+    const runId = queued?.runId;
+    if (!runId || TERMINAL_RUN_STATUSES.has(String(queued.status || "").toLowerCase())) {
+        return queued;
+    }
+    const startedAt = Date.now();
+    let lastRun = queued;
+    while (Date.now() - startedAt <= timeoutMs) {
+        await sleepImpl(intervalMs);
+        lastRun = await getPublishedSetupRun({ runId, baseUrl, fetchImpl });
+        if (typeof onUpdate === "function") onUpdate(lastRun);
+        if (TERMINAL_RUN_STATUSES.has(String(lastRun?.status || "").toLowerCase())) {
+            return lastRun;
+        }
+    }
+    const error = new Error(`Timed out waiting for run ${runId}.`);
+    error.run = lastRun;
+    throw error;
+}
+
+export function formatRun(run) {
+    if (!run || typeof run !== "object") return "No run payload.";
+    const lines = [];
+    if (run.runId) lines.push(`Run: ${run.runId}`);
+    if (run.setupId) lines.push(`Setup: ${run.setupId}`);
+    if (run.promptId) lines.push(`Prompt: ${run.promptId}`);
+    if (run.status) lines.push(`Status: ${run.status}`);
+    if (Array.isArray(run.outputs) && run.outputs.length) {
+        lines.push("");
+        lines.push("Outputs:");
+        lines.push(JSON.stringify(run.outputs, null, 2));
+    }
+    const details = {};
+    for (const [key, value] of Object.entries(run)) {
+        if (!["runId", "setupId", "promptId", "status", "outputs"].includes(key)) {
+            details[key] = value;
+        }
+    }
+    if (Object.keys(details).length) {
+        lines.push("");
+        lines.push("Details:");
+        lines.push(JSON.stringify(details, null, 2));
+    }
+    return lines.join("\n") || JSON.stringify(run, null, 2);
+}
+
+export function formatError(error) {
+    if (error?.payload && typeof error.payload === "object") {
+        return JSON.stringify(error.payload, null, 2);
+    }
+    if (error?.run && typeof error.run === "object") {
+        return `${error.message}\n\nLast status:\n${formatRun(error.run)}`;
+    }
+    return error?.message || "Request failed.";
+}
+
+function formatFetchFailure(error, baseUrl) {
+    const message = formatError(error);
+    if (!/failed to fetch|load failed|networkerror/i.test(message)) return message;
+    const base = baseUrl || DEFAULT_LOCAL_COMFY_BASE;
+    return [
+        message,
+        "",
+        "The simulator could not reach the Koolook API.",
+        `Check that ComfyUI is running at ${base}, or open this page from the Koolook route:`,
+        `${base}/koolook/setup_runner_simulator.html`,
+    ].join("\n");
+}
+
+function demoFetch(url, options = {}) {
+    const path = String(url).replace(/^https?:\/\/[^/]+/, "");
+    const ok = body => ({ ok: true, status: 200, async json() { return body; } });
+    if (path.endsWith("/koolook/api/setups") && !options.method) {
+        return ok({
+            ok: true,
+            setups: [
+                {
+                    id: "director-demo",
+                    title: "Director Demo",
+                    description: "Sample published setup",
+                    category: "Video",
+                    tags: ["demo"],
+                    validation: { status: "valid" },
+                },
+            ],
+        });
+    }
+    if (path.endsWith("/koolook/api/setups/director-demo")) {
+        return ok({
+            id: "director-demo",
+            metadata: { title: "Director Demo", description: "Sample published setup" },
+            inputContract: { inputs: [] },
+            outputContract: { outputs: [{ key: "video", label: "Video", type: "video" }] },
+            validation: { status: "valid" },
+        });
+    }
+    if (path.endsWith("/koolook/api/setups/director-demo/run")) {
+        return ok({ ok: true, run: { runId: "run-000001", promptId: "prompt-123", status: "queued" } });
+    }
+    if (path.endsWith("/koolook/api/runs/run-000001")) {
+        return ok({
+            ok: true,
+            run: {
+                runId: "run-000001",
+                setupId: "director-demo",
+                promptId: "prompt-123",
+                status: "succeeded",
+                comfyStatus: { completed: true, status_str: "success" },
+                outputs: [{ key: "video", label: "Video", type: "video", items: [{ filename: "demo.mp4" }] }],
+            },
+        });
+    }
+    return { ok: false, status: 404, async json() { return { ok: false, errors: ["demo route not found"] }; } };
+}
+
+function bindSimulator(documentRef, fetchImpl) {
+    const root = documentRef.querySelector("[data-simulator]");
+    if (!root) return;
+    const baseInput = root.querySelector("[data-base-url]");
+    const loadBtn = root.querySelector("[data-load-setups]");
+    const setupSelect = root.querySelector("[data-setup-select]");
+    const inputsText = root.querySelector("[data-inputs-json]");
+    const runBtn = root.querySelector("[data-run-setup]");
+    const statusText = root.querySelector("[data-status]");
+    const detailText = root.querySelector("[data-detail]");
+    const routeLink = root.querySelector("[data-route-link]");
+
+    const state = { setups: [] };
+    const baseUrl = () => baseInput.value.trim();
+    const setStatus = value => { statusText.textContent = value; };
+    const setDetail = value => { detailText.textContent = value; };
+
+    async function loadSetups() {
+        setStatus("Loading setups...");
+        setDetail("");
+        runBtn.disabled = true;
+        try {
+            state.setups = await listPublishedSetups({ baseUrl: baseUrl(), fetchImpl });
+            setupSelect.innerHTML = "";
+            for (const setup of state.setups) {
+                const opt = documentRef.createElement("option");
+                opt.value = setup.id || "";
+                opt.textContent = setup.title || setup.id || "(untitled)";
+                setupSelect.appendChild(opt);
+            }
+            runBtn.disabled = state.setups.length === 0;
+            setStatus(state.setups.length ? `${state.setups.length} setup(s) loaded.` : "No published setups found.");
+            if (state.setups.length) await showSelectedSetup();
+        } catch (error) {
+            setStatus("Setup list failed.");
+            setDetail(formatFetchFailure(error, baseUrl()));
+        }
+    }
+
+    async function showSelectedSetup() {
+        if (!setupSelect.value) return;
+        try {
+            const setup = await getPublishedSetup({ setupId: setupSelect.value, baseUrl: baseUrl(), fetchImpl });
+            setDetail(JSON.stringify(setup, null, 2));
+        } catch (error) {
+            setDetail(formatFetchFailure(error, baseUrl()));
+        }
+    }
+
+    async function runSelectedSetup() {
+        if (!setupSelect.value) return;
+        let inputs;
+        try {
+            inputs = JSON.parse(inputsText.value || "{}");
+        } catch (error) {
+            setStatus("Inputs JSON is invalid.");
+            setDetail(error.message);
+            return;
+        }
+        runBtn.disabled = true;
+        setStatus("Queueing setup...");
+        try {
+            const finalRun = await runAndPollPublishedSetup({
+                setupId: setupSelect.value,
+                inputs,
+                baseUrl: baseUrl(),
+                fetchImpl,
+                onUpdate: run => {
+                    setStatus(`Run ${run.status || "unknown"}`);
+                    setDetail(formatRun(run));
+                },
+            });
+            setStatus(`Run ${finalRun?.status || "finished"}`);
+            setDetail(formatRun(finalRun));
+        } catch (error) {
+            setStatus("Run failed.");
+            setDetail(formatFetchFailure(error, baseUrl()));
+        } finally {
+            runBtn.disabled = state.setups.length === 0;
+        }
+    }
+
+    loadBtn.addEventListener("click", loadSetups);
+    setupSelect.addEventListener("change", showSelectedSetup);
+    runBtn.addEventListener("click", runSelectedSetup);
+    const routeBase = isFilePage() ? DEFAULT_LOCAL_COMFY_BASE : globalThis.location.origin;
+    if (routeLink) routeLink.href = `${routeBase}/koolook/setup_runner_simulator.html`;
+    baseInput.value = defaultBaseUrl();
+    if (isFilePage()) {
+        setStatus("Enter or confirm the ComfyUI API base, then load setups.");
+        setDetail([
+            "You opened this page from disk.",
+            "",
+            "For the live API path, run ComfyUI and either:",
+            `- keep ${DEFAULT_LOCAL_COMFY_BASE} as the API base and click Load setups`,
+            `- open ${DEFAULT_LOCAL_COMFY_BASE}/koolook/setup_runner_simulator.html`,
+            "",
+            "If you only want to verify the simulator UI, open demo mode:",
+            "setup_runner_simulator.html?demo=1",
+        ].join("\n"));
+    }
+    if (new URLSearchParams(globalThis.location?.search || "").get("demo") === "1") {
+        loadSetups();
+    }
+}
+
+if (typeof document !== "undefined") {
+    const fetchImpl = new URLSearchParams(globalThis.location?.search || "").get("demo") === "1"
+        ? demoFetch
+        : fetch;
+    bindSimulator(document, fetchImpl);
+}

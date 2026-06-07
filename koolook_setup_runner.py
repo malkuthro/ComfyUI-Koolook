@@ -182,6 +182,7 @@ class PublishedSetupRunner:
                 "setupId": record.setup_id,
                 "promptId": record.prompt_id,
                 "status": status,
+                "comfyStatus": history_entry.get("status", {}),
                 "outputs": _summarize_outputs(setup, history_entry.get("outputs", {})),
             }
 

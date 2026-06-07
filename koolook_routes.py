@@ -74,6 +74,7 @@ _DIRNAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+$")
 # before upgrading to the per-preset-subfolder layout. Cheap defensive
 # filter; can be removed in a future major if we choose to migrate.
 _HIDDEN_LIST_PREFIXES = ("_autosave_",)
+_WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
 def _latest_autosave_mtime(autosave_dir: Path, named_mtime: float) -> float | None:
@@ -420,6 +421,24 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
         for diagnostic in registry.diagnostics:
             print(f"[Koolook] published setup skipped: {diagnostic}")
 
+    def _web_asset_response(filename: str, content_type: str):
+        path = _WEB_DIR / filename
+        try:
+            return web.Response(
+                text=path.read_text(encoding="utf-8"),
+                content_type=content_type,
+            )
+        except OSError as exc:
+            raise web.HTTPNotFound(reason=f"Koolook web asset '{filename}' not found.") from exc
+
+    @routes.get("/koolook/setup_runner_simulator.html")
+    async def setup_runner_simulator_html(_request):
+        return _web_asset_response("setup_runner_simulator.html", "text/html")
+
+    @routes.get("/koolook/setup_runner_simulator.js")
+    async def setup_runner_simulator_js(_request):
+        return _web_asset_response("setup_runner_simulator.js", "application/javascript")
+
     @routes.get("/koolook/api/setups")
     async def list_published_setups(_request):
         registry: PublishedSetupRegistry = setup_registry_factory()
@@ -459,6 +478,7 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
             inputContract=payload.get("inputContract"),
             outputContract=payload.get("outputContract"),
             source=payload.get("source"),
+            apiPrompt=payload.get("apiPrompt"),
         )
         if not result.valid:
             return web.json_response(

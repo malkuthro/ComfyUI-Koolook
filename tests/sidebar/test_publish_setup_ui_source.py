@@ -16,6 +16,8 @@ def test_workflow_context_menu_exposes_publish_setup_flow() -> None:
     assert "publishSavedWorkflowSetup(" in tree
     assert "label: \"Publish setup…\"" in tree
     assert "export function showPublishSetupModal(" in modals
+    assert "Test run" not in modals
+    assert "onTestRun" not in modals
 
 
 def test_publish_setup_modal_shows_inferred_group_surface() -> None:
