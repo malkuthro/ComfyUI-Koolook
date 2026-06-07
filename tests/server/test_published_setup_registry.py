@@ -407,6 +407,44 @@ def test_publish_setup_converts_text_multiline_without_serialized_inputs() -> No
     assert setup["apiPrompt"]["3"]["inputs"] == {"text": "W:/projects/example/frames"}
 
 
+def test_publish_setup_rejects_text_multiline_without_widget_value() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 3,
+                    "type": "Text Multiline",
+                    "pos": [40, 40],
+                    "size": [300, 100],
+                    "inputs": [],
+                },
+                {"id": 1, "type": "Preview Image", "pos": [420, 40], "size": [240, 180], "inputs": []},
+            ],
+            "links": [],
+            "groups": [
+                {"title": "Koolook Input", "bounding": [20, 20, 340, 160]},
+                {"title": "Koolook Output", "bounding": [400, 20, 300, 240]},
+            ],
+        },
+        metadata={
+            "id": "missing-text-widget",
+            "title": "Missing Text Widget",
+            "description": "Missing widget-backed text.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Missing Text"},
+    )
+
+    assert result.valid is False
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input text"
+        in result.diagnostics
+    )
+
+
 def test_publish_setup_converts_easy_ai_pipeline_widget_only_values() -> None:
     registry = PublishedSetupRegistry(StaticSetupStorage([]))
     visual_graph = {
@@ -471,6 +509,53 @@ def test_publish_setup_converts_easy_ai_pipeline_widget_only_values() -> None:
         "enable_overwrite": False,
         "no_subfolders": False,
     }
+
+
+def test_publish_setup_rejects_partial_easy_ai_pipeline_widget_only_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 6,
+                    "type": "EasyAIPipeline",
+                    "pos": [40, 40],
+                    "size": [420, 700],
+                    "inputs": [],
+                    "widgets_values": [81],
+                },
+                {"id": 1, "type": "SaveEXRFrames", "pos": [620, 40], "size": [240, 180], "inputs": []},
+            ],
+            "links": [],
+            "groups": [
+                {"title": "Koolook Input", "bounding": [20, 20, 500, 760]},
+                {"title": "Koolook Output", "bounding": [600, 20, 300, 240]},
+            ],
+        },
+        metadata={
+            "id": "partial-easy-ai-pipeline",
+            "title": "Partial Easy AI Pipeline",
+            "description": "Missing widget-backed pipeline values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Partial EasyAIPipeline"},
+    )
+
+    assert result.valid is False
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input seed_value"
+        in result.diagnostics
+    )
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input base_directory_path"
+        in result.diagnostics
+    )
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input no_subfolders"
+        not in result.diagnostics
+    )
 
 
 def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
@@ -972,7 +1057,7 @@ def test_publish_setup_rejects_link_with_malformed_origin_slot() -> None:
     result = registry.publishSetup(
         visualGraph={
             "nodes": [
-                {"id": 12, "type": "Text Multiline", "inputs": []},
+                {"id": 12, "type": "Text Multiline", "inputs": [], "widgets_values": ["prompt"]},
                 {
                     "id": 20,
                     "type": "Text Concatenate",
@@ -1001,7 +1086,7 @@ def test_publish_setup_converts_links_from_nodes_declared_later() -> None:
                 "type": "Text Concatenate",
                 "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
             },
-            {"id": 12, "type": "Text Multiline", "inputs": []},
+            {"id": 12, "type": "Text Multiline", "inputs": [], "widgets_values": ["prompt"]},
         ],
         "links": [[101, 12, 0, 20, 0, "STRING"]],
     }

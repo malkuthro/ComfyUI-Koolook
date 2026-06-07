@@ -727,7 +727,14 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 widget_index += 1
 
         if not node_inputs:
-            _apply_widget_only_inputs(class_type, widget_values, api_inputs)
+            widget_only_diagnostics = _apply_widget_only_inputs(
+                class_type,
+                widget_values,
+                api_inputs,
+                node_index,
+            )
+            if widget_only_diagnostics:
+                return ApiPromptConversionResult(None, widget_only_diagnostics)
         api_prompt[node_id_key] = {"class_type": class_type, "inputs": api_inputs}
 
     return ApiPromptConversionResult(api_prompt, [])
@@ -737,13 +744,15 @@ def _apply_widget_only_inputs(
     class_type: str,
     widget_values: list[Any],
     api_inputs: dict[str, Any],
-) -> None:
+    node_index: int,
+) -> list[str]:
     if api_inputs:
-        return
+        return []
     widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(class_type)
     if not widget_names:
-        return
+        return []
     defaults = WIDGET_ONLY_INPUT_DEFAULTS.get(class_type, {})
+    diagnostics: list[str] = []
     for index, name in enumerate(widget_names):
         if index < len(widget_values):
             value = widget_values[index]
@@ -752,6 +761,12 @@ def _apply_widget_only_inputs(
             api_inputs[name] = value
         elif name in defaults:
             api_inputs[name] = defaults[name]
+        else:
+            diagnostics.append(
+                f"visualGraph.nodes[{node_index}].widgets_values is missing a value "
+                f"for widget-only input {name}"
+            )
+    return diagnostics
 
 
 def _proxy_widget_values_from_subgraph(
