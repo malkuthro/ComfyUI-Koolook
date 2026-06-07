@@ -25,6 +25,27 @@ SAMPLE_SETUPS_PATH = (
 SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
+WIDGET_ONLY_INPUTS_BY_CLASS = {
+    "Text Multiline": ("text",),
+    "EasyAIPipeline": (
+        "shot_duration",
+        "seed_value",
+        "instruction",
+        "base_directory_path",
+        "extension",
+        "shot_name",
+        "ai_method",
+        "version",
+        "disable_versioning",
+        "enable_overwrite",
+        "no_subfolders",
+    ),
+}
+WIDGET_ONLY_INPUT_DEFAULTS = {
+    "EasyAIPipeline": {
+        "no_subfolders": False,
+    },
+}
 
 REQUIRED_SETUP_KEYS = (
     "schemaVersion",
@@ -700,9 +721,32 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 api_inputs[name] = widget_values[widget_index]
                 widget_index += 1
 
+        if not node_inputs:
+            _apply_widget_only_inputs(class_type, widget_values, api_inputs)
         api_prompt[node_id_key] = {"class_type": class_type, "inputs": api_inputs}
 
     return ApiPromptConversionResult(api_prompt, [])
+
+
+def _apply_widget_only_inputs(
+    class_type: str,
+    widget_values: list[Any],
+    api_inputs: dict[str, Any],
+) -> None:
+    if api_inputs:
+        return
+    widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(class_type)
+    if not widget_names:
+        return
+    defaults = WIDGET_ONLY_INPUT_DEFAULTS.get(class_type, {})
+    for index, name in enumerate(widget_names):
+        if index < len(widget_values):
+            value = widget_values[index]
+            if name == "no_subfolders" and not isinstance(value, bool):
+                value = defaults.get(name, False)
+            api_inputs[name] = value
+        elif name in defaults:
+            api_inputs[name] = defaults[name]
 
 
 @dataclass(frozen=True)

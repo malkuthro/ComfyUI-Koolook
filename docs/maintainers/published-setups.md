@@ -243,6 +243,10 @@ The first supported conversion shape is intentionally narrow:
 - Widget-backed inputs must appear in `node.inputs` with a `name` and
   `widget` object. Their values are read from `node.widgets_values` in widget
   input order.
+- Some simple Comfy nodes serialize widget values without corresponding
+  `node.inputs` entries. The converter supports known widget-only mappings for
+  `Text Multiline` (`text`) and Koolook `EasyAIPipeline` so simple grouped
+  setup workflows can still publish into runnable API prompt inputs.
 - Linked inputs must have a `link` id that resolves in `visualGraph.links`.
   Array links such as `[101, 12, 0, 20, 0, "STRING"]` and object links with
   `origin_id` / `origin_slot` are supported. The API prompt value becomes

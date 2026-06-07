@@ -334,6 +334,118 @@ def test_publish_setup_converts_supported_visual_graph_to_api_prompt() -> None:
     assert registry.listSetups()[0]["id"] == "my-callable-flow"
 
 
+def test_publish_setup_converts_text_multiline_without_serialized_inputs() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 3,
+                "type": "Text Multiline",
+                "pos": [40, 40],
+                "size": [300, 100],
+                "inputs": [],
+                "widgets_values": ["W:/projects/example/frames"],
+            },
+            {
+                "id": 1,
+                "type": "SaveEXRFrames",
+                "pos": [420, 40],
+                "size": [240, 180],
+                "inputs": [],
+                "widgets_values": ["path/to/frame%04d.exr", "linear", 1001, False, "ui"],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 340, 160]},
+            {"title": "Koolook Output", "bounding": [400, 20, 300, 240]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "text-multiline-simple-setup",
+            "title": "Text Multiline Simple Setup",
+            "description": "A simple setup with widget-only source text.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Text Multiline"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("text-multiline-simple-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["3"]["inputs"] == {"text": "W:/projects/example/frames"}
+
+
+def test_publish_setup_converts_easy_ai_pipeline_widget_only_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 6,
+                "type": "EasyAIPipeline",
+                "pos": [40, 40],
+                "size": [420, 700],
+                "inputs": [],
+                "widgets_values": [
+                    81,
+                    453453453,
+                    "Place your base folder path in the FIELD below",
+                    "W:/projects/example",
+                    ".%04d.exr",
+                    "msk",
+                    "",
+                    "1",
+                    False,
+                    False,
+                    "W:/preview/path/frame.%04d.exr",
+                    "",
+                    None,
+                    None,
+                ],
+            },
+            {"id": 1, "type": "SaveEXRFrames", "pos": [620, 40], "size": [240, 180], "inputs": []},
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 500, 760]},
+            {"title": "Koolook Output", "bounding": [600, 20, 300, 240]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "easy-ai-pipeline-simple-setup",
+            "title": "Easy AI Pipeline Simple Setup",
+            "description": "A simple setup with EasyAIPipeline widget-only values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/EasyAIPipeline"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("easy-ai-pipeline-simple-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["6"]["inputs"] == {
+        "shot_duration": 81,
+        "seed_value": 453453453,
+        "instruction": "Place your base folder path in the FIELD below",
+        "base_directory_path": "W:/projects/example",
+        "extension": ".%04d.exr",
+        "shot_name": "msk",
+        "ai_method": "",
+        "version": "1",
+        "disable_versioning": False,
+        "enable_overwrite": False,
+        "no_subfolders": False,
+    }
+
+
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)
