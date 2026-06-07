@@ -475,6 +475,28 @@ def test_publish_setup_rejects_missing_or_empty_required_surface_groups(
             },
             "visualGraph.nodes[0].pos must contain numeric x and y for setup surface inference",
         ),
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [True, 40], "inputs": []}],
+                "links": [],
+                "groups": [
+                    {"title": "Koolook Input", "bounding": [20, 20, 240, 140]},
+                    {"title": "Koolook Output", "bounding": [20, 20, 240, 140]},
+                ],
+            },
+            "visualGraph.nodes[0].pos must contain numeric x and y for setup surface inference",
+        ),
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [40, 40], "inputs": []}],
+                "links": [],
+                "groups": [
+                    {"title": "Koolook Input", "bounding": [20, 20, float("inf"), 140]},
+                    {"title": "Koolook Output", "bounding": [20, 20, 240, 140]},
+                ],
+            },
+            "visualGraph.groups[0].bounding must contain numeric x, y, width, height",
+        ),
     ],
 )
 def test_publish_setup_rejects_malformed_surface_geometry(

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -567,7 +568,7 @@ def _number_or_default(value: Any, default: float) -> float:
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, int | float)
+    return not isinstance(value, bool) and isinstance(value, int | float) and math.isfinite(value)
 
 
 def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiPromptConversionResult:
