@@ -236,36 +236,41 @@ When the publish dialog uses the group-first path, `inputContract.inputs` and
 non-empty `Koolook Input` and `Koolook Output` groups. Explicit JSON contracts
 still work as the advanced fallback for older or unusual workflows.
 
-### App Naming Convention
+### Publish Contract Nodes
 
-Within `Koolook Input` and `Koolook Output`, nodes titled with `App : ...` are
-published as app-facing fields:
-
-```text
-App : INPUT [ sequence folder ]
-App : INPUT [ QT file ]
-App : INPUT [ single file ]
-App : INPUT optional [ prompt ]
-App : OUTPUT [ folder ]
-App : OUTPUT [ name ]
-App : OUTPUT [ version ]
-App : OUTPUT [ result ]
-```
-
-The bracket text is kept as the user-facing label and normalized into a stable
-field key such as `sequence_folder` or `single_file`. `optional` means hidden
-from the external app UI but retained internally so related visual setups can
-keep the same structure.
-
-One input switch may define the user-facing mode dropdown:
+Use the controlled Koolook publish nodes instead of scattered third-party text
+nodes when a setup should be callable from an external app:
 
 ```text
-App : INPUT [ switch ] 0=EXR / 1=QT / 2=Img / 3=Prompt
+Koolook Publish Input   -> place in Koolook Input
+Koolook Publish Output  -> place in Koolook Output
 ```
 
-Switch labels are parsed from the title and numeric values are preserved. Hidden
-or optional input targets hide the corresponding dropdown option without
-renumbering the remaining visible options.
+`Koolook Publish Input` exposes stable multiline fields and outputs:
+
+```text
+mode             dropdown: EXR, QT, Img, Prompt
+sequence_folder  STRING
+qt_file          STRING
+single_file      STRING
+prompt           STRING
+switch           INT output derived from mode
+```
+
+`Koolook Publish Output` exposes stable fields and outputs:
+
+```text
+folder   STRING
+name     STRING
+version  STRING
+result   STRING
+```
+
+Publish detects these node classes and stores `setupSurface.app` with stable
+keys, user-facing labels, defaults, injection targets, and switch options. The
+external app should render the switch first, preserve the numeric switch values,
+and hide internal-only options such as Prompt while keeping their index stable
+for the workflow.
 
 ## Callable Visual Workflow Standard
 
