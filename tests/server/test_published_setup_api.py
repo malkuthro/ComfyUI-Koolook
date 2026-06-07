@@ -60,7 +60,14 @@ def test_publish_route_persists_setup_and_catalog_returns_it() -> None:
         app = _app_with_registry(registry)
         payload = {
             "visualGraph": {
-                "nodes": [{"id": 12, "inputs": [{"name": "text"}]}],
+                "nodes": [
+                    {
+                        "id": 12,
+                        "type": "Text Multiline",
+                        "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                        "widgets_values": ["published prompt"],
+                    }
+                ],
                 "links": [],
             },
             "metadata": {
@@ -93,7 +100,12 @@ def test_publish_route_persists_setup_and_catalog_returns_it() -> None:
         body = _json_body(publish_response)
         assert body["ok"] is True
         assert body["setup"]["id"] == "published-from-sidebar"
-        assert _json_body(detail_response)["source"]["path"] == "Demos/Published From Sidebar"
+        detail = _json_body(detail_response)
+        assert detail["source"]["path"] == "Demos/Published From Sidebar"
+        assert detail["apiPrompt"] == {
+            "12": {"class_type": "Text Multiline", "inputs": {"text": "published prompt"}}
+        }
+        assert detail["validation"] == {"status": "valid", "diagnostics": []}
 
     asyncio.run(exercise())
 
@@ -108,7 +120,17 @@ def test_publish_route_rejects_invalid_contract_with_clear_error() -> None:
             "POST",
             "/koolook/api/setups",
             {
-                "visualGraph": {"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+                "visualGraph": {
+                    "nodes": [
+                        {
+                            "id": 12,
+                            "type": "Text Multiline",
+                            "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                            "widgets_values": ["bad prompt"],
+                        }
+                    ],
+                    "links": [],
+                },
                 "metadata": {"id": "bad", "title": "Bad", "description": "Bad"},
                 "inputContract": {
                     "inputs": [{"key": "prompt", "type": "text", "target": {"node": "99", "input": "text"}}]

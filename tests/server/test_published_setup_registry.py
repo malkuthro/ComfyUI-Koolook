@@ -27,8 +27,23 @@ def _valid_setup() -> dict:
             "tags": ["demo", "ltx"],
             "previewImage": "koolook://preview/ltx-director-demo.png",
         },
-        "visualGraph": {"nodes": [{"id": 1, "type": "Text Multiline"}], "links": []},
-        "apiPrompt": None,
+        "visualGraph": {
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "type": "STRING", "widget": {"name": "text"}}],
+                    "widgets_values": ["demo prompt"],
+                }
+            ],
+            "links": [],
+        },
+        "apiPrompt": {
+            "12": {
+                "class_type": "Text Multiline",
+                "inputs": {"text": "demo prompt"},
+            }
+        },
         "inputContract": {
             "inputs": [
                 {
@@ -66,6 +81,16 @@ def test_validate_setup_accepts_complete_published_setup() -> None:
     assert result.valid is True
     assert result.setup["id"] == "ltx-director-demo"
     assert result.diagnostics == []
+
+
+def test_validate_setup_rejects_valid_status_without_api_prompt() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["apiPrompt"] = None
+
+    result = validate_setup(setup)
+
+    assert result.valid is False
+    assert "validation.status valid requires apiPrompt" in result.diagnostics
 
 
 @pytest.mark.parametrize("missing_key", ["id", "metadata", "visualGraph", "inputContract"])
@@ -125,9 +150,24 @@ def test_registry_lists_summaries_and_fetches_full_setup_without_invalid_records
         "outputSummary": [{"key": "video", "label": "Video", "type": "video"}],
     }
     assert detail["visualGraph"] == _valid_setup()["visualGraph"]
-    assert detail["apiPrompt"] is None
+    assert detail["apiPrompt"] == _valid_setup()["apiPrompt"]
     assert registry.getSetup("broken") is None
     assert registry.diagnostics == ["broken: missing required field: metadata"]
+
+
+def test_registry_omits_setup_with_stale_api_prompt() -> None:
+    stale = deepcopy(_valid_setup())
+    stale["apiPrompt"] = {
+        "1": {
+            "class_type": "Different Node",
+            "inputs": {},
+        }
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([stale]))
+
+    assert registry.listSetups() == []
+    assert registry.getSetup("ltx-director-demo") is None
+    assert registry.diagnostics == ["ltx-director-demo: apiPrompt is stale for visualGraph"]
 
 
 def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> None:
@@ -164,7 +204,17 @@ def test_publish_setup_does_not_copy_sample_fallback_into_primary(tmp_path) -> N
 
     registry = PublishedSetupRegistry(FileSetupStorage(primary, fallback_path=fallback))
     result = registry.publishSetup(
-        visualGraph={"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                    "widgets_values": ["first prompt"],
+                }
+            ],
+            "links": [],
+        },
         metadata={
             "id": "first-curated-setup",
             "title": "First Curated Setup",
@@ -188,7 +238,7 @@ def test_publish_setup_does_not_copy_sample_fallback_into_primary(tmp_path) -> N
     assert [setup["id"] for setup in stored["setups"]] == ["first-curated-setup"]
 
 
-def test_publish_setup_persists_draft_and_catalog_reflects_it() -> None:
+def test_publish_setup_converts_supported_visual_graph_to_api_prompt() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)
     visual_graph = {
@@ -196,10 +246,20 @@ def test_publish_setup_persists_draft_and_catalog_reflects_it() -> None:
             {
                 "id": 12,
                 "type": "Text Multiline",
-                "inputs": [{"name": "text", "type": "STRING"}],
+                "inputs": [{"name": "text", "type": "STRING", "widget": {"name": "text"}}],
+                "widgets_values": ["default prompt"],
+            },
+            {
+                "id": 20,
+                "type": "Text Concatenate",
+                "inputs": [
+                    {"name": "text_a", "type": "STRING", "link": 101},
+                    {"name": "delimiter", "type": "STRING", "widget": {"name": "delimiter"}},
+                ],
+                "widgets_values": ["_"],
             }
         ],
-        "links": [],
+        "links": [[101, 12, 0, 20, 0, "STRING"]],
     }
 
     result = registry.publishSetup(
@@ -231,14 +291,20 @@ def test_publish_setup_persists_draft_and_catalog_reflects_it() -> None:
     setup = registry.getSetup("my-callable-flow")
     assert setup is not None
     assert setup["visualGraph"] == visual_graph
-    assert setup["apiPrompt"] is None
+    assert setup["apiPrompt"] == {
+        "12": {
+            "class_type": "Text Multiline",
+            "inputs": {"text": "default prompt"},
+        },
+        "20": {
+            "class_type": "Text Concatenate",
+            "inputs": {"text_a": ["12", 0], "delimiter": "_"},
+        }
+    }
     assert setup["source"] == {"kind": "sidebar-workflow", "path": "Demos/My Callable Flow"}
     assert setup["updatedAt"].endswith("Z")
     assert "+00:00" in datetime.fromisoformat(setup["updatedAt"].replace("Z", "+00:00")).isoformat()
-    assert setup["validation"] == {
-        "status": "draft",
-        "diagnostics": ["API prompt conversion pending."],
-    }
+    assert setup["validation"] == {"status": "valid", "diagnostics": []}
     assert registry.listSetups()[0]["id"] == "my-callable-flow"
 
 
@@ -246,7 +312,17 @@ def test_publish_setup_rejects_missing_contract_target() -> None:
     registry = PublishedSetupRegistry(StaticSetupStorage([]))
 
     result = registry.publishSetup(
-        visualGraph={"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                    "widgets_values": ["bad prompt"],
+                }
+            ],
+            "links": [],
+        },
         metadata={"id": "bad-flow", "title": "Bad", "description": "Bad target"},
         inputContract={
             "inputs": [
@@ -264,6 +340,281 @@ def test_publish_setup_rejects_missing_contract_target() -> None:
     assert result.valid is False
     assert "inputContract.inputs[0].target.node not found in visualGraph" in result.diagnostics
     assert registry.listSetups() == []
+
+
+def test_publish_setup_rejects_visual_node_without_type() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={"nodes": [{"id": 12, "inputs": [{"name": "text"}]}]},
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Missing node type"},
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "type": "text",
+                    "target": {"node": "12", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.nodes[0].type must be non-empty text" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_contract_target_missing_from_generated_api_prompt() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "type": "STRING"}],
+                    "widgets_values": ["default prompt"],
+                }
+            ],
+            "links": [],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Not injectable"},
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "type": "text",
+                    "target": {"node": "12", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert (
+        "inputContract.inputs[0].target.input not found in generated apiPrompt"
+        in result.diagnostics
+    )
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_partial_module_graph_links() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "type": "STRING", "link": 101}],
+                    "widgets_values": ["default prompt"],
+                }
+            ],
+            "links": [[101, -10, 0, 12, 0, "STRING"]],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Partial module graph"},
+        inputContract={
+            "inputs": [
+                {
+                    "key": "prompt",
+                    "type": "text",
+                    "target": {"node": "12", "input": "text"},
+                }
+            ]
+        },
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.links[101] uses unsupported module graph sentinel node" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_link_with_missing_origin_node() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 20,
+                    "type": "Text Concatenate",
+                    "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
+                }
+            ],
+            "links": [[101, 12, 0, 20, 0, "STRING"]],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Missing origin"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.links[101].origin_id not found in visualGraph" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_link_target_that_does_not_match_input() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                    "widgets_values": ["default prompt"],
+                },
+                {
+                    "id": 20,
+                    "type": "Text Concatenate",
+                    "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
+                },
+            ],
+            "links": [[101, 12, 0, 999, 0, "STRING"]],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Mismatched link"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.links[101].target does not match visualGraph.nodes[1].inputs[0]" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_link_with_malformed_origin_slot() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {"id": 12, "type": "Text Multiline", "inputs": []},
+                {
+                    "id": 20,
+                    "type": "Text Concatenate",
+                    "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
+                },
+            ],
+            "links": [[101, 12, "zero", 20, 0, "STRING"]],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Malformed slot"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.links[101].origin_slot must be a non-negative integer" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_converts_links_from_nodes_declared_later() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 20,
+                "type": "Text Concatenate",
+                "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
+            },
+            {"id": 12, "type": "Text Multiline", "inputs": []},
+        ],
+        "links": [[101, 12, 0, 20, 0, "STRING"]],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={"id": "good-flow", "title": "Good", "description": "Later origin"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Good"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("good-flow")
+    assert setup is not None
+    assert setup["apiPrompt"]["20"]["inputs"]["text_a"] == ["12", 0]
+
+
+def test_publish_setup_rejects_duplicate_node_ids() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {"id": 20, "type": "Text Multiline", "inputs": []},
+                {"id": 20, "type": "Text Concatenate", "inputs": []},
+            ],
+            "links": [],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Duplicate nodes"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.nodes[1].id duplicates visualGraph.nodes[0].id" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_duplicate_link_ids() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {"id": 12, "type": "Text Multiline", "inputs": []},
+                {
+                    "id": 20,
+                    "type": "Text Concatenate",
+                    "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
+                },
+            ],
+            "links": [
+                [101, 12, 0, 20, 0, "STRING"],
+                [101, 12, 0, 20, 0, "STRING"],
+            ],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Duplicate links"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.links[1].id duplicates visualGraph.links[0].id" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
+
+
+def test_publish_setup_rejects_present_non_list_node_inputs() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [{"id": 12, "type": "Text Multiline", "inputs": "not-list"}],
+            "links": [],
+        },
+        metadata={"id": "bad-flow", "title": "Bad", "description": "Malformed inputs"},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "image"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad"},
+    )
+
+    assert result.valid is False
+    assert "visualGraph.nodes[0].inputs must be a list when present" in result.diagnostics
+    assert registry.getSetup("bad-flow") is None
 
 
 def _json(value: dict) -> str:
