@@ -593,6 +593,48 @@ def test_publish_setup_converts_widget_values_saved_as_mapping() -> None:
     }
 
 
+def test_publish_setup_converts_reroute_with_unnamed_input() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "Text Multiline",
+                "inputs": [],
+                "outputs": [{"name": "STRING", "type": "STRING", "links": [10]}],
+                "widgets_values": ["example"],
+            },
+            {
+                "id": 170,
+                "type": "Reroute",
+                "inputs": [{"name": "", "type": "*", "link": 10}],
+                "outputs": [{"name": "", "type": "*", "links": []}],
+            },
+        ],
+        "links": [[10, 1, 0, 170, 0, "*"]],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "reroute-flow",
+            "title": "Reroute Flow",
+            "description": "A workflow with an unnamed reroute input.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "text"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Reroute"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("reroute-flow")
+    assert setup is not None
+    assert setup["apiPrompt"]["170"] == {
+        "class_type": "Reroute",
+        "inputs": {"": ["1", 0]},
+    }
+
+
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)
@@ -651,6 +693,194 @@ def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
             }
         ],
         "controls": [],
+        "app": {"inputs": [], "outputs": []},
+    }
+
+
+def test_publish_setup_infers_app_contract_from_named_group_nodes() -> None:
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 3,
+                "type": "Text Multiline",
+                "title": "App : INPUT [ sequence folder ]",
+                "pos": [40, 60],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["/shots/example/frames"],
+            },
+            {
+                "id": 147,
+                "type": "Text Multiline",
+                "title": "App : INPUT [ QT file ]",
+                "pos": [40, 180],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["/shots/example/movie.mov"],
+            },
+            {
+                "id": 148,
+                "type": "Text Multiline",
+                "title": "App : INPUT [ single file ]",
+                "pos": [40, 300],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["/shots/example/image.png"],
+            },
+            {
+                "id": 149,
+                "type": "Text Multiline",
+                "title": "App : INPUT optional [ prompt ]",
+                "pos": [40, 420],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["unused prompt"],
+            },
+            {
+                "id": 182,
+                "type": "easy int",
+                "title": "App : INPUT [ switch ] 0=EXR / 1=QT / 2=Img / 3=Prompt",
+                "pos": [40, 540],
+                "size": [280, 60],
+                "inputs": [],
+                "outputs": [{"name": "int", "type": "INT", "links": []}],
+                "widgets_values": [2],
+            },
+            {
+                "id": 163,
+                "type": "Text Multiline",
+                "title": "App : OUTPUT [ folder ]",
+                "pos": [520, 60],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["/shots/example/output"],
+            },
+            {
+                "id": 168,
+                "type": "Text Multiline",
+                "title": "App : OUTPUT [ name ]",
+                "pos": [520, 180],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["publish-OUT"],
+            },
+            {
+                "id": 169,
+                "type": "Text Multiline",
+                "title": "App : OUTPUT [ version ]",
+                "pos": [520, 300],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["1"],
+            },
+            {
+                "id": 176,
+                "type": "easy showAnything",
+                "title": "App : OUTPUT [ result ]",
+                "pos": [520, 420],
+                "size": [280, 80],
+                "inputs": [],
+                "widgets_values": ["/shots/example/output/publish-OUT_v001.mov"],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 360, 660]},
+            {"title": "Koolook Output", "bounding": [500, 20, 360, 560]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "app-contract-flow",
+            "title": "App Contract Flow",
+            "description": "A setup authored with App named controls.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/App Contract"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("app-contract-flow")
+    assert setup is not None
+    assert setup["setupSurface"]["app"] == {
+        "inputs": [
+            {
+                "key": "sequence_folder",
+                "label": "sequence folder",
+                "visible": True,
+                "target": {"node": "3", "input": "text"},
+                "default": "/shots/example/frames",
+            },
+            {
+                "key": "qt_file",
+                "label": "QT file",
+                "visible": True,
+                "target": {"node": "147", "input": "text"},
+                "default": "/shots/example/movie.mov",
+            },
+            {
+                "key": "single_file",
+                "label": "single file",
+                "visible": True,
+                "target": {"node": "148", "input": "text"},
+                "default": "/shots/example/image.png",
+            },
+            {
+                "key": "prompt",
+                "label": "prompt",
+                "visible": False,
+                "target": {"node": "149", "input": "text"},
+                "default": "unused prompt",
+            },
+        ],
+        "outputs": [
+            {
+                "key": "folder",
+                "label": "folder",
+                "visible": True,
+                "target": {"node": "163", "input": "text"},
+                "default": "/shots/example/output",
+            },
+            {
+                "key": "name",
+                "label": "name",
+                "visible": True,
+                "target": {"node": "168", "input": "text"},
+                "default": "publish-OUT",
+            },
+            {
+                "key": "version",
+                "label": "version",
+                "visible": True,
+                "target": {"node": "169", "input": "text"},
+                "default": "1",
+            },
+            {
+                "key": "result",
+                "label": "result",
+                "visible": True,
+                "target": {"node": "176", "input": "anything"},
+                "default": "/shots/example/output/publish-OUT_v001.mov",
+            },
+        ],
+        "switch": {
+            "key": "switch",
+            "label": "switch",
+            "visible": True,
+            "target": {"node": "182", "input": "value"},
+            "default": 2,
+            "options": [
+                {"value": 0, "label": "EXR", "visible": True, "input": "sequence_folder"},
+                {"value": 1, "label": "QT", "visible": True, "input": "qt_file"},
+                {"value": 2, "label": "Img", "visible": True, "input": "single_file"},
+                {"value": 3, "label": "Prompt", "visible": False, "input": "prompt"},
+            ],
+        },
     }
 
 
