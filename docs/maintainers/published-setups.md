@@ -223,7 +223,11 @@ Publish infers a machine-readable `setupSurface` from the reserved groups:
       "nodes": [{ "id": "20", "type": "Preview Image", "title": "Preview" }]
     }
   ],
-  "controls": []
+  "controls": [],
+  "app": {
+    "inputs": [],
+    "outputs": []
+  }
 }
 ```
 
@@ -231,6 +235,37 @@ When the publish dialog uses the group-first path, `inputContract.inputs` and
 `outputContract.outputs` are submitted as empty arrays and the server requires
 non-empty `Koolook Input` and `Koolook Output` groups. Explicit JSON contracts
 still work as the advanced fallback for older or unusual workflows.
+
+### App Naming Convention
+
+Within `Koolook Input` and `Koolook Output`, nodes titled with `App : ...` are
+published as app-facing fields:
+
+```text
+App : INPUT [ sequence folder ]
+App : INPUT [ QT file ]
+App : INPUT [ single file ]
+App : INPUT optional [ prompt ]
+App : OUTPUT [ folder ]
+App : OUTPUT [ name ]
+App : OUTPUT [ version ]
+App : OUTPUT [ result ]
+```
+
+The bracket text is kept as the user-facing label and normalized into a stable
+field key such as `sequence_folder` or `single_file`. `optional` means hidden
+from the external app UI but retained internally so related visual setups can
+keep the same structure.
+
+One input switch may define the user-facing mode dropdown:
+
+```text
+App : INPUT [ switch ] 0=EXR / 1=QT / 2=Img / 3=Prompt
+```
+
+Switch labels are parsed from the title and numeric values are preserved. Hidden
+or optional input targets hide the corresponding dropdown option without
+renumbering the remaining visible options.
 
 ## Callable Visual Workflow Standard
 
@@ -256,6 +291,8 @@ The first supported conversion shape is intentionally narrow:
   Array links such as `[101, 12, 0, 20, 0, "STRING"]` and object links with
   `origin_id` / `origin_slot` are supported. The API prompt value becomes
   `["12", 0]`.
+- `Reroute` nodes may use ComfyUI's unnamed `""` input port; other nodes still
+  require named input ports.
 - Partial/module workflow sentinel links, such as links from node `-10`, are
   not callable yet and fail publish.
 

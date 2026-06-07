@@ -25,8 +25,25 @@ SAMPLE_SETUPS_PATH = (
 SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
+APP_NODE_TITLE_RE = re.compile(
+    r"^App\s*:\s*(INPUT|OUTPUT)(?:\s+(optional))?\s*\[\s*([^\]]+?)\s*\](.*)$",
+    re.IGNORECASE,
+)
+SWITCH_OPTION_RE = re.compile(r"(\d+)\s*=\s*([^/]+)")
+INPUT_SWITCH_ALIASES = {
+    "exr": "sequence_folder",
+    "sequence": "sequence_folder",
+    "qt": "qt_file",
+    "quicktime": "qt_file",
+    "video": "qt_file",
+    "img": "single_file",
+    "image": "single_file",
+    "file": "single_file",
+    "prompt": "prompt",
+}
 WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Text Multiline": ("text",),
+    "easy int": ("value",),
     "EasyAIPipeline": (
         "shot_duration",
         "seed_value",
@@ -345,7 +362,137 @@ def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
         "sourceInputs": _nodes_in_named_groups(visual_graph, "Koolook Input"),
         "outputs": _nodes_in_named_groups(visual_graph, "Koolook Output"),
         "controls": [],
+        "app": _infer_app_surface(visual_graph),
     }
+
+
+def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+    input_nodes = _nodes_in_group(visual_graph, "Koolook Input")
+    output_nodes = _nodes_in_group(visual_graph, "Koolook Output")
+    inputs, input_switch = _app_fields_from_nodes(input_nodes, "input")
+    outputs, output_switch = _app_fields_from_nodes(output_nodes, "output")
+    app: dict[str, Any] = {
+        "inputs": inputs,
+        "outputs": outputs,
+    }
+    switch = input_switch or output_switch
+    if switch is not None:
+        switch["options"] = _switch_options(switch["optionText"], inputs)
+        del switch["optionText"]
+        app["switch"] = switch
+    return app
+
+
+def _app_fields_from_nodes(
+    nodes: list[dict[str, Any]],
+    direction: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    fields: list[dict[str, Any]] = []
+    switch: dict[str, Any] | None = None
+    for node in nodes:
+        parsed = _parse_app_node_title(node.get("title"))
+        if parsed is None or parsed["direction"] != direction:
+            continue
+        field = {
+            "key": _field_key(parsed["label"]),
+            "label": parsed["label"],
+            "visible": not parsed["optional"],
+            "target": {
+                "node": str(node.get("id")),
+                "input": _app_target_input(node, parsed["label"]),
+            },
+            "default": _app_default_value(node),
+        }
+        if field["key"] == "switch":
+            switch = {
+                **field,
+                "optionText": parsed["suffix"],
+            }
+            continue
+        fields.append(field)
+    return fields, switch
+
+
+def _parse_app_node_title(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, str):
+        return None
+    match = APP_NODE_TITLE_RE.match(value.strip())
+    if match is None:
+        return None
+    return {
+        "direction": match.group(1).lower(),
+        "optional": bool(match.group(2)),
+        "label": match.group(3).strip(),
+        "suffix": match.group(4).strip(),
+    }
+
+
+def _field_key(label: str) -> str:
+    key = re.sub(r"[^A-Za-z0-9]+", "_", label.strip().lower()).strip("_")
+    return key or "field"
+
+
+def _app_target_input(node: dict[str, Any], label: str) -> str:
+    inputs = node.get("inputs")
+    if isinstance(inputs, list):
+        for input_port in inputs:
+            if isinstance(input_port, dict) and isinstance(input_port.get("name"), str) and input_port["name"]:
+                return input_port["name"]
+    class_type = node.get("type")
+    if class_type == "Text Multiline":
+        return "text"
+    if class_type == "easy int":
+        return "value"
+    if class_type == "easy showAnything":
+        return "anything"
+    return _field_key(label)
+
+
+def _app_default_value(node: dict[str, Any]) -> Any:
+    widget_values = node.get("widgets_values")
+    if isinstance(widget_values, list) and widget_values:
+        return widget_values[0]
+    if isinstance(widget_values, dict):
+        for value in widget_values.values():
+            return value
+    return None
+
+
+def _switch_options(
+    option_text: str,
+    inputs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    inputs_by_key = {item["key"]: item for item in inputs}
+    options: list[dict[str, Any]] = []
+    for match in SWITCH_OPTION_RE.finditer(option_text):
+        label = match.group(2).strip()
+        input_key = _switch_input_key(label, inputs_by_key)
+        input_field = inputs_by_key.get(input_key)
+        options.append(
+            {
+                "value": int(match.group(1)),
+                "label": label,
+                "visible": bool(input_field and input_field.get("visible")),
+                "input": input_key,
+            }
+        )
+    return options
+
+
+def _switch_input_key(
+    label: str,
+    inputs_by_key: dict[str, dict[str, Any]],
+) -> str:
+    normalized = _field_key(label)
+    if normalized in inputs_by_key:
+        return normalized
+    alias = INPUT_SWITCH_ALIASES.get(normalized)
+    if alias in inputs_by_key:
+        return alias
+    for key in inputs_by_key:
+        if normalized and normalized in key:
+            return key
+    return normalized
 
 
 def _validate_setup_surface(
@@ -433,6 +580,23 @@ def _uses_group_authored_surface(
 
 
 def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = _nodes_in_group_sections(visual_graph, group_title)
+    return [
+        {"group": group_title, "nodes": [_surface_node_summary(node) for node in group_nodes]}
+        for group_nodes in groups
+        if group_nodes
+    ]
+
+
+def _nodes_in_group(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = _nodes_in_group_sections(visual_graph, group_title)
+    return [node for group_nodes in groups for node in group_nodes]
+
+
+def _nodes_in_group_sections(
+    visual_graph: dict[str, Any],
+    group_title: str,
+) -> list[list[dict[str, Any]]]:
     groups = visual_graph.get("groups")
     nodes = visual_graph.get("nodes")
     if not isinstance(groups, list) or not isinstance(nodes, list):
@@ -443,18 +607,18 @@ def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> li
         for node in nodes
         if isinstance(node, dict)
     ]
-    out: list[dict[str, Any]] = []
+    out: list[list[dict[str, Any]]] = []
     for group in groups:
         if not isinstance(group, dict) or group.get("title") != group_title:
             continue
         group_rect = _rect_from_group(group)
         group_nodes = [
-            _surface_node_summary(node)
+            node
             for node, node_rect in node_rects
             if _rects_overlap(group_rect, node_rect)
         ]
         if group_nodes:
-            out.append({"group": group_title, "nodes": group_nodes})
+            out.append(sorted(group_nodes, key=lambda node: (_rect_from_node(node)["y"], _rect_from_node(node)["x"])))
     return out
 
 
@@ -654,10 +818,11 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 )
             name = input_port.get("name")
             if not isinstance(name, str) or not name.strip():
-                return ApiPromptConversionResult(
-                    None,
-                    [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
-                )
+                if class_type != "Reroute" or not isinstance(name, str):
+                    return ApiPromptConversionResult(
+                        None,
+                        [f"visualGraph.nodes[{node_index}].inputs must have named ports"],
+                    )
             link_id = input_port.get("link")
             if link_id is not None:
                 link = links.links.get(str(link_id))
