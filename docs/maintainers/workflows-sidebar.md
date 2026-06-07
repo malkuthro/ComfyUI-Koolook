@@ -61,6 +61,11 @@ Implementation pieces:
 - The literal tag string lives in [`web/sidebar/constants.js`](../../web/sidebar/constants.js) as `MODULE_TAG`. New saves store module state as first-class `module: true`; the tag is still honored for old entries and for the manual right-click Tags workflow.
 - The non-destructive insert primitive is `insertWorkflowOntoCanvas(dirPath, wfName)` in [`web/sidebar/canvas_io.js`](../../web/sidebar/canvas_io.js). It pre-flights every referenced node type against `LiteGraph.registered_node_types`, aborts cleanly with a toast when any are missing (a partial insert with stub nodes is worse than no insert), then deep-clones the saved graph, normalizes Comfy/LiteGraph link records, configures each node with stale saved link IDs stripped, sets `node.id = -1` so `app.graph.add()` allocates fresh ids that can't collide with the live canvas, and finally recreates internal connections via `originNode.connect(...)` (which auto-allocates fresh link ids). Selection saves that include ComfyUI subgraph wrapper nodes also carry the required `definitions.subgraphs` entries so a later native Load has the definitions available.
 - Bbox-of-cluster placement uses CSS pixels (`clientWidth`/`clientHeight`), not the HiDPI backing buffer — same correction as the existing `placeAtCanvasCenter` helper.
+- Selection saves preserve ComfyUI group boxes that overlap selected nodes.
+  Insert translates those saved groups by the same placement delta as the
+  inserted node cluster, so group titles and boxes survive module round trips.
+  This is intentionally limited to groups touching the saved selection; unrelated
+  canvas groups are not copied into partial workflow saves.
 
 To turn an **existing** saved workflow into a module: right-click → **Tags…**
 → add `module`. (No re-save needed; the row re-renders on the next
@@ -190,6 +195,10 @@ location.reload();
 ## Things that surprised us — keep in mind
 
 - **Selection saves are partial graphs.** Only the selected nodes + links between them survive; links into/out of non-selected nodes are nulled out, so the loaded workflow never has dangling references. Link handling accepts both serialized array links (`[id, origin, slot, target, slot, type]`) and object-shaped `LLink` records from `graph.links`.
+- **Selection saves preserve relevant groups.** Any ComfyUI group box that
+  overlaps selected nodes is stored with the partial graph and restored on Load
+  or Insert. This supports the future published-setup convention where
+  `Koolook Input` and `Koolook Output` groups mark the setup's app surface.
 - **Subgraph wrappers are special.** The saved selection includes transitively referenced `definitions.subgraphs`, but insert still cannot register a never-loaded subgraph definition because ComfyUI's subgraph registration path lives inside native `app.loadGraphData`. If Insert reports an unregistered subgraph definition, native-Load the workflow once in that browser session, then retry Insert.
 - **Workflow tab name comes from `app.loadGraphData(graph, true, true, name, {})`'s 4th arg.** The tab flips from "Unsaved Workflow (N)" to the saved name, and Ctrl+S pre-fills with that name. (Verified against `Comfy-Org/ComfyUI_frontend` `src/scripts/app.ts`.)
 - **Folder expansion state persists across re-renders** (the `pathStates` Map in `web/sidebar/tree.js`). Saving never collapses the directory you were viewing — and a save into a nested path opens every ancestor folder.
