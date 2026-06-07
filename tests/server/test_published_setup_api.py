@@ -8,6 +8,7 @@ from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
 import koolook_routes
+from koolook_setup_runner import PublishedSetupRunner
 from koolook_setups import PublishedSetupRegistry, StaticSetupStorage
 from tests.server.test_published_setup_registry import _valid_setup
 
@@ -171,9 +172,282 @@ def test_publish_route_rejects_missing_metadata_with_clear_error() -> None:
     asyncio.run(exercise())
 
 
-def _app_with_registry(registry: PublishedSetupRegistry) -> web.Application:
+def test_run_route_queues_callable_setup_and_returns_stable_run_id() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        comfy = _FakeComfyClient()
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(registry, comfy),
+        )
+
+        response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "external prompt"}},
+        )
+
+        assert response.status == 200
+        assert _json_body(response) == {
+            "ok": True,
+            "run": {
+                "runId": "run-000001",
+                "promptId": "comfy-prompt-1",
+                "status": "queued",
+            },
+        }
+        assert comfy.submitted_prompts == [
+            {"12": {"class_type": "Text Multiline", "inputs": {"text": "external prompt"}}}
+        ]
+
+    asyncio.run(exercise())
+
+
+def test_run_status_route_reports_succeeded_outputs_from_comfy_history() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        comfy = _FakeComfyClient(
+            history={
+                "comfy-prompt-1": {
+                    "status": {"completed": True, "status_str": "success"},
+                    "outputs": {
+                        "20": {
+                            "videos": [
+                                {
+                                    "filename": "demo.mp4",
+                                    "subfolder": "koolook",
+                                    "type": "output",
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+        )
+        runner = PublishedSetupRunner(registry, comfy)
+        app = _app_with_registry(registry, setup_runner_factory=lambda: runner)
+
+        run_response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "external prompt"}},
+        )
+        run_id = _json_body(run_response)["run"]["runId"]
+        status_response = await _handle(app, "GET", f"/koolook/api/runs/{run_id}")
+
+        assert status_response.status == 200
+        assert _json_body(status_response) == {
+            "ok": True,
+            "run": {
+                "runId": "run-000001",
+                "setupId": "ltx-director-demo",
+                "promptId": "comfy-prompt-1",
+                "status": "succeeded",
+                "outputs": [
+                    {
+                        "key": "video",
+                        "label": "Video",
+                        "type": "video",
+                        "items": [
+                            {
+                                "nodeId": "20",
+                                "kind": "videos",
+                                "filename": "demo.mp4",
+                                "subfolder": "koolook",
+                                "type": "output",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+
+    asyncio.run(exercise())
+
+
+def test_run_status_route_reports_failed_state_from_comfy_history() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        comfy = _FakeComfyClient(
+            history={
+                "comfy-prompt-1": {
+                    "status": {"completed": True, "status_str": "error"},
+                    "outputs": {},
+                }
+            }
+        )
+        runner = PublishedSetupRunner(registry, comfy)
+        app = _app_with_registry(registry, setup_runner_factory=lambda: runner)
+
+        run_response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "external prompt"}},
+        )
+        run_id = _json_body(run_response)["run"]["runId"]
+        status_response = await _handle(app, "GET", f"/koolook/api/runs/{run_id}")
+
+        assert status_response.status == 200
+        assert _json_body(status_response)["run"]["status"] == "failed"
+
+    asyncio.run(exercise())
+
+
+def test_run_route_returns_clear_errors_for_invalid_inputs() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(registry, _FakeComfyClient()),
+        )
+
+        response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "ok", "seed": 123}},
+        )
+
+        assert response.status == 400
+        assert _json_body(response) == {
+            "ok": False,
+            "errors": ["input 'seed' is not declared by this setup"],
+        }
+
+    asyncio.run(exercise())
+
+
+def test_run_route_returns_clear_error_for_non_callable_setup() -> None:
+    async def exercise() -> None:
+        setup = _valid_setup()
+        setup["apiPrompt"] = None
+        setup["validation"] = {"status": "draft", "diagnostics": ["API prompt conversion pending."]}
+        registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(registry, _FakeComfyClient()),
+        )
+
+        response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "ok"}},
+        )
+
+        assert response.status == 400
+        assert _json_body(response) == {
+            "ok": False,
+            "errors": ["Published setup 'ltx-director-demo' is not callable."],
+        }
+
+    asyncio.run(exercise())
+
+
+def test_run_route_returns_clear_error_for_comfy_queue_failure() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(
+                registry,
+                _FakeComfyClient(queue_error=RuntimeError("server down")),
+            ),
+        )
+
+        response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/ltx-director-demo/run",
+            {"inputs": {"prompt": "ok"}},
+        )
+
+        assert response.status == 502
+        assert _json_body(response) == {
+            "ok": False,
+            "errors": ["ComfyUI queue request failed: server down"],
+        }
+
+    asyncio.run(exercise())
+
+
+def test_run_route_returns_clear_error_for_missing_setup() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(registry, _FakeComfyClient()),
+        )
+
+        response = await _handle_json(
+            app,
+            "POST",
+            "/koolook/api/setups/missing/run",
+            {"inputs": {"prompt": "ok"}},
+        )
+
+        assert response.status == 404
+        assert _json_body(response) == {
+            "ok": False,
+            "errors": ["Published setup 'missing' not found."],
+        }
+
+    asyncio.run(exercise())
+
+
+def test_run_status_route_returns_clear_error_for_unknown_run_id() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        app = _app_with_registry(
+            registry,
+            setup_runner_factory=lambda: PublishedSetupRunner(registry, _FakeComfyClient()),
+        )
+
+        response = await _handle(app, "GET", "/koolook/api/runs/run-missing")
+
+        assert response.status == 404
+        assert _json_body(response) == {
+            "ok": False,
+            "errors": ["Koolook run 'run-missing' not found."],
+        }
+
+    asyncio.run(exercise())
+
+
+class _FakeComfyClient:
+    def __init__(self, *, history=None, queue=None, queue_error=None) -> None:
+        self.submitted_prompts: list[dict] = []
+        self.history = history or {}
+        self.queue = queue or {"queue_running": [], "queue_pending": []}
+        self.queue_error = queue_error
+
+    async def queue_prompt(self, prompt: dict) -> dict:
+        if self.queue_error is not None:
+            raise self.queue_error
+        self.submitted_prompts.append(prompt)
+        return {"prompt_id": "comfy-prompt-1"}
+
+    async def get_history(self, prompt_id: str) -> dict:
+        return {prompt_id: self.history[prompt_id]} if prompt_id in self.history else {}
+
+    async def get_queue(self) -> dict:
+        return self.queue
+
+
+def _app_with_registry(
+    registry: PublishedSetupRegistry,
+    *,
+    setup_runner_factory=None,
+) -> web.Application:
     routes = web.RouteTableDef()
-    koolook_routes.register_routes(routes, setup_registry_factory=lambda: registry)
+    koolook_routes.register_routes(
+        routes,
+        setup_registry_factory=lambda: registry,
+        setup_runner_factory=setup_runner_factory,
+    )
     app = web.Application()
     app.add_routes(routes)
     return app
