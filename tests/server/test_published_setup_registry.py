@@ -334,6 +334,350 @@ def test_publish_setup_converts_supported_visual_graph_to_api_prompt() -> None:
     assert registry.listSetups()[0]["id"] == "my-callable-flow"
 
 
+def test_publish_setup_allows_empty_description() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": None}],
+                    "widgets_values": ["default prompt"],
+                }
+            ],
+            "links": [],
+        },
+        metadata={"id": "empty-description-flow", "title": "Empty Description", "description": ""},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "text"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Empty Description"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("empty-description-flow")
+    assert setup is not None
+    assert setup["metadata"]["description"] == ""
+
+
+def test_publish_setup_converts_text_multiline_without_serialized_inputs() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 3,
+                "type": "Text Multiline",
+                "pos": [40, 40],
+                "size": [300, 100],
+                "inputs": [],
+                "widgets_values": ["W:/projects/example/frames"],
+            },
+            {
+                "id": 1,
+                "type": "SaveEXRFrames",
+                "pos": [420, 40],
+                "size": [240, 180],
+                "inputs": [],
+                "widgets_values": ["path/to/frame%04d.exr", "linear", 1001, False, "ui"],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 340, 160]},
+            {"title": "Koolook Output", "bounding": [400, 20, 300, 240]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "text-multiline-simple-setup",
+            "title": "Text Multiline Simple Setup",
+            "description": "A simple setup with widget-only source text.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Text Multiline"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("text-multiline-simple-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["3"]["inputs"] == {"text": "W:/projects/example/frames"}
+
+
+def test_publish_setup_rejects_text_multiline_without_widget_value() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 3,
+                    "type": "Text Multiline",
+                    "pos": [40, 40],
+                    "size": [300, 100],
+                    "inputs": [],
+                },
+                {"id": 1, "type": "Preview Image", "pos": [420, 40], "size": [240, 180], "inputs": []},
+            ],
+            "links": [],
+            "groups": [
+                {"title": "Koolook Input", "bounding": [20, 20, 340, 160]},
+                {"title": "Koolook Output", "bounding": [400, 20, 300, 240]},
+            ],
+        },
+        metadata={
+            "id": "missing-text-widget",
+            "title": "Missing Text Widget",
+            "description": "Missing widget-backed text.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Missing Text"},
+    )
+
+    assert result.valid is False
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input text"
+        in result.diagnostics
+    )
+
+
+def test_publish_setup_converts_easy_ai_pipeline_widget_only_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 6,
+                "type": "EasyAIPipeline",
+                "pos": [40, 40],
+                "size": [420, 700],
+                "inputs": [],
+                "widgets_values": [
+                    81,
+                    453453453,
+                    "Place your base folder path in the FIELD below",
+                    "W:/projects/example",
+                    ".%04d.exr",
+                    "msk",
+                    "",
+                    "1",
+                    False,
+                    False,
+                    "W:/preview/path/frame.%04d.exr",
+                    "",
+                    None,
+                    None,
+                ],
+            },
+            {"id": 1, "type": "SaveEXRFrames", "pos": [620, 40], "size": [240, 180], "inputs": []},
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 500, 760]},
+            {"title": "Koolook Output", "bounding": [600, 20, 300, 240]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "easy-ai-pipeline-simple-setup",
+            "title": "Easy AI Pipeline Simple Setup",
+            "description": "A simple setup with EasyAIPipeline widget-only values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/EasyAIPipeline"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("easy-ai-pipeline-simple-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["6"]["inputs"] == {
+        "shot_duration": 81,
+        "seed_value": 453453453,
+        "instruction": "Place your base folder path in the FIELD below",
+        "base_directory_path": "W:/projects/example",
+        "extension": ".%04d.exr",
+        "shot_name": "msk",
+        "ai_method": "",
+        "version": "1",
+        "disable_versioning": False,
+        "enable_overwrite": False,
+        "no_subfolders": False,
+    }
+
+
+def test_publish_setup_rejects_partial_easy_ai_pipeline_widget_only_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 6,
+                    "type": "EasyAIPipeline",
+                    "pos": [40, 40],
+                    "size": [420, 700],
+                    "inputs": [],
+                    "widgets_values": [81],
+                },
+                {"id": 1, "type": "SaveEXRFrames", "pos": [620, 40], "size": [240, 180], "inputs": []},
+            ],
+            "links": [],
+            "groups": [
+                {"title": "Koolook Input", "bounding": [20, 20, 500, 760]},
+                {"title": "Koolook Output", "bounding": [600, 20, 300, 240]},
+            ],
+        },
+        metadata={
+            "id": "partial-easy-ai-pipeline",
+            "title": "Partial Easy AI Pipeline",
+            "description": "Missing widget-backed pipeline values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Partial EasyAIPipeline"},
+    )
+
+    assert result.valid is False
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input seed_value"
+        in result.diagnostics
+    )
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input base_directory_path"
+        in result.diagnostics
+    )
+    assert (
+        "visualGraph.nodes[0].widgets_values is missing a value for widget-only input no_subfolders"
+        not in result.diagnostics
+    )
+
+
+def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 10,
+                "type": "sam3-subgraph",
+                "inputs": [
+                    {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": None},
+                    {"name": "threshold", "type": "FLOAT", "widget": {"name": "threshold"}, "link": None},
+                    {"name": "image", "type": "IMAGE", "link": 42},
+                ],
+                "properties": {
+                    "proxyWidgets": [
+                        ["135", "text"],
+                        ["133", "threshold"],
+                    ],
+                },
+                "widgets_values": [],
+            },
+            {"id": 20, "type": "LoadImage", "inputs": []},
+        ],
+        "links": [
+            [42, 20, 0, 10, 2, "IMAGE"],
+        ],
+        "definitions": {
+            "subgraphs": [
+                {
+                    "id": "sam3-subgraph",
+                    "nodes": [
+                        {
+                            "id": 135,
+                            "type": "CLIPTextEncode",
+                            "inputs": [
+                                {"name": "clip", "type": "CLIP", "link": 1},
+                                {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": 2},
+                            ],
+                            "widgets_values": ["bear"],
+                        },
+                        {
+                            "id": 133,
+                            "type": "SAM3_Detect",
+                            "inputs": [
+                                {"name": "image", "type": "IMAGE", "link": 3},
+                                {"name": "threshold", "type": "FLOAT", "widget": {"name": "threshold"}, "link": 4},
+                            ],
+                            "widgets_values": [0.5],
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "sam3-proxy-widget-setup",
+            "title": "SAM3 Proxy Widget Setup",
+            "description": "A subgraph wrapper with proxy widget defaults.",
+        },
+        inputContract={"inputs": [{"key": "prompt", "type": "text", "target": {"node": "10", "input": "text"}}]},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/SAM3"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("sam3-proxy-widget-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["10"]["inputs"] == {
+        "text": "bear",
+        "threshold": 0.5,
+        "image": ["20", 0],
+    }
+
+
+def test_publish_setup_converts_widget_values_saved_as_mapping() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 142,
+                "type": "VHS_LoadVideo",
+                "inputs": [
+                    {"name": "video", "type": "COMBO", "widget": {"name": "video"}, "link": None},
+                    {"name": "force_rate", "type": "FLOAT", "widget": {"name": "force_rate"}, "link": None},
+                    {"name": "frame_load_cap", "type": "INT", "widget": {"name": "frame_load_cap"}, "link": None},
+                ],
+                "widgets_values": {
+                    "video": "example.mp4",
+                    "force_rate": 0,
+                    "frame_load_cap": 41,
+                },
+            },
+        ],
+        "links": [],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "mapping-widget-values",
+            "title": "Mapping Widget Values",
+            "description": "A node saved with named widget values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "video"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Mapping Widgets"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("mapping-widget-values")
+    assert setup is not None
+    assert setup["apiPrompt"]["142"]["inputs"] == {
+        "video": "example.mp4",
+        "force_rate": 0,
+        "frame_load_cap": 41,
+    }
+
+
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)
@@ -713,7 +1057,7 @@ def test_publish_setup_rejects_link_with_malformed_origin_slot() -> None:
     result = registry.publishSetup(
         visualGraph={
             "nodes": [
-                {"id": 12, "type": "Text Multiline", "inputs": []},
+                {"id": 12, "type": "Text Multiline", "inputs": [], "widgets_values": ["prompt"]},
                 {
                     "id": 20,
                     "type": "Text Concatenate",
@@ -742,7 +1086,7 @@ def test_publish_setup_converts_links_from_nodes_declared_later() -> None:
                 "type": "Text Concatenate",
                 "inputs": [{"name": "text_a", "type": "STRING", "link": 101}],
             },
-            {"id": 12, "type": "Text Multiline", "inputs": []},
+            {"id": 12, "type": "Text Multiline", "inputs": [], "widgets_values": ["prompt"]},
         ],
         "links": [[101, 12, 0, 20, 0, "STRING"]],
     }

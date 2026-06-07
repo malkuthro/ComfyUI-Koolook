@@ -25,6 +25,27 @@ SAMPLE_SETUPS_PATH = (
 SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
+WIDGET_ONLY_INPUTS_BY_CLASS = {
+    "Text Multiline": ("text",),
+    "EasyAIPipeline": (
+        "shot_duration",
+        "seed_value",
+        "instruction",
+        "base_directory_path",
+        "extension",
+        "shot_name",
+        "ai_method",
+        "version",
+        "disable_versioning",
+        "enable_overwrite",
+        "no_subfolders",
+    ),
+}
+WIDGET_ONLY_INPUT_DEFAULTS = {
+    "EasyAIPipeline": {
+        "no_subfolders": False,
+    },
+}
 
 REQUIRED_SETUP_KEYS = (
     "schemaVersion",
@@ -618,9 +639,11 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 [f"visualGraph.nodes[{node_index}].inputs must be a list when present"],
             )
 
-        widget_values = node.get("widgets_values")
-        if not isinstance(widget_values, list):
-            widget_values = []
+        raw_widget_values = node.get("widgets_values")
+        widget_values_by_name = raw_widget_values if isinstance(raw_widget_values, dict) else {}
+        widget_values = raw_widget_values if isinstance(raw_widget_values, list) else []
+        if not widget_values and not widget_values_by_name:
+            widget_values = _proxy_widget_values_from_subgraph(visual_graph, node)
         widget_index = 0
         api_inputs: dict[str, Any] = {}
         for input_index, input_port in enumerate(node_inputs):
@@ -689,6 +712,9 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 continue
             widget = input_port.get("widget")
             if isinstance(widget, dict):
+                if name in widget_values_by_name:
+                    api_inputs[name] = widget_values_by_name[name]
+                    continue
                 if widget_index >= len(widget_values):
                     return ApiPromptConversionResult(
                         None,
@@ -700,9 +726,123 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
                 api_inputs[name] = widget_values[widget_index]
                 widget_index += 1
 
+        if not node_inputs:
+            widget_only_diagnostics = _apply_widget_only_inputs(
+                class_type,
+                widget_values,
+                api_inputs,
+                node_index,
+            )
+            if widget_only_diagnostics:
+                return ApiPromptConversionResult(None, widget_only_diagnostics)
         api_prompt[node_id_key] = {"class_type": class_type, "inputs": api_inputs}
 
     return ApiPromptConversionResult(api_prompt, [])
+
+
+def _apply_widget_only_inputs(
+    class_type: str,
+    widget_values: list[Any],
+    api_inputs: dict[str, Any],
+    node_index: int,
+) -> list[str]:
+    if api_inputs:
+        return []
+    widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(class_type)
+    if not widget_names:
+        return []
+    defaults = WIDGET_ONLY_INPUT_DEFAULTS.get(class_type, {})
+    diagnostics: list[str] = []
+    for index, name in enumerate(widget_names):
+        if index < len(widget_values):
+            value = widget_values[index]
+            if name == "no_subfolders" and not isinstance(value, bool):
+                value = defaults.get(name, False)
+            api_inputs[name] = value
+        elif name in defaults:
+            api_inputs[name] = defaults[name]
+        else:
+            diagnostics.append(
+                f"visualGraph.nodes[{node_index}].widgets_values is missing a value "
+                f"for widget-only input {name}"
+            )
+    return diagnostics
+
+
+def _proxy_widget_values_from_subgraph(
+    visual_graph: dict[str, Any],
+    node: dict[str, Any],
+) -> list[Any]:
+    properties = node.get("properties")
+    if not isinstance(properties, dict):
+        return []
+    proxy_widgets = properties.get("proxyWidgets")
+    if not isinstance(proxy_widgets, list):
+        return []
+    subgraph = _subgraph_definition(visual_graph, str(node.get("type", "")))
+    if subgraph is None:
+        return []
+    subgraph_nodes = subgraph.get("nodes")
+    if not isinstance(subgraph_nodes, list):
+        return []
+
+    nodes_by_id = {
+        str(subgraph_node.get("id")): subgraph_node
+        for subgraph_node in subgraph_nodes
+        if isinstance(subgraph_node, dict) and subgraph_node.get("id") is not None
+    }
+    values: list[Any] = []
+    for proxy_widget in proxy_widgets:
+        if not isinstance(proxy_widget, list) or len(proxy_widget) < 2:
+            continue
+        source_node = nodes_by_id.get(str(proxy_widget[0]))
+        widget_name = proxy_widget[1]
+        if not isinstance(source_node, dict) or not isinstance(widget_name, str):
+            continue
+        found, value = _node_widget_value(source_node, widget_name)
+        if found:
+            values.append(value)
+    return values
+
+
+def _subgraph_definition(
+    visual_graph: dict[str, Any],
+    subgraph_id: str,
+) -> dict[str, Any] | None:
+    definitions = visual_graph.get("definitions")
+    if not isinstance(definitions, dict):
+        return None
+    subgraphs = definitions.get("subgraphs")
+    if not isinstance(subgraphs, list):
+        return None
+    for subgraph in subgraphs:
+        if isinstance(subgraph, dict) and subgraph.get("id") == subgraph_id:
+            return subgraph
+    return None
+
+
+def _node_widget_value(
+    node: dict[str, Any],
+    widget_name: str,
+) -> tuple[bool, Any]:
+    inputs = node.get("inputs")
+    widget_values = node.get("widgets_values")
+    if not isinstance(inputs, list) or not isinstance(widget_values, list):
+        return False, None
+
+    widget_index = 0
+    for input_port in inputs:
+        if not isinstance(input_port, dict):
+            continue
+        widget = input_port.get("widget")
+        if not isinstance(widget, dict):
+            continue
+        if widget.get("name") == widget_name:
+            if widget_index >= len(widget_values):
+                return False, None
+            return True, widget_values[widget_index]
+        widget_index += 1
+    return False, None
 
 
 @dataclass(frozen=True)
@@ -892,9 +1032,10 @@ def _validate_metadata(value: Any, diagnostics: list[str]) -> None:
     if not isinstance(value, dict):
         diagnostics.append("metadata must be a JSON object")
         return
-    for key in ("title", "description"):
-        if not isinstance(value.get(key), str) or not value[key].strip():
-            diagnostics.append(f"metadata.{key} must be non-empty text")
+    if not isinstance(value.get("title"), str) or not value["title"].strip():
+        diagnostics.append("metadata.title must be non-empty text")
+    if "description" in value and not isinstance(value["description"], str):
+        diagnostics.append("metadata.description must be text")
     if "category" in value and not isinstance(value["category"], str):
         diagnostics.append("metadata.category must be text")
     if "tags" in value and not _is_string_list(value["tags"]):
