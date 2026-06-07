@@ -334,6 +334,33 @@ def test_publish_setup_converts_supported_visual_graph_to_api_prompt() -> None:
     assert registry.listSetups()[0]["id"] == "my-callable-flow"
 
 
+def test_publish_setup_allows_empty_description() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph={
+            "nodes": [
+                {
+                    "id": 12,
+                    "type": "Text Multiline",
+                    "inputs": [{"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": None}],
+                    "widgets_values": ["default prompt"],
+                }
+            ],
+            "links": [],
+        },
+        metadata={"id": "empty-description-flow", "title": "Empty Description", "description": ""},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "text"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Empty Description"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("empty-description-flow")
+    assert setup is not None
+    assert setup["metadata"]["description"] == ""
+
+
 def test_publish_setup_converts_text_multiline_without_serialized_inputs() -> None:
     registry = PublishedSetupRegistry(StaticSetupStorage([]))
     visual_graph = {

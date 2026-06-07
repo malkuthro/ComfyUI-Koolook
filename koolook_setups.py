@@ -1017,9 +1017,10 @@ def _validate_metadata(value: Any, diagnostics: list[str]) -> None:
     if not isinstance(value, dict):
         diagnostics.append("metadata must be a JSON object")
         return
-    for key in ("title", "description"):
-        if not isinstance(value.get(key), str) or not value[key].strip():
-            diagnostics.append(f"metadata.{key} must be non-empty text")
+    if not isinstance(value.get("title"), str) or not value["title"].strip():
+        diagnostics.append("metadata.title must be non-empty text")
+    if "description" in value and not isinstance(value["description"], str):
+        diagnostics.append("metadata.description must be text")
     if "category" in value and not isinstance(value["category"], str):
         diagnostics.append("metadata.category must be text")
     if "tags" in value and not _is_string_list(value["tags"]):

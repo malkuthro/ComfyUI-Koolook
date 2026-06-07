@@ -44,7 +44,7 @@ Each published setup object uses this shape:
   "updatedAt": "2026-06-06T08:00:00Z",
   "metadata": {
     "title": "Setup title",
-    "description": "User-facing description",
+    "description": "Optional user-facing description",
     "category": "Video",
     "tags": ["tag"],
     "previewImage": ""
@@ -360,7 +360,7 @@ choose **Publish setup...**. Archived workflows do not expose this action.
 
 The dialog captures:
 
-- setup id, title, description, category, tags, and optional preview/card reference
+- setup id, title, optional description, category, tags, and optional preview/card reference
 - the source workflow reference, shown read-only as `Folder/Workflow name`
 - inferred `Koolook Input` / `Koolook Output` node summaries
 - advanced input/output contract JSON when group inference is not enough
