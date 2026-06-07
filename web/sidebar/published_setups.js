@@ -41,6 +41,7 @@ function normalizeMetadata(metadata) {
 export async function publishSavedWorkflowSetup({
     dirPath,
     wfName,
+    visualGraph,
     metadata,
     inputContract,
     outputContract,
@@ -48,7 +49,9 @@ export async function publishSavedWorkflowSetup({
     fetchImpl = fetch,
 }) {
     const path = Array.isArray(dirPath) ? dirPath : [];
-    const graph = getWorkflowGraph(path, wfName);
+    const graph = (visualGraph && typeof visualGraph === "object")
+        ? visualGraph
+        : getWorkflowGraph(path, wfName);
     if (!graph || typeof graph !== "object") {
         throw new Error("Saved workflow not found.");
     }

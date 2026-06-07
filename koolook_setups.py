@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -196,6 +197,11 @@ class PublishedSetupRegistry:
         conversion = _convert_visual_graph_to_api_prompt(visualGraph)
         if conversion.diagnostics:
             return ValidationResult(False, {}, conversion.diagnostics)
+        surface_geometry_diagnostics = []
+        if _uses_group_authored_surface(inputContract, outputContract):
+            surface_geometry_diagnostics = _validate_setup_surface_geometry(visualGraph)
+        if surface_geometry_diagnostics:
+            return ValidationResult(False, {}, surface_geometry_diagnostics)
         setup = _build_draft_setup(
             visualGraph=visualGraph,
             apiPrompt=conversion.api_prompt,
@@ -208,6 +214,7 @@ class PublishedSetupRegistry:
         diagnostics = list(result.diagnostics)
         diagnostics.extend(_validate_contract_targets(visualGraph, inputContract))
         diagnostics.extend(_validate_api_prompt_contract_targets(conversion.api_prompt, inputContract))
+        diagnostics.extend(_validate_setup_surface(setup, inputContract, outputContract))
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
 
@@ -258,6 +265,7 @@ def validate_setup(value: Any) -> ValidationResult:
                 diagnostics.append("apiPrompt is stale for visualGraph")
     _validate_contract(value.get("inputContract"), "inputContract", "inputs", diagnostics)
     _validate_contract(value.get("outputContract"), "outputContract", "outputs", diagnostics)
+    _validate_persisted_setup_surface(value, diagnostics)
     _validate_source(value.get("source"), diagnostics)
     _validate_validation(value.get("validation"), diagnostics)
     if (
@@ -285,6 +293,7 @@ def _build_draft_setup(
 ) -> dict[str, Any]:
     title = metadata.get("title", "")
     setup_id = metadata.get("id", "")
+    setup_surface = _infer_setup_surface(visualGraph)
     return {
         "schemaVersion": SUPPORTED_SCHEMA_VERSION,
         "id": setup_id,
@@ -301,12 +310,265 @@ def _build_draft_setup(
         "apiPrompt": apiPrompt,
         "inputContract": inputContract,
         "outputContract": outputContract,
+        "setupSurface": setup_surface,
         "source": source,
         "validation": {
             "status": "valid" if apiPrompt is not None else "draft",
             "diagnostics": [] if apiPrompt is not None else ["API prompt conversion pending."],
         },
     }
+
+
+def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sourceInputs": _nodes_in_named_groups(visual_graph, "Koolook Input"),
+        "outputs": _nodes_in_named_groups(visual_graph, "Koolook Output"),
+        "controls": [],
+    }
+
+
+def _validate_setup_surface(
+    setup: dict[str, Any],
+    input_contract: dict[str, Any],
+    output_contract: dict[str, Any],
+) -> list[str]:
+    if not _uses_group_authored_surface(input_contract, output_contract):
+        return []
+    surface = setup.get("setupSurface")
+    diagnostics: list[str] = []
+    if not isinstance(surface, dict) or not surface.get("sourceInputs"):
+        diagnostics.append("setupSurface.sourceInputs requires a non-empty Koolook Input group")
+    if not isinstance(surface, dict) or not surface.get("outputs"):
+        diagnostics.append("setupSurface.outputs requires a non-empty Koolook Output group")
+    return diagnostics
+
+
+def _validate_persisted_setup_surface(
+    setup: dict[str, Any],
+    diagnostics: list[str],
+) -> None:
+    surface = setup.get("setupSurface")
+    input_contract = setup.get("inputContract")
+    output_contract = setup.get("outputContract")
+    group_authored = (
+        isinstance(input_contract, dict)
+        and isinstance(output_contract, dict)
+        and _uses_group_authored_surface(input_contract, output_contract)
+    )
+    if surface is None:
+        if group_authored:
+            diagnostics.append("setupSurface must be a JSON object for group-authored setups")
+        return
+    if not isinstance(surface, dict):
+        diagnostics.append("setupSurface must be a JSON object")
+        return
+    for key in ("sourceInputs", "outputs", "controls"):
+        if key in surface and not isinstance(surface[key], list):
+            diagnostics.append(f"setupSurface.{key} must be a list")
+    if group_authored:
+        if not isinstance(surface.get("sourceInputs"), list) or not surface["sourceInputs"]:
+            diagnostics.append("setupSurface.sourceInputs requires a non-empty Koolook Input group")
+        if not isinstance(surface.get("outputs"), list) or not surface["outputs"]:
+            diagnostics.append("setupSurface.outputs requires a non-empty Koolook Output group")
+    for key in ("sourceInputs", "outputs", "controls"):
+        items = surface.get(key)
+        if isinstance(items, list):
+            _validate_surface_entries(items, f"setupSurface.{key}", diagnostics)
+
+
+def _validate_surface_entries(
+    entries: list[Any],
+    path: str,
+    diagnostics: list[str],
+) -> None:
+    for entry_index, entry in enumerate(entries):
+        entry_path = f"{path}[{entry_index}]"
+        if not isinstance(entry, dict):
+            diagnostics.append(f"{entry_path} must be a JSON object")
+            continue
+        if not isinstance(entry.get("group"), str) or not entry["group"].strip():
+            diagnostics.append(f"{entry_path}.group must be non-empty text")
+        nodes = entry.get("nodes")
+        if not isinstance(nodes, list):
+            diagnostics.append(f"{entry_path}.nodes must be a list")
+            continue
+        for node_index, node in enumerate(nodes):
+            node_path = f"{entry_path}.nodes[{node_index}]"
+            if not isinstance(node, dict):
+                diagnostics.append(f"{node_path} must be a JSON object")
+                continue
+            for field in ("id", "type", "title"):
+                if not isinstance(node.get(field), str) or not node[field].strip():
+                    diagnostics.append(f"{node_path}.{field} must be non-empty text")
+
+
+def _uses_group_authored_surface(
+    input_contract: dict[str, Any],
+    output_contract: dict[str, Any],
+) -> bool:
+    inputs = input_contract.get("inputs")
+    outputs = output_contract.get("outputs")
+    return inputs == [] and outputs == []
+
+
+def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = visual_graph.get("groups")
+    nodes = visual_graph.get("nodes")
+    if not isinstance(groups, list) or not isinstance(nodes, list):
+        return []
+
+    node_rects = [
+        (node, _rect_from_node(node))
+        for node in nodes
+        if isinstance(node, dict)
+    ]
+    out: list[dict[str, Any]] = []
+    for group in groups:
+        if not isinstance(group, dict) or group.get("title") != group_title:
+            continue
+        group_rect = _rect_from_group(group)
+        group_nodes = [
+            _surface_node_summary(node)
+            for node, node_rect in node_rects
+            if _rects_overlap(group_rect, node_rect)
+        ]
+        if group_nodes:
+            out.append({"group": group_title, "nodes": group_nodes})
+    return out
+
+
+def _validate_setup_surface_geometry(visual_graph: dict[str, Any]) -> list[str]:
+    diagnostics: list[str] = []
+    groups = visual_graph.get("groups")
+    if isinstance(groups, list):
+        for group_index, group in enumerate(groups):
+            if not isinstance(group, dict) or group.get("title") not in {"Koolook Input", "Koolook Output"}:
+                continue
+            bounding = group.get("bounding")
+            pos = group.get("pos")
+            size = group.get("size")
+            if bounding is not None:
+                if (
+                    not isinstance(bounding, list)
+                    or len(bounding) < 4
+                    or not all(_is_number(value) for value in bounding[:4])
+                ):
+                    diagnostics.append(
+                        f"visualGraph.groups[{group_index}].bounding must contain numeric "
+                        "x, y, width, height"
+                    )
+                continue
+            if pos is not None or size is not None:
+                if (
+                    not isinstance(pos, list)
+                    or len(pos) < 2
+                    or not all(_is_number(value) for value in pos[:2])
+                    or not isinstance(size, list)
+                    or len(size) < 2
+                    or not all(_is_number(value) for value in size[:2])
+                ):
+                    diagnostics.append(
+                        f"visualGraph.groups[{group_index}].pos/size must contain numeric "
+                        "x, y, width, height"
+                    )
+                continue
+            diagnostics.append(
+                f"visualGraph.groups[{group_index}] must define bounding or pos/size "
+                "for setup surface inference"
+            )
+    nodes = visual_graph.get("nodes")
+    if isinstance(nodes, list):
+        for node_index, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                continue
+            pos = node.get("pos")
+            if pos is not None and (
+                not isinstance(pos, list)
+                or len(pos) < 2
+                or not all(_is_number(value) for value in pos[:2])
+            ):
+                diagnostics.append(
+                    f"visualGraph.nodes[{node_index}].pos must contain numeric x and y "
+                    "for setup surface inference"
+                )
+            size = node.get("size")
+            if size is not None and (
+                not isinstance(size, list)
+                or len(size) < 2
+                or not all(_is_number(value) for value in size[:2])
+            ):
+                diagnostics.append(
+                    f"visualGraph.nodes[{node_index}].size must contain numeric width and height "
+                    "for setup surface inference"
+                )
+    return diagnostics
+
+
+def _surface_node_summary(node: dict[str, Any]) -> dict[str, str]:
+    node_type = node.get("type")
+    node_title = node.get("title")
+    return {
+        "id": str(node.get("id")),
+        "type": node_type if isinstance(node_type, str) else "",
+        "title": node_title if isinstance(node_title, str) and node_title else (
+            node_type if isinstance(node_type, str) else str(node.get("id"))
+        ),
+    }
+
+
+def _rect_from_group(group: dict[str, Any]) -> dict[str, float] | None:
+    bounding = group.get("bounding")
+    if isinstance(bounding, list) and len(bounding) >= 4:
+        return {
+            "x": _number_or_default(bounding[0], 0),
+            "y": _number_or_default(bounding[1], 0),
+            "w": _number_or_default(bounding[2], 0),
+            "h": _number_or_default(bounding[3], 0),
+        }
+    pos = group.get("pos")
+    size = group.get("size")
+    if isinstance(pos, list) and isinstance(size, list) and len(pos) >= 2 and len(size) >= 2:
+        return {
+            "x": _number_or_default(pos[0], 0),
+            "y": _number_or_default(pos[1], 0),
+            "w": _number_or_default(size[0], 0),
+            "h": _number_or_default(size[1], 0),
+        }
+    return None
+
+
+def _rect_from_node(node: dict[str, Any]) -> dict[str, float] | None:
+    pos = node.get("pos")
+    if not isinstance(pos, list) or len(pos) < 2:
+        return None
+    size = node.get("size")
+    if not isinstance(size, list) or len(size) < 2:
+        size = [200, 100]
+    return {
+        "x": _number_or_default(pos[0], 0),
+        "y": _number_or_default(pos[1], 0),
+        "w": _number_or_default(size[0], 200),
+        "h": _number_or_default(size[1], 100),
+    }
+
+
+def _rects_overlap(a: dict[str, float] | None, b: dict[str, float] | None) -> bool:
+    if not a or not b or a["w"] <= 0 or a["h"] <= 0 or b["w"] <= 0 or b["h"] <= 0:
+        return False
+    return (
+        a["x"] < b["x"] + b["w"]
+        and a["x"] + a["w"] > b["x"]
+        and a["y"] < b["y"] + b["h"]
+        and a["y"] + a["h"] > b["y"]
+    )
+
+
+def _number_or_default(value: Any, default: float) -> float:
+    return value if isinstance(value, int | float) else default
+
+
+def _is_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int | float) and math.isfinite(value)
 
 
 def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiPromptConversionResult:

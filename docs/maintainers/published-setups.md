@@ -81,6 +81,21 @@ Each published setup object uses this shape:
       }
     ]
   },
+  "setupSurface": {
+    "sourceInputs": [
+      {
+        "group": "Koolook Input",
+        "nodes": [{ "id": "12", "type": "Load Image", "title": "Source image" }]
+      }
+    ],
+    "outputs": [
+      {
+        "group": "Koolook Output",
+        "nodes": [{ "id": "20", "type": "Preview Image", "title": "Preview" }]
+      }
+    ],
+    "controls": []
+  },
   "source": {
     "kind": "sidebar-workflow",
     "path": "Folder/Workflow name"
@@ -191,11 +206,31 @@ machine-readable contract. The reserved group names are:
 - `Koolook Controls`: future optional controls area for prompt, seed, strength,
   size, mode, or other user-tweakable fields.
 
-Sidebar selection saves now preserve ComfyUI groups that overlap selected nodes,
-which is the prerequisite for later publish-time inference. Current publish
-still accepts explicit JSON contracts; future slices should infer
-`sourceInputs`, `outputs`, and optional `controls` from these groups and keep
-raw JSON editing as an advanced fallback.
+Sidebar selection saves preserve ComfyUI groups that overlap selected nodes.
+Publish infers a machine-readable `setupSurface` from the reserved groups:
+
+```json
+{
+  "sourceInputs": [
+    {
+      "group": "Koolook Input",
+      "nodes": [{ "id": "12", "type": "Load Image", "title": "Source image" }]
+    }
+  ],
+  "outputs": [
+    {
+      "group": "Koolook Output",
+      "nodes": [{ "id": "20", "type": "Preview Image", "title": "Preview" }]
+    }
+  ],
+  "controls": []
+}
+```
+
+When the publish dialog uses the group-first path, `inputContract.inputs` and
+`outputContract.outputs` are submitted as empty arrays and the server requires
+non-empty `Koolook Input` and `Koolook Output` groups. Explicit JSON contracts
+still work as the advanced fallback for older or unusual workflows.
 
 ## Callable Visual Workflow Standard
 
@@ -289,6 +324,22 @@ Curators should treat publish diagnostics as setup authoring feedback:
 - `inputContract.inputs[N].target.input not found in generated apiPrompt`: the
   contract points at a visual input that is not injectable in the generated API
   prompt.
+- `setupSurface must be a JSON object for group-authored setups`: a stored
+  group-first setup has empty input/output contracts but lacks its persisted
+  inferred app surface, so it is hidden from list/detail responses.
+- `setupSurface.sourceInputs[N].nodes[M].type must be non-empty text`: a stored
+  setup surface node summary is malformed.
+- `visualGraph.groups[N].bounding must contain numeric x, y, width, height`: a
+  reserved setup group has malformed rectangle data, so publish cannot safely
+  infer membership.
+- `visualGraph.nodes[N].pos must contain numeric x and y for setup surface inference`:
+  a visual node has malformed placement data that could infer the wrong group.
+- `setupSurface.sourceInputs requires a non-empty Koolook Input group`: the
+  group-first publish path was used, but no node overlapped a `Koolook Input`
+  group.
+- `setupSurface.outputs requires a non-empty Koolook Output group`: the
+  group-first publish path was used, but no node overlapped a `Koolook Output`
+  group.
 - `apiPrompt is stale for visualGraph`: a stored record's visual graph no
   longer regenerates to the saved API prompt, so the record is hidden from
   list/detail responses until republished.
@@ -302,15 +353,16 @@ The dialog captures:
 
 - setup id, title, description, category, tags, and optional preview/card reference
 - the source workflow reference, shown read-only as `Folder/Workflow name`
-- input contract JSON
-- output contract JSON
+- inferred `Koolook Input` / `Koolook Output` node summaries
+- advanced input/output contract JSON when group inference is not enough
 
 The client validates that the selected saved workflow still exists before
 calling the publish API. The server validates metadata/schema shape, converts
-the submitted graph to an API prompt, and checks input targets against both the
-submitted graph and generated prompt. Ordinary saved workflows are not published
-automatically; only the explicit context-menu publish action writes to the
-registry.
+the submitted graph to an API prompt, stores the inferred setup surface, and
+checks explicit input targets against both the submitted graph and generated
+prompt when advanced contracts are used. Ordinary saved workflows are not
+published automatically; only the explicit context-menu publish action writes
+to the registry.
 
 ## Contract Authoring Rules
 

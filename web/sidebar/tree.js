@@ -1784,14 +1784,17 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
     const publishSetupItem = {
         label: "Publish setup…",
         action: () => {
+            const visualGraph = getWorkflowGraph(dirPath, wfName);
             showPublishSetupModal({
                 wfName,
                 dirPath,
                 currentTags: getWorkflowTags(dirPath, wfName) || [],
+                visualGraph,
                 onPublish: async ({ metadata, inputContract, outputContract }) => {
                     const result = await publishSavedWorkflowSetup({
                         dirPath,
                         wfName,
+                        visualGraph,
                         metadata,
                         inputContract,
                         outputContract,

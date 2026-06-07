@@ -116,3 +116,50 @@ def test_publish_saved_workflow_rejects_missing_source_before_fetch() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_publish_saved_workflow_can_submit_reviewed_visual_graph() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { publishSavedWorkflowSetup } from "./web/sidebar/published_setups.js";
+
+        const reviewedGraph = {
+          nodes: [{ id: 12, type: "Load Image" }],
+          links: [],
+          groups: [{ title: "Koolook Input", bounding: [0, 0, 100, 100] }],
+        };
+        const changedGraph = {
+          nodes: [{ id: 99, type: "Different" }],
+          links: [],
+          groups: [],
+        };
+        let payload;
+
+        await publishSavedWorkflowSetup({
+          dirPath: ["Demos"],
+          wfName: "Director",
+          visualGraph: reviewedGraph,
+          metadata: { id: "director-demo", title: "Director Demo", description: "Reviewed graph" },
+          inputContract: { inputs: [] },
+          outputContract: { outputs: [] },
+          getWorkflowGraph: () => changedGraph,
+          fetchImpl: async (_url, options) => {
+            payload = JSON.parse(options.body);
+            return {
+              ok: true,
+              status: 200,
+              async json() {
+                return { ok: true, setup: { id: "director-demo" } };
+              },
+            };
+          },
+        });
+
+        assert.deepEqual(payload.visualGraph, reviewedGraph);
+        assert.notDeepEqual(payload.visualGraph, changedGraph);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
