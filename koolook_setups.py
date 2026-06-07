@@ -7,10 +7,12 @@ snapshot storage directly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 
@@ -55,6 +57,9 @@ class StaticSetupStorage:
     def load_setups(self) -> list[dict[str, Any]]:
         return list(self._records)
 
+    def save_setups(self, records: list[dict[str, Any]]) -> None:
+        self._records = list(records)
+
 
 class FileSetupStorage:
     """JSON-file storage adapter for published setup records."""
@@ -88,6 +93,46 @@ class FileSetupStorage:
             return []
         return [item for item in raw if isinstance(item, dict)]
 
+    def load_primary_setups(self) -> list[dict[str, Any]]:
+        self.diagnostics = []
+        if not self.path.is_file():
+            return []
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self.diagnostics.append(f"{self.path}: could not read published setups: {exc}")
+            return []
+        if isinstance(raw, dict):
+            raw = raw.get("setups", [])
+        if not isinstance(raw, list):
+            self.diagnostics.append(
+                f"{self.path}: published setup storage must be a list or {{setups: [...]}}"
+            )
+            return []
+        return [item for item in raw if isinstance(item, dict)]
+
+    def save_setups(self, records: list[dict[str, Any]]) -> None:
+        self.diagnostics = []
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"setups": records}
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            prefix=f"{self.path.stem}.",
+            suffix=".tmp",
+            dir=str(self.path.parent),
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+                f.write("\n")
+            os.replace(tmp_name, self.path)
+        except OSError:
+            try:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
 
 class PublishedSetupRegistry:
     """Read-only registry facade for published setup catalog consumers."""
@@ -119,6 +164,51 @@ class PublishedSetupRegistry:
             if setup["id"] == setup_id:
                 return setup
         return None
+
+    def publishSetup(
+        self,
+        *,
+        visualGraph: Any,
+        metadata: Any,
+        inputContract: Any,
+        outputContract: Any,
+        source: Any,
+    ) -> ValidationResult:
+        diagnostics = []
+        for name, value in (
+            ("visualGraph", visualGraph),
+            ("metadata", metadata),
+            ("inputContract", inputContract),
+            ("outputContract", outputContract),
+            ("source", source),
+        ):
+            if not isinstance(value, dict):
+                diagnostics.append(f"{name} must be an object")
+        if diagnostics:
+            return ValidationResult(False, {}, diagnostics)
+
+        setup = _build_draft_setup(
+            visualGraph=visualGraph,
+            metadata=metadata,
+            inputContract=inputContract,
+            outputContract=outputContract,
+            source=source,
+        )
+        result = validate_setup(setup)
+        diagnostics = list(result.diagnostics)
+        diagnostics.extend(_validate_contract_targets(visualGraph, inputContract))
+        if diagnostics:
+            return ValidationResult(False, {}, diagnostics)
+
+        load_for_write = getattr(self._storage, "load_primary_setups", self._storage.load_setups)
+        records = [
+            existing
+            for existing in load_for_write()
+            if existing.get("id") != setup["id"]
+        ]
+        records.append(setup)
+        self._storage.save_setups(records)
+        return ValidationResult(True, setup, [])
 
 
 def validate_setup(value: Any) -> ValidationResult:
@@ -159,6 +249,84 @@ def validate_setup(value: Any) -> ValidationResult:
         setup=value if not diagnostics else {},
         diagnostics=diagnostics,
     )
+
+
+def _build_draft_setup(
+    *,
+    visualGraph: dict[str, Any],
+    metadata: dict[str, Any],
+    inputContract: dict[str, Any],
+    outputContract: dict[str, Any],
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    title = metadata.get("title", "")
+    setup_id = metadata.get("id", "")
+    return {
+        "schemaVersion": SUPPORTED_SCHEMA_VERSION,
+        "id": setup_id,
+        "version": 1,
+        "updatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "metadata": {
+            "title": title,
+            "description": metadata.get("description", ""),
+            "category": metadata.get("category", ""),
+            "tags": metadata.get("tags", []),
+            "previewImage": metadata.get("previewImage", ""),
+        },
+        "visualGraph": visualGraph,
+        "apiPrompt": None,
+        "inputContract": inputContract,
+        "outputContract": outputContract,
+        "source": source,
+        "validation": {
+            "status": "draft",
+            "diagnostics": ["API prompt conversion pending."],
+        },
+    }
+
+
+def _validate_contract_targets(
+    visual_graph: dict[str, Any],
+    input_contract: dict[str, Any],
+) -> list[str]:
+    diagnostics: list[str] = []
+    nodes = visual_graph.get("nodes") if isinstance(visual_graph, dict) else None
+    node_by_id: dict[str, dict[str, Any]] = {}
+    if isinstance(nodes, list):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = node.get("id")
+            if node_id is not None:
+                node_by_id[str(node_id)] = node
+    inputs = input_contract.get("inputs") if isinstance(input_contract, dict) else None
+    if not isinstance(inputs, list):
+        return diagnostics
+    for index, item in enumerate(inputs):
+        if not isinstance(item, dict):
+            continue
+        target = item.get("target")
+        if not isinstance(target, dict):
+            continue
+        node_id = str(target.get("node", ""))
+        input_name = str(target.get("input", ""))
+        node = node_by_id.get(node_id)
+        if node is None:
+            diagnostics.append(
+                f"inputContract.inputs[{index}].target.node not found in visualGraph"
+            )
+            continue
+        node_inputs = node.get("inputs")
+        if not isinstance(node_inputs, list):
+            continue
+        if not any(
+            isinstance(port, dict) and str(port.get("name", "")) == input_name
+            for port in node_inputs
+        ):
+            diagnostics.append(
+                f"inputContract.inputs[{index}].target.input not found in visualGraph node"
+            )
+    return diagnostics
 
 
 def default_storage_path() -> Path:

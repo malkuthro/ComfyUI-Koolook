@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Publish setup dialog harness - Koolook</title>
+<style>
+    :root { color-scheme: dark; }
+    html, body {
+        margin: 0;
+        background: #1e1e1f;
+        color: #d6d8db;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        min-height: 100%;
+    }
+    :root {
+        --comfy-menu-bg: #2a2a2a;
+        --comfy-input-bg: rgba(0,0,0,0.3);
+        --border-color: rgba(255,255,255,0.15);
+        --input-text: #d6d8db;
+        --p-primary-color: rgba(100,150,255,0.5);
+    }
+    .harness-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .harness-title { font-size: 16px; font-weight: 600; margin-right: auto; }
+    .harness-title small { opacity: 0.55; font-weight: 400; font-size: 12px; }
+    .harness-header button {
+        padding: 6px 12px;
+        background: #353636;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 4px;
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .harness-header button:hover { background: #454646; }
+    .harness-stage { padding: 32px 24px; min-height: 70vh; }
+</style>
+</head>
+<body>
+
+<div class="harness-header">
+    <div class="harness-title">
+        Publish setup dialog harness
+        <small>issue #211 - sidebar workflow to callable registry</small>
+    </div>
+    <button id="btn-default">Default</button>
+    <button id="btn-error">Invalid contract error</button>
+</div>
+
+<div class="harness-stage" id="stage"></div>
+
+<script type="module">
+    (async () => {
+    const BUST = "?bust=" + Date.now();
+    const { ensureStyle } = await import("../../../web/sidebar/constants.js" + BUST);
+    const { showPublishSetupModal } = await import("../../../web/sidebar/modals.js" + BUST);
+    ensureStyle();
+
+    function clearDialog() {
+        document.querySelectorAll(".koolook-modal-overlay").forEach((o) => o.remove());
+    }
+
+    function mount({ fail = false } = {}) {
+        clearDialog();
+        showPublishSetupModal({
+            wfName: "Director Demo",
+            dirPath: ["Demos", "Video"],
+            currentTags: ["director", "video"],
+            onPublish: async () => {
+                if (fail) throw new Error("inputContract.inputs[0].target.node not found in visualGraph");
+                console.log("[harness] publish accepted");
+            },
+        });
+        if (fail) {
+            setTimeout(() => {
+                const inputTextarea = document.querySelector(".koolook-modal-textarea");
+                if (inputTextarea) {
+                    inputTextarea.value = JSON.stringify({
+                        inputs: [{
+                            key: "prompt",
+                            label: "Prompt",
+                            type: "text",
+                            required: true,
+                            target: { node: "99", input: "text" },
+                        }],
+                    }, null, 2);
+                }
+                const publish = [...document.querySelectorAll(".koolook-modal-actions button")]
+                    .find((b) => b.textContent === "Publish setup");
+                if (publish) publish.click();
+            }, 120);
+        }
+    }
+
+    document.getElementById("btn-default").addEventListener("click", () => mount());
+    document.getElementById("btn-error").addEventListener("click", () => mount({ fail: true }));
+    mount();
+    })().catch((e) => {
+        const pre = document.createElement("pre");
+        pre.style.cssText = "white-space: pre-wrap; color: #ffb4a8; padding: 24px;";
+        pre.textContent = e.stack || e.message || String(e);
+        document.body.appendChild(pre);
+    });
+</script>
+</body>
+</html>

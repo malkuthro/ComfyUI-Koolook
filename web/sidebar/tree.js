@@ -91,11 +91,13 @@ import {
     showSaveWorkflowModal,
     showContextMenu,
     showTagsModal,
+    showPublishSetupModal,
     showInstallMissingModal,
     showSaveSnapshotDialog,
     showLoadSnapshotDialog,
 } from "./modals.js";
 import { attachHoverPreview, teardownPreview } from "./node_preview.js";
+import { publishSavedWorkflowSetup } from "./published_setups.js";
 import {
     sanitizeName,
     gatherSnapshot,
@@ -1779,6 +1781,27 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         },
     };
 
+    const publishSetupItem = {
+        label: "Publish setup…",
+        action: () => {
+            showPublishSetupModal({
+                wfName,
+                dirPath,
+                currentTags: getWorkflowTags(dirPath, wfName) || [],
+                onPublish: async ({ metadata, inputContract, outputContract }) => {
+                    const result = await publishSavedWorkflowSetup({
+                        dirPath,
+                        wfName,
+                        metadata,
+                        inputContract,
+                        outputContract,
+                    });
+                    toast(`Published setup "${result.setup.id}".`);
+                },
+            });
+        },
+    };
+
     showContextMenu(event, [
         {
             label: "Load",
@@ -1811,6 +1834,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
         },
         duplicateItem,
         tagsItem,
+        ...(!isArchived ? [publishSetupItem] : []),
         archiveItem,
         // New-folder shortcuts — existing-folder moves stay on drag-and-drop
         // so large libraries don't make this context menu taller than the

@@ -15,6 +15,12 @@ The format is inspired by Keep a Changelog and SemVer.
   a bundled sample fixture, and read-only external catalog endpoints:
   `GET /koolook/api/setups` for summaries and
   `GET /koolook/api/setups/{id}` for detail contracts.
+- **Sidebar publish flow for callable setups.** Saved sidebar workflows now
+  expose an explicit **Publish setup...** context-menu action that captures
+  setup metadata, source workflow reference, input/output contract JSON, and
+  an optional preview/card reference. Publishing validates the selected
+  workflow and structurally plausible input targets, persists through the
+  published setup registry, and surfaces through the existing catalog API.
 - **Koolook Loop Status queue controller.** Added `Koolook_LoopStatus`, a
   pass-through node that reports per-frame progress (`1/4`, `2/4`, ...)
   and can queue the next prompt by advancing a connected `easy int` frame
