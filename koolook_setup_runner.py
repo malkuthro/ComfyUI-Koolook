@@ -287,6 +287,40 @@ def _summarize_outputs(setup: dict[str, Any], raw_outputs: Any) -> list[dict[str
                 ],
             }
         )
+    summaries.extend(_summarize_app_surface_outputs(setup, output_items))
+    return summaries
+
+
+def _summarize_app_surface_outputs(
+    setup: dict[str, Any],
+    output_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    app = setup.get("setupSurface", {}).get("app", {})
+    if not isinstance(app, dict):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for field_type, fields in (("output", app.get("outputs")), ("result", app.get("results"))):
+        if not isinstance(fields, list):
+            continue
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            target = field.get("target")
+            target_node = str(target.get("node")) if isinstance(target, dict) else ""
+            summary = {
+                "key": field.get("key", ""),
+                "label": field.get("label", field.get("key", "")),
+                "type": field_type,
+                "visible": field.get("visible", True),
+                "target": target if isinstance(target, dict) else {},
+                "default": field.get("default"),
+                "items": [
+                    item
+                    for item in output_items
+                    if target_node and item.get("nodeId") == target_node
+                ],
+            }
+            summaries.append(summary)
     return summaries
 
 

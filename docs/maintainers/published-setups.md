@@ -286,6 +286,13 @@ produce terminal state and output items; otherwise the runner checks ComfyUI
 queue data to distinguish `running` from still `queued`. Unknown run ids return
 `404`; ComfyUI status lookup failures return `502`.
 
+For group-authored setups, status output summaries also include
+`setupSurface.app.outputs` and `setupSurface.app.results`. This keeps the
+external app aligned with the publish-contract-node surface even when
+`outputContract.outputs` is empty. Result fields include their declared target,
+default value, visibility, and any matching ComfyUI history items for the
+target node.
+
 ## Comfy-Native Setup Surface
 
 Issue #219 amends the #209 direction: curators should define a setup's app
