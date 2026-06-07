@@ -53,3 +53,26 @@ def test_infer_setup_surface_from_koolook_groups() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_infer_setup_surface_ignores_malformed_group_geometry() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { inferSetupSurface } from "./web/sidebar/published_surface.js";
+
+        const surface = inferSetupSurface({
+          nodes: [
+            { id: 12, type: "Load Image", title: "Source image", pos: [40, 40], size: [180, 80] },
+          ],
+          groups: [
+            { title: "Koolook Input", bounding: ["bad", 20, 240, 140] },
+          ],
+        });
+
+        assert.deepEqual(surface.sourceInputs, []);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr

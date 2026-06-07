@@ -170,6 +170,32 @@ def test_registry_omits_setup_with_stale_api_prompt() -> None:
     assert registry.diagnostics == ["ltx-director-demo: apiPrompt is stale for visualGraph"]
 
 
+def test_registry_omits_group_first_setup_missing_persisted_surface() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["id"] = "missing-surface"
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("missing-surface") is None
+    assert registry.diagnostics == [
+        "missing-surface: setupSurface must be a JSON object for group-authored setups"
+    ]
+
+
+def test_registry_omits_malformed_persisted_setup_surface() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["setupSurface"] = {
+        "sourceInputs": [{"group": "Koolook Input", "nodes": [{"id": "12"}]}],
+        "outputs": "not-list",
+        "controls": [],
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert "ltx-director-demo: setupSurface.outputs must be a list" in registry.diagnostics
+
+
 def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> None:
     primary = tmp_path / "setups.json"
     fallback = tmp_path / "sample.json"
@@ -422,6 +448,56 @@ def test_publish_setup_rejects_missing_or_empty_required_surface_groups(
     assert result.valid is False
     assert expected in result.diagnostics
     assert registry.getSetup("bad-group-surface") is None
+
+
+@pytest.mark.parametrize(
+    ("visual_graph", "expected"),
+    [
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [40, 40], "inputs": []}],
+                "links": [],
+                "groups": [
+                    {"title": "Koolook Input", "bounding": ["bad", 20, 240, 140]},
+                    {"title": "Koolook Output", "bounding": [20, 20, 240, 140]},
+                ],
+            },
+            "visualGraph.groups[0].bounding must contain numeric x, y, width, height",
+        ),
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": ["bad", 40], "inputs": []}],
+                "links": [],
+                "groups": [
+                    {"title": "Koolook Input", "bounding": [20, 20, 240, 140]},
+                    {"title": "Koolook Output", "bounding": [20, 20, 240, 140]},
+                ],
+            },
+            "visualGraph.nodes[0].pos must contain numeric x and y for setup surface inference",
+        ),
+    ],
+)
+def test_publish_setup_rejects_malformed_surface_geometry(
+    visual_graph: dict,
+    expected: str,
+) -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "bad-geometry",
+            "title": "Bad Geometry",
+            "description": "Malformed setup surface geometry.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad Geometry"},
+    )
+
+    assert result.valid is False
+    assert expected in result.diagnostics
+    assert registry.getSetup("bad-geometry") is None
 
 
 def test_publish_setup_rejects_missing_contract_target() -> None:

@@ -30,4 +30,5 @@ def test_publish_setup_modal_shows_inferred_group_surface() -> None:
     assert "Advanced contract JSON" in modals
     assert "JSON.stringify({ inputs: [] }, null, 2)" in modals
     assert "JSON.stringify({ outputs: [] }, null, 2)" in modals
-    assert "visualGraph: getWorkflowGraph(dirPath, wfName)," in tree
+    assert "const visualGraph = getWorkflowGraph(dirPath, wfName);" in tree
+    assert "visualGraph," in tree

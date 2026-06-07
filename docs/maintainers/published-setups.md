@@ -81,6 +81,21 @@ Each published setup object uses this shape:
       }
     ]
   },
+  "setupSurface": {
+    "sourceInputs": [
+      {
+        "group": "Koolook Input",
+        "nodes": [{ "id": "12", "type": "Load Image", "title": "Source image" }]
+      }
+    ],
+    "outputs": [
+      {
+        "group": "Koolook Output",
+        "nodes": [{ "id": "20", "type": "Preview Image", "title": "Preview" }]
+      }
+    ],
+    "controls": []
+  },
   "source": {
     "kind": "sidebar-workflow",
     "path": "Folder/Workflow name"
@@ -309,6 +324,16 @@ Curators should treat publish diagnostics as setup authoring feedback:
 - `inputContract.inputs[N].target.input not found in generated apiPrompt`: the
   contract points at a visual input that is not injectable in the generated API
   prompt.
+- `setupSurface must be a JSON object for group-authored setups`: a stored
+  group-first setup has empty input/output contracts but lacks its persisted
+  inferred app surface, so it is hidden from list/detail responses.
+- `setupSurface.sourceInputs[N].nodes[M].type must be non-empty text`: a stored
+  setup surface node summary is malformed.
+- `visualGraph.groups[N].bounding must contain numeric x, y, width, height`: a
+  reserved setup group has malformed rectangle data, so publish cannot safely
+  infer membership.
+- `visualGraph.nodes[N].pos must contain numeric x and y for setup surface inference`:
+  a visual node has malformed placement data that could infer the wrong group.
 - `setupSurface.sourceInputs requires a non-empty Koolook Input group`: the
   group-first publish path was used, but no node overlapped a `Koolook Input`
   group.
