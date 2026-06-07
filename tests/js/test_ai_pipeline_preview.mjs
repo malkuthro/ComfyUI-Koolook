@@ -163,3 +163,54 @@ assert.equal(second, expected);
 assert.ok(!first.includes("/_/"), "Text Concatenate delimiter must not replace the shot name");
 assert.ok(!first.includes("__"), "empty fields must not multiply underscores");
 assert.ok(!first.includes("vv003"), "already-normalized version tokens must not get an extra v");
+
+{
+  const publishOutput = {
+    id: 10,
+    type: "Koolook_PublishOutput",
+    widgets: [
+      widget("folder", "/Volumes/Data/G-Drive-BaconX/Jobs/OndtBlod/001_0035/ai/publish-OUT"),
+      widget("name", "publish-OUT"),
+      widget("version", "1"),
+    ],
+    outputs: [
+      { name: "folder", type: "STRING", links: [30] },
+      { name: "name", type: "STRING", links: [] },
+      { name: "version", type: "STRING", links: [] },
+    ],
+  };
+  const reroute = {
+    id: 11,
+    type: "Reroute",
+    inputs: [{ name: "", type: "STRING", link: 30 }],
+    outputs: [{ name: "", type: "STRING", links: [31] }],
+  };
+  const publishGraph = makeGraph(
+    [publishOutput, reroute],
+    [
+      { id: 30, origin_id: 10, origin_slot: 0, target_id: 11, target_slot: 0, type: "STRING" },
+      { id: 31, origin_id: 11, origin_slot: 0, target_id: 99, target_slot: 3, type: "STRING" },
+    ],
+  );
+  context.app.graph = publishGraph;
+
+  const nodeType = function EasyAIPipelineNode() {};
+  extension.beforeRegisterNodeDef(nodeType, { name: "EasyAIPipeline" });
+  const node = makePipelineNode(publishGraph);
+  node.inputs.find((input) => input.name === "base_directory_path").link = 31;
+  node.inputs.find((input) => input.name === "shot_name").link = null;
+  node.inputs.find((input) => input.name === "version").link = null;
+  node.widgets.find((entry) => entry.name === "shot_name").value = "mask";
+  node.widgets.find((entry) => entry.name === "version").value = "1";
+  node.widgets.find((entry) => entry.name === "no_subfolders").value = true;
+  nodeType.prototype.onNodeCreated.call(node);
+  const button = node.buttons.find((entry) => entry.name === "Get output directory path");
+  assert.ok(button, "preview directory button should exist");
+  button.callback();
+
+  const preview = node.widgets.find((entry) => entry.inputEl?.readOnly && entry.inputEl?.style?.height === "100px").value;
+  assert.equal(
+    preview,
+    "/Volumes/Data/G-Drive-BaconX/Jobs/OndtBlod/001_0035/ai/publish-OUT/v001",
+  );
+}
