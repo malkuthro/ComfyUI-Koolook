@@ -244,6 +244,7 @@ nodes when a setup should be callable from an external app:
 ```text
 Koolook Publish Input   -> place in Koolook Input
 Koolook Publish Output  -> place in Koolook Output
+Koolook Publish Result  -> place in Koolook Output
 ```
 
 `Koolook Publish Input` exposes stable multiline fields and outputs:
@@ -263,14 +264,20 @@ switch           INT output derived from mode
 folder   STRING
 name     STRING
 version  STRING
+```
+
+`Koolook Publish Result` exposes the resolved result value after workflow
+writer/path logic has run:
+
+```text
 result   STRING
 ```
 
 Publish detects these node classes and stores `setupSurface.app` with stable
-keys, user-facing labels, defaults, injection targets, and switch options. The
-external app should render the switch first, preserve the numeric switch values,
-and hide internal-only options such as Prompt while keeping their index stable
-for the workflow.
+keys, user-facing labels, defaults, injection targets, result targets, and
+switch options. The external app should render the switch first, preserve the
+numeric switch values, and hide internal-only options such as Prompt while
+keeping their index stable for the workflow.
 
 ## Callable Visual Workflow Standard
 

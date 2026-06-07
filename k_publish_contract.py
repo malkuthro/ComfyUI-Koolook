@@ -83,7 +83,7 @@ class Koolook_PublishInput:
 
 
 class Koolook_PublishOutput:
-    """App-facing setup output controls and result path placeholder."""
+    """App-facing setup output controls."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -113,32 +113,53 @@ class Koolook_PublishOutput:
                         "tooltip": "Output version token or number.",
                     },
                 ),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("folder", "name", "version")
+    CATEGORY = "Koolook/Publish"
+    FUNCTION = "run"
+
+    def run(self, folder: str, name: str, version: str):
+        return (folder, name, version)
+
+
+class Koolook_PublishResult:
+    """Resolved setup result surfaced back to the external app."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
                 "result": (
                     "STRING",
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Result path/status surfaced back to the external app.",
+                        "tooltip": "Final resolved output path, folder, or status from the workflow.",
                     },
                 ),
             },
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("folder", "name", "version", "result")
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("result",)
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
 
-    def run(self, folder: str, name: str, version: str, result: str):
-        return (folder, name, version, result)
+    def run(self, result: str):
+        return (result,)
 
 
 NODE_CLASS_MAPPINGS = {
     "Koolook_PublishInput": Koolook_PublishInput,
     "Koolook_PublishOutput": Koolook_PublishOutput,
+    "Koolook_PublishResult": Koolook_PublishResult,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Koolook_PublishInput": "Koolook Publish Input",
     "Koolook_PublishOutput": "Koolook Publish Output",
+    "Koolook_PublishResult": "Koolook Publish Result",
 }

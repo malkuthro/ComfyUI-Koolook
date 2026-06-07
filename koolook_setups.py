@@ -27,6 +27,7 @@ SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
 PUBLISH_INPUT_CLASS = "Koolook_PublishInput"
 PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput"
+PUBLISH_RESULT_CLASS = "Koolook_PublishResult"
 PUBLISH_INPUT_FIELDS = (
     ("sequence_folder", "Sequence folder", True),
     ("qt_file", "QT file", True),
@@ -43,12 +44,15 @@ PUBLISH_OUTPUT_FIELDS = (
     ("folder", "Output folder", True),
     ("name", "Output name", True),
     ("version", "Version", True),
+)
+PUBLISH_RESULT_FIELDS = (
     ("result", "Result", True),
 )
 WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Text Multiline": ("text",),
     "Koolook_PublishInput": ("mode", "sequence_folder", "qt_file", "single_file", "prompt"),
-    "Koolook_PublishOutput": ("folder", "name", "version", "result"),
+    "Koolook_PublishOutput": ("folder", "name", "version"),
+    "Koolook_PublishResult": ("result",),
     "EasyAIPipeline": (
         "shot_duration",
         "seed_value",
@@ -376,11 +380,13 @@ def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
     output_nodes = _nodes_in_group(visual_graph, "Koolook Output")
     input_node = _first_node_of_type(input_nodes, PUBLISH_INPUT_CLASS)
     output_node = _first_node_of_type(output_nodes, PUBLISH_OUTPUT_CLASS)
+    result_node = _first_node_of_type(output_nodes, PUBLISH_RESULT_CLASS)
     inputs = _publish_input_fields(input_node)
     outputs = _publish_output_fields(output_node)
     app: dict[str, Any] = {
         "inputs": inputs,
         "outputs": outputs,
+        "results": _publish_result_fields(result_node),
     }
     if input_node is not None:
         app["switch"] = _publish_input_switch(input_node, inputs)
@@ -430,6 +436,24 @@ def _publish_output_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
             "default": _app_widget_value(node, key),
         }
         for key, label, visible in PUBLISH_OUTPUT_FIELDS
+    ]
+
+
+def _publish_result_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_RESULT_FIELDS
     ]
 
 

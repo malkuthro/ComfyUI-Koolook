@@ -693,7 +693,7 @@ def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
             }
         ],
         "controls": [],
-        "app": {"inputs": [], "outputs": []},
+        "app": {"inputs": [], "outputs": [], "results": []},
     }
 
 
@@ -735,12 +735,31 @@ def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
                     "/shots/example/output",
                     "publish-OUT",
                     "1",
-                    "/shots/example/output/publish-OUT_v001.mov",
                 ],
                 "outputs": [
                     {"name": "folder", "type": "STRING", "links": []},
                     {"name": "name", "type": "STRING", "links": []},
                     {"name": "version", "type": "STRING", "links": []},
+                ],
+            },
+            {
+                "id": 300,
+                "type": "Koolook_PublishResult",
+                "title": "Koolook Publish Result",
+                "pos": [520, 340],
+                "size": [360, 160],
+                "inputs": [
+                    {
+                        "name": "result",
+                        "type": "STRING",
+                        "widget": {"name": "result"},
+                        "link": None,
+                    }
+                ],
+                "widgets_values": [
+                    "/shots/example/output/publish-OUT_v001.mov",
+                ],
+                "outputs": [
                     {"name": "result", "type": "STRING", "links": []},
                 ],
             },
@@ -820,11 +839,13 @@ def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
                 "target": {"node": "200", "input": "version"},
                 "default": "1",
             },
+        ],
+        "results": [
             {
                 "key": "result",
                 "label": "Result",
                 "visible": True,
-                "target": {"node": "200", "input": "result"},
+                "target": {"node": "300", "input": "result"},
                 "default": "/shots/example/output/publish-OUT_v001.mov",
             },
         ],

@@ -5,6 +5,7 @@ from __future__ import annotations
 from k_publish_contract import (
     Koolook_PublishInput,
     Koolook_PublishOutput,
+    Koolook_PublishResult,
     NODE_CLASS_MAPPINGS,
     NODE_DISPLAY_NAME_MAPPINGS,
 )
@@ -13,8 +14,10 @@ from k_publish_contract import (
 def test_publish_contract_nodes_register() -> None:
     assert NODE_CLASS_MAPPINGS["Koolook_PublishInput"] is Koolook_PublishInput
     assert NODE_CLASS_MAPPINGS["Koolook_PublishOutput"] is Koolook_PublishOutput
+    assert NODE_CLASS_MAPPINGS["Koolook_PublishResult"] is Koolook_PublishResult
     assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishInput"] == "Koolook Publish Input"
     assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishOutput"] == "Koolook Publish Output"
+    assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishResult"] == "Koolook Publish Result"
 
 
 def test_publish_input_exposes_stable_fields_and_switch_output() -> None:
@@ -44,11 +47,20 @@ def test_publish_input_exposes_stable_fields_and_switch_output() -> None:
 def test_publish_output_exposes_stable_fields() -> None:
     spec = Koolook_PublishOutput.INPUT_TYPES()["required"]
 
-    assert list(spec) == ["folder", "name", "version", "result"]
-    assert Koolook_PublishOutput.RETURN_NAMES == ("folder", "name", "version", "result")
+    assert list(spec) == ["folder", "name", "version"]
+    assert Koolook_PublishOutput.RETURN_NAMES == ("folder", "name", "version")
     assert Koolook_PublishOutput().run(
         folder="/out",
         name="mask",
         version="1",
-        result="/out/mask_v001.png",
-    ) == ("/out", "mask", "1", "/out/mask_v001.png")
+    ) == ("/out", "mask", "1")
+
+
+def test_publish_result_exposes_resolved_result() -> None:
+    spec = Koolook_PublishResult.INPUT_TYPES()["required"]
+
+    assert list(spec) == ["result"]
+    assert Koolook_PublishResult.RETURN_NAMES == ("result",)
+    assert Koolook_PublishResult().run(result="/out/mask_v001.png") == (
+        "/out/mask_v001.png",
+    )
