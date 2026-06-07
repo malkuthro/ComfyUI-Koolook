@@ -201,6 +201,10 @@ export function ensureStyle() {
 .koolook-publish-modal { width: min(620px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: auto; }
 .koolook-publish-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .koolook-publish-wide { grid-column: 1 / -1; }
+.koolook-publish-surface { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border-color, #302f2f); border-radius: 6px; background: rgba(255,255,255,0.035); font-size: 12px; line-height: 1.45; }
+.koolook-publish-surface-title { font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.koolook-publish-advanced { margin-top: 8px; font-size: 12px; }
+.koolook-publish-advanced summary { cursor: pointer; opacity: 0.82; }
 .koolook-publish-message { min-height: 16px; margin-top: 8px; color: #ffb4a8; font-size: 12px; line-height: 1.35; }
 /* Library-folder name + path pair used by the redesigned Save and Load
    dialogs to render the inline 'Saved to' / 'Loaded from' info row.

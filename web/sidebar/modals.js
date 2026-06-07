@@ -9,6 +9,7 @@
 import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from "./constants.js";
 import { formatLocalStamp } from "./format_time.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
+import { inferSetupSurface } from "./published_surface.js";
 import {
     detectManager,
     loadMappings,
@@ -776,7 +777,30 @@ function makeLabeledTextarea(body, label, value) {
     return input;
 }
 
-export function showPublishSetupModal({ wfName, dirPath, currentTags = [], onPublish }) {
+function appendSurfaceSection(body, visualGraph) {
+    const surface = inferSetupSurface(visualGraph);
+    const section = document.createElement("div");
+    section.className = "koolook-publish-surface koolook-publish-wide";
+    const title = document.createElement("div");
+    title.className = "koolook-publish-surface-title";
+    title.textContent = "Inferred app surface";
+    section.appendChild(title);
+
+    const inputLine = document.createElement("div");
+    inputLine.textContent = surface.sourceInputs.length
+        ? `Koolook Input: ${surface.sourceInputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")}`
+        : "Koolook Input: missing";
+    section.appendChild(inputLine);
+
+    const outputLine = document.createElement("div");
+    outputLine.textContent = surface.outputs.length
+        ? `Koolook Output: ${surface.outputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")}`
+        : "Koolook Output: missing";
+    section.appendChild(outputLine);
+    body.appendChild(section);
+}
+
+export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visualGraph = null, onPublish }) {
     const body = document.createElement("div");
     body.className = "koolook-publish-grid";
 
@@ -807,33 +831,32 @@ export function showPublishSetupModal({ wfName, dirPath, currentTags = [], onPub
     const previewImage = makeLabeledInput(previewWrap, "Preview/card reference", "", "optional image or card URL");
     body.appendChild(previewWrap);
 
+    appendSurfaceSection(body, visualGraph);
+
+    const advanced = document.createElement("details");
+    advanced.className = "koolook-publish-advanced koolook-publish-wide";
+    const advancedSummary = document.createElement("summary");
+    advancedSummary.textContent = "Advanced contract JSON";
+    advanced.appendChild(advancedSummary);
+
     const inputWrap = document.createElement("div");
     inputWrap.className = "koolook-publish-wide";
     const inputContract = makeLabeledTextarea(
         inputWrap,
         "Input contract JSON",
-        JSON.stringify({
-            inputs: [
-                {
-                    key: "prompt",
-                    label: "Prompt",
-                    type: "text",
-                    required: true,
-                    target: { node: "", input: "" },
-                },
-            ],
-        }, null, 2)
+        JSON.stringify({ inputs: [] }, null, 2)
     );
-    body.appendChild(inputWrap);
+    advanced.appendChild(inputWrap);
 
     const outputWrap = document.createElement("div");
     outputWrap.className = "koolook-publish-wide";
     const outputContract = makeLabeledTextarea(
         outputWrap,
         "Output contract JSON",
-        JSON.stringify({ outputs: [{ key: "preview", type: "image" }] }, null, 2)
+        JSON.stringify({ outputs: [] }, null, 2)
     );
-    body.appendChild(outputWrap);
+    advanced.appendChild(outputWrap);
+    body.appendChild(advanced);
 
     const msg = document.createElement("div");
     msg.className = "koolook-publish-message koolook-publish-wide";

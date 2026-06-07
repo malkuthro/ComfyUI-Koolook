@@ -1788,6 +1788,7 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 wfName,
                 dirPath,
                 currentTags: getWorkflowTags(dirPath, wfName) || [],
+                visualGraph: getWorkflowGraph(dirPath, wfName),
                 onPublish: async ({ metadata, inputContract, outputContract }) => {
                     const result = await publishSavedWorkflowSetup({
                         dirPath,

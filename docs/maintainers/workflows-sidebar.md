@@ -197,7 +197,7 @@ location.reload();
 - **Selection saves are partial graphs.** Only the selected nodes + links between them survive; links into/out of non-selected nodes are nulled out, so the loaded workflow never has dangling references. Link handling accepts both serialized array links (`[id, origin, slot, target, slot, type]`) and object-shaped `LLink` records from `graph.links`.
 - **Selection saves preserve relevant groups.** Any ComfyUI group box that
   overlaps selected nodes is stored with the partial graph and restored on Load
-  or Insert. This supports the future published-setup convention where
+  or Insert. This supports the published-setup convention where
   `Koolook Input` and `Koolook Output` groups mark the setup's app surface.
 - **Subgraph wrappers are special.** The saved selection includes transitively referenced `definitions.subgraphs`, but insert still cannot register a never-loaded subgraph definition because ComfyUI's subgraph registration path lives inside native `app.loadGraphData`. If Insert reports an unregistered subgraph definition, native-Load the workflow once in that browser session, then retry Insert.
 - **Workflow tab name comes from `app.loadGraphData(graph, true, true, name, {})`'s 4th arg.** The tab flips from "Unsaved Workflow (N)" to the saved name, and Ctrl+S pre-fills with that name. (Verified against `Comfy-Org/ComfyUI_frontend` `src/scripts/app.ts`.)

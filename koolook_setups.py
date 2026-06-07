@@ -208,6 +208,7 @@ class PublishedSetupRegistry:
         diagnostics = list(result.diagnostics)
         diagnostics.extend(_validate_contract_targets(visualGraph, inputContract))
         diagnostics.extend(_validate_api_prompt_contract_targets(conversion.api_prompt, inputContract))
+        diagnostics.extend(_validate_setup_surface(setup, inputContract, outputContract))
         if diagnostics:
             return ValidationResult(False, {}, diagnostics)
 
@@ -285,6 +286,7 @@ def _build_draft_setup(
 ) -> dict[str, Any]:
     title = metadata.get("title", "")
     setup_id = metadata.get("id", "")
+    setup_surface = _infer_setup_surface(visualGraph)
     return {
         "schemaVersion": SUPPORTED_SCHEMA_VERSION,
         "id": setup_id,
@@ -301,12 +303,135 @@ def _build_draft_setup(
         "apiPrompt": apiPrompt,
         "inputContract": inputContract,
         "outputContract": outputContract,
+        "setupSurface": setup_surface,
         "source": source,
         "validation": {
             "status": "valid" if apiPrompt is not None else "draft",
             "diagnostics": [] if apiPrompt is not None else ["API prompt conversion pending."],
         },
     }
+
+
+def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sourceInputs": _nodes_in_named_groups(visual_graph, "Koolook Input"),
+        "outputs": _nodes_in_named_groups(visual_graph, "Koolook Output"),
+        "controls": [],
+    }
+
+
+def _validate_setup_surface(
+    setup: dict[str, Any],
+    input_contract: dict[str, Any],
+    output_contract: dict[str, Any],
+) -> list[str]:
+    if not _uses_group_authored_surface(input_contract, output_contract):
+        return []
+    surface = setup.get("setupSurface")
+    diagnostics: list[str] = []
+    if not isinstance(surface, dict) or not surface.get("sourceInputs"):
+        diagnostics.append("setupSurface.sourceInputs requires a non-empty Koolook Input group")
+    if not isinstance(surface, dict) or not surface.get("outputs"):
+        diagnostics.append("setupSurface.outputs requires a non-empty Koolook Output group")
+    return diagnostics
+
+
+def _uses_group_authored_surface(
+    input_contract: dict[str, Any],
+    output_contract: dict[str, Any],
+) -> bool:
+    inputs = input_contract.get("inputs")
+    outputs = output_contract.get("outputs")
+    return inputs == [] and outputs == []
+
+
+def _nodes_in_named_groups(visual_graph: dict[str, Any], group_title: str) -> list[dict[str, Any]]:
+    groups = visual_graph.get("groups")
+    nodes = visual_graph.get("nodes")
+    if not isinstance(groups, list) or not isinstance(nodes, list):
+        return []
+
+    node_rects = [
+        (node, _rect_from_node(node))
+        for node in nodes
+        if isinstance(node, dict)
+    ]
+    out: list[dict[str, Any]] = []
+    for group in groups:
+        if not isinstance(group, dict) or group.get("title") != group_title:
+            continue
+        group_rect = _rect_from_group(group)
+        group_nodes = [
+            _surface_node_summary(node)
+            for node, node_rect in node_rects
+            if _rects_overlap(group_rect, node_rect)
+        ]
+        if group_nodes:
+            out.append({"group": group_title, "nodes": group_nodes})
+    return out
+
+
+def _surface_node_summary(node: dict[str, Any]) -> dict[str, str]:
+    node_type = node.get("type")
+    node_title = node.get("title")
+    return {
+        "id": str(node.get("id")),
+        "type": node_type if isinstance(node_type, str) else "",
+        "title": node_title if isinstance(node_title, str) and node_title else (
+            node_type if isinstance(node_type, str) else str(node.get("id"))
+        ),
+    }
+
+
+def _rect_from_group(group: dict[str, Any]) -> dict[str, float] | None:
+    bounding = group.get("bounding")
+    if isinstance(bounding, list) and len(bounding) >= 4:
+        return {
+            "x": _number_or_default(bounding[0], 0),
+            "y": _number_or_default(bounding[1], 0),
+            "w": _number_or_default(bounding[2], 0),
+            "h": _number_or_default(bounding[3], 0),
+        }
+    pos = group.get("pos")
+    size = group.get("size")
+    if isinstance(pos, list) and isinstance(size, list) and len(pos) >= 2 and len(size) >= 2:
+        return {
+            "x": _number_or_default(pos[0], 0),
+            "y": _number_or_default(pos[1], 0),
+            "w": _number_or_default(size[0], 0),
+            "h": _number_or_default(size[1], 0),
+        }
+    return None
+
+
+def _rect_from_node(node: dict[str, Any]) -> dict[str, float] | None:
+    pos = node.get("pos")
+    if not isinstance(pos, list) or len(pos) < 2:
+        return None
+    size = node.get("size")
+    if not isinstance(size, list) or len(size) < 2:
+        size = [200, 100]
+    return {
+        "x": _number_or_default(pos[0], 0),
+        "y": _number_or_default(pos[1], 0),
+        "w": _number_or_default(size[0], 200),
+        "h": _number_or_default(size[1], 100),
+    }
+
+
+def _rects_overlap(a: dict[str, float] | None, b: dict[str, float] | None) -> bool:
+    if not a or not b or a["w"] <= 0 or a["h"] <= 0 or b["w"] <= 0 or b["h"] <= 0:
+        return False
+    return (
+        a["x"] < b["x"] + b["w"]
+        and a["x"] + a["w"] > b["x"]
+        and a["y"] < b["y"] + b["h"]
+        and a["y"] + a["h"] > b["y"]
+    )
+
+
+def _number_or_default(value: Any, default: float) -> float:
+    return value if isinstance(value, int | float) else default
 
 
 def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiPromptConversionResult:

@@ -49,7 +49,7 @@
 <div class="harness-header">
     <div class="harness-title">
         Publish setup dialog harness
-        <small>issue #211 - sidebar workflow to callable registry</small>
+        <small>issue #221 - group-based setup surface inference</small>
     </div>
     <button id="btn-default">Default</button>
     <button id="btn-error">Invalid contract error</button>
@@ -74,6 +74,17 @@
             wfName: "Director Demo",
             dirPath: ["Demos", "Video"],
             currentTags: ["director", "video"],
+            visualGraph: {
+                nodes: [
+                    { id: 12, type: "Load Image", title: "Source image", pos: [40, 40], size: [180, 80], inputs: [] },
+                    { id: 20, type: "Preview Image", title: "Preview", pos: [420, 40], size: [180, 80], inputs: [] },
+                ],
+                links: [],
+                groups: [
+                    { title: "Koolook Input", bounding: [20, 20, 240, 140] },
+                    { title: "Koolook Output", pos: [400, 20], size: [240, 140] },
+                ],
+            },
             onPublish: async () => {
                 if (fail) throw new Error("inputContract.inputs[0].target.node not found in visualGraph");
                 console.log("[harness] publish accepted");

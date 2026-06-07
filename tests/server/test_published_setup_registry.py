@@ -308,6 +308,122 @@ def test_publish_setup_converts_supported_visual_graph_to_api_prompt() -> None:
     assert registry.listSetups()[0]["id"] == "my-callable-flow"
 
 
+def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 12,
+                "type": "Load Image",
+                "title": "Source image",
+                "pos": [40, 40],
+                "size": [180, 80],
+                "inputs": [],
+            },
+            {
+                "id": 20,
+                "type": "Preview Image",
+                "title": "Preview",
+                "pos": [420, 40],
+                "size": [180, 80],
+                "inputs": [],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 240, 140]},
+            {"title": "Koolook Output", "pos": [400, 20], "size": [240, 140]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "group-surface-flow",
+            "title": "Group Surface Flow",
+            "description": "A setup authored with ComfyUI groups.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Group Surface"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("group-surface-flow")
+    assert setup is not None
+    assert setup["setupSurface"] == {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Load Image", "title": "Source image"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Preview Image", "title": "Preview"}],
+            }
+        ],
+        "controls": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("visual_graph", "expected"),
+    [
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [40, 40], "inputs": []}],
+                "links": [],
+                "groups": [{"title": "Koolook Output", "bounding": [20, 20, 240, 140]}],
+            },
+            "setupSurface.sourceInputs requires a non-empty Koolook Input group",
+        ),
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [400, 40], "inputs": []}],
+                "links": [],
+                "groups": [
+                    {"title": "Koolook Input", "bounding": [20, 20, 240, 140]},
+                    {"title": "Koolook Output", "bounding": [20, 20, 240, 140]},
+                ],
+            },
+            "setupSurface.sourceInputs requires a non-empty Koolook Input group",
+        ),
+        (
+            {
+                "nodes": [{"id": 12, "type": "Load Image", "pos": [40, 40], "inputs": []}],
+                "links": [],
+                "groups": [{"title": "Koolook Input", "bounding": [20, 20, 240, 140]}],
+            },
+            "setupSurface.outputs requires a non-empty Koolook Output group",
+        ),
+    ],
+)
+def test_publish_setup_rejects_missing_or_empty_required_surface_groups(
+    visual_graph: dict,
+    expected: str,
+) -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "bad-group-surface",
+            "title": "Bad Group Surface",
+            "description": "Missing required setup groups.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Bad Group"},
+    )
+
+    assert result.valid is False
+    assert expected in result.diagnostics
+    assert registry.getSetup("bad-group-surface") is None
+
+
 def test_publish_setup_rejects_missing_contract_target() -> None:
     registry = PublishedSetupRegistry(StaticSetupStorage([]))
 
