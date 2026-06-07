@@ -549,7 +549,13 @@ def _validate_persisted_setup_surface(
         if isinstance(items, list):
             _validate_surface_entries(items, f"setupSurface.{key}", diagnostics)
     if "app" in surface:
-        _validate_surface_app(surface["app"], "setupSurface.app", diagnostics)
+        _validate_surface_app(
+            surface["app"],
+            "setupSurface.app",
+            diagnostics,
+            setup.get("visualGraph"),
+            setup.get("apiPrompt"),
+        )
 
 
 def _validate_surface_entries(
@@ -578,10 +584,19 @@ def _validate_surface_entries(
                     diagnostics.append(f"{node_path}.{field} must be non-empty text")
 
 
-def _validate_surface_app(app: Any, path: str, diagnostics: list[str]) -> None:
+def _validate_surface_app(
+    app: Any,
+    path: str,
+    diagnostics: list[str],
+    visual_graph: Any,
+    api_prompt: Any,
+) -> None:
     if not isinstance(app, dict):
         diagnostics.append(f"{path} must be a JSON object")
         return
+    node_by_id = _visual_node_index(visual_graph)
+    api_prompt = api_prompt if isinstance(api_prompt, dict) else None
+    input_keys: set[str] = set()
     for key in ("inputs", "outputs", "results"):
         value = app.get(key)
         if value is None:
@@ -589,25 +604,63 @@ def _validate_surface_app(app: Any, path: str, diagnostics: list[str]) -> None:
         if not isinstance(value, list):
             diagnostics.append(f"{path}.{key} must be a list")
             continue
-        _validate_surface_app_fields(value, f"{path}.{key}", diagnostics)
+        keys = _validate_surface_app_fields(
+            value,
+            f"{path}.{key}",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+        )
+        if key == "inputs":
+            input_keys = keys
     if "switch" in app:
-        _validate_surface_app_switch(app["switch"], f"{path}.switch", diagnostics)
+        _validate_surface_app_switch(
+            app["switch"],
+            f"{path}.switch",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+            input_keys,
+        )
 
 
-def _validate_surface_app_fields(fields: list[Any], path: str, diagnostics: list[str]) -> None:
+def _validate_surface_app_fields(
+    fields: list[Any],
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+) -> set[str]:
+    keys: set[str] = set()
     for field_index, field in enumerate(fields):
         field_path = f"{path}[{field_index}]"
         if not isinstance(field, dict):
             diagnostics.append(f"{field_path} must be a JSON object")
             continue
         _validate_non_empty_text(field.get("key"), f"{field_path}.key", diagnostics)
+        if isinstance(field.get("key"), str) and field["key"].strip():
+            keys.add(field["key"])
         _validate_non_empty_text(field.get("label"), f"{field_path}.label", diagnostics)
         if "visible" in field and not isinstance(field["visible"], bool):
             diagnostics.append(f"{field_path}.visible must be a boolean")
-        _validate_surface_app_target(field.get("target"), f"{field_path}.target", diagnostics)
+        _validate_surface_app_target(
+            field.get("target"),
+            f"{field_path}.target",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+        )
+    return keys
 
 
-def _validate_surface_app_switch(switch: Any, path: str, diagnostics: list[str]) -> None:
+def _validate_surface_app_switch(
+    switch: Any,
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+    input_keys: set[str],
+) -> None:
     if not isinstance(switch, dict):
         diagnostics.append(f"{path} must be a JSON object")
         return
@@ -615,7 +668,13 @@ def _validate_surface_app_switch(switch: Any, path: str, diagnostics: list[str])
     _validate_non_empty_text(switch.get("label"), f"{path}.label", diagnostics)
     if "visible" in switch and not isinstance(switch["visible"], bool):
         diagnostics.append(f"{path}.visible must be a boolean")
-    _validate_surface_app_target(switch.get("target"), f"{path}.target", diagnostics)
+    _validate_surface_app_target(
+        switch.get("target"),
+        f"{path}.target",
+        diagnostics,
+        node_by_id,
+        api_prompt,
+    )
     default = switch.get("default")
     if default is not None and (isinstance(default, bool) or not isinstance(default, int)):
         diagnostics.append(f"{path}.default must be an integer")
@@ -632,21 +691,81 @@ def _validate_surface_app_switch(switch: Any, path: str, diagnostics: list[str])
             diagnostics.append(f"{option_path}.value must be an integer")
         _validate_non_empty_text(option.get("label"), f"{option_path}.label", diagnostics)
         _validate_non_empty_text(option.get("input"), f"{option_path}.input", diagnostics)
+        if (
+            isinstance(option.get("input"), str)
+            and option["input"].strip()
+            and input_keys
+            and option["input"] not in input_keys
+        ):
+            diagnostics.append(f"{option_path}.input must match a setupSurface.app.inputs key")
         if "visible" in option and not isinstance(option["visible"], bool):
             diagnostics.append(f"{option_path}.visible must be a boolean")
 
 
-def _validate_surface_app_target(target: Any, path: str, diagnostics: list[str]) -> None:
+def _validate_surface_app_target(
+    target: Any,
+    path: str,
+    diagnostics: list[str],
+    node_by_id: dict[str, dict[str, Any]],
+    api_prompt: dict[str, Any] | None,
+) -> None:
     if not isinstance(target, dict):
         diagnostics.append(f"{path} must be a JSON object")
         return
     _validate_non_empty_text(target.get("node"), f"{path}.node", diagnostics)
     _validate_non_empty_text(target.get("input"), f"{path}.input", diagnostics)
+    node_id = target.get("node")
+    input_name = target.get("input")
+    if not isinstance(node_id, str) or not node_id.strip():
+        return
+    if not isinstance(input_name, str) or not input_name.strip():
+        return
+    node = node_by_id.get(node_id)
+    if node is None:
+        diagnostics.append(f"{path}.node not found in visualGraph")
+        return
+    if not _visual_node_has_input(node, input_name):
+        diagnostics.append(f"{path}.input not found in visualGraph node")
+    if api_prompt is None:
+        return
+    api_node = api_prompt.get(node_id)
+    if not isinstance(api_node, dict):
+        diagnostics.append(f"{path}.node not found in apiPrompt")
+        return
+    api_inputs = api_node.get("inputs")
+    if not isinstance(api_inputs, dict) or input_name not in api_inputs:
+        diagnostics.append(f"{path}.input not found in apiPrompt")
 
 
 def _validate_non_empty_text(value: Any, path: str, diagnostics: list[str]) -> None:
     if not isinstance(value, str) or not value.strip():
         diagnostics.append(f"{path} must be non-empty text")
+
+
+def _visual_node_index(visual_graph: Any) -> dict[str, dict[str, Any]]:
+    nodes = visual_graph.get("nodes") if isinstance(visual_graph, dict) else None
+    if not isinstance(nodes, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        if node_id is not None:
+            out[str(node_id)] = node
+    return out
+
+
+def _visual_node_has_input(node: dict[str, Any], input_name: str) -> bool:
+    inputs = node.get("inputs")
+    if isinstance(inputs, list) and any(
+        isinstance(port, dict) and str(port.get("name", "")) == input_name
+        for port in inputs
+    ):
+        return True
+    class_type = node.get("type")
+    widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(str(class_type), ())
+    return input_name in widget_names
 
 
 def _uses_group_authored_surface(

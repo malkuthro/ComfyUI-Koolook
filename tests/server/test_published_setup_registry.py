@@ -276,6 +276,59 @@ def test_registry_omits_malformed_persisted_setup_surface_app_fields() -> None:
     )
 
 
+def test_registry_omits_persisted_setup_surface_app_targets_missing_from_graph() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "single_file",
+                    "label": "Single file",
+                    "visible": True,
+                    "target": {"node": "999", "input": "missing"},
+                    "default": "/image.png",
+                }
+            ],
+            "outputs": [],
+            "results": [],
+            "switch": {
+                "key": "switch",
+                "label": "Input type",
+                "visible": True,
+                "target": {"node": "12", "input": "mode"},
+                "default": 2,
+                "options": [{"value": 2, "label": "Img", "visible": True, "input": "missing_key"}],
+            },
+        },
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert (
+        "ltx-director-demo: setupSurface.app.inputs[0].target.node not found in visualGraph"
+        in registry.diagnostics
+    )
+    assert (
+        "ltx-director-demo: setupSurface.app.switch.options[0].input must match a setupSurface.app.inputs key"
+        in registry.diagnostics
+    )
+
+
 def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> None:
     primary = tmp_path / "setups.json"
     fallback = tmp_path / "sample.json"
