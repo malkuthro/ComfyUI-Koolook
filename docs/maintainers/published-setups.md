@@ -246,6 +246,19 @@ Curators should treat publish diagnostics as setup authoring feedback:
   graph object.
 - `visualGraph.nodes[N].type must be non-empty text`: a node is missing the
   Comfy class/type needed for API prompt conversion.
+- `visualGraph.nodes[N].id duplicates visualGraph.nodes[M].id`: duplicate node
+  ids would overwrite generated API prompt entries, so publish is rejected.
+- `visualGraph.nodes[N].inputs must be a list when present`: the node has a
+  malformed input list. Missing `inputs` is allowed for nodes with no inputs.
+- `visualGraph.links[N].id duplicates visualGraph.links[M].id`: duplicate link
+  ids would make linked inputs ambiguous, so publish is rejected.
+- `visualGraph.links[ID].origin_id not found in visualGraph`: a linked input
+  points to a source node that is not present in the submitted graph.
+- `visualGraph.links[ID].origin_slot must be a non-negative integer`: a linked
+  input has a malformed source output slot.
+- `visualGraph.links[ID].target does not match visualGraph.nodes[N].inputs[M]`:
+  a visual input references a link whose target node/slot metadata points
+  somewhere else.
 - `visualGraph.nodes[N].inputs.<name> references missing link`: a linked input
   points at a link id that is absent from `visualGraph.links`.
 - `visualGraph.links[ID] uses unsupported module graph sentinel node`: the
