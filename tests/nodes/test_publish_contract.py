@@ -44,6 +44,15 @@ def test_publish_input_exposes_stable_fields_and_switch_output() -> None:
     assert result == ("/seq", "/movie.mov", "/image.png", "hidden", 2)
 
 
+def test_publish_input_accepts_published_numeric_switch_values() -> None:
+    node = Koolook_PublishInput()
+
+    assert node.run(0, "/seq", "/movie.mov", "/image.png", "hidden")[-1] == 0
+    assert node.run("1", "/seq", "/movie.mov", "/image.png", "hidden")[-1] == 1
+    assert node.run(2, "/seq", "/movie.mov", "/image.png", "hidden")[-1] == 2
+    assert node.run("3", "/seq", "/movie.mov", "/image.png", "hidden")[-1] == 3
+
+
 def test_publish_output_exposes_stable_fields() -> None:
     spec = Koolook_PublishOutput.INPUT_TYPES()["required"]
 

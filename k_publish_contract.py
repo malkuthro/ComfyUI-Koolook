@@ -11,6 +11,19 @@ INPUT_MODES: tuple[str, ...] = ("EXR", "QT", "Img", "Prompt")
 INPUT_MODE_TO_INDEX = {name: index for index, name in enumerate(INPUT_MODES)}
 
 
+def _resolve_mode_index(mode) -> int:
+    if isinstance(mode, bool):
+        return INPUT_MODE_TO_INDEX["Img"]
+    if isinstance(mode, int) and 0 <= mode < len(INPUT_MODES):
+        return mode
+    text = str(mode).strip()
+    if text.isdigit():
+        index = int(text)
+        if 0 <= index < len(INPUT_MODES):
+            return index
+    return INPUT_MODE_TO_INDEX.get(text, INPUT_MODE_TO_INDEX["Img"])
+
+
 class Koolook_PublishInput:
     """App-facing setup inputs with stable output names for maintainers."""
 
@@ -78,7 +91,7 @@ class Koolook_PublishInput:
             qt_file,
             single_file,
             prompt,
-            INPUT_MODE_TO_INDEX.get(str(mode), INPUT_MODE_TO_INDEX["Img"]),
+            _resolve_mode_index(mode),
         )
 
 
