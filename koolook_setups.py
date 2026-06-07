@@ -25,25 +25,30 @@ SAMPLE_SETUPS_PATH = (
 SUPPORTED_SCHEMA_VERSION = 1
 SETUP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 VALIDATION_STATUSES = {"valid", "draft", "invalid"}
-APP_NODE_TITLE_RE = re.compile(
-    r"^App\s*:\s*(INPUT|OUTPUT)(?:\s+(optional))?\s*\[\s*([^\]]+?)\s*\](.*)$",
-    re.IGNORECASE,
+PUBLISH_INPUT_CLASS = "Koolook_PublishInput"
+PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput"
+PUBLISH_INPUT_FIELDS = (
+    ("sequence_folder", "Sequence folder", True),
+    ("qt_file", "QT file", True),
+    ("single_file", "Single file", True),
+    ("prompt", "Prompt", False),
 )
-SWITCH_OPTION_RE = re.compile(r"(\d+)\s*=\s*([^/]+)")
-INPUT_SWITCH_ALIASES = {
-    "exr": "sequence_folder",
-    "sequence": "sequence_folder",
-    "qt": "qt_file",
-    "quicktime": "qt_file",
-    "video": "qt_file",
-    "img": "single_file",
-    "image": "single_file",
-    "file": "single_file",
-    "prompt": "prompt",
-}
+PUBLISH_INPUT_MODES = (
+    (0, "EXR", "sequence_folder"),
+    (1, "QT", "qt_file"),
+    (2, "Img", "single_file"),
+    (3, "Prompt", "prompt"),
+)
+PUBLISH_OUTPUT_FIELDS = (
+    ("folder", "Output folder", True),
+    ("name", "Output name", True),
+    ("version", "Version", True),
+    ("result", "Result", True),
+)
 WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Text Multiline": ("text",),
-    "easy int": ("value",),
+    "Koolook_PublishInput": ("mode", "sequence_folder", "qt_file", "single_file", "prompt"),
+    "Koolook_PublishOutput": ("folder", "name", "version", "result"),
     "EasyAIPipeline": (
         "shot_duration",
         "seed_value",
@@ -369,130 +374,107 @@ def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
 def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
     input_nodes = _nodes_in_group(visual_graph, "Koolook Input")
     output_nodes = _nodes_in_group(visual_graph, "Koolook Output")
-    inputs, input_switch = _app_fields_from_nodes(input_nodes, "input")
-    outputs, output_switch = _app_fields_from_nodes(output_nodes, "output")
+    input_node = _first_node_of_type(input_nodes, PUBLISH_INPUT_CLASS)
+    output_node = _first_node_of_type(output_nodes, PUBLISH_OUTPUT_CLASS)
+    inputs = _publish_input_fields(input_node)
+    outputs = _publish_output_fields(output_node)
     app: dict[str, Any] = {
         "inputs": inputs,
         "outputs": outputs,
     }
-    switch = input_switch or output_switch
-    if switch is not None:
-        switch["options"] = _switch_options(switch["optionText"], inputs)
-        del switch["optionText"]
-        app["switch"] = switch
+    if input_node is not None:
+        app["switch"] = _publish_input_switch(input_node, inputs)
     return app
 
 
-def _app_fields_from_nodes(
+def _first_node_of_type(
     nodes: list[dict[str, Any]],
-    direction: str,
-) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    fields: list[dict[str, Any]] = []
-    switch: dict[str, Any] | None = None
+    class_type: str,
+) -> dict[str, Any] | None:
     for node in nodes:
-        parsed = _parse_app_node_title(node.get("title"))
-        if parsed is None or parsed["direction"] != direction:
-            continue
-        field = {
-            "key": _field_key(parsed["label"]),
-            "label": parsed["label"],
-            "visible": not parsed["optional"],
-            "target": {
-                "node": str(node.get("id")),
-                "input": _app_target_input(node, parsed["label"]),
-            },
-            "default": _app_default_value(node),
-        }
-        if field["key"] == "switch":
-            switch = {
-                **field,
-                "optionText": parsed["suffix"],
-            }
-            continue
-        fields.append(field)
-    return fields, switch
-
-
-def _parse_app_node_title(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, str):
-        return None
-    match = APP_NODE_TITLE_RE.match(value.strip())
-    if match is None:
-        return None
-    return {
-        "direction": match.group(1).lower(),
-        "optional": bool(match.group(2)),
-        "label": match.group(3).strip(),
-        "suffix": match.group(4).strip(),
-    }
-
-
-def _field_key(label: str) -> str:
-    key = re.sub(r"[^A-Za-z0-9]+", "_", label.strip().lower()).strip("_")
-    return key or "field"
-
-
-def _app_target_input(node: dict[str, Any], label: str) -> str:
-    inputs = node.get("inputs")
-    if isinstance(inputs, list):
-        for input_port in inputs:
-            if isinstance(input_port, dict) and isinstance(input_port.get("name"), str) and input_port["name"]:
-                return input_port["name"]
-    class_type = node.get("type")
-    if class_type == "Text Multiline":
-        return "text"
-    if class_type == "easy int":
-        return "value"
-    if class_type == "easy showAnything":
-        return "anything"
-    return _field_key(label)
-
-
-def _app_default_value(node: dict[str, Any]) -> Any:
-    widget_values = node.get("widgets_values")
-    if isinstance(widget_values, list) and widget_values:
-        return widget_values[0]
-    if isinstance(widget_values, dict):
-        for value in widget_values.values():
-            return value
+        if node.get("type") == class_type:
+            return node
     return None
 
 
-def _switch_options(
-    option_text: str,
+def _publish_input_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_INPUT_FIELDS
+    ]
+
+
+def _publish_output_fields(node: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if node is None:
+        return []
+    return [
+        {
+            "key": key,
+            "label": label,
+            "visible": visible,
+            "target": {
+                "node": str(node.get("id")),
+                "input": key,
+            },
+            "default": _app_widget_value(node, key),
+        }
+        for key, label, visible in PUBLISH_OUTPUT_FIELDS
+    ]
+
+
+def _publish_input_switch(
+    node: dict[str, Any],
     inputs: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     inputs_by_key = {item["key"]: item for item in inputs}
-    options: list[dict[str, Any]] = []
-    for match in SWITCH_OPTION_RE.finditer(option_text):
-        label = match.group(2).strip()
-        input_key = _switch_input_key(label, inputs_by_key)
-        input_field = inputs_by_key.get(input_key)
-        options.append(
+    return {
+        "key": "switch",
+        "label": "Input type",
+        "visible": True,
+        "target": {"node": str(node.get("id")), "input": "mode"},
+        "default": _publish_input_mode_index(_app_widget_value(node, "mode")),
+        "options": [
             {
-                "value": int(match.group(1)),
+                "value": value,
                 "label": label,
-                "visible": bool(input_field and input_field.get("visible")),
+                "visible": bool(inputs_by_key[input_key].get("visible")),
                 "input": input_key,
             }
-        )
-    return options
+            for value, label, input_key in PUBLISH_INPUT_MODES
+        ],
+    }
 
 
-def _switch_input_key(
-    label: str,
-    inputs_by_key: dict[str, dict[str, Any]],
-) -> str:
-    normalized = _field_key(label)
-    if normalized in inputs_by_key:
-        return normalized
-    alias = INPUT_SWITCH_ALIASES.get(normalized)
-    if alias in inputs_by_key:
-        return alias
-    for key in inputs_by_key:
-        if normalized and normalized in key:
-            return key
-    return normalized
+def _publish_input_mode_index(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    for mode_value, label, _input_key in PUBLISH_INPUT_MODES:
+        if str(value).strip().lower() == label.lower():
+            return mode_value
+    return 2
+
+
+def _app_widget_value(node: dict[str, Any], key: str) -> Any:
+    widget_values = node.get("widgets_values")
+    if isinstance(widget_values, dict):
+        return widget_values.get(key)
+    if isinstance(widget_values, list):
+        widget_names = WIDGET_ONLY_INPUTS_BY_CLASS.get(str(node.get("type")), ())
+        for index, name in enumerate(widget_names):
+            if name == key and index < len(widget_values):
+                return widget_values[index]
+    return None
 
 
 def _validate_setup_surface(
