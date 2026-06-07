@@ -548,6 +548,8 @@ def _validate_persisted_setup_surface(
         items = surface.get(key)
         if isinstance(items, list):
             _validate_surface_entries(items, f"setupSurface.{key}", diagnostics)
+    if "app" in surface:
+        _validate_surface_app(surface["app"], "setupSurface.app", diagnostics)
 
 
 def _validate_surface_entries(
@@ -574,6 +576,77 @@ def _validate_surface_entries(
             for field in ("id", "type", "title"):
                 if not isinstance(node.get(field), str) or not node[field].strip():
                     diagnostics.append(f"{node_path}.{field} must be non-empty text")
+
+
+def _validate_surface_app(app: Any, path: str, diagnostics: list[str]) -> None:
+    if not isinstance(app, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    for key in ("inputs", "outputs", "results"):
+        value = app.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            diagnostics.append(f"{path}.{key} must be a list")
+            continue
+        _validate_surface_app_fields(value, f"{path}.{key}", diagnostics)
+    if "switch" in app:
+        _validate_surface_app_switch(app["switch"], f"{path}.switch", diagnostics)
+
+
+def _validate_surface_app_fields(fields: list[Any], path: str, diagnostics: list[str]) -> None:
+    for field_index, field in enumerate(fields):
+        field_path = f"{path}[{field_index}]"
+        if not isinstance(field, dict):
+            diagnostics.append(f"{field_path} must be a JSON object")
+            continue
+        _validate_non_empty_text(field.get("key"), f"{field_path}.key", diagnostics)
+        _validate_non_empty_text(field.get("label"), f"{field_path}.label", diagnostics)
+        if "visible" in field and not isinstance(field["visible"], bool):
+            diagnostics.append(f"{field_path}.visible must be a boolean")
+        _validate_surface_app_target(field.get("target"), f"{field_path}.target", diagnostics)
+
+
+def _validate_surface_app_switch(switch: Any, path: str, diagnostics: list[str]) -> None:
+    if not isinstance(switch, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    _validate_non_empty_text(switch.get("key"), f"{path}.key", diagnostics)
+    _validate_non_empty_text(switch.get("label"), f"{path}.label", diagnostics)
+    if "visible" in switch and not isinstance(switch["visible"], bool):
+        diagnostics.append(f"{path}.visible must be a boolean")
+    _validate_surface_app_target(switch.get("target"), f"{path}.target", diagnostics)
+    default = switch.get("default")
+    if default is not None and (isinstance(default, bool) or not isinstance(default, int)):
+        diagnostics.append(f"{path}.default must be an integer")
+    options = switch.get("options")
+    if not isinstance(options, list):
+        diagnostics.append(f"{path}.options must be a list")
+        return
+    for option_index, option in enumerate(options):
+        option_path = f"{path}.options[{option_index}]"
+        if not isinstance(option, dict):
+            diagnostics.append(f"{option_path} must be a JSON object")
+            continue
+        if isinstance(option.get("value"), bool) or not isinstance(option.get("value"), int):
+            diagnostics.append(f"{option_path}.value must be an integer")
+        _validate_non_empty_text(option.get("label"), f"{option_path}.label", diagnostics)
+        _validate_non_empty_text(option.get("input"), f"{option_path}.input", diagnostics)
+        if "visible" in option and not isinstance(option["visible"], bool):
+            diagnostics.append(f"{option_path}.visible must be a boolean")
+
+
+def _validate_surface_app_target(target: Any, path: str, diagnostics: list[str]) -> None:
+    if not isinstance(target, dict):
+        diagnostics.append(f"{path} must be a JSON object")
+        return
+    _validate_non_empty_text(target.get("node"), f"{path}.node", diagnostics)
+    _validate_non_empty_text(target.get("input"), f"{path}.input", diagnostics)
+
+
+def _validate_non_empty_text(value: Any, path: str, diagnostics: list[str]) -> None:
+    if not isinstance(value, str) or not value.strip():
+        diagnostics.append(f"{path} must be non-empty text")
 
 
 def _uses_group_authored_surface(

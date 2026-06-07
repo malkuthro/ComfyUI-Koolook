@@ -196,6 +196,86 @@ def test_registry_omits_malformed_persisted_setup_surface() -> None:
     assert "ltx-director-demo: setupSurface.outputs must be a list" in registry.diagnostics
 
 
+def test_registry_omits_malformed_persisted_setup_surface_app() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": "not-object",
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert "ltx-director-demo: setupSurface.app must be a JSON object" in registry.diagnostics
+
+
+def test_registry_omits_malformed_persisted_setup_surface_app_fields() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {
+                "group": "Koolook Input",
+                "nodes": [{"id": "12", "type": "Koolook_PublishInput", "title": "Input"}],
+            }
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [{"id": "20", "type": "Koolook_PublishOutput", "title": "Output"}],
+            }
+        ],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "single_file",
+                    "label": "Single file",
+                    "visible": True,
+                    "target": {"node": "12"},
+                    "default": "/image.png",
+                }
+            ],
+            "outputs": "not-list",
+            "results": [],
+            "switch": {
+                "key": "switch",
+                "label": "Input type",
+                "visible": True,
+                "target": {"node": "12", "input": "mode"},
+                "default": 2,
+                "options": [{"value": True, "label": "Img", "visible": True, "input": "single_file"}],
+            },
+        },
+    }
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    assert registry.getSetup("ltx-director-demo") is None
+    assert "ltx-director-demo: setupSurface.app.outputs must be a list" in registry.diagnostics
+    assert (
+        "ltx-director-demo: setupSurface.app.inputs[0].target.input must be non-empty text"
+        in registry.diagnostics
+    )
+    assert (
+        "ltx-director-demo: setupSurface.app.switch.options[0].value must be an integer"
+        in registry.diagnostics
+    )
+
+
 def test_file_storage_loads_setups_object_and_uses_sample_fallback(tmp_path) -> None:
     primary = tmp_path / "setups.json"
     fallback = tmp_path / "sample.json"
