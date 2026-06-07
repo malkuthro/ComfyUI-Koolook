@@ -177,6 +177,26 @@ Success returns `{ "ok": true, "setup": { ... } }` with the generated
 `apiPrompt` stored alongside the original `visualGraph`. Validation failures
 return HTTP `400` with `{ "ok": false, "errors": [...] }`.
 
+## Comfy-Native Setup Surface
+
+Issue #219 amends the #209 direction: curators should define a setup's app
+surface visually in ComfyUI where possible, while the backend stores the
+machine-readable contract. The reserved group names are:
+
+- `Koolook Input`: required source/input area for app-style setups. Put source
+  image, source video, source folder, source audio, or source file/text loader
+  nodes in this group.
+- `Koolook Output`: required output/result area. Put preview, save image, video
+  combine/save, output folder, or other result-producing nodes in this group.
+- `Koolook Controls`: future optional controls area for prompt, seed, strength,
+  size, mode, or other user-tweakable fields.
+
+Sidebar selection saves now preserve ComfyUI groups that overlap selected nodes,
+which is the prerequisite for later publish-time inference. Current publish
+still accepts explicit JSON contracts; future slices should infer
+`sourceInputs`, `outputs`, and optional `controls` from these groups and keep
+raw JSON editing as an advanced fallback.
+
 ## Callable Visual Workflow Standard
 
 The first supported conversion shape is intentionally narrow:

@@ -14,6 +14,7 @@ import { toast } from "./constants.js";
 import { getWorkflowGraph } from "./workflows_store.js";
 import { showConfirmModal } from "./modals.js";
 import { cloneWorkflowForTemporaryLoad } from "./workflow_payload.js";
+import { groupsForSelectedNodes, translateGroups } from "./canvas_groups.js";
 
 export function serializeFullCanvas() {
     try {
@@ -207,7 +208,7 @@ export function serializeSelection() {
             last_link_id: full.last_link_id,
             nodes,
             links: internalLinks,
-            groups: [],
+            groups: groupsForSelectedNodes(full, selectedKeys),
             ...(definitions ? { definitions } : {}),
             config: full.config || {},
             extra: full.extra || {},
@@ -495,7 +496,7 @@ export function insertNode(typeName) {
 // =============================================================================
 
 function placeBboxAtCanvasCenter(nodes) {
-    if (!nodes || nodes.length === 0) return;
+    if (!nodes || nodes.length === 0) return { dx: 0, dy: 0 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of nodes) {
         const w = (n.size && n.size[0]) || 200;
@@ -507,7 +508,7 @@ function placeBboxAtCanvasCenter(nodes) {
         if (x + w > maxX) maxX = x + w;
         if (y + h > maxY) maxY = y + h;
     }
-    if (!isFinite(minX) || !isFinite(minY)) return;
+    if (!isFinite(minX) || !isFinite(minY)) return { dx: 0, dy: 0 };
     const bboxCx = (minX + maxX) / 2;
     const bboxCy = (minY + maxY) / 2;
 
@@ -526,11 +527,42 @@ function placeBboxAtCanvasCenter(nodes) {
         // `placeAtCanvasCenter`'s posture: don't throw on a layout race.
     }
 
-    if (dx === 0 && dy === 0) return;
+    if (dx === 0 && dy === 0) return { dx, dy };
     for (const n of nodes) {
         if (!n.pos) n.pos = [0, 0];
         n.pos[0] += dx;
         n.pos[1] += dy;
+    }
+    return { dx, dy };
+}
+
+function addWorkflowGroupsToCanvas(groups, dx, dy) {
+    const translated = translateGroups(groups, dx, dy);
+    if (translated.length === 0 || !app.graph) return;
+    let liveGroups = null;
+    if (Array.isArray(app.graph._groups)) {
+        liveGroups = app.graph._groups;
+    } else {
+        if (!Array.isArray(app.graph.groups)) app.graph.groups = [];
+        liveGroups = app.graph.groups;
+    }
+
+    for (const groupData of translated) {
+        let group = null;
+        try {
+            const GroupClass = LiteGraph?.LGraphGroup || globalThis.LGraphGroup;
+            if (typeof GroupClass === "function") {
+                group = new GroupClass(groupData.title || "");
+                if (typeof group.configure === "function") {
+                    group.configure(groupData);
+                } else {
+                    Object.assign(group, groupData);
+                }
+            }
+        } catch (e) {
+            group = null;
+        }
+        liveGroups.push(group || groupData);
     }
 }
 
@@ -635,7 +667,7 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
     // Translate the cluster to the viewport center BEFORE creating live
     // nodes. `placeBboxAtCanvasCenter` writes into `n.pos` on the cloned
     // entries, which `node.configure(...)` then reads.
-    placeBboxAtCanvasCenter(nodesRaw);
+    const placement = placeBboxAtCanvasCenter(nodesRaw);
 
     // Insert nodes; let the live graph allocate ids so nothing collides
     // with `app.graph.last_node_id`.
@@ -695,6 +727,8 @@ export async function insertWorkflowOntoCanvas(dirPath, wfName) {
             );
         }
     }
+
+    addWorkflowGroupsToCanvas(clone.groups, placement.dx, placement.dy);
 
     // Selection — best-effort, never block on it.
     try {
