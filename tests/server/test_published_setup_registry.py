@@ -446,6 +446,126 @@ def test_publish_setup_converts_easy_ai_pipeline_widget_only_values() -> None:
     }
 
 
+def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 10,
+                "type": "sam3-subgraph",
+                "inputs": [
+                    {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": None},
+                    {"name": "threshold", "type": "FLOAT", "widget": {"name": "threshold"}, "link": None},
+                    {"name": "image", "type": "IMAGE", "link": 42},
+                ],
+                "properties": {
+                    "proxyWidgets": [
+                        ["135", "text"],
+                        ["133", "threshold"],
+                    ],
+                },
+                "widgets_values": [],
+            },
+            {"id": 20, "type": "LoadImage", "inputs": []},
+        ],
+        "links": [
+            [42, 20, 0, 10, 2, "IMAGE"],
+        ],
+        "definitions": {
+            "subgraphs": [
+                {
+                    "id": "sam3-subgraph",
+                    "nodes": [
+                        {
+                            "id": 135,
+                            "type": "CLIPTextEncode",
+                            "inputs": [
+                                {"name": "clip", "type": "CLIP", "link": 1},
+                                {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": 2},
+                            ],
+                            "widgets_values": ["bear"],
+                        },
+                        {
+                            "id": 133,
+                            "type": "SAM3_Detect",
+                            "inputs": [
+                                {"name": "image", "type": "IMAGE", "link": 3},
+                                {"name": "threshold", "type": "FLOAT", "widget": {"name": "threshold"}, "link": 4},
+                            ],
+                            "widgets_values": [0.5],
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "sam3-proxy-widget-setup",
+            "title": "SAM3 Proxy Widget Setup",
+            "description": "A subgraph wrapper with proxy widget defaults.",
+        },
+        inputContract={"inputs": [{"key": "prompt", "type": "text", "target": {"node": "10", "input": "text"}}]},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/SAM3"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("sam3-proxy-widget-setup")
+    assert setup is not None
+    assert setup["apiPrompt"]["10"]["inputs"] == {
+        "text": "bear",
+        "threshold": 0.5,
+        "image": ["20", 0],
+    }
+
+
+def test_publish_setup_converts_widget_values_saved_as_mapping() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 142,
+                "type": "VHS_LoadVideo",
+                "inputs": [
+                    {"name": "video", "type": "COMBO", "widget": {"name": "video"}, "link": None},
+                    {"name": "force_rate", "type": "FLOAT", "widget": {"name": "force_rate"}, "link": None},
+                    {"name": "frame_load_cap", "type": "INT", "widget": {"name": "frame_load_cap"}, "link": None},
+                ],
+                "widgets_values": {
+                    "video": "example.mp4",
+                    "force_rate": 0,
+                    "frame_load_cap": 41,
+                },
+            },
+        ],
+        "links": [],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "mapping-widget-values",
+            "title": "Mapping Widget Values",
+            "description": "A node saved with named widget values.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "preview", "type": "video"}]},
+        source={"kind": "sidebar-workflow", "path": "Demos/Mapping Widgets"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("mapping-widget-values")
+    assert setup is not None
+    assert setup["apiPrompt"]["142"]["inputs"] == {
+        "video": "example.mp4",
+        "force_rate": 0,
+        "frame_load_cap": 41,
+    }
+
+
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:
     storage = StaticSetupStorage([])
     registry = PublishedSetupRegistry(storage)

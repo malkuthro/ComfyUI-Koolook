@@ -243,6 +243,11 @@ The first supported conversion shape is intentionally narrow:
 - Widget-backed inputs must appear in `node.inputs` with a `name` and
   `widget` object. Their values are read from `node.widgets_values` in widget
   input order.
+- Nodes may also save `widgets_values` as an object keyed by widget/input name;
+  those values are read by name.
+- Subgraph wrapper nodes may save no direct `widgets_values` while exposing
+  `properties.proxyWidgets`; those defaults are read from the matching
+  `definitions.subgraphs` entry.
 - Some simple Comfy nodes serialize widget values without corresponding
   `node.inputs` entries. The converter supports known widget-only mappings for
   `Text Multiline` (`text`) and Koolook `EasyAIPipeline` so simple grouped
