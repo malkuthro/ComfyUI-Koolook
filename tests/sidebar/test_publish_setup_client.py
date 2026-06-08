@@ -163,3 +163,47 @@ def test_publish_saved_workflow_can_submit_reviewed_visual_graph() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_publish_saved_workflow_can_submit_comfy_api_prompt() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { publishSavedWorkflowSetup } from "./web/sidebar/published_setups.js";
+
+        const visualGraph = {
+          nodes: [{ id: 12, type: "Text Multiline" }],
+          links: [],
+        };
+        const apiPrompt = {
+          "12": { class_type: "Text Multiline", inputs: { text: "comfy export" } },
+        };
+        let payload;
+
+        await publishSavedWorkflowSetup({
+          dirPath: ["Demos"],
+          wfName: "Director",
+          visualGraph,
+          apiPrompt,
+          metadata: { id: "director-demo", title: "Director Demo", description: "API prompt" },
+          inputContract: { inputs: [] },
+          outputContract: { outputs: [{ key: "preview", type: "image" }] },
+          fetchImpl: async (_url, options) => {
+            payload = JSON.parse(options.body);
+            return {
+              ok: true,
+              status: 200,
+              async json() {
+                return { ok: true, setup: { id: "director-demo" } };
+              },
+            };
+          },
+        });
+
+        assert.deepEqual(payload.visualGraph, visualGraph);
+        assert.deepEqual(payload.apiPrompt, apiPrompt);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr

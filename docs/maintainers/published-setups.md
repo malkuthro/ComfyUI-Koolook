@@ -8,6 +8,11 @@ The registry remains separate from sidebar workflow and snapshot storage so
 external apps can consume a stable catalog without knowing Kforge Labs sidebar
 internals.
 
+For the product/design contract behind the external frontend surface, read
+[`published-setup-external-ui-contract.md`](published-setup-external-ui-contract.md).
+This document focuses on storage, validation, routes, and implementation
+details.
+
 ## Storage
 
 The registry loads JSON from:
@@ -98,7 +103,9 @@ Each published setup object uses this shape:
   },
   "source": {
     "kind": "sidebar-workflow",
-    "path": "Folder/Workflow name"
+    "path": "Models/RMGB/Publish/rmgb-publish-v04",
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
   },
   "validation": {
     "status": "valid",
@@ -109,11 +116,12 @@ Each published setup object uses this shape:
 
 `apiPrompt` is nullable only for non-callable draft records, such as bundled
 catalog smoke-test samples. A setup with `validation.status: "valid"` must have
-a current API prompt generated from its visual graph. Execution slices should
-require `validation.status: "valid"` and a concrete `apiPrompt` before a setup
-can run. Only `schemaVersion: 1` is accepted by this first registry; future
-schema versions must add explicit migration or validation support before they
-pass.
+a concrete API prompt. Prefer a ComfyUI-exported API prompt as the execution
+source of truth; visual-graph conversion is only a fallback for older/simple
+flows. Execution slices should require `validation.status: "valid"` and a
+concrete `apiPrompt` before a setup can run. Only `schemaVersion: 1` is
+accepted by this first registry; future schema versions must add explicit
+migration or validation support before they pass.
 
 ## Public Boundary
 
@@ -122,7 +130,7 @@ External callers should use:
 
 - `PublishedSetupRegistry.listSetups()`
 - `PublishedSetupRegistry.getSetup(id)`
-- `PublishedSetupRegistry.publishSetup(visualGraph, metadata, inputContract, outputContract, source)`
+- `PublishedSetupRegistry.publishSetup(visualGraph, metadata, inputContract, outputContract, source, apiPrompt=None)`
 
 Execution lives behind [`../../koolook_setup_runner.py`](../../koolook_setup_runner.py).
 External routes and future app adapters should use:
@@ -139,12 +147,14 @@ kept on `registry.diagnostics` and logged by the HTTP adapter. File-level
 storage diagnostics, such as unreadable JSON, are reported through the same
 channel.
 
-`publishSetup` builds a setup from a saved sidebar workflow graph, converts the
-supported visual graph shape into API prompt JSON, validates required metadata
-and contract shape, checks that each declared input target points at both the
-visual graph and the generated API prompt, then replaces any existing setup with
-the same id in storage. Unsupported graphs fail publish with curator diagnostics
-rather than being silently stored as callable records.
+`publishSetup` builds a setup from a saved sidebar workflow graph and, when
+provided, stores ComfyUI's exported API prompt as the executable source of
+truth. If no API prompt is supplied, the registry falls back to the narrow
+visual-graph converter. Publishing validates required metadata and contract
+shape, checks that each declared input target points at both the visual graph
+and the stored API prompt, then replaces any existing setup with the same id in
+storage. Unsupported graphs fail publish with curator diagnostics rather than
+being silently stored as callable records.
 
 ## Catalog API
 
@@ -169,6 +179,9 @@ Publishes one setup. Body:
 ```json
 {
   "visualGraph": {},
+  "apiPrompt": {
+    "12": { "class_type": "Text Multiline", "inputs": { "text": "prompt" } }
+  },
   "metadata": {
     "id": "director-demo",
     "title": "Director Demo",
@@ -193,14 +206,22 @@ Publishes one setup. Body:
   },
   "source": {
     "kind": "sidebar-workflow",
-    "path": "Demos/Director Demo"
+    "path": "Demos/Director Demo",
+    "inventoryPath": ["Demos"],
+    "name": "Director Demo"
   }
 }
 ```
 
-Success returns `{ "ok": true, "setup": { ... } }` with the generated
-`apiPrompt` stored alongside the original `visualGraph`. Validation failures
+Success returns `{ "ok": true, "setup": { ... } }` with the stored
+`apiPrompt` alongside the original `visualGraph`. Validation failures
 return HTTP `400` with `{ "ok": false, "errors": [...] }`.
+
+`source.inventoryPath` is the sidebar folder breadcrumb array for the workflow
+that was published. External frontends may use it to recreate the sidebar's
+administrator-defined catalog hierarchy. `source.path` remains the
+human-readable compatibility path, and `source.name` is the workflow/setup name
+inside that folder.
 
 ## Run API
 
@@ -217,11 +238,12 @@ be a JSON object with an `inputs` object:
 }
 ```
 
-Only fields declared by `inputContract.inputs` or `setupSurface.app.inputs`
-are accepted. `setupSurface.app.switch` is also accepted when present. The
-runner deep-clones the stored `apiPrompt`, injects approved values into their
-declared targets, and submits `{ "prompt": <cloned prompt> }` to ComfyUI
-`/prompt`; the stored setup record is not mutated by a run request.
+Only fields declared by `inputContract.inputs`, `setupSurface.app.inputs`, or
+`setupSurface.app.outputs` are accepted. `setupSurface.app.switch` is also
+accepted when present. The runner deep-clones the stored `apiPrompt`, injects
+approved values into their declared targets, and submits
+`{ "prompt": <cloned prompt> }` to ComfyUI `/prompt`; the stored setup record
+is not mutated by a run request.
 
 Success returns:
 
@@ -261,6 +283,10 @@ external state:
     "setupId": "ltx-director-demo",
     "promptId": "f0c2...",
     "status": "succeeded",
+    "comfyStatus": {
+      "completed": true,
+      "status_str": "success"
+    },
     "outputs": [
       {
         "key": "video",
@@ -281,17 +307,22 @@ external state:
 }
 ```
 
-Status is one of `queued`, `running`, `succeeded`, or `failed`. History entries
-produce terminal state and output items; otherwise the runner checks ComfyUI
-queue data to distinguish `running` from still `queued`. Unknown run ids return
-`404`; ComfyUI status lookup failures return `502`.
+Status is one of `queued`, `running`, `succeeded`, `failed`, or `lost`.
+History entries produce terminal state, the raw ComfyUI `status` object as
+`comfyStatus`, and output items; otherwise the runner checks ComfyUI queue
+data to distinguish `running` from still `queued`. If a prompt is missing from
+both history and queue, the runner reports terminal status `lost` so clients do
+not poll until timeout. Unknown run ids return `404`; ComfyUI status lookup
+failures return `502`.
 
 For group-authored setups, status output summaries also include
 `setupSurface.app.outputs` and `setupSurface.app.results`. This keeps the
 external app aligned with the publish-contract-node surface even when
 `outputContract.outputs` is empty. Result fields include their declared target,
 default value, visibility, and any matching ComfyUI history items for the
-target node.
+target node. `Koolook_PublishResult` emits its resolved string through
+ComfyUI UI text history, and the runner flattens that into a result item whose
+`value` is the selected output path.
 
 ## Comfy-Native Setup Surface
 
@@ -299,16 +330,22 @@ Issue #219 amends the #209 direction: curators should define a setup's app
 surface visually in ComfyUI where possible, while the backend stores the
 machine-readable contract. The reserved group names are:
 
-- `Koolook Input`: required source/input area for app-style setups. Put source
-  image, source video, source folder, source audio, or source file/text loader
-  nodes in this group.
-- `Koolook Output`: required output/result area. Put preview, save image, video
-  combine/save, output folder, or other result-producing nodes in this group.
+- `Koolook Input`: required source/input area for app-style setups. Put
+  `Koolook_PublishInput` here. Nearby source/helper nodes may overlap this
+  group for human review, but they do not define the external app contract.
+- `Koolook Output`: required output/result area. Put `Koolook_PublishOutput`
+  and `Koolook_PublishResult` here. Nearby save/preview/helper nodes may
+  overlap this group for human review, but they do not define the external app
+  contract.
 - `Koolook Controls`: future optional controls area for prompt, seed, strength,
   size, mode, or other user-tweakable fields.
 
 Sidebar selection saves preserve ComfyUI groups that overlap selected nodes.
-Publish infers a machine-readable `setupSurface` from the reserved groups:
+Publish infers a machine-readable `setupSurface` from the reserved groups.
+Group membership is spatial: nodes whose rectangles overlap the reserved group
+are listed in `sourceInputs` / `outputs`. The external app surface under
+`setupSurface.app` is narrower: it is inferred only from recognized
+`Koolook_Publish*` node classes inside the matching reserved group.
 
 ```json
 {
@@ -367,6 +404,9 @@ name     STRING
 version  STRING
 ```
 
+It is the shared destination/naming parameter node for downstream writer and
+path-building branches. It does not own the final mode-selected result.
+
 `Koolook Publish Result` exposes the resolved result value after workflow
 writer/path logic has run:
 
@@ -374,13 +414,31 @@ writer/path logic has run:
 result   STRING
 ```
 
+Route the calculated image/movie/sequence result path selected by the workflow
+switch into `Koolook Publish Result`.
+
 Publish detects these node classes and stores `setupSurface.app` with stable
 keys, user-facing labels, defaults, injection targets, result targets, and
 switch options. The external app should render the switch first, preserve the
 numeric switch values, and hide internal-only options such as Prompt while
-keeping their index stable for the workflow.
+keeping their index stable for the workflow. For the first version, field
+visibility comes from `setupSurface.app.switch.options[*].input`: the selected
+visible option names the one source input field to show.
 
-## Callable Visual Workflow Standard
+## Callable API Prompt Standard
+
+Prefer ComfyUI's own API workflow export when publishing a callable setup. That
+export is the same prompt shape submitted to `/prompt`, so it preserves custom
+nodes exactly as the live server executes them and avoids editor-only artifacts
+such as labels, reroutes, EasyUse state helpers, and subgraph wrapper ids.
+The sidebar publish action should capture this automatically; manual API JSON
+export is a diagnostic/testing workaround, not the product workflow.
+
+Koolook still stores the visual workflow separately for setup surface inference,
+review, and future editing. The visual graph is not treated as the executable
+source when a Comfy-exported `apiPrompt` is present.
+
+## Callable Visual Workflow Fallback
 
 The first supported conversion shape is intentionally narrow:
 
@@ -393,9 +451,9 @@ The first supported conversion shape is intentionally narrow:
   input order.
 - Nodes may also save `widgets_values` as an object keyed by widget/input name;
   those values are read by name.
-- Subgraph wrapper nodes may save no direct `widgets_values` while exposing
-  `properties.proxyWidgets`; those defaults are read from the matching
-  `definitions.subgraphs` entry.
+- Subgraph wrapper nodes are expanded from the matching
+  `definitions.subgraphs` entry and internal node ids are namespaced as
+  `<wrapper-id>:<internal-id>`.
 - Some simple Comfy nodes serialize widget values without corresponding
   `node.inputs` entries. The converter supports known widget-only mappings for
   `Text Multiline` (`text`) and Koolook `EasyAIPipeline` so simple grouped
@@ -404,8 +462,9 @@ The first supported conversion shape is intentionally narrow:
   Array links such as `[101, 12, 0, 20, 0, "STRING"]` and object links with
   `origin_id` / `origin_slot` are supported. The API prompt value becomes
   `["12", 0]`.
-- `Reroute` nodes may use ComfyUI's unnamed `""` input port; other nodes still
-  require named input ports.
+- Visual-only nodes such as `Label (rgthree)` and `Note` are omitted. `Reroute`
+  nodes are resolved as passthrough links instead of being submitted as API
+  nodes.
 - Partial/module workflow sentinel links, such as links from node `-10`, are
   not callable yet and fail publish.
 
@@ -481,7 +540,7 @@ Curators should treat publish diagnostics as setup authoring feedback:
 - `inputContract.inputs[N].target.node not found in visualGraph`: the input
   contract points at a missing visual node.
 - `inputContract.inputs[N].target.input not found in generated apiPrompt`: the
-  contract points at a visual input that is not injectable in the generated API
+  contract points at a visual input that is not injectable in the stored API
   prompt.
 - `setupSurface must be a JSON object for group-authored setups`: a stored
   group-first setup has empty input/output contracts but lacks its persisted
@@ -499,9 +558,10 @@ Curators should treat publish diagnostics as setup authoring feedback:
 - `setupSurface.outputs requires a non-empty Koolook Output group`: the
   group-first publish path was used, but no node overlapped a `Koolook Output`
   group.
-- `apiPrompt is stale for visualGraph`: a stored record's visual graph no
-  longer regenerates to the saved API prompt, so the record is hidden from
-  list/detail responses until republished.
+- Legacy prompts containing visual-only artifacts such as `Reroute`,
+  `Label (rgthree)`, `Note`, `SetNode`, or subgraph wrapper ids are normalized
+  from the visual graph when possible. ComfyUI-exported API prompts are
+  preserved even when they differ from the fallback converter.
 
 ## Curator Publish Flow
 
@@ -512,16 +572,62 @@ The dialog captures:
 
 - setup id, title, optional description, category, tags, and optional preview/card reference
 - the source workflow reference, shown read-only as `Folder/Workflow name`
+  and stored with structured inventory breadcrumbs
 - inferred `Koolook Input` / `Koolook Output` node summaries
+- ComfyUI's API prompt for the workflow, captured automatically by the publish
+  action when that UI integration is complete
 - advanced input/output contract JSON when group inference is not enough
 
 The client validates that the selected saved workflow still exists before
-calling the publish API. The server validates metadata/schema shape, converts
-the submitted graph to an API prompt, stores the inferred setup surface, and
-checks explicit input targets against both the submitted graph and generated
-prompt when advanced contracts are used. Ordinary saved workflows are not
+calling the publish API. The intended path is that the client captures the same
+API prompt shape ComfyUI would export and sends it as `apiPrompt`; the setup
+author should not manually attach an exported JSON file. The server validates
+metadata/schema shape, stores the provided ComfyUI API prompt when present,
+falls back to visual conversion only when necessary, stores the inferred setup
+surface, and checks explicit input targets against both the submitted graph and
+stored prompt when advanced contracts are used. Ordinary saved workflows are not
 published automatically; only the explicit context-menu publish action writes
 to the registry.
+
+## External App Simulator
+
+Use [`../../web/setup_runner_simulator.html`](../../web/setup_runner_simulator.html)
+to validate the external-app path without adding maintainer-only controls to
+the Kforge Labs sidebar. First publish at least one setup from the sidebar
+Workflows context menu; the simulator consumes published records, it does not
+publish workflows itself.
+
+For live review, open the simulator through the stable Koolook route on the
+same host/port as the running ComfyUI instance:
+
+```text
+http://127.0.0.1:<comfy-port>/koolook/setup_runner_simulator.html
+```
+
+Opening the file directly from disk is allowed for inspection, but same-origin
+API calls are not available from `file://`. In that case the simulator prefills
+`http://127.0.0.1:8188` as a common ComfyUI API base; change the port if the
+server is running elsewhere. If the browser blocks that cross-origin request,
+use the Koolook route above. Use
+`web/setup_runner_simulator.html?demo=1` only to verify the simulator UI without
+a live published setup.
+
+The simulator uses the same public execution boundary an external frontend
+uses:
+
+1. `GET /koolook/api/setups` to list published setups.
+2. `GET /koolook/api/setups/{id}` to inspect the selected setup contract.
+3. `POST /koolook/api/setups/{id}/run` with the JSON inputs supplied in the
+   simulator.
+4. `GET /koolook/api/runs/{runId}` until the run reaches `succeeded`,
+   `failed`, or `lost`, or the client-side timeout expires.
+
+The simulator displays the stable Koolook run id, ComfyUI prompt id,
+queued/running/final status, returned output summaries, raw ComfyUI terminal
+status details, and raw Koolook error payloads. It does not re-convert sidebar
+workflow graphs at run time and does not call ComfyUI `/prompt` directly; the
+runner owns prompt cloning, input injection, queue submission, and history/queue
+translation.
 
 ## Contract Authoring Rules
 

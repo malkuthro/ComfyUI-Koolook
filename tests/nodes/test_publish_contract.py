@@ -70,6 +70,8 @@ def test_publish_result_exposes_resolved_result() -> None:
 
     assert list(spec) == ["result"]
     assert Koolook_PublishResult.RETURN_NAMES == ("result",)
-    assert Koolook_PublishResult().run(result="/out/mask_v001.png") == (
-        "/out/mask_v001.png",
-    )
+    assert Koolook_PublishResult.OUTPUT_NODE is True
+    assert Koolook_PublishResult().run(result="/out/mask_v001.png") == {
+        "ui": {"text": ["/out/mask_v001.png"]},
+        "result": ("/out/mask_v001.png",),
+    }

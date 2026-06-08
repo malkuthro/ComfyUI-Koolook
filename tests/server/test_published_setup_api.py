@@ -37,6 +37,22 @@ def test_catalog_routes_expose_list_and_detail_contracts() -> None:
     asyncio.run(exercise())
 
 
+def test_setup_runner_simulator_routes_serve_html_and_js() -> None:
+    async def exercise() -> None:
+        app = _app_with_registry(PublishedSetupRegistry(StaticSetupStorage([])))
+
+        html_response = await _handle(app, "GET", "/koolook/setup_runner_simulator.html")
+        js_response = await _handle(app, "GET", "/koolook/setup_runner_simulator.js")
+
+        assert html_response.status == 200
+        assert "Koolook Setup Runner Simulator" in html_response.text
+        assert "./setup_runner_simulator.js" in html_response.text
+        assert js_response.status == 200
+        assert "listPublishedSetups" in js_response.text
+
+    asyncio.run(exercise())
+
+
 def test_catalog_list_omits_invalid_setups() -> None:
     async def exercise() -> None:
         invalid = deepcopy(_valid_setup())
@@ -107,6 +123,53 @@ def test_publish_route_persists_setup_and_catalog_returns_it() -> None:
             "12": {"class_type": "Text Multiline", "inputs": {"text": "published prompt"}}
         }
         assert detail["validation"] == {"status": "valid", "diagnostics": []}
+
+    asyncio.run(exercise())
+
+
+def test_publish_route_preserves_supplied_api_prompt() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([]))
+        app = _app_with_registry(registry)
+        payload = {
+            "visualGraph": {
+                "nodes": [
+                    {
+                        "id": 12,
+                        "type": "Text Multiline",
+                        "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                        "widgets_values": ["fallback prompt"],
+                    }
+                ],
+                "links": [],
+            },
+            "apiPrompt": {
+                "12": {"class_type": "Text Multiline", "inputs": {"text": "comfy api prompt"}}
+            },
+            "metadata": {
+                "id": "published-with-api-prompt",
+                "title": "Published With API Prompt",
+                "description": "Published with Comfy's API workflow.",
+            },
+            "inputContract": {
+                "inputs": [
+                    {
+                        "key": "prompt",
+                        "type": "text",
+                        "target": {"node": "12", "input": "text"},
+                    }
+                ]
+            },
+            "outputContract": {"outputs": [{"key": "preview", "type": "image"}]},
+            "source": {"kind": "sidebar-workflow", "path": "Demos/API Prompt"},
+        }
+
+        publish_response = await _handle_json(app, "POST", "/koolook/api/setups", payload)
+        detail_response = await _handle(app, "GET", "/koolook/api/setups/published-with-api-prompt")
+
+        assert publish_response.status == 200
+        detail = _json_body(detail_response)
+        assert detail["apiPrompt"] == payload["apiPrompt"]
 
     asyncio.run(exercise())
 
@@ -245,6 +308,7 @@ def test_run_status_route_reports_succeeded_outputs_from_comfy_history() -> None
                 "setupId": "ltx-director-demo",
                 "promptId": "comfy-prompt-1",
                 "status": "succeeded",
+                "comfyStatus": {"completed": True, "status_str": "success"},
                 "outputs": [
                     {
                         "key": "video",

@@ -42,6 +42,7 @@ export async function publishSavedWorkflowSetup({
     dirPath,
     wfName,
     visualGraph,
+    apiPrompt,
     metadata,
     inputContract,
     outputContract,
@@ -58,6 +59,7 @@ export async function publishSavedWorkflowSetup({
 
     const payload = {
         visualGraph: cloneJson(graph),
+        ...(apiPrompt && typeof apiPrompt === "object" ? { apiPrompt: cloneJson(apiPrompt) } : {}),
         metadata: normalizeMetadata(metadata || {}),
         inputContract: cloneJson(inputContract || { inputs: [] }),
         outputContract: cloneJson(outputContract || { outputs: [] }),

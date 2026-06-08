@@ -155,7 +155,7 @@ def test_registry_lists_summaries_and_fetches_full_setup_without_invalid_records
     assert registry.diagnostics == ["broken: missing required field: metadata"]
 
 
-def test_registry_omits_setup_with_stale_api_prompt() -> None:
+def test_registry_preserves_supplied_api_prompt_that_differs_from_fallback_conversion() -> None:
     stale = deepcopy(_valid_setup())
     stale["apiPrompt"] = {
         "1": {
@@ -165,9 +165,23 @@ def test_registry_omits_setup_with_stale_api_prompt() -> None:
     }
     registry = PublishedSetupRegistry(StaticSetupStorage([stale]))
 
-    assert registry.listSetups() == []
-    assert registry.getSetup("ltx-director-demo") is None
-    assert registry.diagnostics == ["ltx-director-demo: apiPrompt is stale for visualGraph"]
+    assert registry.listSetups()[0]["id"] == "ltx-director-demo"
+    setup = registry.getSetup("ltx-director-demo")
+    assert setup is not None
+    assert setup["apiPrompt"] == stale["apiPrompt"]
+    assert registry.diagnostics == []
+
+
+def test_registry_normalizes_legacy_visual_artifacts_in_api_prompt() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["apiPrompt"]["99"] = {"class_type": "Label (rgthree)", "inputs": {}}
+    registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+
+    normalized = registry.getSetup("ltx-director-demo")
+
+    assert normalized is not None
+    assert normalized["apiPrompt"] == _valid_setup()["apiPrompt"]
+    assert registry.diagnostics == []
 
 
 def test_registry_omits_group_first_setup_missing_persisted_surface() -> None:
@@ -720,12 +734,17 @@ def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
             "subgraphs": [
                 {
                     "id": "sam3-subgraph",
+                    "inputs": [
+                        {"name": "text", "type": "STRING"},
+                        {"name": "threshold", "type": "FLOAT"},
+                        {"name": "image", "type": "IMAGE"},
+                    ],
                     "nodes": [
                         {
                             "id": 135,
                             "type": "CLIPTextEncode",
                             "inputs": [
-                                {"name": "clip", "type": "CLIP", "link": 1},
+                                {"name": "clip", "type": "CLIP", "link": None},
                                 {"name": "text", "type": "STRING", "widget": {"name": "text"}, "link": 2},
                             ],
                             "widgets_values": ["bear"],
@@ -740,6 +759,11 @@ def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
                             "widgets_values": [0.5],
                         },
                     ],
+                    "links": [
+                        {"id": 2, "origin_id": -10, "origin_slot": 0, "target_id": 135, "target_slot": 1},
+                        {"id": 3, "origin_id": -10, "origin_slot": 2, "target_id": 133, "target_slot": 0},
+                        {"id": 4, "origin_id": -10, "origin_slot": 1, "target_id": 133, "target_slot": 1},
+                    ],
                 },
             ],
         },
@@ -752,16 +776,17 @@ def test_publish_setup_converts_subgraph_proxy_widget_values() -> None:
             "title": "SAM3 Proxy Widget Setup",
             "description": "A subgraph wrapper with proxy widget defaults.",
         },
-        inputContract={"inputs": [{"key": "prompt", "type": "text", "target": {"node": "10", "input": "text"}}]},
-        outputContract={"outputs": []},
+        inputContract={"inputs": []},
+        outputContract={"outputs": [{"key": "mask", "type": "mask"}]},
         source={"kind": "sidebar-workflow", "path": "Demos/SAM3"},
     )
 
     assert result.valid is True
     setup = registry.getSetup("sam3-proxy-widget-setup")
     assert setup is not None
-    assert setup["apiPrompt"]["10"]["inputs"] == {
-        "text": "bear",
+    assert "10" not in setup["apiPrompt"]
+    assert setup["apiPrompt"]["10:135"]["inputs"] == {"text": "bear"}
+    assert setup["apiPrompt"]["10:133"]["inputs"] == {
         "threshold": 0.5,
         "image": ["20", 0],
     }
@@ -826,10 +851,15 @@ def test_publish_setup_converts_reroute_with_unnamed_input() -> None:
                 "id": 170,
                 "type": "Reroute",
                 "inputs": [{"name": "", "type": "*", "link": 10}],
-                "outputs": [{"name": "", "type": "*", "links": []}],
+                "outputs": [{"name": "", "type": "*", "links": [11]}],
+            },
+            {
+                "id": 2,
+                "type": "Text Concatenate",
+                "inputs": [{"name": "text_a", "type": "STRING", "link": 11}],
             },
         ],
-        "links": [[10, 1, 0, 170, 0, "*"]],
+        "links": [[10, 1, 0, 170, 0, "*"], [11, 170, 0, 2, 0, "*"]],
     }
 
     result = registry.publishSetup(
@@ -847,10 +877,8 @@ def test_publish_setup_converts_reroute_with_unnamed_input() -> None:
     assert result.valid is True
     setup = registry.getSetup("reroute-flow")
     assert setup is not None
-    assert setup["apiPrompt"]["170"] == {
-        "class_type": "Reroute",
-        "inputs": {"": ["1", 0]},
-    }
+    assert "170" not in setup["apiPrompt"]
+    assert setup["apiPrompt"]["2"]["inputs"] == {"text_a": ["1", 0]}
 
 
 def test_publish_setup_infers_app_surface_from_koolook_groups() -> None:

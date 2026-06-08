@@ -160,9 +160,10 @@ class Koolook_PublishResult:
     RETURN_NAMES = ("result",)
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
+    OUTPUT_NODE = True
 
     def run(self, result: str):
-        return (result,)
+        return {"ui": {"text": [result]}, "result": (result,)}
 
 
 NODE_CLASS_MAPPINGS = {

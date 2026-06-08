@@ -182,6 +182,7 @@ class PublishedSetupRunner:
                 "setupId": record.setup_id,
                 "promptId": record.prompt_id,
                 "status": status,
+                "comfyStatus": history_entry.get("status", {}),
                 "outputs": _summarize_outputs(setup, history_entry.get("outputs", {})),
             }
 
@@ -212,6 +213,13 @@ def _declared_input_fields(setup: dict[str, Any]) -> dict[str, dict[str, Any]]:
     app = setup.get("setupSurface", {}).get("app", {})
     if isinstance(app, dict):
         for field in app.get("inputs", []):
+            if not isinstance(field, dict):
+                continue
+            key = field.get("key")
+            target = field.get("target")
+            if isinstance(key, str) and key and isinstance(target, dict):
+                fields.setdefault(key, field)
+        for field in app.get("outputs", []):
             if not isinstance(field, dict):
                 continue
             key = field.get("key")
@@ -250,12 +258,12 @@ def _status_from_history(history_entry: dict[str, Any]) -> str:
 
 def _status_from_queue(prompt_id: str, queue: Any) -> str:
     if not isinstance(queue, dict):
-        return "queued"
+        return "lost"
     if _queue_contains_prompt(queue.get("queue_running", []), prompt_id):
         return "running"
     if _queue_contains_prompt(queue.get("queue_pending", []), prompt_id):
         return "queued"
-    return "queued"
+    return "lost"
 
 
 def _queue_contains_prompt(entries: Any, prompt_id: str) -> bool:
@@ -335,10 +343,12 @@ def _flatten_history_outputs(raw_outputs: Any) -> list[dict[str, Any]]:
             if not isinstance(values, list):
                 continue
             for value in values:
+                item = {"nodeId": str(node_id), "kind": str(kind)}
                 if isinstance(value, dict):
-                    item = {"nodeId": str(node_id), "kind": str(kind)}
                     item.update(value)
-                    items.append(item)
+                else:
+                    item["value"] = value
+                items.append(item)
     return items
 
 
