@@ -15,8 +15,8 @@ The intended end-to-end flow is:
 
 1. A setup author builds a workflow visually in ComfyUI.
 2. The author places Koolook publish contract nodes in reserved setup areas:
-   `Koolook_PublishInput`, `Koolook_PublishOutput`, and
-   `Koolook_PublishResult`.
+   `Koolook_PublishInput`, `Koolook_PublishOutput`, optional
+   `Koolook_PublishRouter`, and optional `Koolook_PublishResult`.
 3. The author right-clicks the saved setup and chooses **Publish setup...**.
 4. Koolook automatically captures:
    - the visual graph, for app-surface inference and review;
@@ -34,7 +34,8 @@ The intended end-to-end flow is:
 11. Koolook injects the submitted values into the stored `apiPrompt`, queues it
    on the same local ComfyUI server, and polls the run status.
 12. ComfyUI runs with the server-installed custom nodes.
-13. `Koolook_PublishResult` returns the selected/resolved result path.
+13. `Koolook_PublishRouter` selects the writer branch; optional
+   `Koolook_PublishResult` returns a custom selected/resolved result path.
 14. The frontend shows the run confirmation and result path.
 
 ## Canonical Data Shape
@@ -204,8 +205,8 @@ script, or another authoring helper.
   switch values.
 - `Koolook_PublishInput`, `Koolook_PublishOutput`, and
   `Koolook_PublishResult` contract nodes.
-- `Koolook_PublishResult` emits UI text history so the runner can return the
-  selected result path.
+- `Koolook_PublishResult` emits UI text history so the runner can return a
+  selected result path when a setup uses an explicit reporting node.
 - External runner simulator under `web/setup_runner_simulator.html`.
 - Simulator form rendering from `setupSurface.app`.
 
@@ -270,7 +271,8 @@ Acceptance criteria:
 
 ### 5. Run Result Robustness
 
-The first result contract is a path string from `Koolook_PublishResult`.
+The first result contract is a selected writer/history item, with an optional
+path string from `Koolook_PublishResult` when authors need custom reporting.
 
 Acceptance criteria:
 

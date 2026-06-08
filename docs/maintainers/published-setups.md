@@ -334,9 +334,11 @@ machine-readable contract. The reserved group names are:
   `Koolook_PublishInput` here. Nearby source/helper nodes may overlap this
   group for human review, but they do not define the external app contract.
 - `Koolook Output`: required output/result area. Put `Koolook_PublishOutput`
-  and `Koolook_PublishResult` here. Nearby save/preview/helper nodes may
-  overlap this group for human review, but they do not define the external app
-  contract.
+  here. For switch-selected outputs, put `Koolook_PublishRouter` in this group
+  and wire its switch-aligned outputs to the branch writer nodes. Optional
+  `Koolook_PublishResult` nodes may still be used to report a custom result
+  string. Nearby save/preview/helper nodes may overlap this group for human
+  review, but they do not define the external app form.
 - `Koolook Controls`: future optional controls area for prompt, seed, strength,
   size, mode, or other user-tweakable fields.
 
@@ -382,7 +384,8 @@ nodes when a setup should be callable from an external app:
 ```text
 Koolook Publish Input   -> place in Koolook Input
 Koolook Publish Output  -> place in Koolook Output
-Koolook Publish Result  -> place in Koolook Output
+Koolook Publish Router  -> place in Koolook Output when one switch selects writers
+Koolook Publish Result  -> optional reporting node in Koolook Output
 ```
 
 `Koolook Publish Input` exposes stable multiline fields and outputs:
@@ -407,15 +410,36 @@ version  STRING
 It is the shared destination/naming parameter node for downstream writer and
 path-building branches. It does not own the final mode-selected result.
 
-`Koolook Publish Result` exposes the resolved result value after workflow
-writer/path logic has run:
+`Koolook Publish Router` declares the execution route for switch-selected
+writer branches:
+
+```text
+selector  INT from Koolook Publish Input.switch
+payload   image/string/other payload from the setup body
+
+EXR       output slot 0
+QT        output slot 1
+Img       output slot 2
+Prompt    output slot 3
+```
+
+Wire the setup payload, such as a mask image, through this router and connect
+each output slot to the matching writer branch. At publish time Koolook stores
+an `executionMap` that records the router, selected switch key, and writer
+nodes reachable from each output slot. At run time the runner uses that map to
+keep only the selected writer branch instead of rediscovering intent from the
+whole graph.
+
+`Koolook Publish Result` is optional. It exposes a custom result value after
+workflow writer/path logic has run:
 
 ```text
 result   STRING
 ```
 
-Route the calculated image/movie/sequence result path selected by the workflow
-switch into `Koolook Publish Result`.
+Use it when the external app should display a path/status value that cannot be
+read from the selected writer/history output. It is no longer required to make
+switch-selected writer execution work.
 
 Publish detects these node classes and stores `setupSurface.app` with stable
 keys, user-facing labels, defaults, injection targets, result targets, and
@@ -424,6 +448,42 @@ numeric switch values, and hide internal-only options such as Prompt while
 keeping their index stable for the workflow. For the first version, field
 visibility comes from `setupSurface.app.switch.options[*].input`: the selected
 visible option names the one source input field to show.
+
+### Switch-Selected Writer Branches
+
+Preferred router-authored setups use one `Koolook_PublishInput.switch` value
+to drive both source selection and writer selection. The supported pattern is:
+
+```text
+Koolook_PublishInput.switch -> source switch select
+Koolook_PublishInput.switch -> Koolook_PublishRouter.selector
+main setup payload -> Koolook_PublishRouter.payload
+Koolook_PublishRouter.EXR -> EXR writer
+Koolook_PublishRouter.QT -> QT writer
+Koolook_PublishRouter.Img -> image writer
+Koolook_PublishRouter.Prompt -> prompt/no-op branch when needed
+```
+
+At publish time, Koolook stores an explicit `executionMap` for this router.
+At run time, Koolook records the submitted app switch value, selects the
+matching router branch from the map, and prunes the queued API prompt to that
+writer plus its upstream dependencies. This keeps unselected writer branches
+from executing while still materializing the selected result file.
+
+Older setups without `executionMap` may still use the legacy result-switch
+fallback:
+
+```text
+Koolook_PublishInput.switch -> result/output switch select
+result/output switch value0/value1/value2/... -> branch result path
+result/output switch output -> Koolook_PublishResult.result
+```
+
+When ComfyUI history includes a `Koolook_PublishResult` item, that result node
+remains the preferred source of truth. If history omits the result node but
+does include the selected branch node's output item, the runner uses the stored
+app switch value plus the API prompt links to attach that selected branch item
+to the published `result` summary.
 
 ## Callable API Prompt Standard
 
