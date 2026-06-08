@@ -128,6 +128,10 @@ The format is inspired by Keep a Changelog and SemVer.
   invalid switch values such as booleans or branch numbers not declared by the
   published setup, preventing malformed requests from falling back to
   unpruned prompt execution.
+- **Published setup execution-map validation.** Router-authored setup runs now
+  reject selected branches whose stored writer nodes no longer exist in the
+  prompt, preventing stale maps from falling back to legacy/full-prompt
+  execution.
 - **Published setup runs resolve switch-selected result branches.** App-style
   setups where `Koolook_PublishInput.switch` drives both source and
   output/result switches now prune queued prompts to the selected result path,

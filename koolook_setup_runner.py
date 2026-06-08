@@ -539,6 +539,8 @@ def _validate_execution_map_inputs(setup: dict[str, Any], run_inputs: dict[str, 
     routers = execution_map.get("routers")
     if not isinstance(routers, list):
         return []
+    api_prompt = setup.get("apiPrompt")
+    prompt_node_ids = set(api_prompt) if isinstance(api_prompt, dict) else set()
     app = setup.get("setupSurface", {}).get("app", {})
     switch = app.get("switch") if isinstance(app, dict) else None
     errors: list[str] = []
@@ -557,6 +559,25 @@ def _validate_execution_map_inputs(setup: dict[str, Any], run_inputs: dict[str, 
         branches = router.get("branches")
         if not isinstance(branches, dict) or str(selected_value) not in branches:
             errors.append(f"input '{key}' selects branch {selected_value}, but this setup has no execution branch for it")
+            continue
+        branch = branches.get(str(selected_value))
+        writer_nodes = branch.get("writerNodes") if isinstance(branch, dict) else None
+        if isinstance(writer_nodes, list) and writer_nodes:
+            missing_writer_nodes = [
+                str(node_id)
+                for node_id in writer_nodes
+                if str(node_id) not in prompt_node_ids
+            ]
+            if missing_writer_nodes:
+                errors.append(
+                    f"execution map branch {selected_value} for switch '{key}' references "
+                    f"writer node(s) not present in the prompt: {', '.join(missing_writer_nodes)}"
+                )
+        elif not writer_nodes and str(router.get("node", "")) not in prompt_node_ids:
+            errors.append(
+                f"execution map branch {selected_value} for switch '{key}' has no writer nodes "
+                "and its router node is not present in the prompt"
+            )
     return errors
 
 

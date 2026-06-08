@@ -696,6 +696,80 @@ def test_run_setup_rejects_invalid_switch_values_before_queueing(switch_value: o
     asyncio.run(exercise())
 
 
+def test_run_setup_rejects_execution_map_branch_with_stale_writer_nodes() -> None:
+    async def exercise() -> None:
+        setup = _valid_setup()
+        setup["inputContract"] = {"inputs": []}
+        setup["outputContract"] = {"outputs": []}
+        setup["apiPrompt"] = {
+            "100": {
+                "class_type": "Koolook_PublishInput",
+                "inputs": {
+                    "mode": "Img",
+                    "sequence_folder": "",
+                    "qt_file": "",
+                    "single_file": "/shots/source/input.png",
+                    "prompt": "",
+                },
+            },
+            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
+            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["100", 4], "payload": ["300", 0]}},
+            "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"image": ["400", 2]}},
+        }
+        setup["setupSurface"] = {
+            "sourceInputs": [],
+            "outputs": [],
+            "controls": [],
+            "app": {
+                "inputs": [],
+                "outputs": [],
+                "results": [],
+                "switch": {
+                    "key": "switch",
+                    "label": "Input type",
+                    "visible": True,
+                    "target": {"node": "100", "input": "mode"},
+                    "default": 2,
+                    "options": [
+                        {"value": 0, "label": "EXR", "visible": False, "input": "single_file"},
+                        {"value": 1, "label": "QT", "visible": False, "input": "single_file"},
+                        {"value": 2, "label": "Img", "visible": True, "input": "single_file"},
+                    ],
+                },
+            },
+        }
+        setup["executionMap"] = {
+            "version": 1,
+            "routers": [
+                {
+                    "node": "400",
+                    "switchKey": "switch",
+                    "selector": {"node": "100", "output": 4},
+                    "payload": {"node": "300", "output": 0},
+                    "branches": {
+                        "2": {"label": "Img", "output": 2, "writerNodes": ["999"]},
+                    },
+                }
+            ],
+        }
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(
+            type("Registry", (), {"getSetup": lambda self, setup_id: setup if setup_id == "ltx-director-demo" else None})(),
+            comfy,
+        )
+
+        with pytest.raises(SetupRunError) as exc_info:
+            await runner.runSetup("ltx-director-demo", {"switch": 2})
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.errors == [
+            "execution map branch 2 for switch 'switch' references writer node(s) not present in the prompt: 999"
+        ]
+        assert comfy.submitted_prompts == []
+
+    asyncio.run(exercise())
+
+
 def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_empty(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
