@@ -131,6 +131,49 @@ def test_simulator_accepts_canonical_setup_file_shapes() -> None:
           () => setupsFromPublishedSetupFile({ nope: [] }),
           /published setup record/
         );
+        assert.throws(
+          () => setupsFromPublishedSetupFile({ ...setup, apiPrompt: null }),
+          /apiPrompt/
+        );
+        assert.throws(
+          () => setupsFromPublishedSetupFile({ ...setup, apiPrompt: [] }),
+          /apiPrompt/
+        );
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_simulator_marks_local_setup_files_as_not_runnable() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          localSetupFileRecords,
+          setupCanRunFromRegistry,
+          localSetupRunMessage,
+        } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          schemaVersion: 1,
+          id: "file-only",
+          metadata: { title: "File Only" },
+          visualGraph: { nodes: [] },
+          apiPrompt: { "1": { class_type: "Example", inputs: {} } },
+          inputContract: { inputs: [] },
+          outputContract: { outputs: [] },
+          setupSurface: { app: { inputs: [], outputs: [], results: [] } },
+          source: { kind: "sidebar-workflow", path: "File/file-only", inventoryPath: ["File"], name: "file-only" },
+          validation: { status: "valid", diagnostics: [] },
+        };
+
+        assert.equal(setupCanRunFromRegistry(setup), true);
+        const [local] = localSetupFileRecords({ setups: [setup] });
+        assert.equal(setupCanRunFromRegistry(local), false);
+        assert.match(localSetupRunMessage(local), /loaded from a file/i);
+        assert.deepEqual(setupCanRunFromRegistry(setup), true);
         """
     )
 

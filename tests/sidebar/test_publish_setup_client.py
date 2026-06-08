@@ -29,6 +29,9 @@ def test_publish_saved_workflow_sends_registry_payload() -> None:
           nodes: [{ id: 12, inputs: [{ name: "text" }] }],
           links: [],
         };
+        const apiPrompt = {
+          "12": { class_type: "Text Multiline", inputs: { text: "published" } },
+        };
         const calls = [];
         const result = await publishSavedWorkflowSetup({
           dirPath: ["Demos"],
@@ -51,6 +54,7 @@ def test_publish_saved_workflow_sends_registry_payload() -> None:
             }],
           },
           outputContract: { outputs: [{ key: "preview", type: "image" }] },
+          apiPrompt,
           getWorkflowGraph: (path, name) => {
             assert.deepEqual(path, ["Demos"]);
             assert.equal(name, "Director");
@@ -75,6 +79,7 @@ def test_publish_saved_workflow_sends_registry_payload() -> None:
         assert.equal(calls[0].options.headers["Content-Type"], "application/json");
         const payload = JSON.parse(calls[0].options.body);
         assert.deepEqual(payload.visualGraph, graph);
+        assert.deepEqual(payload.apiPrompt, apiPrompt);
         assert.deepEqual(payload.source, {
           kind: "sidebar-workflow",
           path: "Demos/Director",
@@ -136,12 +141,16 @@ def test_publish_saved_workflow_can_submit_reviewed_visual_graph() -> None:
           links: [],
           groups: [],
         };
+        const apiPrompt = {
+          "12": { class_type: "Load Image", inputs: {} },
+        };
         let payload;
 
         await publishSavedWorkflowSetup({
           dirPath: ["Demos"],
           wfName: "Director",
           visualGraph: reviewedGraph,
+          apiPrompt,
           metadata: { id: "director-demo", title: "Director Demo", description: "Reviewed graph" },
           inputContract: { inputs: [] },
           outputContract: { outputs: [] },
@@ -159,6 +168,7 @@ def test_publish_saved_workflow_can_submit_reviewed_visual_graph() -> None:
         });
 
         assert.deepEqual(payload.visualGraph, reviewedGraph);
+        assert.deepEqual(payload.apiPrompt, apiPrompt);
         assert.notDeepEqual(payload.visualGraph, changedGraph);
         """
     )
@@ -255,6 +265,36 @@ def test_publish_saved_workflow_captures_api_prompt_when_missing() -> None:
         assert.equal(calls[1].kind, "fetch");
         assert.deepEqual(calls[1].payload.apiPrompt, capturedPrompt);
         assert.deepEqual(calls[1].payload.visualGraph, visualGraph);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_publish_saved_workflow_requires_api_prompt_or_capture_before_fetch() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { publishSavedWorkflowSetup } from "./web/sidebar/published_setups.js";
+
+        let fetchCalled = false;
+        await assert.rejects(
+          () => publishSavedWorkflowSetup({
+            dirPath: ["Models"],
+            wfName: "Needs Capture",
+            visualGraph: { nodes: [], links: [] },
+            metadata: { id: "needs-capture", title: "Needs Capture", description: "No prompt" },
+            inputContract: { inputs: [] },
+            outputContract: { outputs: [] },
+            fetchImpl: async () => {
+              fetchCalled = true;
+              return { ok: true, async json() { return {}; } };
+            },
+          }),
+          /API prompt capture is required/
+        );
+        assert.equal(fetchCalled, false);
         """
     )
 

@@ -64,10 +64,13 @@ export async function publishSavedWorkflowSetup({
             throw new Error("API prompt capture failed. Publish needs ComfyUI's API-format prompt for this workflow.");
         }
     }
+    if (!resolvedApiPrompt) {
+        throw new Error("API prompt capture is required before publishing this workflow.");
+    }
 
     const payload = {
         visualGraph: cloneJson(graph),
-        ...(resolvedApiPrompt && typeof resolvedApiPrompt === "object" ? { apiPrompt: cloneJson(resolvedApiPrompt) } : {}),
+        apiPrompt: cloneJson(resolvedApiPrompt),
         metadata: normalizeMetadata(metadata || {}),
         inputContract: cloneJson(inputContract || { inputs: [] }),
         outputContract: cloneJson(outputContract || { outputs: [] }),

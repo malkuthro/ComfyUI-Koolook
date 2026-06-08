@@ -612,6 +612,12 @@ use the Koolook route above. Use
 `web/setup_runner_simulator.html?demo=1` only to verify the simulator UI without
 a live published setup.
 
+The simulator can also load exported/offline canonical setup JSON for contract
+review, either as one setup record or a `{ "setups": [...] }` wrapper. File
+loaded records render through the same `setupSurface.app` form path, but they
+are inspect-only: **Run** still uses the live Koolook registry API, so publish
+the setup into the running ComfyUI registry before trying to execute it.
+
 The simulator uses the same public execution boundary an external frontend
 uses:
 

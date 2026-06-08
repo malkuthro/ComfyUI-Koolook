@@ -236,6 +236,9 @@ export async function captureWorkflowApiPrompt(visualGraph) {
         throw new Error(`API prompt capture failed: could not snapshot the current canvas (${e.message || e}).`);
     }
 
+    let prompt;
+    let captureError = null;
+    let restoreError = null;
     try {
         const graph = cloneWorkflowForTemporaryLoad(visualGraph, "__koolook_publish_api_prompt__");
         await app.loadGraphData(graph, true, true);
@@ -243,20 +246,26 @@ export async function captureWorkflowApiPrompt(visualGraph) {
             throw new Error("ComfyUI graphToPrompt API is unavailable.");
         }
         const result = await app.graphToPrompt();
-        const prompt = result?.output ?? result?.prompt ?? result;
+        prompt = result?.output ?? result?.prompt ?? result;
         if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) {
             throw new Error("ComfyUI did not return an API-format prompt object.");
         }
-        return prompt;
     } catch (e) {
-        throw new Error(`API prompt capture failed: ${e.message || e}`);
+        captureError = e;
     } finally {
         try {
             await app.loadGraphData(previousGraph, true, true);
         } catch (e) {
-            console.warn("[Koolook] failed to restore canvas after API prompt capture:", e);
+            restoreError = e;
         }
     }
+    if (restoreError) {
+        throw new Error(`API prompt capture failed: could not restore the current canvas (${restoreError.message || restoreError}).`);
+    }
+    if (captureError) {
+        throw new Error(`API prompt capture failed: ${captureError.message || captureError}`);
+    }
+    return prompt;
 }
 
 export async function loadWorkflowOntoCanvas(dirPath, wfName) {
