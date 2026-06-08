@@ -225,6 +225,49 @@ export function canvasIsNonEmpty() {
     }
 }
 
+export async function captureWorkflowApiPrompt(visualGraph) {
+    if (!visualGraph || typeof visualGraph !== "object") {
+        throw new Error("API prompt capture failed: saved workflow graph is missing.");
+    }
+    let previousGraph;
+    try {
+        previousGraph = app.graph.serialize();
+    } catch (e) {
+        throw new Error(`API prompt capture failed: could not snapshot the current canvas (${e.message || e}).`);
+    }
+
+    let prompt;
+    let captureError = null;
+    let restoreError = null;
+    try {
+        const graph = cloneWorkflowForTemporaryLoad(visualGraph, "__koolook_publish_api_prompt__");
+        await app.loadGraphData(graph, true, true);
+        if (typeof app.graphToPrompt !== "function") {
+            throw new Error("ComfyUI graphToPrompt API is unavailable.");
+        }
+        const result = await app.graphToPrompt();
+        prompt = result?.output ?? result?.prompt ?? result;
+        if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) {
+            throw new Error("ComfyUI did not return an API-format prompt object.");
+        }
+    } catch (e) {
+        captureError = e;
+    } finally {
+        try {
+            await app.loadGraphData(previousGraph, true, true);
+        } catch (e) {
+            restoreError = e;
+        }
+    }
+    if (restoreError) {
+        throw new Error(`API prompt capture failed: could not restore the current canvas (${restoreError.message || restoreError}).`);
+    }
+    if (captureError) {
+        throw new Error(`API prompt capture failed: ${captureError.message || captureError}`);
+    }
+    return prompt;
+}
+
 export async function loadWorkflowOntoCanvas(dirPath, wfName) {
     const sourceGraph = getWorkflowGraph(dirPath, wfName);
     if (!sourceGraph) {

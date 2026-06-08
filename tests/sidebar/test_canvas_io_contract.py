@@ -35,3 +35,13 @@ def test_sidebar_workflow_insert_restores_saved_groups() -> None:
     assert "addWorkflowGroupsToCanvas" in source
     assert "const placement = placeBboxAtCanvasCenter(nodesRaw);" in insert_fn
     assert "addWorkflowGroupsToCanvas(clone.groups, placement.dx, placement.dy);" in insert_fn
+
+
+def test_api_prompt_capture_restore_failure_blocks_publish() -> None:
+    source = (REPO_ROOT / "web/sidebar/canvas_io.js").read_text(encoding="utf-8")
+    capture_fn = source[source.index("export async function captureWorkflowApiPrompt"):]
+    capture_fn = capture_fn[:capture_fn.index("export async function loadWorkflowOntoCanvas")]
+
+    assert "restoreError" in capture_fn
+    assert "could not restore the current canvas" in capture_fn
+    assert "console.warn(\"[Koolook] failed to restore canvas after API prompt capture:" not in capture_fn

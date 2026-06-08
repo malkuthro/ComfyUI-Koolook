@@ -43,6 +43,7 @@ export async function publishSavedWorkflowSetup({
     wfName,
     visualGraph,
     apiPrompt,
+    captureApiPrompt,
     metadata,
     inputContract,
     outputContract,
@@ -56,16 +57,28 @@ export async function publishSavedWorkflowSetup({
     if (!graph || typeof graph !== "object") {
         throw new Error("Saved workflow not found.");
     }
+    let resolvedApiPrompt = (apiPrompt && typeof apiPrompt === "object") ? apiPrompt : null;
+    if (!resolvedApiPrompt && typeof captureApiPrompt === "function") {
+        resolvedApiPrompt = await captureApiPrompt(graph);
+        if (!resolvedApiPrompt || typeof resolvedApiPrompt !== "object") {
+            throw new Error("API prompt capture failed. Publish needs ComfyUI's API-format prompt for this workflow.");
+        }
+    }
+    if (!resolvedApiPrompt) {
+        throw new Error("API prompt capture is required before publishing this workflow.");
+    }
 
     const payload = {
         visualGraph: cloneJson(graph),
-        ...(apiPrompt && typeof apiPrompt === "object" ? { apiPrompt: cloneJson(apiPrompt) } : {}),
+        apiPrompt: cloneJson(resolvedApiPrompt),
         metadata: normalizeMetadata(metadata || {}),
         inputContract: cloneJson(inputContract || { inputs: [] }),
         outputContract: cloneJson(outputContract || { outputs: [] }),
         source: {
             kind: "sidebar-workflow",
             path: sourcePath(path, wfName),
+            inventoryPath: cloneJson(path),
+            name: typeof wfName === "string" ? wfName : "",
         },
     };
 

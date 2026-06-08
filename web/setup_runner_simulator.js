@@ -3,6 +3,7 @@
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "lost"]);
 const DEFAULT_LOCAL_COMFY_BASE = "http://127.0.0.1:8188";
+const LOCAL_SETUP_FILE_FLAG = "__koolookLocalSetupFile";
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -55,6 +56,79 @@ function responseShapeError(message, payload) {
 function requireObject(value, message) {
     if (value && typeof value === "object" && !Array.isArray(value)) return value;
     throw responseShapeError(message, value);
+}
+
+function isPublishedSetupRecord(value) {
+    return value
+        && typeof value === "object"
+        && !Array.isArray(value)
+        && typeof value.id === "string"
+        && value.metadata
+        && typeof value.metadata === "object"
+        && value.visualGraph
+        && typeof value.visualGraph === "object"
+        && value.apiPrompt
+        && typeof value.apiPrompt === "object"
+        && !Array.isArray(value.apiPrompt)
+        && value.setupSurface
+        && typeof value.setupSurface === "object"
+        && value.source
+        && typeof value.source === "object";
+}
+
+function setupFileValidationError(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return "record must be an object";
+    }
+    if (typeof value.id !== "string" || !value.id.trim()) return "id must be text";
+    if (!value.metadata || typeof value.metadata !== "object" || Array.isArray(value.metadata)) return "metadata must be an object";
+    if (!value.visualGraph || typeof value.visualGraph !== "object" || Array.isArray(value.visualGraph)) return "visualGraph must be an object";
+    if (!value.apiPrompt || typeof value.apiPrompt !== "object" || Array.isArray(value.apiPrompt)) return "apiPrompt must be an object";
+    if (!value.setupSurface || typeof value.setupSurface !== "object" || Array.isArray(value.setupSurface)) return "setupSurface must be an object";
+    if (!value.source || typeof value.source !== "object" || Array.isArray(value.source)) return "source must be an object";
+    return "record is invalid";
+}
+
+export function setupsFromPublishedSetupFile(value) {
+    let setups;
+    if (Array.isArray(value)) {
+        setups = value;
+    } else if (value && typeof value === "object" && !Array.isArray(value) && ("id" in value || "schemaVersion" in value)) {
+        if (!isPublishedSetupRecord(value)) {
+            throw responseShapeError(`Setup file contains an invalid published setup record: ${setupFileValidationError(value)}.`, value);
+        }
+        setups = [value];
+    } else if (value && typeof value === "object" && Array.isArray(value.setups)) {
+        setups = value.setups;
+    } else {
+        throw responseShapeError("Setup file must contain one published setup record or an object with a setups array.", value);
+    }
+    const invalid = setups.find(setup => !isPublishedSetupRecord(setup));
+    if (invalid) {
+        throw responseShapeError(`Setup file contains an invalid published setup record: ${setupFileValidationError(invalid)}.`, invalid);
+    }
+    return setups;
+}
+
+export function localSetupFileRecords(value) {
+    return setupsFromPublishedSetupFile(value).map(setup => ({
+        ...setup,
+        [LOCAL_SETUP_FILE_FLAG]: true,
+    }));
+}
+
+export function setupCanRunFromRegistry(setup) {
+    return !Boolean(setup?.[LOCAL_SETUP_FILE_FLAG]);
+}
+
+export function localSetupRunMessage(setup) {
+    const title = setupDisplayTitle(setup);
+    return [
+        `"${title}" was loaded from a file for contract review.`,
+        "",
+        "The simulator can render local setup files, but Run uses the live Koolook registry API.",
+        "Publish this setup into the running ComfyUI registry, then load it from the API before running it.",
+    ].join("\n");
 }
 
 function requireRunPayload(value, message, { requirePromptId = false } = {}) {
@@ -415,6 +489,7 @@ function bindSimulator(documentRef, fetchImpl) {
     if (!root) return;
     const baseInput = root.querySelector("[data-base-url]");
     const loadBtn = root.querySelector("[data-load-setups]");
+    const fileInput = root.querySelector("[data-setup-file]");
     const setupSelect = root.querySelector("[data-setup-select]");
     const inputsText = root.querySelector("[data-inputs-json]");
     const appForm = root.querySelector("[data-app-form]");
@@ -424,10 +499,22 @@ function bindSimulator(documentRef, fetchImpl) {
     const detailText = root.querySelector("[data-detail]");
     const routeLink = root.querySelector("[data-route-link]");
 
-    const state = { setups: [], selectedSetup: null, formActive: false };
+    const state = { setups: [], selectedSetup: null, formActive: false, selectedSetupCanRun: false };
     const baseUrl = () => baseInput.value.trim();
     const setStatus = value => { statusText.textContent = value; };
     const setDetail = value => { detailText.textContent = value; };
+
+    function populateSetups(setups) {
+        state.setups = Array.isArray(setups) ? setups : [];
+        setupSelect.innerHTML = "";
+        for (const setup of state.setups) {
+            const opt = documentRef.createElement("option");
+            opt.value = setup.id || "";
+            opt.textContent = setupDisplayTitle(setup);
+            setupSelect.appendChild(opt);
+        }
+        runBtn.disabled = true;
+    }
 
     function updatePayloadPreview() {
         if (!state.selectedSetup) {
@@ -459,6 +546,7 @@ function bindSimulator(documentRef, fetchImpl) {
         if (!appForm) return;
         appForm.innerHTML = "";
         state.selectedSetup = setup;
+        state.selectedSetupCanRun = setupCanRunFromRegistry(setup);
         state.formActive = setupHasAppSurface(setup);
         if (inputsText) inputsText.readOnly = state.formActive;
         if (rawInputs) rawInputs.open = !state.formActive;
@@ -546,16 +634,10 @@ function bindSimulator(documentRef, fetchImpl) {
         runBtn.disabled = true;
         try {
             state.setups = await listPublishedSetups({ baseUrl: baseUrl(), fetchImpl });
-            setupSelect.innerHTML = "";
-            for (const setup of state.setups) {
-                const opt = documentRef.createElement("option");
-                opt.value = setup.id || "";
-                opt.textContent = setupDisplayTitle(setup);
-                setupSelect.appendChild(opt);
-            }
-            runBtn.disabled = state.setups.length === 0;
+            populateSetups(state.setups);
             setStatus(state.setups.length ? `${state.setups.length} setup(s) loaded.` : "No published setups found.");
             if (state.setups.length) await showSelectedSetup();
+            else runBtn.disabled = true;
         } catch (error) {
             setStatus("Setup list failed.");
             setDetail(formatFetchFailure(error, baseUrl()));
@@ -565,16 +647,44 @@ function bindSimulator(documentRef, fetchImpl) {
     async function showSelectedSetup() {
         if (!setupSelect.value) return;
         try {
-            const setup = await getPublishedSetup({ setupId: setupSelect.value, baseUrl: baseUrl(), fetchImpl });
+            const localSetup = state.setups.find(setup => setup?.id === setupSelect.value && isPublishedSetupRecord(setup));
+            const setup = localSetup || await getPublishedSetup({ setupId: setupSelect.value, baseUrl: baseUrl(), fetchImpl });
             renderAppForm(setup);
-            setDetail(JSON.stringify(setup, null, 2));
+            runBtn.disabled = !state.selectedSetupCanRun;
+            setDetail(state.selectedSetupCanRun
+                ? JSON.stringify(setup, null, 2)
+                : `${localSetupRunMessage(setup)}\n\n${JSON.stringify(setup, null, 2)}`);
         } catch (error) {
             setDetail(formatFetchFailure(error, baseUrl()));
+            runBtn.disabled = true;
+        }
+    }
+
+    async function loadSetupFile() {
+        const file = fileInput?.files?.[0];
+        if (!file) return;
+        setStatus("Loading setup file...");
+        try {
+            const parsed = JSON.parse(await file.text());
+            populateSetups(localSetupFileRecords(parsed));
+            setStatus(`${state.setups.length} setup(s) loaded from file.`);
+            if (state.setups.length) await showSelectedSetup();
+            else runBtn.disabled = true;
+        } catch (error) {
+            setStatus("Setup file failed.");
+            setDetail(formatError(error));
+            runBtn.disabled = true;
         }
     }
 
     async function runSelectedSetup() {
         if (!setupSelect.value) return;
+        if (!state.selectedSetupCanRun) {
+            setStatus("Setup file is inspect-only.");
+            setDetail(localSetupRunMessage(state.selectedSetup));
+            runBtn.disabled = true;
+            return;
+        }
         let inputs;
         try {
             inputs = state.formActive ? collectFormInputs() : JSON.parse(inputsText.value || "{}");
@@ -602,11 +712,12 @@ function bindSimulator(documentRef, fetchImpl) {
             setStatus("Run failed.");
             setDetail(formatFetchFailure(error, baseUrl()));
         } finally {
-            runBtn.disabled = state.setups.length === 0;
+            runBtn.disabled = state.setups.length === 0 || !state.selectedSetupCanRun;
         }
     }
 
     loadBtn.addEventListener("click", loadSetups);
+    if (fileInput) fileInput.addEventListener("change", loadSetupFile);
     setupSelect.addEventListener("change", showSelectedSetup);
     runBtn.addEventListener("click", runSelectedSetup);
     const routeBase = isFilePage() ? DEFAULT_LOCAL_COMFY_BASE : globalThis.location.origin;

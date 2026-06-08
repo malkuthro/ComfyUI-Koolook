@@ -105,6 +105,82 @@ def test_simulator_accepts_bare_array_catalog_response() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_simulator_accepts_canonical_setup_file_shapes() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { setupsFromPublishedSetupFile } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          schemaVersion: 1,
+          id: "rmgb-publish-v04",
+          metadata: { title: "RMGB Publish v04" },
+          visualGraph: { nodes: [] },
+          apiPrompt: { "12": { class_type: "Text Multiline", inputs: { text: "demo" } } },
+          inputContract: { inputs: [] },
+          outputContract: { outputs: [] },
+          setupSurface: { app: { inputs: [], outputs: [], results: [] } },
+          source: { kind: "sidebar-workflow", path: "Models/RMGB/rmgb-publish-v04", inventoryPath: ["Models", "RMGB"], name: "rmgb-publish-v04" },
+          validation: { status: "valid", diagnostics: [] },
+        };
+
+        assert.deepEqual(setupsFromPublishedSetupFile(setup), [setup]);
+        assert.deepEqual(setupsFromPublishedSetupFile({ setups: [setup] }), [setup]);
+        assert.deepEqual(setupsFromPublishedSetupFile([setup]), [setup]);
+        assert.throws(
+          () => setupsFromPublishedSetupFile({ nope: [] }),
+          /published setup record/
+        );
+        assert.throws(
+          () => setupsFromPublishedSetupFile({ ...setup, apiPrompt: null }),
+          /apiPrompt/
+        );
+        assert.throws(
+          () => setupsFromPublishedSetupFile({ ...setup, apiPrompt: [] }),
+          /apiPrompt/
+        );
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_simulator_marks_local_setup_files_as_not_runnable() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          localSetupFileRecords,
+          setupCanRunFromRegistry,
+          localSetupRunMessage,
+        } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          schemaVersion: 1,
+          id: "file-only",
+          metadata: { title: "File Only" },
+          visualGraph: { nodes: [] },
+          apiPrompt: { "1": { class_type: "Example", inputs: {} } },
+          inputContract: { inputs: [] },
+          outputContract: { outputs: [] },
+          setupSurface: { app: { inputs: [], outputs: [], results: [] } },
+          source: { kind: "sidebar-workflow", path: "File/file-only", inventoryPath: ["File"], name: "file-only" },
+          validation: { status: "valid", diagnostics: [] },
+        };
+
+        assert.equal(setupCanRunFromRegistry(setup), true);
+        const [local] = localSetupFileRecords({ setups: [setup] });
+        assert.equal(setupCanRunFromRegistry(local), false);
+        assert.match(localSetupRunMessage(local), /loaded from a file/i);
+        assert.deepEqual(setupCanRunFromRegistry(setup), true);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_simulator_preserves_error_payload_for_debugging() -> None:
     script = textwrap.dedent(
         """

@@ -575,7 +575,7 @@ The dialog captures:
   and stored with structured inventory breadcrumbs
 - inferred `Koolook Input` / `Koolook Output` node summaries
 - ComfyUI's API prompt for the workflow, captured automatically by the publish
-  action when that UI integration is complete
+  action before the setup is submitted to the registry
 - advanced input/output contract JSON when group inference is not enough
 
 The client validates that the selected saved workflow still exists before
@@ -611,6 +611,12 @@ server is running elsewhere. If the browser blocks that cross-origin request,
 use the Koolook route above. Use
 `web/setup_runner_simulator.html?demo=1` only to verify the simulator UI without
 a live published setup.
+
+The simulator can also load exported/offline canonical setup JSON for contract
+review, either as one setup record or a `{ "setups": [...] }` wrapper. File
+loaded records render through the same `setupSurface.app` form path, but they
+are inspect-only: **Run** still uses the live Koolook registry API, so publish
+the setup into the running ComfyUI registry before trying to execute it.
 
 The simulator uses the same public execution boundary an external frontend
 uses:

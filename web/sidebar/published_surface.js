@@ -59,6 +59,35 @@ function nodeSummary(node) {
     };
 }
 
+const PUBLISH_INPUT_CLASS = "Koolook_PublishInput";
+const PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput";
+const PUBLISH_RESULT_CLASS = "Koolook_PublishResult";
+const WIDGET_NAMES_BY_CLASS = {
+    [PUBLISH_INPUT_CLASS]: ["mode", "sequence_folder", "qt_file", "single_file", "prompt"],
+    [PUBLISH_OUTPUT_CLASS]: ["folder", "name", "version"],
+    [PUBLISH_RESULT_CLASS]: ["result"],
+};
+const PUBLISH_INPUT_FIELDS = [
+    ["sequence_folder", "Sequence folder", true],
+    ["qt_file", "QT file", true],
+    ["single_file", "Single file", true],
+    ["prompt", "Prompt", false],
+];
+const PUBLISH_INPUT_MODES = [
+    [0, "EXR", "sequence_folder"],
+    [1, "QT", "qt_file"],
+    [2, "Img", "single_file"],
+    [3, "Prompt", "prompt"],
+];
+const PUBLISH_OUTPUT_FIELDS = [
+    ["folder", "Output folder", true],
+    ["name", "Output name", true],
+    ["version", "Version", true],
+];
+const PUBLISH_RESULT_FIELDS = [
+    ["result", "Result", true],
+];
+
 function groupedNodes(graph, title) {
     const groups = Array.isArray(graph?.groups) ? graph.groups : [];
     const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
@@ -77,10 +106,92 @@ function groupedNodes(graph, title) {
         .filter(entry => entry.nodes.length > 0);
 }
 
+function nodesInGroup(graph, title) {
+    const groups = Array.isArray(graph?.groups) ? graph.groups : [];
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const nodeRects = nodes
+        .filter(node => node && typeof node === "object")
+        .map(node => ({ node, rect: rectFromNode(node) }));
+
+    const out = [];
+    for (const group of groups) {
+        if (!group || typeof group !== "object" || group.title !== title) continue;
+        const groupRect = rectFromGroup(group);
+        for (const { node, rect } of nodeRects) {
+            if (rectsOverlap(groupRect, rect)) out.push(node);
+        }
+    }
+    return out;
+}
+
+function firstNodeOfType(nodes, classType) {
+    return nodes.find(node => node?.type === classType) || null;
+}
+
+function widgetValue(node, key) {
+    const values = node?.widgets_values;
+    if (values && typeof values === "object" && !Array.isArray(values)) return values[key];
+    if (!Array.isArray(values)) return null;
+    const names = WIDGET_NAMES_BY_CLASS[node?.type] || [];
+    const index = names.indexOf(key);
+    return index >= 0 && index < values.length ? values[index] : null;
+}
+
+function fieldSpecs(node, specs) {
+    if (!node) return [];
+    return specs.map(([key, label, visible]) => ({
+        key,
+        label,
+        visible,
+        target: { node: String(node.id), input: key },
+        default: widgetValue(node, key),
+    }));
+}
+
+function inputModeIndex(value) {
+    if (Number.isInteger(value)) return value;
+    const text = String(value ?? "").trim().toLowerCase();
+    const found = PUBLISH_INPUT_MODES.find(([_value, label]) => label.toLowerCase() === text);
+    return found ? found[0] : 2;
+}
+
+function inputSwitch(node, inputs) {
+    const inputsByKey = Object.fromEntries(inputs.map(item => [item.key, item]));
+    return {
+        key: "switch",
+        label: "Input type",
+        visible: true,
+        target: { node: String(node.id), input: "mode" },
+        default: inputModeIndex(widgetValue(node, "mode")),
+        options: PUBLISH_INPUT_MODES.map(([value, label, input]) => ({
+            value,
+            label,
+            visible: Boolean(inputsByKey[input]?.visible),
+            input,
+        })),
+    };
+}
+
+function inferAppSurface(graph) {
+    const inputNode = firstNodeOfType(nodesInGroup(graph, "Koolook Input"), PUBLISH_INPUT_CLASS);
+    const outputNodes = nodesInGroup(graph, "Koolook Output");
+    const outputNode = firstNodeOfType(outputNodes, PUBLISH_OUTPUT_CLASS);
+    const resultNode = firstNodeOfType(outputNodes, PUBLISH_RESULT_CLASS);
+    const inputs = fieldSpecs(inputNode, PUBLISH_INPUT_FIELDS);
+    const app = {
+        inputs,
+        outputs: fieldSpecs(outputNode, PUBLISH_OUTPUT_FIELDS),
+        results: fieldSpecs(resultNode, PUBLISH_RESULT_FIELDS),
+    };
+    if (inputNode) app.switch = inputSwitch(inputNode, inputs);
+    return app;
+}
+
 export function inferSetupSurface(graph) {
     return {
         sourceInputs: groupedNodes(graph, "Koolook Input"),
         outputs: groupedNodes(graph, "Koolook Output"),
         controls: [],
+        app: inferAppSurface(graph),
     };
 }
