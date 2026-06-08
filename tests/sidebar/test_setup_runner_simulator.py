@@ -140,6 +140,87 @@ def test_simulator_preserves_error_payload_for_debugging() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_simulator_rejects_malformed_success_responses() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          listPublishedSetups,
+          runPublishedSetup,
+          getPublishedSetupRun,
+        } from "./web/setup_runner_simulator.js";
+
+        await assert.rejects(
+          () => listPublishedSetups({
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { throw new Error("invalid json"); },
+            }),
+          }),
+          /Response was not valid JSON/
+        );
+
+        await assert.rejects(
+          () => listPublishedSetups({
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true }; },
+            }),
+          }),
+          /setups array/
+        );
+
+        await assert.rejects(
+          () => runPublishedSetup({
+            setupId: "director-demo",
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true }; },
+            }),
+          }),
+          /run object/
+        );
+
+        await assert.rejects(
+          () => getPublishedSetupRun({
+            runId: "run-000001",
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true }; },
+            }),
+          }),
+          /run object/
+        );
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_simulator_prefers_catalog_metadata_title() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { setupDisplayTitle } from "./web/setup_runner_simulator.js";
+
+        assert.equal(setupDisplayTitle({
+          id: "rmgb-publish-v04",
+          metadata: { title: "RMGB Publish v04" },
+        }), "RMGB Publish v04");
+        assert.equal(setupDisplayTitle({ id: "fallback-id", title: "Legacy Title" }), "Legacy Title");
+        assert.equal(setupDisplayTitle({ id: "fallback-id" }), "fallback-id");
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_simulator_builds_external_app_inputs_from_setup_surface() -> None:
     script = textwrap.dedent(
         """

@@ -20,7 +20,7 @@ The app should:
 - render the user-facing controls declared by the setup author;
 - accept a source path/file and output destination controls;
 - submit a run to the local Koolook/ComfyUI server;
-- show queued/running/succeeded/failed state;
+- show queued/running/succeeded/failed/lost state;
 - show the returned result path.
 
 The app must not inspect arbitrary ComfyUI nodes to decide what to render.
@@ -267,6 +267,7 @@ Terminal statuses are:
 ```text
 succeeded
 failed
+lost
 ```
 
 Non-terminal statuses are:
@@ -275,6 +276,9 @@ Non-terminal statuses are:
 queued
 running
 ```
+
+`lost` means the prompt is no longer present in ComfyUI history or queue. Treat
+it as terminal and show an actionable state failure instead of polling forever.
 
 ## Validation And Error Handling
 

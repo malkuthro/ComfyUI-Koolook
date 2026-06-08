@@ -294,7 +294,7 @@ Acceptance criteria:
   administrator-defined sidebar folder structure.
 - It renders controls only from `setupSurface.app`.
 - It submits only declared keys.
-- It shows queued/running/succeeded/failed states.
+- It shows queued/running/succeeded/failed/lost states.
 - It displays the returned result path and can later add previews/open actions.
 
 ## Suggested Implementation Order

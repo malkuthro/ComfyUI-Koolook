@@ -307,11 +307,13 @@ external state:
 }
 ```
 
-Status is one of `queued`, `running`, `succeeded`, or `failed`. History entries
-produce terminal state, the raw ComfyUI `status` object as `comfyStatus`, and
-output items; otherwise the runner checks ComfyUI queue data to distinguish
-`running` from still `queued`. Unknown run ids return `404`; ComfyUI status
-lookup failures return `502`.
+Status is one of `queued`, `running`, `succeeded`, `failed`, or `lost`.
+History entries produce terminal state, the raw ComfyUI `status` object as
+`comfyStatus`, and output items; otherwise the runner checks ComfyUI queue
+data to distinguish `running` from still `queued`. If a prompt is missing from
+both history and queue, the runner reports terminal status `lost` so clients do
+not poll until timeout. Unknown run ids return `404`; ComfyUI status lookup
+failures return `502`.
 
 For group-authored setups, status output summaries also include
 `setupSurface.app.outputs` and `setupSurface.app.results`. This keeps the
@@ -617,8 +619,8 @@ uses:
 2. `GET /koolook/api/setups/{id}` to inspect the selected setup contract.
 3. `POST /koolook/api/setups/{id}/run` with the JSON inputs supplied in the
    simulator.
-4. `GET /koolook/api/runs/{runId}` until the run reaches `succeeded` or
-   `failed`, or the client-side timeout expires.
+4. `GET /koolook/api/runs/{runId}` until the run reaches `succeeded`,
+   `failed`, or `lost`, or the client-side timeout expires.
 
 The simulator displays the stable Koolook run id, ComfyUI prompt id,
 queued/running/final status, returned output summaries, raw ComfyUI terminal

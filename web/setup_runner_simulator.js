@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Kforge Labs <https://github.com/malkuthro/ComfyUI-Koolook>
 // SPDX-License-Identifier: GPL-3.0-only
 
-const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed"]);
+const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "lost"]);
 const DEFAULT_LOCAL_COMFY_BASE = "http://127.0.0.1:8188";
 
 function sleep(ms) {
@@ -25,7 +25,15 @@ function defaultBaseUrl() {
 }
 
 async function readJsonResponse(response, fallbackMessage) {
-    const body = await response.json().catch(() => ({}));
+    let body;
+    try {
+        body = await response.json();
+    } catch (error) {
+        const message = fallbackMessage || `Request failed (${response.status}).`;
+        const responseError = new Error(`${message} Response was not valid JSON.`);
+        responseError.status = response.status;
+        throw responseError;
+    }
     if (!response.ok || body.ok === false) {
         const errors = Array.isArray(body.errors) && body.errors.length
             ? body.errors
@@ -38,18 +46,31 @@ async function readJsonResponse(response, fallbackMessage) {
     return body;
 }
 
+function responseShapeError(message, payload) {
+    const error = new Error(message);
+    error.payload = payload;
+    return error;
+}
+
+function requireObject(value, message) {
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    throw responseShapeError(message, value);
+}
+
 export async function listPublishedSetups({ baseUrl = "", fetchImpl = fetch } = {}) {
     const response = await fetchImpl(apiUrl(baseUrl, "/koolook/api/setups"));
     const body = await readJsonResponse(response, `Setup list request failed (${response.status}).`);
     if (Array.isArray(body)) return body;
-    return Array.isArray(body.setups) ? body.setups : [];
+    if (body && typeof body === "object" && Array.isArray(body.setups)) return body.setups;
+    throw responseShapeError("Setup list response must be an array or an object with a setups array.", body);
 }
 
 export async function getPublishedSetup({ setupId, baseUrl = "", fetchImpl = fetch }) {
     const id = typeof setupId === "string" ? setupId.trim() : "";
     if (!id) throw new Error("Published setup id is required.");
     const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/setups/${encodeURIComponent(id)}`));
-    return readJsonResponse(response, `Setup detail request failed (${response.status}).`);
+    const body = await readJsonResponse(response, `Setup detail request failed (${response.status}).`);
+    return requireObject(body, "Setup detail response must be an object.");
 }
 
 export async function runPublishedSetup({
@@ -66,7 +87,8 @@ export async function runPublishedSetup({
         body: JSON.stringify({ inputs: inputs && typeof inputs === "object" ? inputs : {} }),
     });
     const body = await readJsonResponse(response, `Run request failed (${response.status}).`);
-    return body.run;
+    const payload = requireObject(body, "Run response must be an object.");
+    return requireObject(payload.run, "Run response must include a run object.");
 }
 
 export async function getPublishedSetupRun({ runId, baseUrl = "", fetchImpl = fetch }) {
@@ -74,7 +96,8 @@ export async function getPublishedSetupRun({ runId, baseUrl = "", fetchImpl = fe
     if (!id) throw new Error("Published setup run id is required.");
     const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/runs/${encodeURIComponent(id)}`));
     const body = await readJsonResponse(response, `Run status request failed (${response.status}).`);
-    return body.run;
+    const payload = requireObject(body, "Run status response must be an object.");
+    return requireObject(payload.run, "Run status response must include a run object.");
 }
 
 export async function runAndPollPublishedSetup({
@@ -162,6 +185,10 @@ export function summarizeRunResultLines(run) {
         }
     }
     return lines;
+}
+
+export function setupDisplayTitle(setup) {
+    return setup?.metadata?.title || setup?.title || setup?.id || "(untitled)";
 }
 
 function appSurface(setup) {
@@ -504,7 +531,7 @@ function bindSimulator(documentRef, fetchImpl) {
             for (const setup of state.setups) {
                 const opt = documentRef.createElement("option");
                 opt.value = setup.id || "";
-                opt.textContent = setup.title || setup.id || "(untitled)";
+                opt.textContent = setupDisplayTitle(setup);
                 setupSelect.appendChild(opt);
             }
             runBtn.disabled = state.setups.length === 0;

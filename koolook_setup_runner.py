@@ -258,12 +258,12 @@ def _status_from_history(history_entry: dict[str, Any]) -> str:
 
 def _status_from_queue(prompt_id: str, queue: Any) -> str:
     if not isinstance(queue, dict):
-        return "queued"
+        return "lost"
     if _queue_contains_prompt(queue.get("queue_running", []), prompt_id):
         return "running"
     if _queue_contains_prompt(queue.get("queue_pending", []), prompt_id):
         return "queued"
-    return "queued"
+    return "lost"
 
 
 def _queue_contains_prompt(entries: Any, prompt_id: str) -> bool:

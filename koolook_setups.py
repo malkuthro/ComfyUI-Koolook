@@ -984,7 +984,6 @@ def _convert_visual_graph_to_api_prompt(visual_graph: dict[str, Any]) -> ApiProm
             return ApiPromptConversionResult(None, [f"visualGraph.nodes[{node_index}] must be an object"])
         node_id = node.get("id")
         class_type = node.get("type")
-        node_inputs = node.get("inputs")
         if node_id is None or not isinstance(class_type, str) or not class_type.strip():
             return ApiPromptConversionResult(
                 None,

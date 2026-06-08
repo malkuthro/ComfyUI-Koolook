@@ -121,6 +121,28 @@ def test_get_run_reports_running_state_from_comfy_queue() -> None:
     asyncio.run(exercise())
 
 
+def test_get_run_reports_lost_when_prompt_is_missing_from_history_and_queue() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
+        runner = PublishedSetupRunner(
+            registry,
+            FakeComfyClient(queue={"queue_running": [], "queue_pending": []}),
+        )
+
+        queued = await runner.runSetup("ltx-director-demo", {"prompt": "external prompt"})
+        status = await runner.getRun(queued["runId"])
+
+        assert status == {
+            "runId": "run-000001",
+            "setupId": "ltx-director-demo",
+            "promptId": "comfy-prompt-1",
+            "status": "lost",
+            "outputs": [],
+        }
+
+    asyncio.run(exercise())
+
+
 def test_get_run_preserves_comfy_history_status_payload() -> None:
     async def exercise() -> None:
         registry = PublishedSetupRegistry(StaticSetupStorage([_valid_setup()]))
@@ -262,14 +284,14 @@ def test_run_setup_accepts_output_controls_declared_by_app_surface() -> None:
         comfy = FakeComfyClient()
         runner = PublishedSetupRunner(registry, comfy)
 
-        await runner.runSetup("ltx-director-demo", {"folder": "/tmp/custom-output"})
+        await runner.runSetup("ltx-director-demo", {"folder": "/shots/custom-output"})
 
         assert comfy.submitted_prompts == [
             {
                 "200": {
                     "class_type": "Koolook_PublishOutput",
                     "inputs": {
-                        "folder": "/tmp/custom-output",
+                        "folder": "/shots/custom-output",
                         "name": "demo",
                         "version": "1",
                     },
