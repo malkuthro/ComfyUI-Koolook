@@ -114,6 +114,30 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **Published setup router execution maps.** New `Koolook_PublishRouter`
+  nodes let setup authors wire the main payload through switch-aligned writer
+  outputs. Publishing stores an explicit `executionMap`, and setup runs prefer
+  that map to execute only the selected writer branch; `Koolook_PublishResult`
+  is now optional reporting rather than the routing mechanism.
+- **Published setup writer results report selected file paths.** Router-based
+  setup runs now synthesize the selected writer `filepath` from the executed
+  prompt when saver nodes, such as `SaveImageAndPromptExact`, return empty UI
+  history items after writing the file. The status endpoint resolves those
+  paths without creating output directories or checking overwrite state.
+- **Published setup switch validation.** External setup runs now reject
+  invalid switch values such as booleans or branch numbers not declared by the
+  published setup, preventing malformed requests from falling back to
+  unpruned prompt execution.
+- **Published setup execution-map validation.** Router-authored setup runs now
+  reject selected branches whose stored writer nodes no longer exist in the
+  prompt, preventing stale maps from falling back to legacy/full-prompt
+  execution.
+- **Published setup runs resolve switch-selected result branches.** App-style
+  setups where `Koolook_PublishInput.switch` drives both source and
+  output/result switches now prune queued prompts to the selected result path,
+  keep selected downstream saver nodes that materialize the result, and return
+  the selected branch artifact when ComfyUI history omits the
+  `Koolook_PublishResult` node item.
 - **Workflow validator wildcard sockets.** `scripts/validate_workflow.py` now
   treats ComfyUI wildcard (`*`) inputs as compatible with concrete link types,
   matching real workflow links such as an `IMAGE` output returning into an

@@ -166,14 +166,50 @@ class Koolook_PublishResult:
         return {"ui": {"text": [result]}, "result": (result,)}
 
 
+class Koolook_PublishRouter:
+    """Switch-aligned payload router for externally published setup outputs."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "selector": (
+                    "INT",
+                    {
+                        "default": INPUT_MODE_TO_INDEX["Img"],
+                        "min": 0,
+                        "max": len(INPUT_MODES) - 1,
+                        "tooltip": "Switch index from Koolook Publish Input. External setup runs keep the matching output branch.",
+                    },
+                ),
+                "payload": (
+                    "*",
+                    {
+                        "tooltip": "Payload to route to the switch-aligned writer branches.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("*", "*", "*", "*")
+    RETURN_NAMES = INPUT_MODES
+    CATEGORY = "Koolook/Publish"
+    FUNCTION = "route"
+
+    def route(self, selector: int, payload):
+        return (payload, payload, payload, payload)
+
+
 NODE_CLASS_MAPPINGS = {
     "Koolook_PublishInput": Koolook_PublishInput,
     "Koolook_PublishOutput": Koolook_PublishOutput,
     "Koolook_PublishResult": Koolook_PublishResult,
+    "Koolook_PublishRouter": Koolook_PublishRouter,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Koolook_PublishInput": "Koolook Publish Input",
     "Koolook_PublishOutput": "Koolook Publish Output",
     "Koolook_PublishResult": "Koolook Publish Result",
+    "Koolook_PublishRouter": "Koolook Publish Router",
 }

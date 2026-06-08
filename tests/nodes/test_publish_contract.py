@@ -6,6 +6,7 @@ from k_publish_contract import (
     Koolook_PublishInput,
     Koolook_PublishOutput,
     Koolook_PublishResult,
+    Koolook_PublishRouter,
     NODE_CLASS_MAPPINGS,
     NODE_DISPLAY_NAME_MAPPINGS,
 )
@@ -15,9 +16,11 @@ def test_publish_contract_nodes_register() -> None:
     assert NODE_CLASS_MAPPINGS["Koolook_PublishInput"] is Koolook_PublishInput
     assert NODE_CLASS_MAPPINGS["Koolook_PublishOutput"] is Koolook_PublishOutput
     assert NODE_CLASS_MAPPINGS["Koolook_PublishResult"] is Koolook_PublishResult
+    assert NODE_CLASS_MAPPINGS["Koolook_PublishRouter"] is Koolook_PublishRouter
     assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishInput"] == "Koolook Publish Input"
     assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishOutput"] == "Koolook Publish Output"
     assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishResult"] == "Koolook Publish Result"
+    assert NODE_DISPLAY_NAME_MAPPINGS["Koolook_PublishRouter"] == "Koolook Publish Router"
 
 
 def test_publish_input_exposes_stable_fields_and_switch_output() -> None:
@@ -75,3 +78,16 @@ def test_publish_result_exposes_resolved_result() -> None:
         "ui": {"text": ["/out/mask_v001.png"]},
         "result": ("/out/mask_v001.png",),
     }
+
+
+def test_publish_router_exposes_switch_aligned_payload_outputs() -> None:
+    spec = Koolook_PublishRouter.INPUT_TYPES()["required"]
+
+    assert list(spec) == ["selector", "payload"]
+    assert Koolook_PublishRouter.RETURN_NAMES == ("EXR", "QT", "Img", "Prompt")
+    assert Koolook_PublishRouter().route(selector=2, payload="pixels") == (
+        "pixels",
+        "pixels",
+        "pixels",
+        "pixels",
+    )

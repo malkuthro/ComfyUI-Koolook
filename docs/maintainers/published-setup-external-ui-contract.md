@@ -90,7 +90,8 @@ The external app surface should be inferred from these nodes:
 |---|---|
 | `Koolook Input` | `Koolook_PublishInput` |
 | `Koolook Output` | `Koolook_PublishOutput` |
-| `Koolook Output` | `Koolook_PublishResult` |
+| `Koolook Output` | `Koolook_PublishRouter` |
+| `Koolook Output` | `Koolook_PublishResult` optional custom reporting |
 
 Authors do not need to put every surrounding workflow node inside the reserved
 groups. Prefer keeping the groups focused on the publish contract nodes and any
@@ -103,8 +104,8 @@ Current implementation detail: if multiple nodes of the same publish contract
 class are inside the same reserved group, the publisher uses the first matching
 node in the group's top-to-bottom, left-to-right ordering. Authors should keep
 one `Koolook_PublishInput` per setup input area, and one
-`Koolook_PublishOutput` / `Koolook_PublishResult` pair per setup output area
-until multi-surface publishing is explicitly designed.
+`Koolook_PublishOutput` plus optional router/result nodes per setup output
+area until multi-surface publishing is explicitly designed.
 
 ### `Koolook_PublishInput`
 
@@ -146,10 +147,31 @@ setup author wants the user to choose where generated files should land.
 the final result and should not own a mode-specific `result` field. Its outputs
 feed the writer/path-building nodes for each supported branch.
 
+### `Koolook_PublishRouter`
+
+Placed in the `Koolook Output` area when one setup switch selects between
+multiple writer branches. It declares which writer branch should execute for
+each `Koolook_PublishInput.switch` value:
+
+| Field/output | Purpose |
+|---|---|
+| `selector` | INT input wired from `Koolook_PublishInput.switch`. |
+| `payload` | Main setup payload, such as the mask/image result from the body graph. |
+| `EXR` | Output slot 0, connected to the EXR writer branch. |
+| `QT` | Output slot 1, connected to the QuickTime/movie writer branch. |
+| `Img` | Output slot 2, connected to the image writer branch. |
+| `Prompt` | Output slot 3, connected to a prompt/no-op branch when needed. |
+
+When a setup is published, Koolook stores an `executionMap` from this router:
+selected switch value -> router output slot -> writer nodes. During external
+runs, the runner uses that map to prune unselected writer branches before
+queueing the ComfyUI API prompt.
+
 ### `Koolook_PublishResult`
 
-Placed in the `Koolook Output` area. It represents the final result value the
-external app should show after the graph has selected/resolved the output.
+Optional node in the `Koolook Output` area. It represents a custom final result
+value the external app should show after the graph has selected/resolved the
+output.
 
 The intended result is usually a path string. Depending on the selected mode,
 the graph may calculate:
@@ -159,10 +181,12 @@ the graph may calculate:
 - an output sequence folder/path,
 - or another resolved output/status path string.
 
-Those branch-specific calculated values are routed through the graph's switch
+Those branch-specific calculated values may be routed through graph switch
 logic into `Koolook_PublishResult`. The external frontend should display this
-single selected result and may later decide how to preview or open the path
-based on extension/type.
+single selected result when present and may later decide how to preview or open
+the path based on extension/type. When the result node is omitted, the runner
+can still execute the selected writer branch through `Koolook_PublishRouter`;
+the frontend should display returned writer/history items.
 
 Decision: the first public result contract is the resolved path string. The
 important requirement is that the string matches what the real setup resolved
@@ -269,10 +293,11 @@ published result field.
 In other words, the intended output path flow is:
 
 ```text
-Koolook_PublishOutput(folder/name/version)
-  -> branch-specific writer/path nodes
-  -> mode/switch-selected calculated output path
-  -> Koolook_PublishResult(result)
+Koolook_PublishInput.switch -> Koolook_PublishRouter.selector
+main payload -> Koolook_PublishRouter.payload
+Koolook_PublishOutput(folder/name/version) -> branch-specific path nodes
+Koolook_PublishRouter outputN -> selected writer branch
+optional calculated result path -> Koolook_PublishResult(result)
 ```
 
 ## Current Implementation In This PR
@@ -294,6 +319,7 @@ Implemented:
 - Publish contract nodes:
   - `Koolook_PublishInput`
   - `Koolook_PublishOutput`
+  - `Koolook_PublishRouter`
   - `Koolook_PublishResult`
 
 Known gaps:

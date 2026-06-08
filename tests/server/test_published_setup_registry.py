@@ -1111,6 +1111,104 @@ def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
     }
 
 
+def test_publish_setup_stores_execution_map_from_publish_router() -> None:
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 100,
+                "type": "Koolook_PublishInput",
+                "title": "Koolook Publish Input",
+                "pos": [40, 60],
+                "size": [360, 320],
+                "inputs": [],
+                "widgets_values": ["Img", "/seq", "/movie.mov", "/image.png", "prompt"],
+            },
+            {
+                "id": 200,
+                "type": "Koolook_PublishOutput",
+                "title": "Koolook Publish Output",
+                "pos": [520, 60],
+                "size": [360, 240],
+                "inputs": [],
+                "widgets_values": ["/out", "mask", "1"],
+            },
+            {
+                "id": 400,
+                "type": "Koolook_PublishRouter",
+                "title": "Koolook Publish Router",
+                "pos": [520, 340],
+                "size": [360, 220],
+                "inputs": [],
+                "widgets_values": [],
+            },
+            {"id": 311, "type": "SaveEXRFrames", "title": "EXR writer", "pos": [920, 80], "size": [220, 120]},
+            {"id": 312, "type": "Easy_VideoCombine", "title": "QT writer", "pos": [920, 260], "size": [220, 120]},
+            {"id": 313, "type": "SaveImageAndPromptExact", "title": "Img writer", "pos": [920, 440], "size": [220, 120]},
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 420, 420]},
+            {"title": "Koolook Output", "bounding": [500, 20, 700, 620]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        apiPrompt={
+            "100": {
+                "class_type": "Koolook_PublishInput",
+                "inputs": {
+                    "mode": "Img",
+                    "sequence_folder": "/seq",
+                    "qt_file": "/movie.mov",
+                    "single_file": "/image.png",
+                    "prompt": "prompt",
+                },
+            },
+            "200": {"class_type": "Koolook_PublishOutput", "inputs": {"folder": "/out", "name": "mask", "version": "1"}},
+            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
+            "301": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".exr"}},
+            "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
+            "303": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".png"}},
+            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["100", 4], "payload": ["300", 0]}},
+            "311": {"class_type": "SaveEXRFrames", "inputs": {"filepath": ["301", 0], "images": ["400", 0]}},
+            "312": {"class_type": "Easy_VideoCombine", "inputs": {"filepath": ["302", 0], "images": ["400", 1]}},
+            "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"filepath": ["303", 0], "image": ["400", 2]}},
+        },
+        metadata={
+            "id": "router-contract-flow",
+            "title": "Router Contract Flow",
+            "description": "A setup authored with a publish router.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Router Contract"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("router-contract-flow")
+    assert setup is not None
+    assert setup["executionMap"] == {
+        "version": 1,
+        "routers": [
+            {
+                "node": "400",
+                "switchKey": "switch",
+                "selector": {"node": "100", "output": 4},
+                "payload": {"node": "300", "output": 0},
+                "branches": {
+                    "0": {"label": "EXR", "output": 0, "writerNodes": ["311"]},
+                    "1": {"label": "QT", "output": 1, "writerNodes": ["312"]},
+                    "2": {"label": "Img", "output": 2, "writerNodes": ["313"]},
+                    "3": {"label": "Prompt", "output": 3, "writerNodes": []},
+                },
+            }
+        ],
+    }
+
+
 @pytest.mark.parametrize(
     ("visual_graph", "expected"),
     [

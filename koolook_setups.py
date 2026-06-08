@@ -29,6 +29,7 @@ VALIDATION_STATUSES = {"valid", "draft", "invalid"}
 PUBLISH_INPUT_CLASS = "Koolook_PublishInput"
 PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput"
 PUBLISH_RESULT_CLASS = "Koolook_PublishResult"
+PUBLISH_ROUTER_CLASS = "Koolook_PublishRouter"
 VISUAL_ONLY_API_NODE_TYPES = {"Label (rgthree)", "Note"}
 SINK_ONLY_API_NODE_TYPES = {"SetNode"}
 PUBLISH_INPUT_FIELDS = (
@@ -56,6 +57,7 @@ WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Koolook_PublishInput": ("mode", "sequence_folder", "qt_file", "single_file", "prompt"),
     "Koolook_PublishOutput": ("folder", "name", "version"),
     "Koolook_PublishResult": ("result",),
+    "Koolook_PublishRouter": (),
     "EasyAIPipeline": (
         "shot_duration",
         "seed_value",
@@ -356,7 +358,7 @@ def _build_draft_setup(
     title = metadata.get("title", "")
     setup_id = metadata.get("id", "")
     setup_surface = _infer_setup_surface(visualGraph)
-    return {
+    setup = {
         "schemaVersion": SUPPORTED_SCHEMA_VERSION,
         "id": setup_id,
         "version": 1,
@@ -379,6 +381,10 @@ def _build_draft_setup(
             "diagnostics": [] if apiPrompt is not None else ["API prompt conversion pending."],
         },
     }
+    execution_map = _build_execution_map(setup)
+    if execution_map is not None:
+        setup["executionMap"] = execution_map
+    return setup
 
 
 def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
@@ -502,6 +508,172 @@ def _publish_input_mode_index(value: Any) -> int:
         if str(value).strip().lower() == label.lower():
             return mode_value
     return 2
+
+
+def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
+    api_prompt = setup.get("apiPrompt")
+    if not isinstance(api_prompt, dict):
+        return None
+    app = setup.get("setupSurface", {}).get("app", {})
+    switch = app.get("switch") if isinstance(app, dict) else None
+    switch_target = switch.get("target") if isinstance(switch, dict) else None
+    if not isinstance(switch_target, dict):
+        return None
+    output_surface_ids = _setup_output_surface_node_ids(setup)
+    if not output_surface_ids:
+        return None
+    routers: list[dict[str, Any]] = []
+    for node_id, node in api_prompt.items():
+        if not isinstance(node, dict) or node.get("class_type") != PUBLISH_ROUTER_CLASS:
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        selector_ref = inputs.get("selector")
+        payload_ref = inputs.get("payload")
+        if not _api_ref_matches_target_output(selector_ref, switch_target, api_prompt, "switch"):
+            continue
+        branches: dict[str, dict[str, Any]] = {}
+        for value, label, _input_key in PUBLISH_INPUT_MODES:
+            branches[str(value)] = {
+                "label": label,
+                "output": value,
+                "writerNodes": _writer_nodes_for_router_output(
+                    api_prompt,
+                    str(node_id),
+                    value,
+                    output_surface_ids,
+                ),
+            }
+        router: dict[str, Any] = {
+            "node": str(node_id),
+            "switchKey": str(switch.get("key", "switch")),
+            "selector": {"node": str(selector_ref[0]), "output": int(selector_ref[1])},
+            "branches": branches,
+        }
+        if _is_api_ref(payload_ref):
+            router["payload"] = {"node": str(payload_ref[0]), "output": int(payload_ref[1])}
+        routers.append(router)
+    if not routers:
+        return None
+    routers.sort(key=lambda item: item["node"])
+    return {"version": 1, "routers": routers}
+
+
+def _writer_nodes_for_router_output(
+    api_prompt: dict[str, Any],
+    router_node_id: str,
+    router_output: int,
+    output_surface_ids: set[str],
+) -> list[str]:
+    children = _prompt_children_by_ref(api_prompt)
+    out: list[str] = []
+    seen: set[str] = set()
+    pending = list(children.get((router_node_id, router_output), []))
+    while pending:
+        node_id = pending.pop(0)
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        if node_id in output_surface_ids and node_id != router_node_id:
+            out.append(node_id)
+        for child_ids in _children_for_node(children, node_id):
+            pending.extend(child_ids)
+    return sorted(dict.fromkeys(out))
+
+
+def _children_for_node(
+    children: dict[tuple[str, int], list[str]],
+    node_id: str,
+) -> list[list[str]]:
+    return [
+        child_ids
+        for (source_node_id, _source_slot), child_ids in children.items()
+        if source_node_id == node_id
+    ]
+
+
+def _prompt_children_by_ref(api_prompt: dict[str, Any]) -> dict[tuple[str, int], list[str]]:
+    children: dict[tuple[str, int], list[str]] = {}
+    for node_id, node in api_prompt.items():
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for value in inputs.values():
+            for ref in _api_refs(value):
+                children.setdefault((str(ref[0]), int(ref[1])), []).append(str(node_id))
+    return children
+
+
+def _setup_output_surface_node_ids(setup: dict[str, Any]) -> set[str]:
+    surface = setup.get("setupSurface")
+    if not isinstance(surface, dict) or not isinstance(surface.get("outputs"), list):
+        return set()
+    out: set[str] = set()
+    for group in surface["outputs"]:
+        if not isinstance(group, dict) or not isinstance(group.get("nodes"), list):
+            continue
+        for node in group["nodes"]:
+            if isinstance(node, dict) and node.get("id") is not None:
+                out.add(str(node["id"]))
+    return out
+
+
+def _api_ref_matches_target_output(
+    value: Any,
+    target: dict[str, Any],
+    api_prompt: dict[str, Any],
+    output_name: str,
+) -> bool:
+    if not _is_api_ref(value):
+        return False
+    node_id = str(value[0])
+    if node_id != str(target.get("node")):
+        return False
+    node = api_prompt.get(node_id)
+    if not isinstance(node, dict):
+        return False
+    return _publish_input_output_slots(node).get(output_name) == int(value[1])
+
+
+def _publish_input_output_slots(api_node: dict[str, Any]) -> dict[str, int]:
+    if api_node.get("class_type") != PUBLISH_INPUT_CLASS:
+        return {}
+    return {
+        "sequence_folder": 0,
+        "qt_file": 1,
+        "single_file": 2,
+        "prompt": 3,
+        "switch": 4,
+    }
+
+
+def _is_api_ref(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == 2
+        and isinstance(value[0], (str, int))
+        and not isinstance(value[1], bool)
+        and isinstance(value[1], int)
+    )
+
+
+def _api_refs(value: Any) -> list[list[Any]]:
+    if _is_api_ref(value):
+        return [value]
+    if isinstance(value, dict):
+        refs: list[list[Any]] = []
+        for child in value.values():
+            refs.extend(_api_refs(child))
+        return refs
+    if isinstance(value, list):
+        refs = []
+        for child in value:
+            refs.extend(_api_refs(child))
+        return refs
+    return []
 
 
 def _app_widget_value(node: dict[str, Any], key: str) -> Any:
