@@ -185,6 +185,30 @@ def test_simulator_rejects_malformed_success_responses() -> None:
         );
 
         await assert.rejects(
+          () => runPublishedSetup({
+            setupId: "director-demo",
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true, run: {} }; },
+            }),
+          }),
+          /Missing runId/
+        );
+
+        await assert.rejects(
+          () => runPublishedSetup({
+            setupId: "director-demo",
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true, run: { runId: "run-000001", status: "queued" } }; },
+            }),
+          }),
+          /Missing promptId/
+        );
+
+        await assert.rejects(
           () => getPublishedSetupRun({
             runId: "run-000001",
             fetchImpl: async () => ({
@@ -194,6 +218,18 @@ def test_simulator_rejects_malformed_success_responses() -> None:
             }),
           }),
           /run object/
+        );
+
+        await assert.rejects(
+          () => getPublishedSetupRun({
+            runId: "run-000001",
+            fetchImpl: async () => ({
+              ok: true,
+              status: 200,
+              async json() { return { ok: true, run: {} }; },
+            }),
+          }),
+          /Missing runId/
         );
         """
     )

@@ -57,6 +57,23 @@ function requireObject(value, message) {
     throw responseShapeError(message, value);
 }
 
+function requireRunPayload(value, message, { requirePromptId = false } = {}) {
+    const run = requireObject(value, message);
+    if (typeof run.runId !== "string" || !run.runId.trim()) {
+        throw responseShapeError(`${message} Missing runId.`, run);
+    }
+    if (typeof run.status !== "string" || !run.status.trim()) {
+        throw responseShapeError(`${message} Missing status.`, run);
+    }
+    if (requirePromptId && (typeof run.promptId !== "string" || !run.promptId.trim())) {
+        throw responseShapeError(`${message} Missing promptId.`, run);
+    }
+    if ("promptId" in run && run.promptId != null && typeof run.promptId !== "string") {
+        throw responseShapeError(`${message} promptId must be text when present.`, run);
+    }
+    return run;
+}
+
 export async function listPublishedSetups({ baseUrl = "", fetchImpl = fetch } = {}) {
     const response = await fetchImpl(apiUrl(baseUrl, "/koolook/api/setups"));
     const body = await readJsonResponse(response, `Setup list request failed (${response.status}).`);
@@ -88,7 +105,9 @@ export async function runPublishedSetup({
     });
     const body = await readJsonResponse(response, `Run request failed (${response.status}).`);
     const payload = requireObject(body, "Run response must be an object.");
-    return requireObject(payload.run, "Run response must include a run object.");
+    return requireRunPayload(payload.run, "Run response must include a valid run object.", {
+        requirePromptId: true,
+    });
 }
 
 export async function getPublishedSetupRun({ runId, baseUrl = "", fetchImpl = fetch }) {
@@ -97,7 +116,7 @@ export async function getPublishedSetupRun({ runId, baseUrl = "", fetchImpl = fe
     const response = await fetchImpl(apiUrl(baseUrl, `/koolook/api/runs/${encodeURIComponent(id)}`));
     const body = await readJsonResponse(response, `Run status request failed (${response.status}).`);
     const payload = requireObject(body, "Run status response must be an object.");
-    return requireObject(payload.run, "Run status response must include a run object.");
+    return requireRunPayload(payload.run, "Run status response must include a valid run object.");
 }
 
 export async function runAndPollPublishedSetup({
