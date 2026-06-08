@@ -29,6 +29,11 @@ def test_publish_setup_modal_shows_inferred_group_surface() -> None:
     assert 'import { inferSetupSurface } from "./published_surface.js";' in modals
     assert "visualGraph = null" in modals
     assert "Inferred app surface" in modals
+    assert "Source breadcrumbs" in modals
+    assert "Mode switch" in modals
+    assert "Source fields" in modals
+    assert "Output controls" in modals
+    assert "Result fields" in modals
     assert "Koolook Input" in modals
     assert "Koolook Output" in modals
     assert "Advanced contract JSON" in modals

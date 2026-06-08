@@ -575,7 +575,7 @@ The dialog captures:
   and stored with structured inventory breadcrumbs
 - inferred `Koolook Input` / `Koolook Output` node summaries
 - ComfyUI's API prompt for the workflow, captured automatically by the publish
-  action when that UI integration is complete
+  action before the setup is submitted to the registry
 - advanced input/output contract JSON when group inference is not enough
 
 The client validates that the selected saved workflow still exists before

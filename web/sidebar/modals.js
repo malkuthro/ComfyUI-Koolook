@@ -777,7 +777,21 @@ function makeLabeledTextarea(body, label, value) {
     return input;
 }
 
-function appendSurfaceSection(body, visualGraph) {
+function appendSurfaceLine(section, label, value) {
+    const line = document.createElement("div");
+    line.textContent = `${label}: ${value || "missing"}`;
+    section.appendChild(line);
+}
+
+function fieldList(fields) {
+    if (!Array.isArray(fields) || !fields.length) return "";
+    return fields
+        .map(field => field?.label || field?.key)
+        .filter(Boolean)
+        .join(", ");
+}
+
+function appendSurfaceSection(body, visualGraph, dirPath = [], wfName = "") {
     const surface = inferSetupSurface(visualGraph);
     const section = document.createElement("div");
     section.className = "koolook-publish-surface koolook-publish-wide";
@@ -786,17 +800,21 @@ function appendSurfaceSection(body, visualGraph) {
     title.textContent = "Inferred app surface";
     section.appendChild(title);
 
-    const inputLine = document.createElement("div");
-    inputLine.textContent = surface.sourceInputs.length
-        ? `Koolook Input: ${surface.sourceInputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")}`
-        : "Koolook Input: missing";
-    section.appendChild(inputLine);
-
-    const outputLine = document.createElement("div");
-    outputLine.textContent = surface.outputs.length
-        ? `Koolook Output: ${surface.outputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")}`
-        : "Koolook Output: missing";
-    section.appendChild(outputLine);
+    appendSurfaceLine(section, "Source breadcrumbs", [...(dirPath || []), wfName].filter(Boolean).join(" / "));
+    appendSurfaceLine(
+        section,
+        "Koolook Input",
+        surface.sourceInputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")
+    );
+    appendSurfaceLine(
+        section,
+        "Koolook Output",
+        surface.outputs.flatMap(item => item.nodes.map(node => node.title)).join(", ")
+    );
+    appendSurfaceLine(section, "Mode switch", surface.app?.switch?.label || "");
+    appendSurfaceLine(section, "Source fields", fieldList(surface.app?.inputs));
+    appendSurfaceLine(section, "Output controls", fieldList(surface.app?.outputs));
+    appendSurfaceLine(section, "Result fields", fieldList(surface.app?.results));
     body.appendChild(section);
 }
 
@@ -831,7 +849,7 @@ export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visua
     const previewImage = makeLabeledInput(previewWrap, "Preview/card reference", "", "optional image or card URL");
     body.appendChild(previewWrap);
 
-    appendSurfaceSection(body, visualGraph);
+    appendSurfaceSection(body, visualGraph, dirPath, wfName);
 
     const advanced = document.createElement("details");
     advanced.className = "koolook-publish-advanced koolook-publish-wide";

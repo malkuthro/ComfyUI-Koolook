@@ -49,7 +49,7 @@
 <div class="harness-header">
     <div class="harness-title">
         Publish setup dialog harness
-        <small>issue #221 - group-based setup surface inference</small>
+        <small>issue #232 - publish-node app surface preview</small>
     </div>
     <button id="btn-default">Default</button>
     <button id="btn-error">Invalid contract error</button>
@@ -76,13 +76,41 @@
             currentTags: ["director", "video"],
             visualGraph: {
                 nodes: [
-                    { id: 12, type: "Load Image", title: "Source image", pos: [40, 40], size: [180, 80], inputs: [] },
-                    { id: 20, type: "Preview Image", title: "Preview", pos: [420, 40], size: [180, 80], inputs: [] },
+                    {
+                        id: 100,
+                        type: "Koolook_PublishInput",
+                        title: "Koolook Publish Input",
+                        pos: [40, 60],
+                        size: [360, 320],
+                        widgets_values: [
+                            "Img",
+                            "/shots/example/frames",
+                            "/shots/example/movie.mov",
+                            "/shots/example/image.png",
+                            "unused prompt",
+                        ],
+                    },
+                    {
+                        id: 200,
+                        type: "Koolook_PublishOutput",
+                        title: "Koolook Publish Output",
+                        pos: [520, 60],
+                        size: [360, 240],
+                        widgets_values: ["/shots/example/output", "publish-OUT", "1"],
+                    },
+                    {
+                        id: 300,
+                        type: "Koolook_PublishResult",
+                        title: "Koolook Publish Result",
+                        pos: [520, 340],
+                        size: [360, 160],
+                        widgets_values: ["/shots/example/output/publish-OUT_v001.mov"],
+                    },
                 ],
                 links: [],
                 groups: [
-                    { title: "Koolook Input", bounding: [20, 20, 240, 140] },
-                    { title: "Koolook Output", pos: [400, 20], size: [240, 140] },
+                    { title: "Koolook Input", bounding: [20, 20, 440, 420] },
+                    { title: "Koolook Output", pos: [500, 20], size: [400, 560] },
                 ],
             },
             onPublish: async () => {
