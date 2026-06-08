@@ -14,6 +14,8 @@ def test_workflow_context_menu_exposes_publish_setup_flow() -> None:
 
     assert "showPublishSetupModal," in tree
     assert "publishSavedWorkflowSetup(" in tree
+    assert "captureWorkflowApiPrompt," in tree
+    assert "captureApiPrompt: captureWorkflowApiPrompt," in tree
     assert "label: \"Publish setup…\"" in tree
     assert "export function showPublishSetupModal(" in modals
     assert "Test run" not in modals
