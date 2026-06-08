@@ -22,16 +22,20 @@ The intended end-to-end flow is:
    - the visual graph, for app-surface inference and review;
    - ComfyUI's API prompt export, for execution;
    - the inferred `setupSurface.app`, for external frontend rendering.
-5. Koolook writes one published setup record using the registry schema.
-6. An external frontend lists or loads the setup record.
-7. The frontend renders controls from `setupSurface.app`.
-8. The user chooses an input mode, provides the matching source path/file,
+5. Koolook records the setup's sidebar inventory location, including structured
+   breadcrumbs for the folder hierarchy where the setup was authored.
+6. Koolook writes one published setup record using the registry schema.
+7. An external frontend lists or loads the setup record.
+8. The frontend may use the inventory breadcrumbs to group setups by the same
+   topics, models, or administrator-defined folders used in the sidebar.
+9. The frontend renders controls from `setupSurface.app`.
+10. The user chooses an input mode, provides the matching source path/file,
    edits output location/name/version, and runs the setup.
-9. Koolook injects the submitted values into the stored `apiPrompt`, queues it
+11. Koolook injects the submitted values into the stored `apiPrompt`, queues it
    on the same local ComfyUI server, and polls the run status.
-10. ComfyUI runs with the server-installed custom nodes.
-11. `Koolook_PublishResult` returns the selected/resolved result path.
-12. The frontend shows the run confirmation and result path.
+12. ComfyUI runs with the server-installed custom nodes.
+13. `Koolook_PublishResult` returns the selected/resolved result path.
+14. The frontend shows the run confirmation and result path.
 
 ## Canonical Data Shape
 
@@ -66,6 +70,12 @@ object or as a registry wrapper:
           "results": []
         }
       },
+      "source": {
+        "kind": "sidebar-workflow",
+        "path": "Models/RMGB/Publish/rmgb-publish-v04",
+        "inventoryPath": ["Models", "RMGB", "Publish"],
+        "name": "rmgb-publish-v04"
+      },
       "validation": { "status": "valid", "diagnostics": [] }
     }
   ]
@@ -75,6 +85,35 @@ object or as a registry wrapper:
 Do not create a separate external-app-only format. If an external app reads a
 file directly, it should read this published setup record and use the same
 fields as the API path.
+
+### Sidebar Inventory Breadcrumbs
+
+Published setups should preserve where they came from in the sidebar inventory.
+This is not only provenance for maintainers; it gives external frontends a
+ready-made hierarchy for browsing available setup features.
+
+The sidebar may eventually be organized perfectly by system administrators:
+topics, models, departments, show folders, publishing targets, or any other
+local convention. A production external frontend should be able to recreate
+that structure without guessing from setup titles.
+
+Record the hierarchy as structured data, not only as a display string:
+
+```json
+{
+  "source": {
+    "kind": "sidebar-workflow",
+    "path": "Models/RMGB/Publish/rmgb-publish-v04",
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
+  }
+}
+```
+
+`source.path` remains useful for humans and compatibility. `source.inventoryPath`
+is the folder breadcrumb array the external frontend can use to group published
+setups. `source.name` is the workflow/setup name as it appeared inside that
+folder.
 
 ## App Surface Contract
 
@@ -199,6 +238,8 @@ Acceptance criteria:
   without guessing from visual graph nodes.
 - The file uses the same schema as `GET /koolook/api/setups/{id}` or the
   registry `{ "setups": [...] }` wrapper.
+- The file preserves `source.inventoryPath` and `source.name` so external
+  frontends can rebuild the sidebar hierarchy if desired.
 - The file includes validation diagnostics when a setup is draft/invalid.
 - Exported setup records keep stable ids and metadata.
 
@@ -249,6 +290,8 @@ Acceptance criteria:
 
 - It consumes the published setup API or exported setup file shape documented
   here.
+- It can optionally group setup cards by `source.inventoryPath`, matching the
+  administrator-defined sidebar folder structure.
 - It renders controls only from `setupSurface.app`.
 - It submits only declared keys.
 - It shows queued/running/succeeded/failed states.
@@ -261,4 +304,3 @@ Acceptance criteria:
 3. Simplify publish modal UX around inferred publish-node surfaces.
 4. Add optional direct-file loading to the simulator if needed.
 5. Hand the external frontend brief to the separate app session.
-

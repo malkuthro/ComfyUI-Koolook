@@ -103,7 +103,9 @@ Each published setup object uses this shape:
   },
   "source": {
     "kind": "sidebar-workflow",
-    "path": "Folder/Workflow name"
+    "path": "Models/RMGB/Publish/rmgb-publish-v04",
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
   },
   "validation": {
     "status": "valid",
@@ -204,7 +206,9 @@ Publishes one setup. Body:
   },
   "source": {
     "kind": "sidebar-workflow",
-    "path": "Demos/Director Demo"
+    "path": "Demos/Director Demo",
+    "inventoryPath": ["Demos"],
+    "name": "Director Demo"
   }
 }
 ```
@@ -212,6 +216,12 @@ Publishes one setup. Body:
 Success returns `{ "ok": true, "setup": { ... } }` with the stored
 `apiPrompt` alongside the original `visualGraph`. Validation failures
 return HTTP `400` with `{ "ok": false, "errors": [...] }`.
+
+`source.inventoryPath` is the sidebar folder breadcrumb array for the workflow
+that was published. External frontends may use it to recreate the sidebar's
+administrator-defined catalog hierarchy. `source.path` remains the
+human-readable compatibility path, and `source.name` is the workflow/setup name
+inside that folder.
 
 ## Run API
 
@@ -560,6 +570,7 @@ The dialog captures:
 
 - setup id, title, optional description, category, tags, and optional preview/card reference
 - the source workflow reference, shown read-only as `Folder/Workflow name`
+  and stored with structured inventory breadcrumbs
 - inferred `Koolook Input` / `Koolook Output` node summaries
 - ComfyUI's API prompt for the workflow, captured automatically by the publish
   action when that UI integration is complete

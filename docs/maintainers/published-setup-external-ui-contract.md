@@ -34,6 +34,12 @@ The external frontend's job is to:
 The external frontend should not reverse-engineer ComfyUI graph structure. It
 should read the published setup contract.
 
+The external frontend may also use the published setup's `source` metadata to
+recreate the sidebar inventory hierarchy. This lets administrators organize
+setups in the ComfyUI side panel by topic, model, department, show, or any
+other local convention, and gives external apps the same grouping without
+parsing setup titles.
+
 ## Actors
 
 - **Setup author**: the developer/curator working visually inside ComfyUI.
@@ -201,6 +207,27 @@ ComfyUI node classes:
 
 The executable `apiPrompt` exists so the backend can run the setup. It is not
 the external UI schema.
+
+## Inventory Source Metadata
+
+Published setups should preserve their sidebar inventory location:
+
+```json
+{
+  "source": {
+    "kind": "sidebar-workflow",
+    "path": "Models/RMGB/Publish/rmgb-publish-v04",
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
+  }
+}
+```
+
+`source.inventoryPath` is the structured folder breadcrumb array. External
+frontends can use it to group setup cards or rebuild the same hierarchy from
+the ComfyUI sidebar. `source.path` is the human-readable full path kept for
+compatibility and display. `source.name` is the workflow/setup name inside
+that folder.
 
 ## Publish-Time Flow
 

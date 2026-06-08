@@ -59,6 +59,12 @@ frontend are:
     "status": "valid",
     "diagnostics": []
   },
+  "source": {
+    "kind": "sidebar-workflow",
+    "path": "Models/RMGB/Publish/rmgb-publish-v04",
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
+  },
   "setupSurface": {
     "app": {
       "switch": {},
@@ -89,11 +95,36 @@ Use only:
 - `setupSurface.app.results`
 - `metadata`
 - `validation`
+- `source.inventoryPath`
+- `source.name`
 
 Ignore `visualGraph` for rendering. It exists for review/provenance.
 
 Ignore `apiPrompt` for rendering. It exists for the server to execute the
 setup.
+
+## Catalog Grouping
+
+Published setups preserve their sidebar inventory location in `source`.
+
+Use:
+
+```json
+{
+  "source": {
+    "inventoryPath": ["Models", "RMGB", "Publish"],
+    "name": "rmgb-publish-v04"
+  }
+}
+```
+
+`source.inventoryPath` is a structured breadcrumb array. A production frontend
+can use it to recreate the same hierarchy the system administrator built in
+the ComfyUI sidebar: topics, models, departments, show folders, or any other
+local grouping convention.
+
+Do not parse folder hierarchy from titles. Use `source.inventoryPath` when it
+is present. `source.path` is a human-readable compatibility/display path.
 
 ## How The UI Is Constructed
 
@@ -265,6 +296,7 @@ On API errors, show the returned `errors[]` messages. Common causes:
 The external frontend should own:
 
 - setup catalog browsing/filtering;
+- optional catalog grouping by `source.inventoryPath`;
 - form rendering from `setupSurface.app`;
 - user input validation for empty paths and obvious missing fields;
 - run submission and polling;
@@ -305,4 +337,3 @@ web/setup_runner_simulator.js
 
 The simulator is not the target UI quality bar for the production app. It is
 a correctness harness that shows how to interpret the contract.
-
