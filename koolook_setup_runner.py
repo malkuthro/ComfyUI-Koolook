@@ -138,6 +138,7 @@ class PublishedSetupRunner:
         prompt = deepcopy(api_prompt)
         input_fields = _declared_input_fields(setup)
         errors = _validate_run_inputs(input_fields, inputs)
+        errors.extend(_validate_execution_map_inputs(setup, inputs))
         if errors:
             raise SetupRunError(400, errors)
 
@@ -254,6 +255,10 @@ def _validate_run_inputs(input_fields: dict[str, dict[str, Any]], inputs: dict[s
     for key in inputs:
         if key not in input_fields:
             errors.append(f"input '{key}' is not declared by this setup")
+            continue
+        field = input_fields[key]
+        if field.get("key") == "switch" and _switch_option_value(field, inputs[key]) is None:
+            errors.append(_switch_value_error(key, field))
     for key, field in input_fields.items():
         if field.get("required") is True and key not in inputs:
             errors.append(f"required input '{key}' is missing")
@@ -263,12 +268,44 @@ def _validate_run_inputs(input_fields: dict[str, dict[str, Any]], inputs: dict[s
 def _prompt_value_for_field(field: dict[str, Any], value: Any) -> Any:
     if field.get("key") != "switch":
         return value
+    selected_value = _switch_option_value(field, value)
     for option in field.get("options", []):
         if not isinstance(option, dict):
             continue
-        if option.get("value") == value and isinstance(option.get("label"), str):
+        if option.get("value") == selected_value and isinstance(option.get("label"), str):
             return option["label"]
     return value
+
+
+def _switch_option_value(switch: dict[str, Any], selected: Any) -> int | None:
+    if isinstance(selected, bool):
+        return None
+    for option in switch.get("options", []):
+        if not isinstance(option, dict):
+            continue
+        value = option.get("value")
+        if isinstance(value, bool) or not isinstance(value, int):
+            continue
+        if selected == value:
+            return value
+        if isinstance(selected, str) and (selected == str(value) or selected == option.get("label")):
+            return value
+    return None
+
+
+def _switch_value_error(key: str, switch: dict[str, Any]) -> str:
+    choices: list[str] = []
+    for option in switch.get("options", []):
+        if not isinstance(option, dict):
+            continue
+        value = option.get("value")
+        label = option.get("label")
+        if isinstance(value, bool) or not isinstance(value, int):
+            continue
+        choices.append(f"{value} ({label})" if isinstance(label, str) and label else str(value))
+    if choices:
+        return f"input '{key}' must be one of: {', '.join(choices)}"
+    return f"input '{key}' has no valid switch options"
 
 
 def _status_from_history(history_entry: dict[str, Any]) -> str:
@@ -493,6 +530,34 @@ def _execution_map_selected_value(
     if isinstance(selected, str) and selected.isdigit():
         return int(selected)
     return None
+
+
+def _validate_execution_map_inputs(setup: dict[str, Any], run_inputs: dict[str, Any]) -> list[str]:
+    execution_map = setup.get("executionMap")
+    if not isinstance(execution_map, dict) or execution_map.get("version") != 1:
+        return []
+    routers = execution_map.get("routers")
+    if not isinstance(routers, list):
+        return []
+    app = setup.get("setupSurface", {}).get("app", {})
+    switch = app.get("switch") if isinstance(app, dict) else None
+    errors: list[str] = []
+    for router in routers:
+        if not isinstance(router, dict):
+            continue
+        selected_value = _execution_map_selected_value(setup, router, run_inputs)
+        key = router.get("switchKey")
+        if selected_value is None:
+            if isinstance(switch, dict) and switch.get("key") == key and isinstance(key, str):
+                if key not in run_inputs:
+                    errors.append(_switch_value_error(key, switch))
+            elif isinstance(key, str):
+                errors.append(f"input '{key}' must select a valid execution branch")
+            continue
+        branches = router.get("branches")
+        if not isinstance(branches, dict) or str(selected_value) not in branches:
+            errors.append(f"input '{key}' selects branch {selected_value}, but this setup has no execution branch for it")
+    return errors
 
 
 def _prune_prompt_for_selected_app_results(
@@ -782,20 +847,7 @@ def _selected_result_branch_ref(
 def _selected_switch_value(switch: dict[str, Any], run_inputs: dict[str, Any]) -> int | None:
     key = switch.get("key")
     selected = run_inputs.get(key) if isinstance(key, str) and key in run_inputs else switch.get("default")
-    if isinstance(selected, bool):
-        return None
-    if isinstance(selected, int):
-        return selected
-    if isinstance(selected, str):
-        for option in switch.get("options", []):
-            if not isinstance(option, dict):
-                continue
-            value = option.get("value")
-            if isinstance(value, bool) or not isinstance(value, int):
-                continue
-            if selected == str(value) or selected == option.get("label"):
-                return value
-    return None
+    return _switch_option_value(switch, selected)
 
 
 def _selector_matches_switch_target(selector_ref: Any, switch_target: dict[str, Any], api_prompt: dict[str, Any]) -> bool:
@@ -850,18 +902,32 @@ def _resolve_prompt_value(prompt: dict[str, Any], value: Any) -> Any:
         )
         return values[output_index] if output_index < len(values) else None
     if class_type == "EasyAIPipeline":
+        if "WRITE_file_path" in inputs:
+            values = (
+                inputs.get("WRITE_file_path"),
+                inputs.get("output_name", ""),
+                inputs.get("version_string", ""),
+                inputs.get("output_directory", ""),
+                inputs.get("shot_duration", 0),
+                inputs.get("seed_value", 0),
+                inputs.get("shot_name", ""),
+            )
+            return values[output_index] if output_index < len(values) else None
         resolved_inputs = {
             key: _resolve_prompt_value(prompt, input_value)
             for key, input_value in inputs.items()
         }
         try:
             try:
-                from .k_ai_pipeline import EasyAIPipeline
+                from .k_ai_pipeline import build_pipeline_outputs
             except ImportError:  # pragma: no cover - standalone test/import context
-                from k_ai_pipeline import EasyAIPipeline
+                from k_ai_pipeline import build_pipeline_outputs
 
-            resolved_inputs["enable_overwrite"] = True
-            values = EasyAIPipeline().generate_pipeline(**resolved_inputs)
+            values = build_pipeline_outputs(
+                **resolved_inputs,
+                create_directory=False,
+                check_overwrite=False,
+            )
         except Exception:
             return None
         return values[output_index] if output_index < len(values) else None

@@ -619,7 +619,8 @@ def test_run_setup_uses_execution_map_router_to_keep_selected_writer() -> None:
     asyncio.run(exercise())
 
 
-def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_empty() -> None:
+@pytest.mark.parametrize("switch_value", [True, 99])
+def test_run_setup_rejects_invalid_switch_values_before_queueing(switch_value: object) -> None:
     async def exercise() -> None:
         setup = _valid_setup()
         setup["inputContract"] = {"inputs": []}
@@ -635,9 +636,97 @@ def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_emp
                     "prompt": "",
                 },
             },
+            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
+            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["100", 4], "payload": ["300", 0]}},
+            "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"image": ["400", 2]}},
+        }
+        setup["setupSurface"] = {
+            "sourceInputs": [],
+            "outputs": [],
+            "controls": [],
+            "app": {
+                "inputs": [],
+                "outputs": [],
+                "results": [],
+                "switch": {
+                    "key": "switch",
+                    "label": "Input type",
+                    "visible": True,
+                    "target": {"node": "100", "input": "mode"},
+                    "default": 2,
+                    "options": [
+                        {"value": 0, "label": "EXR", "visible": False, "input": "single_file"},
+                        {"value": 1, "label": "QT", "visible": False, "input": "single_file"},
+                        {"value": 2, "label": "Img", "visible": True, "input": "single_file"},
+                    ],
+                },
+            },
+        }
+        setup["executionMap"] = {
+            "version": 1,
+            "routers": [
+                {
+                    "node": "400",
+                    "switchKey": "switch",
+                    "selector": {"node": "100", "output": 4},
+                    "payload": {"node": "300", "output": 0},
+                    "branches": {
+                        "0": {"label": "EXR", "output": 0, "writerNodes": []},
+                        "1": {"label": "QT", "output": 1, "writerNodes": []},
+                        "2": {"label": "Img", "output": 2, "writerNodes": ["313"]},
+                    },
+                }
+            ],
+        }
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(
+            type("Registry", (), {"getSetup": lambda self, setup_id: setup if setup_id == "ltx-director-demo" else None})(),
+            comfy,
+        )
+
+        with pytest.raises(SetupRunError) as exc_info:
+            await runner.runSetup("ltx-director-demo", {"switch": switch_value})
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.errors == [
+            "input 'switch' must be one of: 0 (EXR), 1 (QT), 2 (Img)"
+        ]
+        assert comfy.submitted_prompts == []
+
+    asyncio.run(exercise())
+
+
+def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    async def exercise() -> None:
+        import k_ai_pipeline
+
+        makedirs_calls = []
+        monkeypatch.setattr(
+            k_ai_pipeline.os,
+            "makedirs",
+            lambda *args, **kwargs: makedirs_calls.append((args, kwargs)),
+        )
+        setup = _valid_setup()
+        output_folder = tmp_path / "missing-output"
+        setup["inputContract"] = {"inputs": []}
+        setup["outputContract"] = {"outputs": []}
+        setup["apiPrompt"] = {
+            "100": {
+                "class_type": "Koolook_PublishInput",
+                "inputs": {
+                    "mode": "Img",
+                    "sequence_folder": "",
+                    "qt_file": "",
+                    "single_file": "/shots/source/input.png",
+                    "prompt": "",
+                },
+            },
             "200": {
                 "class_type": "Koolook_PublishOutput",
-                "inputs": {"folder": "/shots/output", "name": "publish-OUT", "version": "2"},
+                "inputs": {"folder": str(output_folder), "name": "publish-OUT", "version": "2"},
             },
             "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
             "303": {
@@ -690,7 +779,7 @@ def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_emp
                     }
                 ],
                 "outputs": [
-                    {"key": "folder", "label": "Output folder", "visible": True, "target": {"node": "200", "input": "folder"}, "default": "/shots/output"},
+                    {"key": "folder", "label": "Output folder", "visible": True, "target": {"node": "200", "input": "folder"}, "default": str(output_folder)},
                     {"key": "name", "label": "Output name", "visible": True, "target": {"node": "200", "input": "name"}, "default": "publish-OUT"},
                     {"key": "version", "label": "Version", "visible": True, "target": {"node": "200", "input": "version"}, "default": "2"},
                 ],
@@ -734,7 +823,7 @@ def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_emp
 
         queued = await runner.runSetup(
             "ltx-director-demo",
-            {"switch": 2, "folder": "/shots/output", "name": "external", "version": "7"},
+            {"switch": 2, "folder": str(output_folder), "name": "external", "version": "7"},
         )
         comfy.history[queued["promptId"]] = {
             "status": {"completed": True, "status_str": "success"},
@@ -748,9 +837,11 @@ def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_emp
             {
                 "nodeId": "313",
                 "kind": "text",
-                "value": "/shots/output/v007/external_v007.png",
+                "value": f"{output_folder}/v007/external_v007.png",
             }
         ]
+        assert makedirs_calls == []
+        assert not output_folder.exists()
 
     asyncio.run(exercise())
 

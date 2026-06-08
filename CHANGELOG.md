@@ -122,7 +122,12 @@ The format is inspired by Keep a Changelog and SemVer.
 - **Published setup writer results report selected file paths.** Router-based
   setup runs now synthesize the selected writer `filepath` from the executed
   prompt when saver nodes, such as `SaveImageAndPromptExact`, return empty UI
-  history items after writing the file.
+  history items after writing the file. The status endpoint resolves those
+  paths without creating output directories or checking overwrite state.
+- **Published setup switch validation.** External setup runs now reject
+  invalid switch values such as booleans or branch numbers not declared by the
+  published setup, preventing malformed requests from falling back to
+  unpruned prompt execution.
 - **Published setup runs resolve switch-selected result branches.** App-style
   setups where `Koolook_PublishInput.switch` drives both source and
   output/result switches now prune queued prompts to the selected result path,

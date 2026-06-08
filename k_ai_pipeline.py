@@ -195,75 +195,108 @@ class EasyAIPipeline:
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
     def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite, no_subfolders):
-        base_directory_path = _normalize_base_path(base_directory_path)
-        # Extension must never contain ANY whitespace — even a single trailing space
-        # (easy to acquire from a paste) makes downstream save nodes that validate
-        # via os.path.splitext fail with "filepath doesn't end in .exr", because
-        # splitext returns ".exr " with the space, which doesn't match ".exr".
-        # Strip all whitespace (internal + surrounding), not just control chars.
-        extension = "".join(extension.split())
-        version_str = resolve_version_token(version, disable_versioning)
+        return build_pipeline_outputs(
+            shot_duration=shot_duration,
+            seed_value=seed_value,
+            instruction=instruction,
+            base_directory_path=base_directory_path,
+            extension=extension,
+            shot_name=shot_name,
+            ai_method=ai_method,
+            version=version,
+            disable_versioning=disable_versioning,
+            enable_overwrite=enable_overwrite,
+            no_subfolders=no_subfolders,
+            create_directory=True,
+            check_overwrite=True,
+        )
 
-        # Sanitize the segments that get joined onto base_directory_path. Without this an
-        # absolute-looking shot_name like "/oops" or "C:/Windows" would escape the base via
-        # os.path.join's 'last absolute path wins' rule. The raw values are preserved for
-        # the return tuple (downstream nodes that use shot_name as a label, not a path).
-        shot_name_seg = _sanitize_segment(shot_name)
-        ai_method_seg = _sanitize_segment(ai_method)
 
-        # Build output directory. With no_subfolders on, shot_name and ai_method drop out
-        # of the path entirely (they only end up in the filename below); the version
-        # folder still applies so versioned outputs stay organised. With no_subfolders
-        # off, the full base/shot_name/ai_method/v### chain is used. os.path.join drops
-        # empty segments, so a blank ai_method or disabled versioning (version_str="")
-        # doesn't leave a phantom slash in the path.
-        if no_subfolders:
-            output_directory = os.path.join(base_directory_path, version_str)
-        else:
-            output_directory = os.path.join(base_directory_path, shot_name_seg, ai_method_seg, version_str)
-        output_directory = output_directory.replace('\\', '/')
-        while '//' in output_directory:
-            output_directory = output_directory.replace('//', '/')
-        output_directory = _strip_sentinel_components(output_directory)
-        # Strip trailing slash. Without this, a base path ending in '\' (e.g. 'n:\foo\bar\')
-        # propagates through os.path.join as an empty trailing component → a trailing '/' on
-        # the final output_directory. Downstream save nodes that split on '/' then see an
-        # empty tail and stringify it as 'undefined', creating a phantom folder on disk.
-        # Guarded against drive roots like 'n:/' which need the slash to stay valid.
-        if len(output_directory) > 3:
-            output_directory = output_directory.rstrip('/')
+def build_pipeline_outputs(
+    shot_duration,
+    seed_value,
+    instruction,
+    base_directory_path,
+    extension,
+    shot_name,
+    ai_method,
+    version,
+    disable_versioning,
+    enable_overwrite,
+    no_subfolders,
+    *,
+    create_directory: bool,
+    check_overwrite: bool,
+):
+    base_directory_path = _normalize_base_path(base_directory_path)
+    # Extension must never contain ANY whitespace — even a single trailing space
+    # (easy to acquire from a paste) makes downstream save nodes that validate
+    # via os.path.splitext fail with "filepath doesn't end in .exr", because
+    # splitext returns ".exr " with the space, which doesn't match ".exr".
+    # Strip all whitespace (internal + surrounding), not just control chars.
+    extension = "".join(extension.split())
+    version_str = resolve_version_token(version, disable_versioning)
 
-        # Create the output directory if missing — applies to both modes, so a user can point
-        # no_subfolders at a not-yet-existing base folder and have it created on the fly.
-        if not os.path.exists(output_directory):
-            try:
-                os.makedirs(output_directory, exist_ok=True)
-            except Exception:
-                pass
+    # Sanitize the segments that get joined onto base_directory_path. Without this an
+    # absolute-looking shot_name like "/oops" or "C:/Windows" would escape the base via
+    # os.path.join's 'last absolute path wins' rule. The raw values are preserved for
+    # the return tuple (downstream nodes that use shot_name as a label, not a path).
+    shot_name_seg = _sanitize_segment(shot_name)
+    ai_method_seg = _sanitize_segment(ai_method)
 
-        # Filename: also flatten any internal path separators in shot_name / ai_method,
-        # because filenames can't contain `/` or `\` on any OS. Without this, an upstream
-        # node feeding e.g. `shot_name="job/shot"` would re-create subfolders via the
-        # filename concat — defeating no_subfolders=true and producing invalid filenames
-        # when no_subfolders is off. Directory build above keeps the separators (so users
-        # who want nested subfolders via slash-delimited shot_name still get them when
-        # no_subfolders=false).
-        shot_name_flat = shot_name_seg.replace('/', '_').replace('\\', '_')
-        ai_method_flat = ai_method_seg.replace('/', '_').replace('\\', '_')
-        name_parts = [p for p in (shot_name_flat, ai_method_flat, version_str) if p]
-        name = "_".join(name_parts) + extension
+    # Build output directory. With no_subfolders on, shot_name and ai_method drop out
+    # of the path entirely (they only end up in the filename below); the version
+    # folder still applies so versioned outputs stay organised. With no_subfolders
+    # off, the full base/shot_name/ai_method/v### chain is used. os.path.join drops
+    # empty segments, so a blank ai_method or disabled versioning (version_str="")
+    # doesn't leave a phantom slash in the path.
+    if no_subfolders:
+        output_directory = os.path.join(base_directory_path, version_str)
+    else:
+        output_directory = os.path.join(base_directory_path, shot_name_seg, ai_method_seg, version_str)
+    output_directory = output_directory.replace('\\', '/')
+    while '//' in output_directory:
+        output_directory = output_directory.replace('//', '/')
+    output_directory = _strip_sentinel_components(output_directory)
+    # Strip trailing slash. Without this, a base path ending in '\' (e.g. 'n:\foo\bar\')
+    # propagates through os.path.join as an empty trailing component → a trailing '/' on
+    # the final output_directory. Downstream save nodes that split on '/' then see an
+    # empty tail and stringify it as 'undefined', creating a phantom folder on disk.
+    # Guarded against drive roots like 'n:/' which need the slash to stay valid.
+    if len(output_directory) > 3:
+        output_directory = output_directory.rstrip('/')
 
-        file_path = os.path.join(output_directory, name).replace('\\', '/')
-        while '//' in file_path:
-            file_path = file_path.replace('//', '/')
-        file_path = _strip_sentinel_components(file_path)
+    # Create the output directory if missing — applies to both modes, so a user can point
+    # no_subfolders at a not-yet-existing base folder and have it created on the fly.
+    if create_directory and not os.path.exists(output_directory):
+        try:
+            os.makedirs(output_directory, exist_ok=True)
+        except Exception:
+            pass
 
-        # Overwrite protection applies to the final file path only — an existing output directory
-        # is fine (common when the node is wired into a recurring save loop).
-        if not enable_overwrite and os.path.exists(file_path):
-            raise ValueError(f"Output file already exists and overwrite is disabled. Enable 'enable_overwrite' or adjust parameters: {file_path}")
+    # Filename: also flatten any internal path separators in shot_name / ai_method,
+    # because filenames can't contain `/` or `\` on any OS. Without this, an upstream
+    # node feeding e.g. `shot_name="job/shot"` would re-create subfolders via the
+    # filename concat — defeating no_subfolders=true and producing invalid filenames
+    # when no_subfolders is off. Directory build above keeps the separators (so users
+    # who want nested subfolders via slash-delimited shot_name still get them when
+    # no_subfolders=false).
+    shot_name_flat = shot_name_seg.replace('/', '_').replace('\\', '_')
+    ai_method_flat = ai_method_seg.replace('/', '_').replace('\\', '_')
+    name_parts = [p for p in (shot_name_flat, ai_method_flat, version_str) if p]
+    name = "_".join(name_parts) + extension
 
-        return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name)
+    file_path = os.path.join(output_directory, name).replace('\\', '/')
+    while '//' in file_path:
+        file_path = file_path.replace('//', '/')
+    file_path = _strip_sentinel_components(file_path)
+
+    # Overwrite protection applies to the final file path only — an existing output directory
+    # is fine (common when the node is wired into a recurring save loop).
+    if check_overwrite and not enable_overwrite and os.path.exists(file_path):
+        raise ValueError(f"Output file already exists and overwrite is disabled. Enable 'enable_overwrite' or adjust parameters: {file_path}")
+
+    return (file_path, name, version_str, output_directory, shot_duration, seed_value, shot_name)
 
 # Individual node mappings
 NODE_CLASS_MAPPINGS = {
