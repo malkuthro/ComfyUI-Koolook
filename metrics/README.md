@@ -1,19 +1,20 @@
 # Comfy Registry Metrics: koolook
 
-Last updated: `2026-06-08T08:57:41Z`
+Last updated: `2026-06-09T08:29:10Z`
 
 ## Current
 
-- Total downloads: **3422**
+- Total downloads: **3786**
 - Latest active version: **0.3.7** (Active)
 - Pending versions: **none**
-- Last recorded daily change: **661**
-- Rolling 7-day average: **362.3/day**
+- Last recorded daily change: **364**
+- Rolling 7-day average: **356.3/day**
 
 ## Recent Trend
 
 | Date | Total | Daily change | 7-day avg | Latest | Status | Pending |
 |---|---:|---:|---:|---|---|---|
+| 2026-06-09 | 3786 | 364 | 356.3 | 0.3.7 | Active |  |
 | 2026-06-08 | 3422 | 661 | 362.3 | 0.3.7 | Active |  |
 | 2026-06-07 | 2761 | 213 | 315.3 | 0.3.7 | Active |  |
 | 2026-06-06 | 2548 | 264 | 307.3 | 0.3.7 | Active |  |
@@ -27,6 +28,5 @@ Last updated: `2026-06-08T08:57:41Z`
 | 2026-05-29 | 321 | 4 | 6.9 | 0.3.7 | Active |  |
 | 2026-05-28 | 317 | 8 | 7.6 | 0.3.7 | Active |  |
 | 2026-05-27 | 309 | 10 | 7.4 | 0.3.7 | Active |  |
-| 2026-05-26 | 299 | 11 | 7.4 | 0.3.7 | Active |  |
 
 Note: Comfy Registry exposes downloads at package level, not per version.
