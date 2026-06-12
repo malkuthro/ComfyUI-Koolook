@@ -249,11 +249,15 @@ def _migrate_legacy_published_setups(legacy: Path, target: Path) -> None:
 
 def _default_published_setup_registry() -> PublishedSetupRegistry:
     """Default registry factory — stores beside the snapshot library and
-    migrates any legacy user-dir registry on first use."""
+    migrates any legacy user-dir registry on first use. If migration could not
+    produce the new file (e.g. a copy error), keep reading the legacy file in
+    place, so the bundled-sample fallback never masks real, stranded setups."""
     target = _published_setups_path()
-    _migrate_legacy_published_setups(default_storage_path(), target)
+    legacy = default_storage_path()
+    _migrate_legacy_published_setups(legacy, target)
+    primary = target if (target.exists() or not legacy.is_file()) else legacy
     return PublishedSetupRegistry(
-        FileSetupStorage(target, fallback_path=SAMPLE_SETUPS_PATH)
+        FileSetupStorage(primary, fallback_path=SAMPLE_SETUPS_PATH)
     )
 
 

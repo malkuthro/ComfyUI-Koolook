@@ -1841,12 +1841,22 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                     });
                     // Mark the source workflow published so it carries the
                     // badge, joins the Tags "published" pool, and surfaces under
-                    // the Tools "P" filter. Idempotent — addTag no-ops if the
+                    // the Tools "P" filter. Awaited so the success card reflects
+                    // a committed tag; a persist failure surfaces through
+                    // persistMutation's own critical toast. addTag no-ops if the
                     // tag is already present (e.g. re-publishing an update).
-                    persistMutation({
+                    await persistMutation({
                         mutate: () => addTag(dirPath, wfName, PUBLISHED_TAG),
                         onSuccess: () => {},
-                        onNoOp: () => {},
+                        onNoOp: () => {
+                            // No-op means already-tagged (republish — fine) OR
+                            // the source workflow vanished mid-publish. Only the
+                            // latter leaves it untagged, so warn just for that:
+                            // the setup published, but won't be discoverable.
+                            if (!workflowHasTag(dirPath, wfName, PUBLISHED_TAG)) {
+                                toast(`Published, but couldn't tag "${wfName}" as published — it may have moved.`);
+                            }
+                        },
                     });
                     return result;
                 },
