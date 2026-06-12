@@ -9,7 +9,7 @@ from aiohttp.test_utils import make_mocked_request
 
 import koolook_routes
 from koolook_setup_runner import PublishedSetupRunner
-from koolook_setups import PublishedSetupRegistry, StaticSetupStorage
+from koolook_setups import FileSetupStorage, PublishedSetupRegistry, StaticSetupStorage
 from tests.server.test_published_setup_registry import _valid_setup
 
 
@@ -123,6 +123,112 @@ def test_publish_route_persists_setup_and_catalog_returns_it() -> None:
             "12": {"class_type": "Text Multiline", "inputs": {"text": "published prompt"}}
         }
         assert detail["validation"] == {"status": "valid", "diagnostics": []}
+
+    asyncio.run(exercise())
+
+
+def test_publish_route_returns_storage_path(tmp_path) -> None:
+    """The publish response surfaces where the setup was saved on disk so
+    the sidebar can show / copy / open the registry location (issue #227)."""
+
+    async def exercise() -> None:
+        storage_path = tmp_path / "koolook-published-setups" / "setups.json"
+        registry = PublishedSetupRegistry(FileSetupStorage(storage_path))
+        app = _app_with_registry(registry)
+        payload = {
+            "visualGraph": {
+                "nodes": [
+                    {
+                        "id": 12,
+                        "type": "Text Multiline",
+                        "inputs": [{"name": "text", "widget": {"name": "text"}}],
+                        "widgets_values": ["published prompt"],
+                    }
+                ],
+                "links": [],
+            },
+            "metadata": {
+                "id": "published-with-path",
+                "title": "Published With Path",
+                "description": "Surfaces its storage path.",
+                "category": "Video",
+                "tags": ["publish"],
+                "previewImage": "",
+            },
+            "inputContract": {
+                "inputs": [
+                    {
+                        "key": "prompt",
+                        "label": "Prompt",
+                        "type": "text",
+                        "required": True,
+                        "target": {"node": "12", "input": "text"},
+                    }
+                ]
+            },
+            "outputContract": {"outputs": [{"key": "preview", "type": "image"}]},
+            "source": {"kind": "sidebar-workflow", "path": "Demos/Published With Path"},
+        }
+
+        publish_response = await _handle_json(app, "POST", "/koolook/api/setups", payload)
+
+        assert publish_response.status == 200
+        body = _json_body(publish_response)
+        assert body["ok"] is True
+        assert body["setup"]["id"] == "published-with-path"
+        assert body["storagePath"] == str(storage_path)
+
+    asyncio.run(exercise())
+
+
+def test_reveal_published_setup_folder_opens_storage_dir(tmp_path, monkeypatch) -> None:
+    """Open folder on the success card reveals the published-setups
+    directory (not the snapshot library) in the OS file manager."""
+
+    async def exercise() -> None:
+        storage_path = tmp_path / "koolook-published-setups" / "setups.json"
+        storage_path.parent.mkdir(parents=True)
+        registry = PublishedSetupRegistry(FileSetupStorage(storage_path))
+        app = _app_with_registry(registry)
+
+        opened: list = []
+        monkeypatch.setattr(
+            koolook_routes.subprocess,
+            "Popen",
+            lambda args, *a, **k: opened.append(args) or object(),
+        )
+
+        response = await _handle(app, "POST", "/koolook/api/setups/reveal")
+
+        assert response.status == 200
+        assert _json_body(response) == {"ok": True, "path": str(storage_path.parent)}
+        assert len(opened) == 1
+        # Launcher binary is platform-specific; the revealed path is the dir.
+        assert opened[0][-1] == str(storage_path.parent)
+
+    asyncio.run(exercise())
+
+
+def test_reveal_published_setup_folder_missing_dir_returns_404(tmp_path, monkeypatch) -> None:
+    """Reveal fails cleanly (no file-manager spawn) when nothing has been
+    published yet, so the storage directory does not exist on disk."""
+
+    async def exercise() -> None:
+        storage_path = tmp_path / "koolook-published-setups" / "setups.json"
+        registry = PublishedSetupRegistry(FileSetupStorage(storage_path))
+        app = _app_with_registry(registry)
+
+        opened: list = []
+        monkeypatch.setattr(
+            koolook_routes.subprocess,
+            "Popen",
+            lambda args, *a, **k: opened.append(args) or object(),
+        )
+
+        response = await _handle(app, "POST", "/koolook/api/setups/reveal")
+
+        assert response.status == 404
+        assert opened == []
 
     asyncio.run(exercise())
 

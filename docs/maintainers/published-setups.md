@@ -15,11 +15,24 @@ details.
 
 ## Storage
 
-The registry loads JSON from:
+The registry loads JSON from a `koolook-published-setups/setups.json` folder
+**beside the configured snapshot library** (the `libraryPath` setting /
+`KFORGELABS_PRESETS` env, default `<ComfyUI user directory>/koolook-presets/`),
+so published setups follow the same location as snapshots:
 
 ```text
-<ComfyUI user directory>/koolook-published-setups/setups.json
+<snapshot-library parent>/koolook-published-setups/setups.json
 ```
+
+On first use, any pre-relocation registry at the old fixed path
+(`<ComfyUI user directory>/koolook-published-setups/setups.json`) is copied to
+the new location when the new one does not exist yet — non-destructively, so
+the original file is left in place. The copy is atomic (temp file +
+`os.replace`), so an interrupted migration can never leave a partial
+`setups.json` at the new path. If the file at the new path exists but does not
+parse while the legacy file is intact, the registry keeps serving the legacy
+file and logs a diagnostic — a corrupt relocation target is never allowed to
+mask real data behind an empty catalog or the bundled sample.
 
 The file may be either a bare array of setup objects or an object with a
 `setups` array:
@@ -214,14 +227,26 @@ Publishes one setup. Body:
 ```
 
 Success returns `{ "ok": true, "setup": { ... } }` with the stored
-`apiPrompt` alongside the original `visualGraph`. Validation failures
-return HTTP `400` with `{ "ok": false, "errors": [...] }`.
+`apiPrompt` alongside the original `visualGraph`. When the registry is
+file-backed (the default), the response also carries `storagePath` — the
+absolute path of the `setups.json` the record was written to — so the
+sidebar can show, copy, and open where the setup landed. Validation
+failures return HTTP `400` with `{ "ok": false, "errors": [...] }`.
 
 `source.inventoryPath` is the sidebar folder breadcrumb array for the workflow
 that was published. External frontends may use it to recreate the sidebar's
 administrator-defined catalog hierarchy. `source.path` remains the
 human-readable compatibility path, and `source.name` is the workflow/setup name
 inside that folder.
+
+`POST /koolook/api/setups/reveal`
+
+Opens the published-setups directory (the folder containing `setups.json`) in
+the host's OS file manager and returns `{ "ok": true, "path": "<dir>" }`. This
+is a local maintainer convenience backing the publish success card's **Open
+folder** action — it is grounded at the registry's own storage folder, distinct
+from the snapshot-library reveal (`POST /koolook/presets/reveal`). Returns HTTP
+`404` when the directory does not exist yet (nothing published).
 
 ## Run API
 
@@ -648,6 +673,24 @@ surface, and checks explicit input targets against both the submitted graph and
 stored prompt when advanced contracts are used. Ordinary saved workflows are not
 published automatically; only the explicit context-menu publish action writes
 to the registry.
+
+On a successful publish the dialog no longer closes silently — it is replaced by
+a confirmation card that reuses the snapshot Save dialog's "Saved to … Open
+folder ↗" language. The card shows the setup id, source workflow, validation
+status, and the registry `storagePath`, with **Open folder** (reveals the
+published-setups directory via `POST /koolook/api/setups/reveal`), **Copy path**,
+and **Close**. A draft publish that returns no `storagePath` still gets an
+explicit confirmation, just without the open/copy affordances.
+
+A successful publish also tags the source workflow `published` (a normal,
+user-manageable tag). That gives the workflow a small `published` badge in the
+Workflows tree, lists it in the Tags section's `published` pool, and makes it
+selectable by the **"P"** toggle in the sidebar Tools row, which prunes the
+Workflows tree to just the published setups (folders force-expanded) so they
+are visible in their original folder structure. The tag is the discovery
+signal, not the source of truth — the registry `setups.json` remains
+authoritative, so the two can drift if a setup is later removed without
+untagging.
 
 ## External App Simulator
 

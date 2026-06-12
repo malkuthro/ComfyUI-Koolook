@@ -64,6 +64,8 @@ import {
     pathsEqual,
     getWorkflowGraph,
     getWorkflowTags,
+    workflowHasTag,
+    PUBLISHED_TAG,
     isWorkflowModule,
     addTag,
     removeTag,
@@ -98,7 +100,7 @@ import {
     showLoadSnapshotDialog,
 } from "./modals.js";
 import { attachHoverPreview, teardownPreview } from "./node_preview.js";
-import { publishSavedWorkflowSetup } from "./published_setups.js";
+import { publishSavedWorkflowSetup, revealPublishedSetupFolder } from "./published_setups.js";
 import {
     sanitizeName,
     gatherSnapshot,
@@ -136,12 +138,19 @@ const SECTION_ID_NODES = "nodes";
 const SECTION_ID_WORKFLOWS = "workflows";
 const SECTION_ID_TAGS = "tags";
 
+// When true, the Workflows section is pruned to only `published`-tagged
+// workflows (folders kept for the ones that remain, all force-expanded) so
+// the maintainer can see every published setup in its origin structure at a
+// glance. Toggled by the "P" Tools button; read by gatherDirsAt + renderTree.
+let publishedOnly = false;
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TOOLBAR_ICONS = {
     loadSnapshot: { kind: "letter", text: "L" },
     saveSnapshot: { kind: "letter", text: "S" },
     compareSnapshot: { kind: "letter", text: "A/B" },
     help: { kind: "letter", text: "H" },
+    publishedFilter: { kind: "letter", text: "P" },
     exportStarter: { kind: "letter", text: "E" },
     installMissing: { kind: "letter", text: "I" },
     dropMissing: {
@@ -368,19 +377,25 @@ function renderTree({ treeEl, query }) {
             renderedSectionIds.add(section.id);
             const sectionPath = section.id;
             validPaths.add(sectionPath);
+            // The Published filter force-expands the Workflows section (and its
+            // subfolders) so every remaining published setup is visible at a
+            // glance — without flipping the section's `isFiltered` flatten
+            // behavior or expanding the Nodes/Tags sections.
+            const sectionExpand = isFiltered
+                || (publishedOnly && section.id === SECTION_ID_WORKFLOWS);
             const sectionFolder = buildFolder({
                 name: section.label,
                 count: result.total,
                 iconKind: section.iconKind,
                 startExpanded: true,
                 path: sectionPath,
-                forceExpanded: isFiltered,
+                forceExpanded: sectionExpand,
                 // Optional per-section right-click on the section header row.
                 // `makeFolderRow` no-ops if undefined, so non-opting sections
                 // (Nodes, Tags) keep today's behavior.
                 onContextMenu: section.rootContextMenu,
                 childrenBuilder: (children) => {
-                    const ctx = makeSectionCtx(children, sectionPath, isFiltered, validPaths);
+                    const ctx = makeSectionCtx(children, sectionPath, sectionExpand, validPaths);
                     ctx.data = result;
                     ctx.query = q;
                     ctx.isFiltered = isFiltered;
@@ -1132,8 +1147,15 @@ function gatherDirsAt(parentPath, q, stats) {
         const archived = [];
         for (const n of allNames) {
             if (!matches(n)) continue;
-            if (dir.workflows[n] && dir.workflows[n].archived) archived.push(n);
-            else active.push(n);
+            // Published filter: keep only `published`-tagged workflows, and
+            // only their active version (old archived versions stay hidden).
+            if (publishedOnly && !workflowHasTag(dirPath, n, PUBLISHED_TAG)) continue;
+            if (dir.workflows[n] && dir.workflows[n].archived) {
+                if (publishedOnly) continue;
+                archived.push(n);
+            } else {
+                active.push(n);
+            }
         }
         active.sort(compareNames);
         archived.sort((a, b) => {
@@ -1150,7 +1172,7 @@ function gatherDirsAt(parentPath, q, stats) {
         // the filtered tree only shows paths leading to a hit. With NO
         // search, keep every directory that exists — including freshly-
         // created empty subdirs — so the tree mirrors the actual store.
-        if (q && active.length === 0 && archived.length === 0 && subdirs.length === 0) continue;
+        if ((q || publishedOnly) && active.length === 0 && archived.length === 0 && subdirs.length === 0) continue;
 
         out.push({ name: dirName, path: dirPath, active, archived, subdirs });
         stats.total += active.length + archived.length;
@@ -1422,6 +1444,7 @@ function makeWorkflowLeafRow({
     onContextMenu,
     draggablePayload,
     isModule = false,
+    isPublished = false,
     secondaryText = "",
 }) {
     const row = document.createElement("div");
@@ -1464,6 +1487,17 @@ function makeWorkflowLeafRow({
         nameEl.className = "koolook-name";
         nameEl.textContent = name;
         row.appendChild(nameEl);
+    }
+
+    // Quiet "this workflow is published as a setup" marker (issue #227). Driven
+    // by the `published` tag so it survives reloads and matches the Tools "P"
+    // filter + the Tags-section pool.
+    if (isPublished) {
+        const badge = document.createElement("span");
+        badge.className = "koolook-published-badge";
+        badge.textContent = "published";
+        badge.title = "Published as a callable setup";
+        row.appendChild(badge);
     }
 
     row.addEventListener("click", onClick);
@@ -1791,6 +1825,10 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                 dirPath,
                 currentTags: getWorkflowTags(dirPath, wfName) || [],
                 visualGraph,
+                revealPublishedSetupFolder,
+                // Return the publish result so the modal can render the success
+                // card (where it saved + Open folder / Copy path). The card is
+                // the user-facing confirmation now, replacing the old toast.
                 onPublish: async ({ metadata, inputContract, outputContract }) => {
                     const result = await publishSavedWorkflowSetup({
                         dirPath,
@@ -1801,7 +1839,26 @@ function workflowRowContextMenu(event, dirPath, wfName, isArchived = false) {
                         inputContract,
                         outputContract,
                     });
-                    toast(`Published setup "${result.setup.id}".`);
+                    // Mark the source workflow published so it carries the
+                    // badge, joins the Tags "published" pool, and surfaces under
+                    // the Tools "P" filter. Awaited so the success card reflects
+                    // a committed tag; a persist failure surfaces through
+                    // persistMutation's own critical toast. addTag no-ops if the
+                    // tag is already present (e.g. re-publishing an update).
+                    await persistMutation({
+                        mutate: () => addTag(dirPath, wfName, PUBLISHED_TAG),
+                        onSuccess: () => {},
+                        onNoOp: () => {
+                            // No-op means already-tagged (republish — fine) OR
+                            // the source workflow vanished mid-publish. Only the
+                            // latter leaves it untagged, so warn just for that:
+                            // the setup published, but won't be discoverable.
+                            if (!workflowHasTag(dirPath, wfName, PUBLISHED_TAG)) {
+                                toast(`Published, but couldn't tag "${wfName}" as published — it may have moved.`);
+                            }
+                        },
+                    });
+                    return result;
                 },
             });
         },
@@ -2370,6 +2427,7 @@ function renderGatheredDir(parentCtx, dir) {
                         onContextMenu: (e) => workflowRowContextMenu(e, dirPath, wfName, false),
                         draggablePayload: { type: "workflow", path: dirPath, name: wfName },
                         isModule: moduleEntry,
+                        isPublished: workflowHasTag(dirPath, wfName, PUBLISHED_TAG),
                     }),
                 });
             }
@@ -2708,6 +2766,11 @@ function enterCompareMode() {
             compareMeta = meta || null;
             activeSide = "A";   // always (re-)enter in the B->A direction
             compareFilter.clear();
+            // The published filter is a Workflows-browsing affordance; a
+            // Compare view diffs full snapshots, so clear it on entry (the
+            // rebuilt "P" button then re-seeds un-highlighted). Otherwise both
+            // compare columns would render filtered with no toggle to undo it.
+            publishedOnly = false;
             comparePathStates.clear();   // fresh snapshot starts with default expansion
             compareDirty = false;        // freshly loaded — no pending edits
             rerenderSidebar();
@@ -3467,6 +3530,26 @@ export function renderPanel(container, options = {}) {
             }
         },
     }));
+
+    // "P" — Published filter toggle (issue #227). Prunes the Workflows tree to
+    // only workflows tagged `published`, force-expanded, so every published
+    // setup is visible in its origin structure. Toggle off restores the full
+    // tree. The active state is mirrored on the button so it reads as "on".
+    const publishedFilterBtn = makeToolbarButton({
+        icon: TOOLBAR_ICONS.publishedFilter,
+        title: "Show only published setups (toggle)",
+        onClick: () => {
+            publishedOnly = !publishedOnly;
+            publishedFilterBtn.classList.toggle("koolook-icon-btn-active", publishedOnly);
+            rerenderTree();
+        },
+    });
+    // Seed the highlight from the persisted module flag: the panel is rebuilt
+    // on Compare enter/exit, swap, etc., and `publishedOnly` survives those, so
+    // without this the button would render un-highlighted while the tree is
+    // still filtered — and the next click would invert the real state.
+    publishedFilterBtn.classList.toggle("koolook-icon-btn-active", publishedOnly);
+    toolsRow.appendChild(publishedFilterBtn);
 
     container.appendChild(toolsRow);
 

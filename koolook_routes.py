@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import string
 import subprocess
 import sys
@@ -35,7 +36,14 @@ from pathlib import Path
 from aiohttp import web
 
 try:
-    from .koolook_setups import PublishedSetupRegistry, default_registry
+    from .koolook_setups import (
+        DEFAULT_SETUPS_FILENAME,
+        DEFAULT_SETUPS_SUBDIR,
+        FileSetupStorage,
+        PublishedSetupRegistry,
+        SAMPLE_SETUPS_PATH,
+        default_storage_path,
+    )
     from .koolook_setup_runner import (
         AiohttpComfyClient,
         InMemorySetupRunStore,
@@ -43,7 +51,14 @@ try:
         SetupRunError,
     )
 except ImportError:  # pragma: no cover - standalone test/import context
-    from koolook_setups import PublishedSetupRegistry, default_registry
+    from koolook_setups import (
+        DEFAULT_SETUPS_FILENAME,
+        DEFAULT_SETUPS_SUBDIR,
+        FileSetupStorage,
+        PublishedSetupRegistry,
+        SAMPLE_SETUPS_PATH,
+        default_storage_path,
+    )
     from koolook_setup_runner import (
         AiohttpComfyClient,
         InMemorySetupRunStore,
@@ -207,6 +222,90 @@ def _configured_dir() -> tuple[Path, str]:
     if env:
         return Path(env).expanduser(), "env"
     return _resolve_default_dir(), "default"
+
+
+def _published_setups_path() -> Path:
+    """Storage path for published setups: a sibling of the configured snapshot
+    library, so they follow the same ``libraryPath`` / ``KFORGELABS_PRESETS``
+    location instead of a fixed user-dir folder (issue #227)."""
+    base, _ = _configured_dir()
+    return base.parent / DEFAULT_SETUPS_SUBDIR / DEFAULT_SETUPS_FILENAME
+
+
+def _migrate_legacy_published_setups(legacy: Path, target: Path) -> None:
+    """One-time, non-destructive copy of a pre-relocation registry from the old
+    fixed user-dir path (``legacy``) to ``target`` when ``target`` has none
+    yet. Leaves ``legacy`` in place; logs and swallows copy failures so a
+    permission hiccup can't take down setup serving.
+
+    The copy goes through a temp file + atomic ``os.replace`` (same pattern as
+    ``FileSetupStorage.save_setups``) so an interrupted run can never leave a
+    partial ``setups.json`` at ``target`` — a partial file would otherwise
+    shadow the intact legacy registry on every later boot."""
+    if target == legacy or target.exists() or not legacy.is_file():
+        return
+    tmp_name = None
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            prefix=f"{target.stem}.",
+            suffix=".tmp",
+            dir=str(target.parent),
+        )
+        os.close(tmp_fd)
+        shutil.copy2(legacy, tmp_name)
+        os.replace(tmp_name, target)
+        tmp_name = None
+        print(f"[Koolook] migrated published setups: {legacy} -> {target}")
+    except OSError as exc:
+        print(f"[Koolook] could not migrate published setups from {legacy}: {exc}")
+    finally:
+        if tmp_name and os.path.exists(tmp_name):
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+
+
+def _valid_setups_registry_file(path: Path) -> bool:
+    """True when ``path`` parses as a published-setups document (a bare list or
+    a ``{"setups": [...]}`` mapping — the shapes ``FileSetupStorage`` accepts).
+    Used to decide whether a relocated registry file is trustworthy: existence
+    alone is not proof a migration completed."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if isinstance(raw, dict):
+        raw = raw.get("setups", [])
+    return isinstance(raw, list)
+
+
+def _default_published_setup_registry() -> PublishedSetupRegistry:
+    """Default registry factory — stores beside the snapshot library and
+    migrates any legacy user-dir registry on first use.
+
+    Primary selection is corruption-aware: if migration could not produce the
+    new file, or the file at the new path exists but does not parse while the
+    legacy file is intact, keep reading the legacy file in place — neither the
+    bundled-sample fallback nor an empty catalog may mask real, stranded
+    setups. The unreadable file is left untouched as evidence."""
+    target = _published_setups_path()
+    legacy = default_storage_path()
+    _migrate_legacy_published_setups(legacy, target)
+    primary = target
+    if target != legacy and legacy.is_file():
+        if not target.exists():
+            primary = legacy
+        elif not _valid_setups_registry_file(target) and _valid_setups_registry_file(legacy):
+            print(
+                f"[Koolook] relocated published-setups file at {target} is "
+                f"unreadable; serving intact legacy registry {legacy} instead"
+            )
+            primary = legacy
+    return PublishedSetupRegistry(
+        FileSetupStorage(primary, fallback_path=SAMPLE_SETUPS_PATH)
+    )
 
 
 def _browse_roots() -> list[Path]:
@@ -397,6 +496,28 @@ def _resolve_target(lib_base: Path, subdir: str, name: str) -> tuple[Path, Path]
     return target_dir, file_path
 
 
+def _open_dir_in_file_manager(target_dir: Path) -> None:
+    """Open ``target_dir`` in the OS file manager. Shared by the snapshot
+    and published-setup reveal routes. Raises ``web.HTTPNotFound`` when the
+    directory is absent and ``web.HTTPInternalServerError`` if the launcher
+    cannot start. Subprocess args are passed list-form (no shell), so a
+    controlled path can't trigger shell-metacharacter interpretation.
+    """
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise web.HTTPNotFound(reason=f"Path does not exist on disk: {target_dir}")
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(target_dir)])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", str(target_dir)])
+        else:
+            subprocess.Popen(["xdg-open", str(target_dir)])
+    except OSError as exc:
+        raise web.HTTPInternalServerError(
+            reason=f"Could not open path in file manager: {exc}"
+        ) from exc
+
+
 def register_routes(routes, setup_registry_factory=None, setup_runner_factory=None) -> None:
     """Attach the preset endpoints to the given aiohttp ``RouteTableDef``.
 
@@ -405,7 +526,7 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
     without an aiohttp app fixture.
     """
     if setup_registry_factory is None:
-        setup_registry_factory = default_registry
+        setup_registry_factory = _default_published_setup_registry
     run_store = InMemorySetupRunStore()
 
     def _default_setup_runner(request, registry: PublishedSetupRegistry) -> PublishedSetupRunner:
@@ -485,7 +606,11 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
                 {"ok": False, "errors": result.diagnostics},
                 status=400,
             )
-        return web.json_response({"ok": True, "setup": result.setup})
+        response = {"ok": True, "setup": result.setup}
+        storage_path = registry.storage_path
+        if storage_path is not None:
+            response["storagePath"] = str(storage_path)
+        return web.json_response(response)
 
     @routes.post("/koolook/api/setups/{setup_id}/run")
     async def run_published_setup(request):
@@ -960,21 +1085,25 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
             target_dir, _ = _resolve_target(base, subdir_q, "_listing.json")
         else:
             target_dir = base
-        if not target_dir.exists() or not target_dir.is_dir():
+        _open_dir_in_file_manager(target_dir)
+        return web.json_response({"ok": True, "path": str(target_dir)})
+
+    @routes.post("/koolook/api/setups/reveal")
+    async def reveal_published_setup_folder(_request):
+        """Open the published-setups directory (where ``Publish setup``
+        writes ``setups.json``) in the OS file manager. Distinct from the
+        snapshot-library reveal above: the publish success card's Open
+        folder action must land in the registry folder, not the snapshot
+        library.
+        """
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        storage_path = registry.storage_path
+        if storage_path is None:
             raise web.HTTPNotFound(
-                reason=f"Path does not exist on disk: {target_dir}"
+                reason="Published setup storage path is unavailable."
             )
-        try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(target_dir)])
-            elif sys.platform == "win32":
-                subprocess.Popen(["explorer.exe", str(target_dir)])
-            else:
-                subprocess.Popen(["xdg-open", str(target_dir)])
-        except OSError as exc:
-            raise web.HTTPInternalServerError(
-                reason=f"Could not open path in file manager: {exc}"
-            ) from exc
+        target_dir = storage_path.parent
+        _open_dir_in_file_manager(target_dir)
         return web.json_response({"ok": True, "path": str(target_dir)})
 
 

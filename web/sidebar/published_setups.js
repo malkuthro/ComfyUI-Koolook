@@ -4,6 +4,7 @@
 import { getWorkflowGraph as defaultGetWorkflowGraph } from "./workflows_store.js";
 
 const PUBLISH_ROUTE = "/koolook/api/setups";
+const REVEAL_ROUTE = "/koolook/api/setups/reveal";
 
 function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
@@ -36,6 +37,47 @@ function normalizeMetadata(metadata) {
         tags: normalizeTags(metadata?.tags),
         previewImage: typeof metadata?.previewImage === "string" ? metadata.previewImage.trim() : "",
     };
+}
+
+function asObject(value) {
+    return (value && typeof value === "object") ? value : {};
+}
+
+function asString(value) {
+    return typeof value === "string" ? value : "";
+}
+
+// Reduce a publish API response into the flat view-model the success card
+// renders. Pure (no DOM) so the mapping is unit-testable; the modal renders
+// it and wires actions from the boolean flags. Open folder / Copy path are
+// only offered when the server told us where the setup landed.
+export function buildPublishSuccessView(resultBody) {
+    const body = asObject(resultBody);
+    const setup = asObject(body.setup);
+    const storagePath = asString(body.storagePath);
+    return {
+        setupId: asString(setup.id),
+        title: asString(asObject(setup.metadata).title),
+        sourcePath: asString(asObject(setup.source).path),
+        validationStatus: asString(asObject(setup.validation).status),
+        storagePath,
+        canCopyPath: Boolean(storagePath),
+        canOpenFolder: Boolean(storagePath),
+    };
+}
+
+export async function revealPublishedSetupFolder({ fetchImpl = fetch } = {}) {
+    const response = await fetchImpl(REVEAL_ROUTE, { method: "POST" });
+    if (!response.ok) {
+        let reason = "";
+        try {
+            reason = (await response.text() || "").trim();
+        } catch (e) {
+            /* fall through to status text */
+        }
+        throw new Error(reason || response.statusText || `Reveal failed (${response.status}).`);
+    }
+    return response.json();
 }
 
 export async function publishSavedWorkflowSetup({

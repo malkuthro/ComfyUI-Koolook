@@ -302,6 +302,120 @@ def test_publish_saved_workflow_requires_api_prompt_or_capture_before_fetch() ->
     assert result.returncode == 0, result.stderr
 
 
+def test_reveal_published_setup_folder_posts_reveal_route() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { revealPublishedSetupFolder } from "./web/sidebar/published_setups.js";
+
+        const calls = [];
+        const result = await revealPublishedSetupFolder({
+          fetchImpl: async (url, options) => {
+            calls.push({ url, options });
+            return {
+              ok: true,
+              status: 200,
+              async json() {
+                return { ok: true, path: "/u/default/koolook-published-setups" };
+              },
+            };
+          },
+        });
+
+        assert.deepEqual(result, { ok: true, path: "/u/default/koolook-published-setups" });
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].url, "/koolook/api/setups/reveal");
+        assert.equal(calls[0].options.method, "POST");
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_reveal_published_setup_folder_throws_server_reason_on_error() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { revealPublishedSetupFolder } from "./web/sidebar/published_setups.js";
+
+        await assert.rejects(
+          () => revealPublishedSetupFolder({
+            fetchImpl: async () => ({
+              ok: false,
+              status: 404,
+              statusText: "Not Found",
+              async text() { return "Path does not exist on disk: /u/koolook-published-setups"; },
+            }),
+          }),
+          /Path does not exist on disk/
+        );
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_build_publish_success_view_maps_response_fields() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { buildPublishSuccessView } from "./web/sidebar/published_setups.js";
+
+        const view = buildPublishSuccessView({
+          ok: true,
+          storagePath: "/u/default/koolook-published-setups/setups.json",
+          setup: {
+            id: "director-demo",
+            metadata: { title: "Director Demo" },
+            source: { path: "Demos/Director" },
+            validation: { status: "valid" },
+          },
+        });
+
+        assert.equal(view.setupId, "director-demo");
+        assert.equal(view.title, "Director Demo");
+        assert.equal(view.sourcePath, "Demos/Director");
+        assert.equal(view.validationStatus, "valid");
+        assert.equal(view.storagePath, "/u/default/koolook-published-setups/setups.json");
+        assert.equal(view.canCopyPath, true);
+        assert.equal(view.canOpenFolder, true);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_build_publish_success_view_disables_actions_without_storage_path() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { buildPublishSuccessView } from "./web/sidebar/published_setups.js";
+
+        const view = buildPublishSuccessView({
+          ok: true,
+          setup: {
+            id: "draft-demo",
+            metadata: { title: "Draft Demo" },
+            source: { path: "Demos/Draft" },
+            validation: { status: "draft" },
+          },
+        });
+
+        assert.equal(view.storagePath, "");
+        assert.equal(view.canCopyPath, false);
+        assert.equal(view.canOpenFolder, false);
+        assert.equal(view.validationStatus, "draft");
+        assert.equal(view.title, "Draft Demo");
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_publish_saved_workflow_rejects_failed_api_prompt_capture_before_fetch() -> None:
     script = textwrap.dedent(
         """
