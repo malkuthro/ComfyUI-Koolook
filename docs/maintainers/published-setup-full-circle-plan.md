@@ -8,6 +8,29 @@ Related design docs:
 - [`published-setup-external-ui-contract.md`](published-setup-external-ui-contract.md)
 - [`published-setups.md`](published-setups.md)
 - [`external-frontend-job-submitter-brief.md`](external-frontend-job-submitter-brief.md)
+- [`external-frontend-kit.md`](external-frontend-kit.md)
+
+## Current Status After PRs 231, 233, And 235
+
+The core loop is now implemented far enough for an external frontend session to
+build against the published setup API:
+
+- The sidebar publish action captures ComfyUI's API-format prompt and stores it
+  as `apiPrompt`.
+- Published setup records include the visual graph, executable `apiPrompt`,
+  inferred `setupSurface.app`, validation state, and sidebar source metadata.
+- Published setup source metadata includes `source.inventoryPath` and
+  `source.name` so external frontends can recreate the sidebar hierarchy.
+- The simulator can load setup records from the live API and can render local
+  setup files for contract review.
+- The runner clones the stored API prompt, injects declared inputs, prunes
+  switch-selected writer branches when an execution map is present, and returns
+  run status plus selected output/result summaries.
+- Missing prompts are reported as terminal `lost` state instead of polling
+  forever.
+
+The main remaining work is the production external frontend itself, plus any
+polish around the ComfyUI publish modal preview experience.
 
 ## Target Loop
 
@@ -196,42 +219,47 @@ normalize to this same `setupSurface.app` shape. The external frontend should
 not need to know whether the surface came from publish nodes, a config UI
 script, or another authoring helper.
 
-## Completed In PR 231
+## Implemented In PRs 231, 233, And 235
 
 - Published setup catalog and detail routes.
 - Published setup run and run-status routes.
-- Optional `apiPrompt` storage on publish requests.
+- Required sidebar API prompt capture for normal publish-node setup publishing.
+- `apiPrompt` storage on publish requests.
 - Server-side validation for declared app inputs, app output controls, and app
   switch values.
 - `Koolook_PublishInput`, `Koolook_PublishOutput`, and
   `Koolook_PublishResult` contract nodes.
+- `Koolook_PublishRouter` execution maps for switch-selected writer branches.
 - `Koolook_PublishResult` emits UI text history so the runner can return a
   selected result path when a setup uses an explicit reporting node.
 - External runner simulator under `web/setup_runner_simulator.html`.
 - Simulator form rendering from `setupSurface.app`.
+- Simulator local setup-file loading for contract review.
+- Run response validation in the simulator/client harness.
+- Terminal `lost` status when a run is missing from both ComfyUI history and
+  queue.
+- Selected writer/result output summaries for switch-routed setups.
 
-## Gaps To Close
+## Remaining Gaps To Close
 
-### 1. Automatic API Prompt Capture
+### 1. Publish Modal Simplification
 
-The sidebar **Publish setup...** action must automatically capture the ComfyUI
-API prompt and pass it as `apiPrompt`.
+The publish modal can still expose advanced contract JSON. For publish-node
+setups, that should become secondary.
 
 Acceptance criteria:
 
-- The author does not manually export or paste API JSON for normal setup
-  publishing.
-- The stored `apiPrompt` is the exact executable prompt shape ComfyUI would
-  submit/export for the graph.
-- Custom nodes, subgraphs, and ComfyUI widget serialization survive unchanged.
-- If API prompt capture fails, publish fails with a clear diagnostic instead
-  of silently falling back to a broken visual conversion for custom-node
-  workflows.
+- Normal publish-node setups require metadata and confirmation, not hand-written
+  input/output contract JSON.
+- Advanced JSON remains available for diagnostics or unusual workflows.
+- The modal previews the inferred app surface so authors can verify what the
+  external frontend will show.
 
-### 2. Exported File Shape
+### 2. Exported/Fixture File Shape
 
-The exporter must produce a published setup record or registry wrapper that
-contains both `apiPrompt` and `setupSurface.app`.
+When a setup is handed to a separate frontend session as a file fixture, it
+must use the same published setup record shape returned by the setup detail
+API. A direct exported-file workflow should continue to use this same shape.
 
 Acceptance criteria:
 
@@ -244,45 +272,7 @@ Acceptance criteria:
 - The file includes validation diagnostics when a setup is draft/invalid.
 - Exported setup records keep stable ids and metadata.
 
-### 3. Publish Modal Simplification
-
-The publish modal still exposes advanced contract JSON as primary UI. For
-publish-node setups, this should become secondary.
-
-Acceptance criteria:
-
-- Normal publish-node setups require metadata and confirmation, not hand-written
-  input/output contract JSON.
-- Advanced JSON remains available for diagnostics or unusual workflows.
-- The modal previews the inferred app surface so authors can verify what the
-  external frontend will show.
-
-### 4. Simulator File Loading
-
-The simulator currently loads setups through the Koolook API and demo data. If
-the product requires direct exported-file review, add a file loader that accepts
-the canonical published setup shape.
-
-Acceptance criteria:
-
-- The simulator can load one setup object or `{ "setups": [...] }`.
-- The same renderer is used for API-loaded and file-loaded setups.
-- The raw JSON payload remains secondary/debug-only.
-
-### 5. Run Result Robustness
-
-The first result contract is a selected writer/history item, with an optional
-path string from `Koolook_PublishResult` when authors need custom reporting.
-
-Acceptance criteria:
-
-- Successful runs return `outputs[]` with a `result` summary and at least one
-  item whose `value` is the resolved path.
-- The result path reflects the graph-selected branch and submitted output
-  controls.
-- Failed ComfyUI runs return actionable error payloads.
-
-### 6. External Production Frontend
+### 3. External Production Frontend
 
 The simulator is a maintainer harness. A production external app still needs
 its own design, auth/session model, job list, run history, and multiuser
@@ -301,8 +291,10 @@ Acceptance criteria:
 
 ## Suggested Implementation Order
 
-1. Implement and test automatic API prompt capture in sidebar publish.
-2. Make published/exported setup files use the canonical setup record shape.
-3. Simplify publish modal UX around inferred publish-node surfaces.
-4. Add optional direct-file loading to the simulator if needed.
-5. Hand the external frontend brief to the separate app session.
+1. Capture one or more real published setup detail payloads from the live API.
+2. Hand [`external-frontend-kit.md`](external-frontend-kit.md) and the captured
+   fixtures to the separate frontend session.
+3. Build the production frontend against the API/detail/run contract.
+4. Simplify the ComfyUI publish modal UX around inferred publish-node surfaces.
+5. Add direct exported-file polish only if the production workflow needs more
+   than the current API/detail fixture path.
