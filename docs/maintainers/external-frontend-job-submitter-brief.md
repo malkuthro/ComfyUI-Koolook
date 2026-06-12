@@ -8,6 +8,11 @@ Primary reference:
 - [`published-setup-external-ui-contract.md`](published-setup-external-ui-contract.md)
 - [`published-setup-full-circle-plan.md`](published-setup-full-circle-plan.md)
 - [`published-setups.md`](published-setups.md)
+- [`external-frontend-kit.md`](external-frontend-kit.md)
+
+For a complete package of files, dependencies, fixtures, and implementation
+handoff notes to give another AI session, start with
+[`external-frontend-kit.md`](external-frontend-kit.md).
 
 ## Product Goal
 

@@ -65,7 +65,7 @@ Published setups carry two related but separate artifacts:
    - Preserves custom nodes, subgraphs, and widget serialization exactly as
      ComfyUI expects.
 
-The current PR already allows publish requests to supply `apiPrompt`; when it
+The implementation now allows publish requests to supply `apiPrompt`; when it
 is supplied, the registry stores it instead of re-converting the visual graph.
 The fallback converter only exists for older/simple flows and should not be the
 main product path.
@@ -300,33 +300,36 @@ Koolook_PublishRouter outputN -> selected writer branch
 optional calculated result path -> Koolook_PublishResult(result)
 ```
 
-## Current Implementation In This PR
+## Current Implementation
 
 Implemented:
 
 - Catalog and detail routes for published setup records.
 - Run routes that clone the stored `apiPrompt`, inject declared inputs, queue
   ComfyUI `/prompt`, and poll history/queue status.
+- Sidebar publish captures ComfyUI's API-format prompt automatically for normal
+  publish-node setup publishing.
 - External runner simulator as a separate app under `web/`; it renders the
   `setupSurface.app` mode switch, active source path field, output controls,
   generated JSON payload, run status, ComfyUI prompt id, and returned result
   path.
-- Optional `apiPrompt` in publish requests; supplied API prompts are preserved
-  as the execution source of truth.
+- The simulator can also load local published setup records for contract
+  review; running still uses the live Koolook registry API.
+- `apiPrompt` in publish requests is preserved as the execution source of
+  truth.
 - Fallback visual-to-API conversion repairs some legacy/editor artifacts such
   as labels, reroutes, and subgraph wrapper ids.
 - `setupSurface.app` support in the server schema and runner summaries.
+- Switch-selected writer execution maps let the runner prune unselected writer
+  branches and report the selected result/writer output.
 - Publish contract nodes:
   - `Koolook_PublishInput`
   - `Koolook_PublishOutput`
   - `Koolook_PublishRouter`
   - `Koolook_PublishResult`
 
-Known gaps:
+Remaining gaps:
 
-- The sidebar publish action does not yet automatically capture ComfyUI's API
-  export prompt and pass it as `apiPrompt`. The server/client boundary can
-  accept it, but the right-click publish UI integration is not complete.
 - The publish modal still exposes advanced contract JSON. For publish-node
   setups, this should become secondary because the graph nodes should define
   the app surface.
