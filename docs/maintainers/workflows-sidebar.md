@@ -115,34 +115,52 @@ further subdirectories.
 
 ## Comfy workflow draft quota gotcha
 
-ComfyUI also keeps its own browser-side workflow draft cache in localStorage:
+ComfyUI keeps its own browser-side workflow draft cache in localStorage,
+and the key scheme has changed across frontend versions. All generations
+share the `Comfy.Workflow.Draft` prefix:
 
-| Key | Owner |
-|---|---|
-| `Comfy.Workflow.Drafts` | ComfyUI frontend draft autosave |
-| `Comfy.Workflow.DraftOrder` | ComfyUI frontend draft LRU order |
+| Generation | Keys | Written when |
+|---|---|---|
+| V1 (legacy; still written on tab switches as of frontend 1.44) | `Comfy.Workflow.Drafts` (one blob of all drafts) + `Comfy.Workflow.DraftOrder` (LRU) | switching/loading workflows |
+| V1 per-workspace (interim) | `Comfy.Workflow.Drafts:<ws>` + `Comfy.Workflow.DraftOrder:<ws>` | older 1.4x frontends; the 1.44 migration reads these once **without deleting them** (later frontends added cleanup on successful migration, and an interrupted migration can still leave them behind) |
+| V2 (frontend 1.44+) | `Comfy.Workflow.DraftIndex.v2:<ws>` (index) + `Comfy.Workflow.Draft.v2:<ws>:<hash>` (one payload per draft) | ~512 ms after every graph edit |
 
-When large workflows are repeatedly loaded or imported with changing workflow
-IDs, Comfy can accumulate multiple large drafts. Once browser storage quota is
-hit, Comfy shows repeated **"Failed to save workflow draft"** toasts. Koolook
-hit this first in v0.3.6 with sidebar workflow loads; the fix was to give
-sidebar loads a stable temporary workflow ID derived from the sidebar path/name
-so the same workflow replaces the same draft entry instead of creating a new one
-each time.
+Once the origin's storage quota is hit, draft saves fail and Comfy shows
+**"Failed to save workflow draft"** toasts. Worse, the 1.44+ V2 layer only
+evicts its own current-workspace drafts on a quota error, and when that
+isn't enough it latches a session-wide *storage unavailable* flag — after
+which **every** edit toasts until the page is reloaded, regardless of which
+workflow is open.
 
-The same symptom can reappear when large workflow JSONs are imported directly
-from disk, bypassing the sidebar load path. For Koolook frontend extensions that
-ship large timeline/editor data, keep two rules in mind:
+Koolook hit the symptom first in v0.3.6 with sidebar workflow loads; the
+fix was a stable temporary workflow ID derived from the sidebar path/name
+so the same workflow replaces the same draft entry instead of creating a
+new one per load. For Koolook frontend extensions that ship large
+timeline/editor data, the standing rules remain:
 
 - Do not churn workflow IDs for equivalent exported/imported workflow files.
 - Keep hidden widget payloads plain JSON and strip preview-only blobs before
   serialization.
 
-The LTX Director timeline extension also installs a small guard around Comfy's
-draft-cache writes. If the browser throws `QuotaExceededError` while writing
-only the Comfy draft keys above, the guard clears those draft entries and lets
-Comfy retry. It does not touch Koolook `/userdata`, snapshots, workflow library
-entries, render outputs, or user project files.
+The systemic countermeasure is the global guard in
+`web/koolook_draft_guard.js` (loaded on every page; behavior covered by
+`tests/js/test_draft_guard.mjs`). It matches draft keys **by prefix**, so a
+future upstream rename inside the prefix degrades to last-resort eviction
+instead of going silently stale (which is how the previous exact-name
+guard, then embedded in the LTX Director extension, died on frontend
+1.44). Two mechanisms:
+
+1. **Boot prune** — deletes suffixed-V1 families already migrated to V2
+   (dead weight 1.44-era migrations leave behind), corrupt keys (scoped to
+   the offending key only), oversized entries (>750k chars), and enforces a
+   ~2M-char total draft budget, oldest drafts first.
+2. **`localStorage.setItem` quota guard** — on `QuotaExceededError` for a
+   draft key, evicts the oldest draft across *all* generations and retries
+   inside `setItem`, so the V2 layer's own catch never sees the error: the
+   save succeeds, no toast, and the storage-unavailable latch never trips.
+
+The guard never touches Koolook `/userdata`, snapshots, workflow library
+entries, render outputs, or any non-draft localStorage key.
 
 JSON shape (recursive — `directories` lives both at the root AND inside
 every directory node):

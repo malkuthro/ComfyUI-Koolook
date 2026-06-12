@@ -12,6 +12,10 @@ Copies only what that automation's iteration loop touches:
                                        when the fork's NODE_CLASS_MAPPINGS
                                        set changes)
     - web/whatdreamscost_koolook/      Director timeline-editor extension
+    - web/koolook_draft_guard.js       global Comfy draft-quota guard
+                                       (formerly embedded in the Director
+                                       extension; shipped so a scoped sync
+                                       never strands a guard-less install)
 
 It also ships ``koolook_install_guard.py`` + ``koolook_versioning.py`` — the
 loader gates ``__init__.py`` imports at load — so a scoped sync never leaves
@@ -80,6 +84,11 @@ AUDIO_PATHS: tuple[str, ...] = (
     "koolook_versioning.py",
     "forks/whatdreamscost_koolook",
     "web/whatdreamscost_koolook",
+    # The Comfy draft-quota guard used to be embedded in the Director web
+    # extension above; it is global now. Ship it with every scoped audio
+    # sync so replacing web/whatdreamscost_koolook/ can never leave a dev
+    # install without the guard.
+    "web/koolook_draft_guard.js",
 )
 
 STALE_AUDIO_PATHS: tuple[str, ...] = (

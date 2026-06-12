@@ -34,7 +34,9 @@ jobs:
         run: python -m compileall -q -x '(\.venv|forks|upscaler_FIX/github_repos|nuke_CAM_exporter)' .
 
       - name: Run JS smoke tests
-        run: node tests/js/test_ai_pipeline_preview.mjs
+        run: |
+          node tests/js/test_ai_pipeline_preview.mjs
+          node tests/js/test_draft_guard.mjs
 
   security-gate:
     name: Security Gate
@@ -71,7 +73,14 @@ jobs:
 
   pytest:
     name: Pytest
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Keep both lanes reporting even when one fails — a Windows-only
+      # failure with a green ubuntu lane is exactly the signal this
+      # matrix exists to surface.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 

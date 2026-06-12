@@ -907,11 +907,15 @@ def test_get_run_reports_execution_map_writer_filepath_when_saver_history_is_emp
 
         status = await runner.getRun(queued["runId"])
 
+        # build_pipeline_outputs canonicalizes paths to forward slashes on
+        # every platform, so the expected prefix must match — str(tmp_path)
+        # yields backslashes on Windows.
+        canonical_folder = str(output_folder).replace("\\", "/")
         assert status["outputs"][-1]["items"] == [
             {
                 "nodeId": "313",
                 "kind": "text",
-                "value": f"{output_folder}/v007/external_v007.png",
+                "value": f"{canonical_folder}/v007/external_v007.png",
             }
         ]
         assert makedirs_calls == []

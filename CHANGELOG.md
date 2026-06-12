@@ -114,6 +114,25 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **"Failed to save workflow draft" toasts returned on ComfyUI frontend
+  1.44+.** The browser draft-quota guard is now its own global extension,
+  `web/koolook_draft_guard.js`, and matches Comfy draft keys by prefix
+  instead of exact names — covering the legacy `Comfy.Workflow.Drafts`
+  blob, the interim per-workspace `…:<ws>` keys, the 1.44+
+  `DraftIndex.v2:` / `Draft.v2:` index+payload scheme, and unknown future
+  keys as last-resort evictions. On a quota error it evicts the oldest
+  draft across all generations inside `localStorage.setItem` and retries,
+  rescuing the save before the 1.44 frontend's session-wide
+  storage-unavailable latch can trip (that latch otherwise re-toasts on
+  every edit until reload). The boot prune now also deletes the suffixed
+  V1 families 1.44-era V1→V2 migrations leave behind, scopes
+  corrupt-key cleanup to the offending key instead of the whole store,
+  drops oversized entries, and enforces a ~2M-char total draft budget
+  across all generations (the old guard capped only the unsuffixed V1
+  blob, at 1.5M).
+  `dev-sync-audio` ships the guard file so a scoped sync can't strand a
+  dev install guard-less. Behavior is covered by
+  `tests/js/test_draft_guard.mjs`.
 - **Published setup router execution maps.** New `Koolook_PublishRouter`
   nodes let setup authors wire the main payload through switch-aligned writer
   outputs. Publishing stores an explicit `executionMap`, and setup runs prefer
