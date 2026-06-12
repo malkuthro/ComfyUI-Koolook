@@ -8,22 +8,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 LTX_DIRECTOR_JS = REPO_ROOT / "web" / "whatdreamscost_koolook" / "ltx_director.js"
 
 
-def test_ltx_director_prunes_comfy_draft_cache() -> None:
+def test_ltx_director_no_longer_embeds_the_draft_guard() -> None:
+    """The quota guard moved to web/koolook_draft_guard.js (all key
+    generations, every page). A stale copy here would double-install the
+    localStorage wrapper and drift behind the global guard's key coverage,
+    so its absence is a contract, not an accident.
+    """
     source = LTX_DIRECTOR_JS.read_text(encoding="utf-8")
 
-    assert 'COMFY_DRAFTS_KEY = "Comfy.Workflow.Drafts"' in source
-    assert "function pruneComfyDraftCache()" in source
-    assert "function installComfyDraftQuotaGuard()" in source
-    assert "function evictOldestComfyDraft(originalSetItem)" in source
-    assert "function showComfyDraftQuotaWarning(message)" in source
-    assert "localStorage.setItem = (key, value) =>" in source
-    assert 'err.name === "QuotaExceededError"' in source
-    assert "evictOldestComfyDraft(originalSetItem)" in source
-    assert "Koolook removed the oldest draft only" in source
-    assert 'originalSetItem(COMFY_DRAFTS_KEY, "{}")' not in source
-    assert "installComfyDraftQuotaGuard();" in source
-    assert "pruneComfyDraftCache();" in source
-    assert "MAX_COMFY_DRAFT_CACHE_CHARS" in source
+    assert "installComfyDraftQuotaGuard" not in source
+    assert "pruneComfyDraftCache" not in source
+    assert "Comfy.Workflow.Drafts" not in source
+    assert "localStorage.setItem =" not in source
+    assert "web/koolook_draft_guard.js" in source  # pointer for archaeology
 
 
 def test_timeline_serialization_drops_preview_only_media() -> None:
