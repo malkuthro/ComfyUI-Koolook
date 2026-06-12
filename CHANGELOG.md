@@ -33,6 +33,9 @@ The format is inspired by Keep a Changelog and SemVer.
   setups and snapshots stay together and the success card's "Open folder" lands
   predictably. Any existing registry at the old user-dir path is copied to the
   new location on first use, non-destructively (the original is left in place).
+  The migration copy is atomic (temp file + replace), and if the relocated file
+  exists but is unreadable while the legacy file is intact, the registry keeps
+  serving the legacy file instead of masking it behind an empty catalog.
 - **Published setup registry + catalog API.** Added the first server-side
   Published Workflow Setup registry boundary (`listSetups()` /
   `getSetup(id)`), schema validation with invalid-record diagnostics,

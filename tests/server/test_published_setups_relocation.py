@@ -94,3 +94,67 @@ def test_default_registry_uses_new_path_after_successful_migration(monkeypatch, 
 
     assert target.is_file()
     assert registry.storage_path == target
+
+
+def test_default_registry_prefers_intact_legacy_over_corrupt_target(monkeypatch, tmp_path) -> None:
+    """A partial/corrupt relocated file (e.g. an interrupted copy) must not
+    mask intact legacy data: existence alone is not proof migration succeeded
+    (PR #239 re-review, HIGH). The corrupt file is left in place untouched."""
+    legacy, target = _point_registry(monkeypatch, tmp_path)
+    legacy.write_text('{"setups": [{"id": "real-data"}]}', encoding="utf-8")
+    target.parent.mkdir(parents=True)
+    target.write_text('{"setups": [{"id": "trunc', encoding="utf-8")
+
+    registry = koolook_routes._default_published_setup_registry()
+
+    assert registry.storage_path == legacy
+    # Non-destructive: the corrupt file is evidence, not something to overwrite.
+    assert target.read_text(encoding="utf-8") == '{"setups": [{"id": "trunc'
+
+
+def test_default_registry_keeps_valid_target_authoritative(monkeypatch, tmp_path) -> None:
+    """A readable relocated registry stays primary even while the legacy file
+    still exists — preferring legacy is strictly a corruption fallback."""
+    legacy, target = _point_registry(monkeypatch, tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text('{"setups": [{"id": "migrated"}]}', encoding="utf-8")
+
+    registry = koolook_routes._default_published_setup_registry()
+
+    assert registry.storage_path == target
+
+
+def test_default_registry_keeps_target_when_both_files_corrupt(monkeypatch, tmp_path) -> None:
+    """If legacy is corrupt too there is nothing intact to protect; stay on the
+    relocated path so storage diagnostics point at the current location."""
+    legacy, target = _point_registry(monkeypatch, tmp_path)
+    legacy.write_text("not json either", encoding="utf-8")
+    target.parent.mkdir(parents=True)
+    target.write_text("not json", encoding="utf-8")
+
+    registry = koolook_routes._default_published_setup_registry()
+
+    assert registry.storage_path == target
+
+
+def test_migration_interrupted_copy_leaves_no_partial_target(monkeypatch, tmp_path) -> None:
+    """An interrupted copy must never leave a partial setups.json at the new
+    location (it would shadow the legacy registry on every later boot). The
+    migration writes via temp file + atomic replace and cleans up after a
+    failure."""
+    legacy, target = _point_registry(monkeypatch, tmp_path)
+
+    real_open = open
+
+    def partial_copy(src, dst, *args, **kwargs):
+        with real_open(dst, "w", encoding="utf-8") as f:
+            f.write('{"setups": [{"id"')  # simulate dying mid-write
+        raise OSError("interrupted")
+
+    monkeypatch.setattr(koolook_routes.shutil, "copy2", partial_copy)
+
+    registry = koolook_routes._default_published_setup_registry()
+
+    assert not target.exists()
+    assert list(target.parent.glob("*.tmp")) == []
+    assert registry.storage_path == legacy

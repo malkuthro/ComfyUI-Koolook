@@ -27,7 +27,12 @@ so published setups follow the same location as snapshots:
 On first use, any pre-relocation registry at the old fixed path
 (`<ComfyUI user directory>/koolook-published-setups/setups.json`) is copied to
 the new location when the new one does not exist yet — non-destructively, so
-the original file is left in place.
+the original file is left in place. The copy is atomic (temp file +
+`os.replace`), so an interrupted migration can never leave a partial
+`setups.json` at the new path. If the file at the new path exists but does not
+parse while the legacy file is intact, the registry keeps serving the legacy
+file and logs a diagnostic — a corrupt relocation target is never allowed to
+mask real data behind an empty catalog or the bundled sample.
 
 The file may be either a bare array of setup objects or an object with a
 `setups` array:

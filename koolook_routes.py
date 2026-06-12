@@ -236,26 +236,73 @@ def _migrate_legacy_published_setups(legacy: Path, target: Path) -> None:
     """One-time, non-destructive copy of a pre-relocation registry from the old
     fixed user-dir path (``legacy``) to ``target`` when ``target`` has none
     yet. Leaves ``legacy`` in place; logs and swallows copy failures so a
-    permission hiccup can't take down setup serving."""
+    permission hiccup can't take down setup serving.
+
+    The copy goes through a temp file + atomic ``os.replace`` (same pattern as
+    ``FileSetupStorage.save_setups``) so an interrupted run can never leave a
+    partial ``setups.json`` at ``target`` — a partial file would otherwise
+    shadow the intact legacy registry on every later boot."""
     if target == legacy or target.exists() or not legacy.is_file():
         return
+    tmp_name = None
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(legacy, target)
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            prefix=f"{target.stem}.",
+            suffix=".tmp",
+            dir=str(target.parent),
+        )
+        os.close(tmp_fd)
+        shutil.copy2(legacy, tmp_name)
+        os.replace(tmp_name, target)
+        tmp_name = None
         print(f"[Koolook] migrated published setups: {legacy} -> {target}")
     except OSError as exc:
         print(f"[Koolook] could not migrate published setups from {legacy}: {exc}")
+    finally:
+        if tmp_name and os.path.exists(tmp_name):
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+
+
+def _valid_setups_registry_file(path: Path) -> bool:
+    """True when ``path`` parses as a published-setups document (a bare list or
+    a ``{"setups": [...]}`` mapping — the shapes ``FileSetupStorage`` accepts).
+    Used to decide whether a relocated registry file is trustworthy: existence
+    alone is not proof a migration completed."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if isinstance(raw, dict):
+        raw = raw.get("setups", [])
+    return isinstance(raw, list)
 
 
 def _default_published_setup_registry() -> PublishedSetupRegistry:
     """Default registry factory — stores beside the snapshot library and
-    migrates any legacy user-dir registry on first use. If migration could not
-    produce the new file (e.g. a copy error), keep reading the legacy file in
-    place, so the bundled-sample fallback never masks real, stranded setups."""
+    migrates any legacy user-dir registry on first use.
+
+    Primary selection is corruption-aware: if migration could not produce the
+    new file, or the file at the new path exists but does not parse while the
+    legacy file is intact, keep reading the legacy file in place — neither the
+    bundled-sample fallback nor an empty catalog may mask real, stranded
+    setups. The unreadable file is left untouched as evidence."""
     target = _published_setups_path()
     legacy = default_storage_path()
     _migrate_legacy_published_setups(legacy, target)
-    primary = target if (target.exists() or not legacy.is_file()) else legacy
+    primary = target
+    if target != legacy and legacy.is_file():
+        if not target.exists():
+            primary = legacy
+        elif not _valid_setups_registry_file(target) and _valid_setups_registry_file(legacy):
+            print(
+                f"[Koolook] relocated published-setups file at {target} is "
+                f"unreadable; serving intact legacy registry {legacy} instead"
+            )
+            primary = legacy
     return PublishedSetupRegistry(
         FileSetupStorage(primary, fallback_path=SAMPLE_SETUPS_PATH)
     )
