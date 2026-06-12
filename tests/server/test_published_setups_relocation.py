@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import koolook_routes
 from koolook_setups import DEFAULT_SETUPS_FILENAME, DEFAULT_SETUPS_SUBDIR
 
