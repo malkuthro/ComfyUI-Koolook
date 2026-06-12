@@ -2756,6 +2756,11 @@ function enterCompareMode() {
             compareMeta = meta || null;
             activeSide = "A";   // always (re-)enter in the B->A direction
             compareFilter.clear();
+            // The published filter is a Workflows-browsing affordance; a
+            // Compare view diffs full snapshots, so clear it on entry (the
+            // rebuilt "P" button then re-seeds un-highlighted). Otherwise both
+            // compare columns would render filtered with no toggle to undo it.
+            publishedOnly = false;
             comparePathStates.clear();   // fresh snapshot starts with default expansion
             compareDirty = false;        // freshly loaded — no pending edits
             rerenderSidebar();

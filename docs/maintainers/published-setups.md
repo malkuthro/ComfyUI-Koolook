@@ -15,11 +15,19 @@ details.
 
 ## Storage
 
-The registry loads JSON from:
+The registry loads JSON from a `koolook-published-setups/setups.json` folder
+**beside the configured snapshot library** (the `libraryPath` setting /
+`KFORGELABS_PRESETS` env, default `<ComfyUI user directory>/koolook-presets/`),
+so published setups follow the same location as snapshots:
 
 ```text
-<ComfyUI user directory>/koolook-published-setups/setups.json
+<snapshot-library parent>/koolook-published-setups/setups.json
 ```
+
+On first use, any pre-relocation registry at the old fixed path
+(`<ComfyUI user directory>/koolook-published-setups/setups.json`) is copied to
+the new location when the new one does not exist yet — non-destructively, so
+the original file is left in place.
 
 The file may be either a bare array of setup objects or an object with a
 `setups` array:

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import string
 import subprocess
 import sys
@@ -35,7 +36,14 @@ from pathlib import Path
 from aiohttp import web
 
 try:
-    from .koolook_setups import PublishedSetupRegistry, default_registry
+    from .koolook_setups import (
+        DEFAULT_SETUPS_FILENAME,
+        DEFAULT_SETUPS_SUBDIR,
+        FileSetupStorage,
+        PublishedSetupRegistry,
+        SAMPLE_SETUPS_PATH,
+        default_storage_path,
+    )
     from .koolook_setup_runner import (
         AiohttpComfyClient,
         InMemorySetupRunStore,
@@ -43,7 +51,14 @@ try:
         SetupRunError,
     )
 except ImportError:  # pragma: no cover - standalone test/import context
-    from koolook_setups import PublishedSetupRegistry, default_registry
+    from koolook_setups import (
+        DEFAULT_SETUPS_FILENAME,
+        DEFAULT_SETUPS_SUBDIR,
+        FileSetupStorage,
+        PublishedSetupRegistry,
+        SAMPLE_SETUPS_PATH,
+        default_storage_path,
+    )
     from koolook_setup_runner import (
         AiohttpComfyClient,
         InMemorySetupRunStore,
@@ -207,6 +222,39 @@ def _configured_dir() -> tuple[Path, str]:
     if env:
         return Path(env).expanduser(), "env"
     return _resolve_default_dir(), "default"
+
+
+def _published_setups_path() -> Path:
+    """Storage path for published setups: a sibling of the configured snapshot
+    library, so they follow the same ``libraryPath`` / ``KFORGELABS_PRESETS``
+    location instead of a fixed user-dir folder (issue #227)."""
+    base, _ = _configured_dir()
+    return base.parent / DEFAULT_SETUPS_SUBDIR / DEFAULT_SETUPS_FILENAME
+
+
+def _migrate_legacy_published_setups(legacy: Path, target: Path) -> None:
+    """One-time, non-destructive copy of a pre-relocation registry from the old
+    fixed user-dir path (``legacy``) to ``target`` when ``target`` has none
+    yet. Leaves ``legacy`` in place; logs and swallows copy failures so a
+    permission hiccup can't take down setup serving."""
+    if target == legacy or target.exists() or not legacy.is_file():
+        return
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy, target)
+        print(f"[Koolook] migrated published setups: {legacy} -> {target}")
+    except OSError as exc:
+        print(f"[Koolook] could not migrate published setups from {legacy}: {exc}")
+
+
+def _default_published_setup_registry() -> PublishedSetupRegistry:
+    """Default registry factory — stores beside the snapshot library and
+    migrates any legacy user-dir registry on first use."""
+    target = _published_setups_path()
+    _migrate_legacy_published_setups(default_storage_path(), target)
+    return PublishedSetupRegistry(
+        FileSetupStorage(target, fallback_path=SAMPLE_SETUPS_PATH)
+    )
 
 
 def _browse_roots() -> list[Path]:
@@ -427,7 +475,7 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
     without an aiohttp app fixture.
     """
     if setup_registry_factory is None:
-        setup_registry_factory = default_registry
+        setup_registry_factory = _default_published_setup_registry
     run_store = InMemorySetupRunStore()
 
     def _default_setup_runner(request, registry: PublishedSetupRegistry) -> PublishedSetupRunner:

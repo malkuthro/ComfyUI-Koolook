@@ -26,6 +26,13 @@ The format is inspired by Keep a Changelog and SemVer.
   visible in its original folder structure at a glance; toggling off restores
   the full tree. Reuses the existing tag system and Workflows tree rather than
   adding a separate published-setups view.
+- **Published setups stored beside the snapshot library (#227).** The
+  published-setup registry (`koolook-published-setups/setups.json`) now lives as
+  a sibling of the configured snapshot library (following the `libraryPath`
+  setting / `KFORGELABS_PRESETS` env) instead of a fixed user-dir folder, so
+  setups and snapshots stay together and the success card's "Open folder" lands
+  predictably. Any existing registry at the old user-dir path is copied to the
+  new location on first use, non-destructively (the original is left in place).
 - **Published setup registry + catalog API.** Added the first server-side
   Published Workflow Setup registry boundary (`listSetups()` /
   `getSetup(id)`), schema validation with invalid-record diagnostics,
