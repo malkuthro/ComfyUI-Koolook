@@ -65,7 +65,7 @@ Published setups carry two related but separate artifacts:
    - Preserves custom nodes, subgraphs, and widget serialization exactly as
      ComfyUI expects.
 
-The current PR already allows publish requests to supply `apiPrompt`; when it
+The implementation now allows publish requests to supply `apiPrompt`; when it
 is supplied, the registry stores it instead of re-converting the visual graph.
 The fallback converter only exists for older/simple flows and should not be the
 main product path.
