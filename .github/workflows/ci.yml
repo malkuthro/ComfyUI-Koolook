@@ -71,7 +71,14 @@ jobs:
 
   pytest:
     name: Pytest
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Keep both lanes reporting even when one fails — a Windows-only
+      # failure with a green ubuntu lane is exactly the signal this
+      # matrix exists to surface.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
