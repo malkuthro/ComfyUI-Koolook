@@ -937,11 +937,26 @@ export function isWorkflowModule(path, wfName) {
 // but the mutators still defensively coerce so a freshly-saved workflow that
 // hasn't gone through normalize still gets sane behavior.
 // =============================================================================
+
+// Tag auto-applied to a workflow when it is published as a setup. Drives the
+// Workflows-tree badge and the Tools "Published" filter, and lands the
+// workflow in the Tags section's "published" pool for free. A normal tag, so
+// it stays user-manageable (and may drift if a setup is later unpublished).
+export const PUBLISHED_TAG = "published";
+
 export function getWorkflowTags(path, wfName) {
     const dir = dirOf(path);
     if (!dir || !dir.workflows[wfName]) return null;
     const tags = dir.workflows[wfName].tags;
     return Array.isArray(tags) ? [...tags] : [];
+}
+
+// Case-sensitive membership test, shared by the published-discovery badge and
+// the Tools "Published" filter so both agree on what counts as tagged. Missing
+// workflow or absent tags -> false (never throws).
+export function workflowHasTag(path, wfName, tag) {
+    const tags = getWorkflowTags(path, wfName);
+    return Array.isArray(tags) && tags.includes(tag);
 }
 
 export function addTag(path, wfName, tag) {

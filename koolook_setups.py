@@ -200,6 +200,14 @@ class PublishedSetupRegistry:
         self._storage = storage
         self.diagnostics: list[str] = []
 
+    @property
+    def storage_path(self) -> Path | None:
+        """Filesystem path of the backing ``setups.json`` when the storage
+        adapter is file-backed; ``None`` for in-memory storage. Lets callers
+        surface where a publish landed without reaching into the adapter."""
+        path = getattr(self._storage, "path", None)
+        return path if isinstance(path, Path) else None
+
     def _valid_setups(self) -> list[dict[str, Any]]:
         self.diagnostics = []
         out: list[dict[str, Any]] = []

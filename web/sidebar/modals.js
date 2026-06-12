@@ -10,6 +10,7 @@ import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from 
 import { formatLocalStamp } from "./format_time.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
 import { inferSetupSurface } from "./published_surface.js";
+import { buildPublishSuccessView } from "./published_setups.js";
 import {
     detectManager,
     loadMappings,
@@ -818,7 +819,7 @@ function appendSurfaceSection(body, visualGraph, dirPath = [], wfName = "") {
     body.appendChild(section);
 }
 
-export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visualGraph = null, onPublish }) {
+export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visualGraph = null, onPublish, revealPublishedSetupFolder }) {
     const body = document.createElement("div");
     body.className = "koolook-publish-grid";
 
@@ -899,7 +900,7 @@ export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visua
             publishBtn.disabled = true;
             publishBtn.textContent = "Publishing...";
             try {
-                await onPublish({
+                const result = await onPublish({
                     metadata: {
                         id: setupId.value,
                         title: title.value,
@@ -912,6 +913,13 @@ export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visua
                     outputContract: parsedOutput,
                 });
                 overlay.remove();
+                // Replace the silent close with an explicit confirmation that
+                // shows where the setup landed (issue #227). Falls back to a
+                // bare confirmation if a caller's onPublish returns nothing.
+                showPublishSuccessModal({
+                    view: buildPublishSuccessView(result),
+                    revealPublishedSetupFolder,
+                });
             } catch (e) {
                 msg.textContent = e.message || "Publish failed.";
                 publishBtn.disabled = false;
@@ -929,6 +937,122 @@ export function showPublishSetupModal({ wfName, dirPath, currentTags = [], visua
     }));
     modal.classList.add("koolook-publish-modal");
     setupId.focus();
+}
+
+// Folder name one level up from a file path — e.g. the "koolook-published-
+// setups" directory that contains setups.json. Splits on both separators so
+// Windows and POSIX paths behave the same (mirrors pathLeaf).
+function pathParentLeaf(path) {
+    const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
+    return parts.length >= 2 ? parts[parts.length - 2] : pathLeaf(path);
+}
+
+// Post-publish confirmation (issue #227). Reuses the snapshot Save dialog's
+// "Saved to … Open folder ↗" library-row language so the publish flow gets
+// the same visible destination + open/copy affordances. Open folder and Copy
+// path appear only when the server returned a storage path; a draft publish
+// without one still gets an explicit confirmation instead of vanishing.
+export function showPublishSuccessModal({ view, revealPublishedSetupFolder }) {
+    const safeView = (view && typeof view === "object") ? view : {};
+    const body = document.createElement("div");
+    body.className = "koolook-publish-grid";
+
+    const headline = document.createElement("div");
+    headline.className = "koolook-publish-surface-title";
+    headline.textContent = safeView.title
+        ? `Published “${safeView.title}”`
+        : "Setup published";
+    body.appendChild(headline);
+
+    if (safeView.storagePath) {
+        const libRow = document.createElement("div");
+        libRow.className = "koolook-snap-lib-row koolook-publish-wide";
+        const libRowInfo = document.createElement("div");
+        libRowInfo.className = "koolook-snap-lib-row-info";
+
+        const libRowTop = document.createElement("div");
+        libRowTop.className = "koolook-snap-lib-row-top";
+        const libLabel = document.createElement("span");
+        libLabel.className = "koolook-snap-lib-label";
+        libLabel.textContent = "Saved to";
+        libRowTop.appendChild(libLabel);
+
+        if (safeView.canOpenFolder && typeof revealPublishedSetupFolder === "function") {
+            let revealInFlight = false;
+            const openFolderLink = document.createElement("a");
+            openFolderLink.className = "koolook-snap-open-folder-link";
+            openFolderLink.href = "#";
+            openFolderLink.textContent = "Open folder ↗";
+            openFolderLink.title = "Open the published-setups folder in your file manager";
+            openFolderLink.addEventListener("click", async (e) => {
+                e.preventDefault();
+                if (revealInFlight) return;
+                revealInFlight = true;
+                try {
+                    const r = await revealPublishedSetupFolder();
+                    toast(`Opened: ${r.path}`);
+                } catch (err) {
+                    console.error("[Koolook] reveal failed:", err);
+                    toast(`Could not open folder: ${err.message}`);
+                } finally {
+                    revealInFlight = false;
+                }
+            });
+            libRowTop.appendChild(openFolderLink);
+        }
+        libRowInfo.appendChild(libRowTop);
+
+        const libName = document.createElement("div");
+        libName.className = "koolook-settings-folder-name";
+        libName.textContent = pathParentLeaf(safeView.storagePath);
+        libRowInfo.appendChild(libName);
+
+        const libPath = document.createElement("div");
+        libPath.className = "koolook-settings-folder-path";
+        libPath.textContent = safeView.storagePath;
+        libPath.title = safeView.storagePath;
+        libRowInfo.appendChild(libPath);
+
+        libRow.appendChild(libRowInfo);
+        body.appendChild(libRow);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "koolook-publish-surface koolook-publish-wide";
+    if (safeView.setupId) appendSurfaceLine(meta, "Setup id", safeView.setupId);
+    if (safeView.sourcePath) appendSurfaceLine(meta, "Source workflow", safeView.sourcePath);
+    if (safeView.validationStatus) appendSurfaceLine(meta, "Validation", safeView.validationStatus);
+    if (meta.childNodes.length) body.appendChild(meta);
+
+    let overlay;
+    const actions = [];
+    if (safeView.canCopyPath) {
+        actions.push(makeModalButton({
+            label: "Copy path",
+            onClick: async () => {
+                try {
+                    await navigator.clipboard.writeText(safeView.storagePath);
+                    toast("Copied registry path.");
+                } catch (err) {
+                    toast(`Could not copy path: ${err.message}`);
+                }
+            },
+        }));
+    }
+    actions.push(makeModalButton({
+        label: "Close",
+        primary: true,
+        onClick: () => overlay.remove(),
+    }));
+
+    let modal;
+    ({ overlay, modal } = makeModalShell({
+        title: "Setup published",
+        titleTooltip: "Where this setup was saved in the callable setup registry.",
+        body,
+        actions,
+    }));
+    modal.classList.add("koolook-publish-modal");
 }
 
 // =============================================================================

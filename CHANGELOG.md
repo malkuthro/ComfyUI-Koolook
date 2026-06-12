@@ -7,6 +7,25 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Publish setup success feedback (#227).** Publishing a saved sidebar
+  workflow no longer closes the dialog silently — a confirmation card now
+  shows where the setup was saved (the registry `setups.json` path) and
+  offers **Open folder**, **Copy path**, and **Close**, reusing the snapshot
+  Save dialog's "Saved to … Open folder ↗" language. The publish API response
+  gained a `storagePath` field, and a new `POST /koolook/api/setups/reveal`
+  route opens the published-setups directory in the host file manager
+  (grounded at the registry folder, separate from the snapshot-library
+  reveal). A draft publish without a storage path still gets an explicit
+  confirmation. Part 2 of #227 — a separate published-setups
+  destination/library setting — remains open.
+- **Discover published setups in the sidebar (#227).** Publishing a saved
+  workflow now tags it `published`, so it carries a small "published" badge in
+  the Workflows tree and appears in the Tags section's `published` pool. A new
+  **"P"** toggle in the sidebar Tools row prunes the Workflows tree to just the
+  published setups — folders force-expanded — so every published setup is
+  visible in its original folder structure at a glance; toggling off restores
+  the full tree. Reuses the existing tag system and Workflows tree rather than
+  adding a separate published-setups view.
 - **Published setup registry + catalog API.** Added the first server-side
   Published Workflow Setup registry boundary (`listSetups()` /
   `getSetup(id)`), schema validation with invalid-record diagnostics,

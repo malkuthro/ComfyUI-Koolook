@@ -149,6 +149,8 @@ export function ensureStyle() {
 .koolook-icon-btn { padding: 0; width: 28px; height: 17px; font-size: 12px; }
 .koolook-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .koolook-icon-btn > .pi { font-size: 11px; }
+/* Toggled-on state for filter buttons (e.g. the "P" published filter). */
+.koolook-icon-btn-active { background: rgba(80,140,235,0.35); border-color: rgba(80,140,235,0.6); opacity: 1; }
 .koolook-letter-icon { font-size: 11px; font-weight: 800; line-height: 1; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .koolook-inline-svg-icon { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .koolook-filled-square-icon { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: currentColor; opacity: 0.9; }
@@ -296,6 +298,8 @@ export function ensureStyle() {
 .koolook-leaf-unresolved { opacity: 0.55; font-style: italic; }
 .koolook-leaf-crumb { opacity: 0.5; font-size: 11px; margin-right: 1px; }
 .koolook-pack-badge { opacity: 0.5; font-size: 11px; margin-left: 6px; flex-shrink: 0; white-space: nowrap; }
+/* "published" marker on a workflow row that has been published as a setup. */
+.koolook-published-badge { margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #b9d4ff; background: rgba(80,140,235,0.22); flex-shrink: 0; white-space: nowrap; }
 .koolook-preview-card { position: fixed; z-index: 10000; background: #353535; border: 1px solid rgba(190,190,190,0.38); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.55); color: var(--input-text, #ddd); font-size: 12px; width: 300px; max-width: calc(100vw - 16px); box-sizing: border-box; max-height: calc(100vh - 16px); pointer-events: none; overflow: hidden auto; padding-bottom: 10px; }
 .koolook-preview-header { display: flex; align-items: center; gap: 9px; padding: 8px 13px 7px; font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; background: rgba(255,255,255,0.045); border-bottom: 1px solid rgba(255,255,255,0.07); }
 .koolook-preview-headtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }

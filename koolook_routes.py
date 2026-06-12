@@ -397,6 +397,28 @@ def _resolve_target(lib_base: Path, subdir: str, name: str) -> tuple[Path, Path]
     return target_dir, file_path
 
 
+def _open_dir_in_file_manager(target_dir: Path) -> None:
+    """Open ``target_dir`` in the OS file manager. Shared by the snapshot
+    and published-setup reveal routes. Raises ``web.HTTPNotFound`` when the
+    directory is absent and ``web.HTTPInternalServerError`` if the launcher
+    cannot start. Subprocess args are passed list-form (no shell), so a
+    controlled path can't trigger shell-metacharacter interpretation.
+    """
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise web.HTTPNotFound(reason=f"Path does not exist on disk: {target_dir}")
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(target_dir)])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", str(target_dir)])
+        else:
+            subprocess.Popen(["xdg-open", str(target_dir)])
+    except OSError as exc:
+        raise web.HTTPInternalServerError(
+            reason=f"Could not open path in file manager: {exc}"
+        ) from exc
+
+
 def register_routes(routes, setup_registry_factory=None, setup_runner_factory=None) -> None:
     """Attach the preset endpoints to the given aiohttp ``RouteTableDef``.
 
@@ -485,7 +507,11 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
                 {"ok": False, "errors": result.diagnostics},
                 status=400,
             )
-        return web.json_response({"ok": True, "setup": result.setup})
+        response = {"ok": True, "setup": result.setup}
+        storage_path = registry.storage_path
+        if storage_path is not None:
+            response["storagePath"] = str(storage_path)
+        return web.json_response(response)
 
     @routes.post("/koolook/api/setups/{setup_id}/run")
     async def run_published_setup(request):
@@ -960,21 +986,25 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
             target_dir, _ = _resolve_target(base, subdir_q, "_listing.json")
         else:
             target_dir = base
-        if not target_dir.exists() or not target_dir.is_dir():
+        _open_dir_in_file_manager(target_dir)
+        return web.json_response({"ok": True, "path": str(target_dir)})
+
+    @routes.post("/koolook/api/setups/reveal")
+    async def reveal_published_setup_folder(_request):
+        """Open the published-setups directory (where ``Publish setup``
+        writes ``setups.json``) in the OS file manager. Distinct from the
+        snapshot-library reveal above: the publish success card's Open
+        folder action must land in the registry folder, not the snapshot
+        library.
+        """
+        registry: PublishedSetupRegistry = setup_registry_factory()
+        storage_path = registry.storage_path
+        if storage_path is None:
             raise web.HTTPNotFound(
-                reason=f"Path does not exist on disk: {target_dir}"
+                reason="Published setup storage path is unavailable."
             )
-        try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(target_dir)])
-            elif sys.platform == "win32":
-                subprocess.Popen(["explorer.exe", str(target_dir)])
-            else:
-                subprocess.Popen(["xdg-open", str(target_dir)])
-        except OSError as exc:
-            raise web.HTTPInternalServerError(
-                reason=f"Could not open path in file manager: {exc}"
-            ) from exc
+        target_dir = storage_path.parent
+        _open_dir_in_file_manager(target_dir)
         return web.json_response({"ok": True, "path": str(target_dir)})
 
 

@@ -53,6 +53,7 @@
     </div>
     <button id="btn-default">Default</button>
     <button id="btn-error">Invalid contract error</button>
+    <button id="btn-success">Success (saved-to)</button>
 </div>
 
 <div class="harness-stage" id="stage"></div>
@@ -61,7 +62,7 @@
     (async () => {
     const BUST = "?bust=" + Date.now();
     const { ensureStyle } = await import("../../../web/sidebar/constants.js" + BUST);
-    const { showPublishSetupModal } = await import("../../../web/sidebar/modals.js" + BUST);
+    const { showPublishSetupModal, showPublishSuccessModal } = await import("../../../web/sidebar/modals.js" + BUST);
     ensureStyle();
 
     function clearDialog() {
@@ -139,8 +140,28 @@
         }
     }
 
+    function mountSuccess() {
+        clearDialog();
+        showPublishSuccessModal({
+            view: {
+                setupId: "director-demo",
+                title: "Director Demo",
+                sourcePath: "Demos/Video/Director Demo",
+                validationStatus: "valid",
+                storagePath: "C:\\Users\\koolook\\AppData\\Roaming\\ComfyUI\\user\\default\\koolook-published-setups\\setups.json",
+                canCopyPath: true,
+                canOpenFolder: true,
+            },
+            revealPublishedSetupFolder: async () => {
+                console.log("[harness] reveal published-setups folder");
+                return { ok: true, path: "C:\\Users\\koolook\\AppData\\Roaming\\ComfyUI\\user\\default\\koolook-published-setups" };
+            },
+        });
+    }
+
     document.getElementById("btn-default").addEventListener("click", () => mount());
     document.getElementById("btn-error").addEventListener("click", () => mount({ fail: true }));
+    document.getElementById("btn-success").addEventListener("click", () => mountSuccess());
     mount();
     })().catch((e) => {
         const pre = document.createElement("pre");
