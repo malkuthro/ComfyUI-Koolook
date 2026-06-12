@@ -318,9 +318,17 @@ function v1Paths(store, suffix = "") {
     (err) => err instanceof DOMException && err.name === "QuotaExceededError",
     "unrescuable write rethrows the quota error",
   );
-  assert.ok(
-    toasts.some((t) => /still full/i.test(t)),
-    "still-full toast shown",
+  // A second failing write in the same session still throws but must NOT
+  // re-toast — otherwise a genuinely-full origin gets per-edit toast spam.
+  assert.throws(
+    () => store.setItem(key, "f".repeat(100)),
+    (err) => err instanceof DOMException && err.name === "QuotaExceededError",
+    "repeat unrescuable write still rethrows",
+  );
+  assert.equal(
+    toasts.filter((t) => /still full/i.test(t)).length,
+    1,
+    "still-full toast is latched once per session",
   );
   assert.notEqual(store.getItem("someone.elses.data"), null, "non-draft data never touched");
 }

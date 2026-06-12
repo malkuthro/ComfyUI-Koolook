@@ -125,9 +125,11 @@ The format is inspired by Keep a Changelog and SemVer.
   rescuing the save before the 1.44 frontend's session-wide
   storage-unavailable latch can trip (that latch otherwise re-toasts on
   every edit until reload). The boot prune now also deletes the suffixed
-  V1 families Comfy's own V1→V2 migration leaves behind, scopes
+  V1 families 1.44-era V1→V2 migrations leave behind, scopes
   corrupt-key cleanup to the offending key instead of the whole store,
-  drops oversized entries, and enforces a total draft budget.
+  drops oversized entries, and enforces a ~2M-char total draft budget
+  across all generations (the old guard capped only the unsuffixed V1
+  blob, at 1.5M).
   `dev-sync-audio` ships the guard file so a scoped sync can't strand a
   dev install guard-less. Behavior is covered by
   `tests/js/test_draft_guard.mjs`.

@@ -12,8 +12,9 @@
 //   V1 (legacy, still written on tab switches as of 1.44):
 //       Comfy.Workflow.Drafts            one JSON blob of all drafts
 //       Comfy.Workflow.DraftOrder        LRU order, oldest first
-//   V1 per-workspace (interim generation; never cleaned up by the
-//   frontend's own V1->V2 migration):
+//   V1 per-workspace (interim generation; the 1.44 migration reads these
+//   once without deleting them — later frontends added cleanup, and an
+//   interrupted migration can leave them behind on any version):
 //       Comfy.Workflow.Drafts:<ws>
 //       Comfy.Workflow.DraftOrder:<ws>
 //   V2 (1.44+, written ~512ms after every graph edit):
@@ -56,6 +57,9 @@
 
   // Budgets in UTF-16 code units (what localStorage quotas count). Browsers
   // commonly allow ~5M units per origin; drafts must not crowd out the rest.
+  // The old embedded guard capped the unsuffixed V1 blob alone at 1.5M; the
+  // 2M total here covers every generation combined — a scope widening more
+  // than a raise.
   const MAX_TOTAL_DRAFT_CHARS = 2_000_000;
   const MAX_DRAFT_ENTRY_CHARS = 750_000;
   const MAX_EVICTIONS_PER_WRITE = 25;
@@ -64,6 +68,7 @@
 
   const originalSetItem = localStorage.setItem.bind(localStorage);
   let rescueToastShown = false;
+  let stillFullToastShown = false;
 
   function isDraftKey(key) {
     return typeof key === "string" && key.startsWith(DRAFT_KEY_PREFIX);
@@ -349,7 +354,10 @@
       ].join(";");
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 6500);
-    } catch (_err) { }
+    } catch (_err) {
+      // Best-effort UI: a toast must never break the storage path
+      // (document can be unavailable in exotic embeddings).
+    }
   }
 
   function notifyRescueOnce() {
@@ -372,6 +380,10 @@
           return originalSetItem(key, value);
         } catch (err) {
           if (!isQuotaError(err) || !isDraftKey(String(key))) throw err;
+          // evictOneDraftUnit reports "removed one draft unit", not "freed
+          // enough bytes" — the retry below decides that. Units are finite
+          // and never recreated here, so the loop terminates even without
+          // the attempt cap.
           for (let attempt = 0; attempt < MAX_EVICTIONS_PER_WRITE; attempt += 1) {
             if (!evictOneDraftUnit(String(key))) break;
             try {
@@ -382,9 +394,16 @@
               if (!isQuotaError(retryErr)) throw retryErr;
             }
           }
-          showDraftQuotaToast(
-            "Comfy draft cache is still full. Koolook could not free enough space; export or delete old drafts manually.",
-          );
+          // Out of evictable drafts. Rethrow so Comfy handles the failure;
+          // on 1.44+ its V2 layer then latches storage-unavailable and
+          // stops calling setItem for the session, so this wrapper cannot
+          // help again until reload — latch our hint toast to match.
+          if (!stillFullToastShown) {
+            stillFullToastShown = true;
+            showDraftQuotaToast(
+              "Comfy draft cache is still full. Koolook could not free enough space; export or delete old drafts manually.",
+            );
+          }
           throw err;
         }
       };

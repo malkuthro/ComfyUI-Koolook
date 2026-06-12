@@ -122,7 +122,7 @@ share the `Comfy.Workflow.Draft` prefix:
 | Generation | Keys | Written when |
 |---|---|---|
 | V1 (legacy; still written on tab switches as of frontend 1.44) | `Comfy.Workflow.Drafts` (one blob of all drafts) + `Comfy.Workflow.DraftOrder` (LRU) | switching/loading workflows |
-| V1 per-workspace (interim) | `Comfy.Workflow.Drafts:<ws>` + `Comfy.Workflow.DraftOrder:<ws>` | older 1.4x frontends; the frontend's own V1→V2 migration reads these once and **never deletes them** |
+| V1 per-workspace (interim) | `Comfy.Workflow.Drafts:<ws>` + `Comfy.Workflow.DraftOrder:<ws>` | older 1.4x frontends; the 1.44 migration reads these once **without deleting them** (later frontends added cleanup on successful migration, and an interrupted migration can still leave them behind) |
 | V2 (frontend 1.44+) | `Comfy.Workflow.DraftIndex.v2:<ws>` (index) + `Comfy.Workflow.Draft.v2:<ws>:<hash>` (one payload per draft) | ~512 ms after every graph edit |
 
 Once the origin's storage quota is hit, draft saves fail and Comfy shows
@@ -151,8 +151,8 @@ guard, then embedded in the LTX Director extension, died on frontend
 1.44). Two mechanisms:
 
 1. **Boot prune** — deletes suffixed-V1 families already migrated to V2
-   (dead weight the frontend never cleans), corrupt keys (scoped to the
-   offending key only), oversized entries (>750k chars), and enforces a
+   (dead weight 1.44-era migrations leave behind), corrupt keys (scoped to
+   the offending key only), oversized entries (>750k chars), and enforces a
    ~2M-char total draft budget, oldest drafts first.
 2. **`localStorage.setItem` quota guard** — on `QuotaExceededError` for a
    draft key, evicts the oldest draft across *all* generations and retries
