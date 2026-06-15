@@ -27,8 +27,16 @@ Key inputs:
 - `label`: status label, for example `EXR_SAFE`.
 - `auto_queue_next`: when enabled, submit the next prompt automatically.
 - `index_node_id`: node id of the connected `easy int` frame-index node. If this
-  is blank, the node attempts to infer it from the connected `index` input.
-- `server_url`: local ComfyUI server URL, usually `http://127.0.0.1:8188`.
+  is blank, the node infers it from the connected `index` input. If the supplied
+  id is not actually a node in the workflow (e.g. a widget value shifted to `0`
+  in an older save), the node falls back to that same inference so the loop
+  self-heals; if it still cannot resolve a real node, auto-queue fails up front
+  with a clear message instead of silently aborting into a marker file.
+- `server_url`: local ComfyUI server URL. Defaults to `http://127.0.0.1:8188`,
+  but when left at that default (or blank) the node auto-detects the address the
+  running server actually bound to — so an install launched with `--port 8000`
+  (or `--listen`) queues correctly without editing the widget. Set an explicit
+  value only to target a different host/port; a custom value is used verbatim.
 - `max_auto_queue_depth`: hard safety cap for how many child prompts this node
   may chain from the current frame.
 - `remaining_auto_queue_depth`: internal countdown carried into child prompts.

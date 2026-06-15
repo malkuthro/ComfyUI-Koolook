@@ -7,7 +7,23 @@ import json
 
 import pytest
 
-from k_loop_status import KoolookLoopStatus, _post_prompt, build_status, infer_index_node_id
+import k_loop_status
+from k_loop_status import (
+    DEFAULT_SERVER_URL,
+    KoolookLoopStatus,
+    _post_prompt,
+    _resolve_server_url,
+    build_status,
+    infer_index_node_id,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_active_queue_keys():
+    """Reset the module-global auto-queue dedup set between tests."""
+    k_loop_status._ACTIVE_QUEUE_KEYS.clear()
+    yield
+    k_loop_status._ACTIVE_QUEUE_KEYS.clear()
 
 
 def test_build_status_formats_one_based_position_and_frame_path():
@@ -96,6 +112,114 @@ def test_depth_guard_raises_before_status_print(capsys):
         )
 
     assert "[Koolook Loop Status]" not in capsys.readouterr().out
+
+
+def test_resolve_server_url_keeps_custom_value(monkeypatch):
+    monkeypatch.setattr(
+        k_loop_status, "_detect_local_server_url", lambda: "http://127.0.0.1:9999"
+    )
+
+    assert _resolve_server_url("http://10.0.0.5:7000") == "http://10.0.0.5:7000"
+
+
+def test_resolve_server_url_overrides_default_with_detected_port(monkeypatch):
+    monkeypatch.setattr(
+        k_loop_status, "_detect_local_server_url", lambda: "http://127.0.0.1:8000"
+    )
+
+    assert _resolve_server_url(DEFAULT_SERVER_URL) == "http://127.0.0.1:8000"
+    assert _resolve_server_url("") == "http://127.0.0.1:8000"
+
+
+def test_resolve_server_url_falls_back_to_default_when_undetectable(monkeypatch):
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
+
+    assert _resolve_server_url(DEFAULT_SERVER_URL) == DEFAULT_SERVER_URL
+
+
+def test_probe_uses_detected_port_not_stale_default(monkeypatch):
+    """Auto-queue on a non-default port must probe the running server."""
+    monkeypatch.setattr(
+        k_loop_status, "_detect_local_server_url", lambda: "http://127.0.0.1:8000"
+    )
+    probed = {}
+    monkeypatch.setattr(
+        k_loop_status, "_probe_server", lambda url: probed.update(url=url)
+    )
+    # Don't actually spawn the queue thread; we only care about the probe target.
+    class _NoopThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(k_loop_status.threading, "Thread", _NoopThread)
+
+    node = KoolookLoopStatus()
+    node.report(
+        "image",
+        0,
+        4,
+        auto_queue_next=True,
+        index_node_id="22",
+        server_url=DEFAULT_SERVER_URL,
+        prompt={"21": {"inputs": {}}, "22": {"inputs": {}}},
+        unique_id="21",
+    )
+
+    assert probed["url"] == "http://127.0.0.1:8000"
+
+
+def test_stale_index_node_id_self_heals_from_connected_index(monkeypatch):
+    """A shifted index_node_id like '0' falls back to the connected index node."""
+    monkeypatch.setattr(
+        k_loop_status, "_detect_local_server_url", lambda: "http://127.0.0.1:8000"
+    )
+    monkeypatch.setattr(k_loop_status, "_probe_server", lambda url: None)
+    captured = {}
+
+    class _NoopThread:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs.get("kwargs", {}))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(k_loop_status.threading, "Thread", _NoopThread)
+
+    prompt = {
+        "21": {"inputs": {"index": ["22", 0]}},
+        "22": {"inputs": {"value": 0}},
+    }
+    _value, status = KoolookLoopStatus().report(
+        "image",
+        0,
+        4,
+        auto_queue_next=True,
+        index_node_id="0",
+        prompt=prompt,
+        unique_id="21",
+    )
+
+    assert status.startswith("loop: 1/4")
+    assert captured["index_node_id"] == "22"
+
+
+def test_unknown_index_node_id_raises_synchronously():
+    """An index_node_id with no matching node and no connection fails up front."""
+    node = KoolookLoopStatus()
+
+    with pytest.raises(RuntimeError, match="is not a node in this workflow"):
+        node.report(
+            "image",
+            0,
+            4,
+            auto_queue_next=True,
+            index_node_id="0",
+            prompt={"21": {"inputs": {}}},
+            unique_id="21",
+        )
 
 
 def test_post_prompt_rejects_error_payload(monkeypatch):

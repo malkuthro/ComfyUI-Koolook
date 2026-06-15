@@ -21,6 +21,7 @@ import urllib.request
 
 LOGGER = logging.getLogger(__name__)
 MAX_AUTO_QUEUE_DEPTH = 1000
+DEFAULT_SERVER_URL = "http://127.0.0.1:8188"
 _ACTIVE_QUEUE_KEYS: set[str] = set()
 _ACTIVE_QUEUE_KEYS_LOCK = threading.Lock()
 
@@ -80,6 +81,60 @@ def _validate_http_url(url: str) -> None:
     parsed = urllib.parse.urlsplit(str(url or ""))
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RuntimeError(f"Only http(s) ComfyUI server URLs are allowed: {url!r}")
+
+
+def _detect_local_server_url() -> str | None:
+    """Best-effort URL of the ComfyUI server hosting this node.
+
+    The node default points at ComfyUI's default port (8188), but installs
+    launched with ``--port`` (or ``--listen``) bind elsewhere — probing the
+    stale default is actively refused and aborts the loop. Prefer the address
+    the running server actually bound to. Returns ``None`` when neither the
+    parsed CLI args nor the running ``PromptServer`` can be inspected (e.g. a
+    headless unit test), so the caller can fall back to the literal default.
+    """
+    port = None
+    host = None
+    try:
+        from comfy.cli_args import args  # type: ignore[import-not-found]
+
+        port = getattr(args, "port", None)
+        host = getattr(args, "listen", None)
+    except Exception:  # pragma: no cover - depends on ComfyUI runtime
+        pass
+    if not port:
+        try:
+            from server import PromptServer  # type: ignore[import-not-found]
+
+            instance = PromptServer.instance
+            port = port or getattr(instance, "port", None)
+            host = host or getattr(instance, "address", None)
+        except Exception:  # pragma: no cover - depends on ComfyUI runtime
+            pass
+    if not port:
+        return None
+    host = str(host or "").strip() or "127.0.0.1"
+    # Bind-all addresses are not connectable; loop back to localhost instead.
+    if host in {"0.0.0.0", "::", "*"}:  # nosec B104
+        host = "127.0.0.1"
+    return f"http://{host}:{port}"
+
+
+def _resolve_server_url(server_url: str) -> str:
+    """Return the URL to queue against, auto-detecting when left at default.
+
+    A custom URL is respected verbatim; an empty value or the baked-in
+    default is replaced with the running server's real address when it can
+    be detected, so workflows saved on the default port still queue against
+    an install launched with ``--port``.
+    """
+    server_url = str(server_url or "").strip()
+    if server_url and server_url != DEFAULT_SERVER_URL:
+        return server_url
+    detected = _detect_local_server_url()
+    if detected and detected != server_url:
+        print(f"[Koolook Loop Status] resolved server_url to {detected}")
+    return detected or server_url
 
 
 def _probe_server(server_url: str) -> None:
@@ -172,7 +227,7 @@ class KoolookLoopStatus:
                 "index_node_id": ("STRING", {"default": "", "multiline": False}),
                 "server_url": (
                     "STRING",
-                    {"default": "http://127.0.0.1:8188", "multiline": False},
+                    {"default": DEFAULT_SERVER_URL, "multiline": False},
                 ),
                 "max_auto_queue_depth": (
                     "INT",
@@ -203,7 +258,7 @@ class KoolookLoopStatus:
         label="loop",
         auto_queue_next=False,
         index_node_id="",
-        server_url="http://127.0.0.1:8188",
+        server_url=DEFAULT_SERVER_URL,
         max_auto_queue_depth=100,
         remaining_auto_queue_depth=-1,
         prompt=None,
@@ -223,12 +278,25 @@ class KoolookLoopStatus:
             )
         if not index_node_id:
             index_node_id = infer_index_node_id(prompt, unique_id)
+        # A resolved id that isn't actually a node in the prompt (e.g. a shifted
+        # widget value or numeric label like "0") can't be advanced. Fall back
+        # to the node feeding the connected `index` input — the canonical wiring
+        # — so a stale or mis-shifted index_node_id self-heals instead of
+        # aborting the loop in the background queue thread.
+        if isinstance(prompt, dict) and index_node_id and index_node_id not in prompt:
+            inferred = infer_index_node_id(prompt, unique_id)
+            if inferred and inferred != index_node_id:
+                print(
+                    f"[Koolook Loop Status] index_node_id {index_node_id!r} not in "
+                    f"prompt; using {inferred!r} inferred from the connected index input"
+                )
+                index_node_id = inferred
         max_depth = max(1, min(int(max_auto_queue_depth), MAX_AUTO_QUEUE_DEPTH))
         remaining_depth = int(remaining_auto_queue_depth)
         if remaining_depth < 0:
             remaining_depth = max_depth
         should_queue = bool(auto_queue_next) and next_index < total
-        server_url = str(server_url or "").strip()
+        server_url = _resolve_server_url(server_url)
         if should_queue:
             if total - frame - 1 > max_depth:
                 raise RuntimeError(
@@ -243,6 +311,12 @@ class KoolookLoopStatus:
                 raise RuntimeError("Koolook Loop Status needs hidden UNIQUE_ID data.")
             if not index_node_id:
                 raise RuntimeError("Set index_node_id to the easy int frame index node.")
+            if index_node_id not in prompt:
+                raise RuntimeError(
+                    f"index_node_id {index_node_id!r} is not a node in this workflow. "
+                    "Connect the loop status node's index input to your easy int "
+                    "frame-index node, or set index_node_id to that node's id."
+                )
             if not server_url:
                 raise RuntimeError("Set server_url to the running ComfyUI server.")
             try:

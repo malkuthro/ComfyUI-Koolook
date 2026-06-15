@@ -158,6 +158,23 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **`Koolook_LoopStatus` auto-queue failed on non-default ports.** The
+  node's `server_url` defaulted to ComfyUI's standard port
+  (`http://127.0.0.1:8188`), so installs launched with `--port` (or
+  `--listen`) aborted the loop with `ComfyUI server is not reachable`
+  while probing the dead default. When `server_url` is left at the default
+  (or blank), the node now auto-detects the address the running server
+  actually bound to (via `comfy.cli_args` / the running `PromptServer`),
+  so workflows saved on the default port queue correctly against any port.
+  A custom `server_url` is still honored verbatim.
+- **`Koolook_LoopStatus` aborted into a marker file when `index_node_id` was
+  stale.** A shifted widget value (e.g. `index_node_id`/numeric label resolving
+  to `0`) is not a real node, so the background queue thread failed with
+  `index node id '0' is not in prompt` and only left an abort-marker file. The
+  node now falls back to the node feeding the connected `index` input when the
+  supplied id isn't in the prompt (self-healing the common widget-shift case),
+  and when it still can't resolve a real node it raises synchronously with an
+  actionable message so the error surfaces in the ComfyUI UI immediately.
 - **"Failed to save workflow draft" toasts returned on ComfyUI frontend
   1.44+.** The browser draft-quota guard is now its own global extension,
   `web/koolook_draft_guard.js`, and matches Comfy draft keys by prefix
