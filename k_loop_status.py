@@ -147,13 +147,17 @@ def _validate_http_url(url: str) -> None:
 def _compose_server_url(host: str | None, port) -> str:
     """Join a detected host/port into a connectable ``http://`` URL.
 
-    Bind-all addresses are not connectable, so they are remapped to
-    localhost; IPv6 literals are bracketed so ``urllib`` can parse the
-    ``host:port`` netloc (``::1`` -> ``http://[::1]:port``).
+    ComfyUI's bare ``--listen`` binds to all IPv4 and IPv6 interfaces as a
+    comma-joined host value, so the host is split and any bind-all member means
+    we connect over loopback. IPv6 literals are bracketed so ``urllib`` can parse
+    the ``host:port`` netloc (``::1`` -> ``http://[::1]:port``).
     """
-    host = str(host or "").strip() or "127.0.0.1"
-    if host in {"0.0.0.0", "::", "*"}:  # nosec B104
+    members = [member.strip() for member in str(host or "").split(",") if member.strip()]
+    bind_all = {"0.0.0.0", "::", "*"}  # nosec B104
+    if any(member in bind_all for member in members):
         host = "127.0.0.1"
+    else:
+        host = members[0] if members else "127.0.0.1"
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
     return f"http://{host}:{port}"
@@ -358,7 +362,6 @@ class KoolookLoopStatus:
         if remaining_depth < 0:
             remaining_depth = max_depth
         should_queue = _as_bool(auto_queue_next) and next_index < total
-        server_url = _resolve_server_url(server_url)
         if should_queue:
             if total - frame - 1 > max_depth:
                 raise RuntimeError(
@@ -379,6 +382,7 @@ class KoolookLoopStatus:
                     "Connect the loop status node's index input to your easy int "
                     "frame-index node, or set index_node_id to that node's id."
                 )
+            server_url = _resolve_server_url(server_url)
             if not server_url:
                 raise RuntimeError("Set server_url to the running ComfyUI server.")
             try:

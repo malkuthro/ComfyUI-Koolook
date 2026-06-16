@@ -164,8 +164,23 @@ def test_compose_server_url_ipv6_result_passes_validation():
 
 
 def test_compose_server_url_remaps_bind_all_to_localhost():
-    assert k_loop_status._compose_server_url("0.0.0.0", 8000) == "http://127.0.0.1:8000"
+    assert k_loop_status._compose_server_url("0.0.0.0", 8000) == "http://127.0.0.1:8000"  # nosec B104
     assert k_loop_status._compose_server_url("::", 8000) == "http://127.0.0.1:8000"
+    # ComfyUI's bare `--listen` is the comma-joined "all IPv4 and IPv6" value.
+    assert (
+        k_loop_status._compose_server_url("0.0.0.0,::", 8000)  # nosec B104
+        == "http://127.0.0.1:8000"
+    )
+    # Order-independent: a bind-all member anywhere in the list routes to loopback.
+    assert (
+        k_loop_status._compose_server_url("::,0.0.0.0", 8000)  # nosec B104
+        == "http://127.0.0.1:8000"
+    )
+    # No bind-all member: the first concrete host is used verbatim.
+    assert (
+        k_loop_status._compose_server_url("10.0.0.5,192.168.1.9", 8000)
+        == "http://10.0.0.5:8000"
+    )
 
 
 def test_compose_server_url_keeps_ipv4_hostname_and_defaults_blank():
@@ -206,6 +221,21 @@ def test_probe_uses_detected_port_not_stale_default(monkeypatch):
     )
 
     assert probed["url"] == "http://127.0.0.1:8000"
+
+
+def test_status_only_does_not_resolve_server_url(monkeypatch):
+    """With auto-queue off, the node must not detect/probe the server URL."""
+    called = {"detect": False}
+
+    def _flag_detect():
+        called["detect"] = True
+        return None
+
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", _flag_detect)
+
+    KoolookLoopStatus().report("image", 0, 4, auto_queue_next=False)
+
+    assert called["detect"] is False
 
 
 def test_stale_index_node_id_self_heals_from_connected_index(monkeypatch):
