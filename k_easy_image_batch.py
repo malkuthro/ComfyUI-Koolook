@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 import re
 
 import torch
@@ -10,6 +13,62 @@ _PLACEHOLDER_FILL = {
     "Gray": 0.5,
     "White": 1.0,
 }
+
+
+@dataclass(frozen=True)
+class OffsetPlan:
+    """Result of planning offset-mode placements (pure; no torch).
+
+    - ``placements``        — ``(source_index, output_index, vfx_frame)`` for
+      each incoming frame that lands inside the cut window, ascending by
+      position. ``source_index`` is the frame's ordinal in ``keyframe_batch``.
+    - ``outside_cut``       — VFX frame numbers paired to a frame but whose
+      output index fell outside ``[0, total_frames)`` (dropped, like select
+      mode).
+    - ``unused_source``     — count of incoming frames with no position to fill
+      (more frames than listed positions).
+    - ``missing_positions`` — listed positions with no incoming frame left
+      (more positions than frames).
+    """
+
+    placements: list[tuple[int, int, int]]
+    outside_cut: list[int]
+    unused_source: int
+    missing_positions: list[int]
+
+
+def plan_offset_placements(
+    positions: list[int],
+    source_count: int,
+    total_frames: int,
+    cut_start_frame: int,
+) -> OffsetPlan:
+    """Map a packed sequence of ``source_count`` frames onto keyframe positions.
+
+    Offset mode (the inverse of selecting): the i-th incoming frame is assigned
+    to the i-th position, with positions taken ascending and de-duplicated so
+    the mapping round-trips cleanly with the ascending ``selected_frames``
+    output. A position is placed iff its output index ``vfx - cut_start_frame``
+    falls inside ``[0, total_frames)``; otherwise it is reported in
+    ``outside_cut`` and dropped (matching select-mode cut behaviour).
+
+    Pure Python — no torch — so the placement logic is unit-testable in CI
+    without the heavyweight tensor dependency.
+    """
+    ordered = sorted(dict.fromkeys(int(p) for p in positions))
+    paired = min(source_count, len(ordered))
+    placements: list[tuple[int, int, int]] = []
+    outside_cut: list[int] = []
+    for source_index in range(paired):
+        vfx = ordered[source_index]
+        output_index = vfx - cut_start_frame
+        if 0 <= output_index < total_frames:
+            placements.append((source_index, output_index, vfx))
+        else:
+            outside_cut.append(vfx)
+    unused_source = max(0, source_count - len(ordered))
+    missing_positions = ordered[source_count:] if source_count < len(ordered) else []
+    return OffsetPlan(placements, outside_cut, unused_source, missing_positions)
 
 
 class easy_ImageBatch:
@@ -89,6 +148,13 @@ class easy_ImageBatch:
     cut-output position. Output dedup is automatic (set-based). At least
     one of `image1` or `source_batch` must be provided. All keyframes
     (and `source_batch` frames) must share the same H/W/C.
+
+    Offset mode (the inverse) — connect a packed sequence to
+    `keyframe_batch` and the node instead *scatters* those frames back onto
+    the `source_frames` positions (i-th frame → i-th position, ascending),
+    filling the rest with the placeholder. `source_batch` and the manual
+    slots are ignored while `keyframe_batch` is connected. Round-trips with
+    `selected_image_batch` + `selected_frames`. See `create_batch_from_frames`.
 
     Useful for preparing sparse control sequences for video models like
     Wan 2.2, where placeholder frames indicate no latent update.
@@ -170,6 +236,20 @@ class easy_ImageBatch:
                 }),
             },
             "optional": {
+                "keyframe_batch": ("IMAGE", {
+                    "tooltip": (
+                        "Connect a packed sequence of already-selected/processed "
+                        "frames to switch the node into OFFSET mode: each incoming "
+                        "frame is placed onto the timeline at the matching number "
+                        "from the frame list (1st frame -> 1st number, 2nd -> 2nd, "
+                        "...), with every other position filled by "
+                        "placeholder_color. The frame list (source_frames) supplies "
+                        "the positions; source_batch and image1-4 are ignored while "
+                        "this is connected. Use it to rebuild a full-length sequence "
+                        "from frames you exported, processed, and want back in their "
+                        "original positions."
+                    ),
+                }),
                 "source_batch": ("IMAGE", ),
                 "image1": ("IMAGE", ),
                 "image2": ("IMAGE", ),
@@ -224,7 +304,25 @@ class easy_ImageBatch:
         image3_frame=None,
         image4=None,
         image4_frame=None,
+        keyframe_batch=None,
     ):
+        # Offset mode: when keyframe_batch is connected, switch behaviour from
+        # "select frames out of source_batch" to "scatter this packed sequence
+        # back onto the frame-list positions". See create_batch_from_frames.
+        if keyframe_batch is not None:
+            ignored = source_batch is not None or any(
+                img is not None for img in (image1, image2, image3, image4)
+            )
+            return self.create_batch_from_frames(
+                keyframe_batch,
+                source_frames,
+                total_frames,
+                cut_start_frame,
+                placeholder_color,
+                invert_alpha,
+                ignored_inputs_connected=ignored,
+            )
+
         # Validate per-slot image inputs (must be single-frame tensors,
         # not pre-batched). source_batch is the only accepted multi-frame input.
         for slot_name, slot_img in (
@@ -410,6 +508,110 @@ class easy_ImageBatch:
                 f"[easy_ImageBatch] cut window: frames {cut_start_frame}..{cut_end} "
                 f"({total_frames} frames). {len(sorted_indices)} placed."
             )
+
+        return (image_batch, alpha_batch, selected_image_batch, selected_frames_out, )
+
+    def create_batch_from_frames(
+        self,
+        keyframe_batch,
+        source_frames,
+        total_frames,
+        cut_start_frame,
+        placeholder_color,
+        invert_alpha,
+        ignored_inputs_connected=False,
+    ):
+        """Offset mode — active when ``keyframe_batch`` is connected.
+
+        Scatter the packed ``keyframe_batch`` sequence back onto the timeline
+        at the positions listed in ``source_frames`` (i-th frame → i-th
+        position, ascending), filling the rest with ``placeholder_color``. This
+        is the inverse of the node's select behaviour: feed back a processed
+        copy of a previous ``selected_image_batch`` together with the same
+        ``selected_frames`` list to rebuild a full-length sequence in the
+        original spacing. ``source_batch`` and the 4 manual slots are ignored
+        in this mode (the wire-driven switch keeps the behaviour unambiguous).
+
+        Outputs match the select path: ``image_batch`` (cut window),
+        ``alpha_batch`` (placed = 0.0 / empty = 1.0, flipped by
+        ``invert_alpha``), ``selected_image_batch`` (the placed frames packed
+        ascending), and ``selected_frames`` (their VFX numbers, round-trippable).
+        """
+        if ignored_inputs_connected:
+            print(
+                "[easy_ImageBatch] offset mode (keyframe_batch connected): "
+                "source_batch and image1-4 are ignored; the frame list controls "
+                "placement."
+            )
+
+        h, w, c = keyframe_batch.shape[1:]
+        device = keyframe_batch.device
+        dtype = keyframe_batch.dtype
+
+        fill_value = _PLACEHOLDER_FILL[placeholder_color]
+        image_batch = torch.full((total_frames, h, w, c), fill_value, device=device, dtype=dtype)
+        # Same convention as the select path: 1.0 (white/empty), 0.0 on placed.
+        alpha_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
+
+        # Parse the position list (mirrors the select-mode tokenizer: commas,
+        # spaces, tabs, newlines, or any mix).
+        positions: list[int] = []
+        source_frames_str = (source_frames or "").strip()
+        for tok in re.split(r"[,\s]+", source_frames_str):
+            if not tok:
+                continue
+            try:
+                positions.append(int(tok))
+            except ValueError:
+                print(f"[easy_ImageBatch] source_frames: ignoring non-integer token '{tok}'.")
+
+        source_count = keyframe_batch.shape[0]
+        plan = plan_offset_placements(positions, source_count, total_frames, cut_start_frame)
+
+        placed_indices: list[int] = []
+        for source_index, output_index, _vfx in plan.placements:
+            image_batch[output_index] = keyframe_batch[source_index]
+            alpha_batch[output_index] = 0.0
+            placed_indices.append(output_index)
+
+        if invert_alpha:
+            alpha_batch = 1.0 - alpha_batch
+
+        sorted_indices = sorted(placed_indices)
+        if sorted_indices:
+            selected_image_batch = image_batch[sorted_indices]
+        else:
+            selected_image_batch = image_batch[:0]
+        selected_frames_out = ", ".join(
+            str(idx + cut_start_frame) for idx in sorted_indices
+        )
+
+        # One-line summary (mirrors select mode) with offset-specific notes so
+        # silent surprises (extra frames, short lists, outside-cut, empty list)
+        # are visible without scrolling per-frame logs.
+        cut_end = cut_start_frame + total_frames - 1
+        notes: list[str] = []
+        if plan.outside_cut:
+            notes.append(
+                f"{len(plan.outside_cut)} outside cut: "
+                + ", ".join(str(f) for f in plan.outside_cut)
+            )
+        if plan.unused_source:
+            notes.append(
+                f"{plan.unused_source} extra source frame(s) had no listed position"
+            )
+        if plan.missing_positions:
+            notes.append(
+                f"{len(plan.missing_positions)} position(s) had no source frame: "
+                + ", ".join(str(f) for f in plan.missing_positions)
+            )
+        if not source_frames_str:
+            notes.append("frame list is empty — nothing placed")
+        suffix = (" " + "; ".join(notes) + ".") if notes else ""
+        print(
+            f"[easy_ImageBatch] offset mode: cut window frames {cut_start_frame}.."
+            f"{cut_end} ({total_frames} frames). {len(sorted_indices)} placed.{suffix}"
+        )
 
         return (image_batch, alpha_batch, selected_image_batch, selected_frames_out, )
 

@@ -7,6 +7,21 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Easy Image Batch — offset mode (`keyframe_batch`).** A new optional
+  `keyframe_batch` input adds the inverse of the node's select behaviour.
+  When connected, the node switches from *selecting* sparse keyframes out of
+  a dense `source_batch` to *scattering* an already-packed short sequence
+  back onto the `source_frames` positions — placing the *i*-th incoming
+  frame at the *i*-th listed number (ascending), placeholder colour in
+  between, at the original sequence length. This closes the
+  select → process → reconstruct loop: feed a processed copy of a previous
+  `selected_image_batch` plus the same `selected_frames` list back in to
+  rebuild the original spacing. The switch is wire-driven (`source_batch`
+  and `image1…image4` are ignored while `keyframe_batch` is connected, with
+  a console note); frame-count vs list-length mismatches and outside-cut
+  positions are reported in the end-of-run summary. Placement logic is a
+  pure, torch-free planner (`plan_offset_placements`) so it is unit-tested
+  in CI.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and
