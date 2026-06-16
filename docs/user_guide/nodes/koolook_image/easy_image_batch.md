@@ -23,6 +23,15 @@ carry real image data and the rest tell the model "no latent update
 here". The cut window lets you grab any sub-range of a longer sequence
 without needing an external `ImageFromBatch` slicer.
 
+**Offset mode (the inverse).** Connect a packed sequence to
+`keyframe_batch` and the node flips around: instead of *selecting* sparse
+keyframes out of a dense source, it *scatters* an already-dense short
+sequence back onto the keyframe positions from the frame list — placing
+frame *i* at the *i*-th listed number, placeholder in between. Use it to
+rebuild a full-length sequence from frames you selected, exported,
+processed, and want back in their original spacing (step 2 of a
+select → process → reconstruct workflow).
+
 ## Inputs
 
 ### Required widgets
@@ -40,12 +49,14 @@ without needing an external `ImageFromBatch` slicer.
 
 | Input | Type | Description |
 |---|---|---|
+| `keyframe_batch` | `IMAGE` | Packed sequence for **offset mode**. When connected, the node switches from *select* to *offset*: frame *i* is placed at the *i*-th position in `source_frames` (ascending), placeholder elsewhere. `source_batch` and `image1…image4` are ignored while this is connected. |
 | `source_batch` | `IMAGE` | Pre-batched image stack, e.g. straight from `Load Video`. `source_batch[0]` is treated as VFX frame 1; `source_batch[k]` is VFX frame `k + 1`. |
 | `image1` … `image4` | `IMAGE` | Per-slot keyframes. Each must be a single-frame `IMAGE` (batch size 1). Pre-batched stacks must come through `source_batch` instead. |
 
 At least one of `image1` or `source_batch` must be connected; otherwise
 the node raises a clear `ValueError`. All connected inputs must share
-the same `H × W × C`.
+the same `H × W × C`. (In **offset mode** — `keyframe_batch` connected —
+that input alone is sufficient and the others are ignored.)
 
 ## Outputs
 
@@ -118,6 +129,25 @@ When more than one mode contributes:
 3. The set of placed keyframes is deduped automatically (`selected_*`
    outputs reflect the final, deduped state).
 
+### Mode 4 — Offset / reconstruct (`keyframe_batch`)
+
+The inverse of Modes 1–3. Connect a packed `IMAGE` sequence (e.g. frames
+you previously pulled via `selected_image_batch`, processed, and
+re-loaded) to `keyframe_batch`. The node switches to **offset mode** and
+reads `source_frames` as *destination positions*: the *i*-th frame of
+`keyframe_batch` is placed at output index `position[i] - cut_start_frame`,
+everything else filled by `placeholder_color`. Positions are taken
+ascending and de-duplicated, so it round-trips cleanly with the ascending
+`selected_image_batch` + `selected_frames` a select-mode node produces.
+
+- **Wire-driven switch.** Offset mode is active whenever `keyframe_batch`
+  is connected; `source_batch` and `image1…image4` are ignored (a one-line
+  console note fires if they're connected, so nothing is silently dropped).
+- **Counts needn't match.** Extra incoming frames beyond the list are
+  reported as unused; positions beyond the available frames are reported as
+  missing. Outside-cut positions are dropped, same as select mode.
+- **Empty list ⇒ nothing placed** (all placeholder), with a console note.
+
 ## Conventions
 
 - **1-based VFX numbering.** `imageN_frame`, `source_frames`,
@@ -170,6 +200,29 @@ Console summary: `cut window: frames 41..121 (81 frames). 6 placed; 2 outside cu
 This replaces the workflow pattern of feeding the Easy Image Batch
 output through an external `ImageFromBatch (batch_index=40, length=81)`
 node — the cut is built in.
+
+## Example C — Offset mode (reconstruct a selection)
+
+Step 1 produced 5 enhanced frames (a 5-frame sequence) that originally
+came from VFX frames 1, 10, 19, 30, 40 of a 41-frame shot. Step 2 rebuilds
+the original length:
+
+| Field | Value |
+|---|---|
+| `keyframe_batch` | the 5 processed frames (e.g. `Load EXR` / image batch) |
+| `source_frames` | `"1, 10, 19, 30, 40"` |
+| `cut_start_frame` | `1` |
+| `total_frames` | `41` |
+| `placeholder_color` | `Black` |
+
+| Output | What you get |
+|---|---|
+| `image_batch` | 41 frames; the 5 processed frames land at indices 0 / 9 / 18 / 29 / 39. Rest is black. |
+| `alpha_batch` | 41-frame mask; those 5 indices are `0.0`, the other 36 are `1.0` — ready as an inpaint mask for the gaps. |
+| `selected_image_batch` | the 5 frames, packed back-to-back. |
+| `selected_frames` | `"1, 10, 19, 30, 40"` |
+
+Console summary: `offset mode: cut window frames 1..41 (41 frames). 5 placed.`
 
 ## Tips
 
