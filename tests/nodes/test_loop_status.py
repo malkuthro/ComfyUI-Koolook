@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import urllib.parse
 
 import pytest
 
@@ -135,6 +136,42 @@ def test_resolve_server_url_falls_back_to_default_when_undetectable(monkeypatch)
     monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
 
     assert _resolve_server_url(DEFAULT_SERVER_URL) == DEFAULT_SERVER_URL
+
+
+def test_resolve_server_url_blank_falls_back_to_default_when_undetectable(monkeypatch):
+    """Blank input must behave like the default when detection is unavailable."""
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
+
+    assert _resolve_server_url("") == DEFAULT_SERVER_URL
+
+
+def test_compose_server_url_brackets_ipv6_literal():
+    assert k_loop_status._compose_server_url("::1", 8000) == "http://[::1]:8000"
+    assert (
+        k_loop_status._compose_server_url("2001:db8::1", 8000)
+        == "http://[2001:db8::1]:8000"
+    )
+    # Idempotent: an already-bracketed literal must not be double-bracketed.
+    assert k_loop_status._compose_server_url("[::1]", 8000) == "http://[::1]:8000"
+
+
+def test_compose_server_url_ipv6_result_passes_validation():
+    """A bracketed IPv6 URL must parse through the pre-queue validator."""
+    url = k_loop_status._compose_server_url("::1", 8000)
+
+    k_loop_status._validate_http_url(url)  # must not raise
+    assert urllib.parse.urlsplit(url).port == 8000
+
+
+def test_compose_server_url_remaps_bind_all_to_localhost():
+    assert k_loop_status._compose_server_url("0.0.0.0", 8000) == "http://127.0.0.1:8000"
+    assert k_loop_status._compose_server_url("::", 8000) == "http://127.0.0.1:8000"
+
+
+def test_compose_server_url_keeps_ipv4_hostname_and_defaults_blank():
+    assert k_loop_status._compose_server_url("127.0.0.1", 8000) == "http://127.0.0.1:8000"
+    assert k_loop_status._compose_server_url("localhost", 8000) == "http://localhost:8000"
+    assert k_loop_status._compose_server_url("", 8000) == "http://127.0.0.1:8000"
 
 
 def test_probe_uses_detected_port_not_stale_default(monkeypatch):

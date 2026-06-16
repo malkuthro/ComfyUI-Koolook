@@ -83,6 +83,21 @@ def _validate_http_url(url: str) -> None:
         raise RuntimeError(f"Only http(s) ComfyUI server URLs are allowed: {url!r}")
 
 
+def _compose_server_url(host: str | None, port) -> str:
+    """Join a detected host/port into a connectable ``http://`` URL.
+
+    Bind-all addresses are not connectable, so they are remapped to
+    localhost; IPv6 literals are bracketed so ``urllib`` can parse the
+    ``host:port`` netloc (``::1`` -> ``http://[::1]:port``).
+    """
+    host = str(host or "").strip() or "127.0.0.1"
+    if host in {"0.0.0.0", "::", "*"}:  # nosec B104
+        host = "127.0.0.1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{port}"
+
+
 def _detect_local_server_url() -> str | None:
     """Best-effort URL of the ComfyUI server hosting this node.
 
@@ -101,7 +116,7 @@ def _detect_local_server_url() -> str | None:
         port = getattr(args, "port", None)
         host = getattr(args, "listen", None)
     except Exception:  # pragma: no cover - depends on ComfyUI runtime
-        pass
+        LOGGER.debug("comfy.cli_args server detection failed", exc_info=True)
     if not port:
         try:
             from server import PromptServer  # type: ignore[import-not-found]
@@ -110,14 +125,10 @@ def _detect_local_server_url() -> str | None:
             port = port or getattr(instance, "port", None)
             host = host or getattr(instance, "address", None)
         except Exception:  # pragma: no cover - depends on ComfyUI runtime
-            pass
+            LOGGER.debug("PromptServer server detection failed", exc_info=True)
     if not port:
         return None
-    host = str(host or "").strip() or "127.0.0.1"
-    # Bind-all addresses are not connectable; loop back to localhost instead.
-    if host in {"0.0.0.0", "::", "*"}:  # nosec B104
-        host = "127.0.0.1"
-    return f"http://{host}:{port}"
+    return _compose_server_url(host, port)
 
 
 def _resolve_server_url(server_url: str) -> str:
@@ -134,7 +145,7 @@ def _resolve_server_url(server_url: str) -> str:
     detected = _detect_local_server_url()
     if detected and detected != server_url:
         print(f"[Koolook Loop Status] resolved server_url to {detected}")
-    return detected or server_url
+    return detected or DEFAULT_SERVER_URL
 
 
 def _probe_server(server_url: str) -> None:
