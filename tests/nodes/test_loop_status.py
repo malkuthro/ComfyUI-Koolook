@@ -259,6 +259,115 @@ def test_unknown_index_node_id_raises_synchronously():
         )
 
 
+def test_as_bool_coerces_saved_string_booleans():
+    assert k_loop_status._as_bool("true") is True
+    assert k_loop_status._as_bool(" True ") is True
+    assert k_loop_status._as_bool("1") is True
+    assert k_loop_status._as_bool("yes") is True
+    assert k_loop_status._as_bool("on") is True
+    assert k_loop_status._as_bool("false") is False
+    assert k_loop_status._as_bool("no") is False
+    assert k_loop_status._as_bool("off") is False
+    assert k_loop_status._as_bool("0") is False
+    assert k_loop_status._as_bool("") is False
+    assert k_loop_status._as_bool(True) is True
+    assert k_loop_status._as_bool(0) is False
+
+
+def test_resolve_index_node_id_prefers_configured_when_present():
+    prompt = {"543": {"class_type": "easy int", "inputs": {"value": 0}}}
+
+    node_id, note = k_loop_status.resolve_index_node_id(prompt, "21", "543")
+
+    assert node_id == "543"
+    assert "using configured easy int node 543" in note
+
+
+def test_resolve_index_node_id_falls_back_from_stale_manual_id():
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+
+    node_id, note = k_loop_status.resolve_index_node_id(prompt, "21", "22")
+
+    assert node_id == "543"
+    assert "configured index node '22' is not in this prompt" in note
+    assert "easy int node 543" in note
+
+
+def test_resolve_index_node_id_infers_when_blank():
+    prompt = {"21": {"inputs": {"index": ["543", 0]}}, "543": {"inputs": {}}}
+
+    node_id, note = k_loop_status.resolve_index_node_id(prompt, "21", "")
+
+    assert node_id == "543"
+    assert note.startswith("using connected")
+
+
+def test_resolve_index_node_id_returns_empty_when_unresolvable():
+    assert k_loop_status.resolve_index_node_id({"21": {"inputs": {}}}, "21", "") == ("", "")
+
+
+def test_describe_prompt_node_without_class_type_is_not_doubled():
+    assert k_loop_status._describe_prompt_node({"22": {"inputs": {}}}, "22") == "node 22"
+    assert (
+        k_loop_status._describe_prompt_node({"22": {"_meta": {"title": "Frame"}}}, "22")
+        == "Frame node 22"
+    )
+
+
+def test_string_false_auto_queue_does_not_queue():
+    """A saved 'false' string must not auto-queue (bool('false') is truthy)."""
+    node = KoolookLoopStatus()
+
+    _value, status = node.report(
+        "image",
+        0,
+        4,
+        auto_queue_next="false",
+        index_node_id="22",
+        prompt={"21": {"inputs": {}}},
+        unique_id="21",
+    )
+
+    assert status == "loop: 1/4 frame 0"
+
+
+def test_string_true_auto_queue_logs_detected_index_node(monkeypatch, capsys):
+    """Saved 'true' enables auto-queue; the chosen index node class/id is logged."""
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
+    monkeypatch.setattr(k_loop_status, "_probe_server", lambda url: None)
+    captured = {}
+
+    class _NoopThread:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs.get("kwargs", {}))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(k_loop_status.threading, "Thread", _NoopThread)
+
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+    _value, status = KoolookLoopStatus().report(
+        "image",
+        0,
+        2,
+        auto_queue_next="true",
+        index_node_id="22",
+        prompt=prompt,
+        unique_id="21",
+    )
+
+    assert status.startswith("loop: 1/2")
+    assert captured["index_node_id"] == "543"
+    assert "easy int node 543" in capsys.readouterr().out
+
+
 def test_post_prompt_rejects_error_payload(monkeypatch):
     class Response:
         def __enter__(self):

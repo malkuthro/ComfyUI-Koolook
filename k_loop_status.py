@@ -70,6 +70,67 @@ def infer_index_node_id(prompt: dict | None, unique_id) -> str:
 _infer_index_node_id = infer_index_node_id
 
 
+def _prompt_has_node(prompt: dict | None, node_id: str) -> bool:
+    return isinstance(prompt, dict) and isinstance(prompt.get(str(node_id)), dict)
+
+
+def _describe_prompt_node(prompt: dict | None, node_id: str) -> str:
+    if not isinstance(prompt, dict):
+        return f"node {node_id}"
+    node = prompt.get(str(node_id))
+    if not isinstance(node, dict):
+        return f"node {node_id}"
+    class_type = str(node.get("class_type") or node.get("type") or "").strip()
+    title = str(node.get("_meta", {}).get("title") or node.get("title") or "").strip()
+    if title and title != class_type:
+        prefix = f"{title} ({class_type})" if class_type else title
+    else:
+        prefix = class_type
+    return f"{prefix} node {node_id}" if prefix else f"node {node_id}"
+
+
+def resolve_index_node_id(
+    prompt: dict | None,
+    unique_id,
+    configured_index_node_id: str,
+) -> tuple[str, str]:
+    """Pick the frame-index node to advance and a human note about the choice.
+
+    Prefers a configured id that actually exists in the prompt; otherwise falls
+    back to the node feeding the connected ``index`` input (self-healing a stale
+    or shifted manual id). Returns ``("", "")`` when nothing resolves so the
+    caller can raise synchronously with an actionable message.
+    """
+    configured = str(configured_index_node_id or "").strip()
+    inferred = infer_index_node_id(prompt, unique_id)
+    if configured and _prompt_has_node(prompt, configured):
+        return configured, f"using configured {_describe_prompt_node(prompt, configured)}"
+    if inferred:
+        if configured and configured != inferred:
+            return (
+                inferred,
+                "configured index node "
+                f"{configured!r} is not in this prompt; using connected "
+                f"{_describe_prompt_node(prompt, inferred)}",
+            )
+        return inferred, f"using connected {_describe_prompt_node(prompt, inferred)}"
+    if configured:
+        return configured, f"using configured node {configured}"
+    return "", ""
+
+
+def _as_bool(value) -> bool:
+    """Coerce saved widget values (incl. string booleans) to ``bool``.
+
+    ComfyUI can persist a boolean widget as the string ``"true"``/``"false"``;
+    ``bool("false")`` is truthy, so a naive cast would auto-queue when the user
+    saved the toggle off.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _get_json(url: str, timeout: float = 10) -> dict:
     _validate_http_url(url)
     with urllib.request.urlopen(url, timeout=timeout) as response:  # nosec B310
@@ -287,26 +348,16 @@ class KoolookLoopStatus:
                 "[Koolook Loop Status] numeric label treated as index_node_id; "
                 "using label EXR_SAFE"
             )
-        if not index_node_id:
-            index_node_id = infer_index_node_id(prompt, unique_id)
-        # A resolved id that isn't actually a node in the prompt (e.g. a shifted
-        # widget value or numeric label like "0") can't be advanced. Fall back
-        # to the node feeding the connected `index` input — the canonical wiring
-        # — so a stale or mis-shifted index_node_id self-heals instead of
-        # aborting the loop in the background queue thread.
-        if isinstance(prompt, dict) and index_node_id and index_node_id not in prompt:
-            inferred = infer_index_node_id(prompt, unique_id)
-            if inferred and inferred != index_node_id:
-                print(
-                    f"[Koolook Loop Status] index_node_id {index_node_id!r} not in "
-                    f"prompt; using {inferred!r} inferred from the connected index input"
-                )
-                index_node_id = inferred
+        # Resolve the frame-index node to advance: prefer a configured id that
+        # exists, else the node feeding the connected `index` input — so a stale
+        # or mis-shifted index_node_id self-heals instead of aborting the loop in
+        # the background queue thread. `index_note` records which node was used.
+        index_node_id, index_note = resolve_index_node_id(prompt, unique_id, index_node_id)
         max_depth = max(1, min(int(max_auto_queue_depth), MAX_AUTO_QUEUE_DEPTH))
         remaining_depth = int(remaining_auto_queue_depth)
         if remaining_depth < 0:
             remaining_depth = max_depth
-        should_queue = bool(auto_queue_next) and next_index < total
+        should_queue = _as_bool(auto_queue_next) and next_index < total
         server_url = _resolve_server_url(server_url)
         if should_queue:
             if total - frame - 1 > max_depth:
@@ -336,6 +387,8 @@ class KoolookLoopStatus:
                 raise RuntimeError(f"ComfyUI server is not reachable: {server_url}") from exc
         status = build_status(label or "loop", index, total, filepath)
         print(f"[Koolook Loop Status] {status}")
+        if should_queue and index_note:
+            print(f"[Koolook Loop Status] {index_note}")
         if should_queue:
             queue_key = f"{unique_id or 'loop-status'}:{frame}->{next_index}"
             queued = False

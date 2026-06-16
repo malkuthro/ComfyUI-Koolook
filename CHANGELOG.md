@@ -175,6 +175,14 @@ The format is inspired by Keep a Changelog and SemVer.
   supplied id isn't in the prompt (self-healing the common widget-shift case),
   and when it still can't resolve a real node it raises synchronously with an
   actionable message so the error surfaces in the ComfyUI UI immediately.
+- **`Koolook_LoopStatus` ignored saved `auto_queue_next` strings and was quiet
+  about which frame-index node it drove.** A workflow that persisted
+  `auto_queue_next` as the string `"false"` still auto-queued (a non-empty string
+  is truthy), and the node never logged which `easy int` node advanced the loop.
+  `auto_queue_next` now coerces saved string booleans (`"true"`/`"false"`/`"1"`/
+  `"0"`/`"yes"`/`"no"`/`"on"`/`"off"`), `index_node_id` is treated as an advanced
+  override (leave blank for normal use), and the node logs the detected
+  frame-index node class/id each time it queues the next frame.
 - **"Failed to save workflow draft" toasts returned on ComfyUI frontend
   1.44+.** The browser draft-quota guard is now its own global extension,
   `web/koolook_draft_guard.js`, and matches Comfy draft keys by prefix
