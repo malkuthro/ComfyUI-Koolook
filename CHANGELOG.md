@@ -183,6 +183,12 @@ The format is inspired by Keep a Changelog and SemVer.
   `"0"`/`"yes"`/`"no"`/`"on"`/`"off"`), `index_node_id` is treated as an advanced
   override (leave blank for normal use), and the node logs the detected
   frame-index node class/id each time it queues the next frame.
+- **`Koolook_LoopStatus` now follows the connected `index` wire
+  deterministically.** A numeric node id left in the `label` field — or any
+  stale `index_node_id` — no longer overrides the actual wiring: the node feeding
+  the connected `index` input is authoritative, and a recovered numeric label is
+  used only as a last-resort fallback when nothing is connected. Loops no longer
+  need the `label` cleared by hand to pick the right frame-index node.
 - **"Failed to save workflow draft" toasts returned on ComfyUI frontend
   1.44+.** The browser draft-quota guard is now its own global extension,
   `web/koolook_draft_guard.js`, and matches Comfy draft keys by prefix

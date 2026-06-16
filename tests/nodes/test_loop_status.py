@@ -347,6 +347,75 @@ def test_describe_prompt_node_without_class_type_is_not_doubled():
     )
 
 
+def test_resolve_index_node_id_fallback_does_not_override_connected():
+    """A recovered numeric label is last-resort; the connected wire still wins."""
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+        "22": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+
+    node_id, note = k_loop_status.resolve_index_node_id(prompt, "21", "", fallback_id="22")
+
+    assert node_id == "543"
+    assert "connected easy int node 543" in note
+
+
+def test_resolve_index_node_id_uses_fallback_when_nothing_else_resolves():
+    node_id, note = k_loop_status.resolve_index_node_id(None, None, "", fallback_id="22")
+
+    assert node_id == "22"
+    assert "recovered node 22" in note
+
+
+def test_numeric_label_does_not_override_connected_index(monkeypatch):
+    """User scenario: a node id stuck in `label` must not beat the wired index."""
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
+    monkeypatch.setattr(k_loop_status, "_probe_server", lambda url: None)
+    captured = {}
+
+    class _NoopThread:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs.get("kwargs", {}))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(k_loop_status.threading, "Thread", _NoopThread)
+
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+        "22": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+    _value, status = KoolookLoopStatus().report(
+        "image",
+        0,
+        2,
+        label="22",
+        auto_queue_next=True,
+        prompt=prompt,
+        unique_id="21",
+    )
+
+    assert captured["index_node_id"] == "543"
+    assert status.startswith("EXR_SAFE: 1/2")
+
+
+def test_resolve_index_node_id_explicit_override_beats_connected_wire():
+    """An explicit, valid index_node_id is a power-user override and wins over the wire."""
+    prompt = {
+        "21": {"inputs": {"index": ["543", 0]}},
+        "543": {"class_type": "easy int", "inputs": {"value": 0}},
+        "99": {"class_type": "easy int", "inputs": {"value": 0}},
+    }
+
+    node_id, note = k_loop_status.resolve_index_node_id(prompt, "21", "99")
+
+    assert node_id == "99"
+    assert "using configured easy int node 99" in note
+
+
 def test_string_false_auto_queue_does_not_queue():
     """A saved 'false' string must not auto-queue (bool('false') is truthy)."""
     node = KoolookLoopStatus()

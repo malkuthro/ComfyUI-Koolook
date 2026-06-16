@@ -44,7 +44,9 @@ Key inputs:
   Leave this at `-1` in normal canvas use.
 
 If an older saved workflow accidentally shifts widget values and puts a numeric
-node id into `label`, the node treats that numeric label as `index_node_id`,
-prints a recovery note, and uses `EXR_SAFE` as the label. This keeps older loop
-demo saves from crashing, but new workflows should set `label` explicitly and
-leave `index_node_id` blank unless there is a specific override reason.
+node id into `label`, the node resets the label to `EXR_SAFE` and keeps that
+number only as a *last-resort* fallback frame-index id — the connected `index`
+input still wins, so the loop follows the wiring deterministically (you do not
+need to clear the `label` by hand). This keeps older loop demo saves from
+crashing, but new workflows should set `label` explicitly and leave
+`index_node_id` blank unless there is a specific override reason.

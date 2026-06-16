@@ -93,13 +93,18 @@ def resolve_index_node_id(
     prompt: dict | None,
     unique_id,
     configured_index_node_id: str,
+    fallback_id: str = "",
 ) -> tuple[str, str]:
     """Pick the frame-index node to advance and a human note about the choice.
 
-    Prefers a configured id that actually exists in the prompt; otherwise falls
-    back to the node feeding the connected ``index`` input (self-healing a stale
-    or shifted manual id). Returns ``("", "")`` when nothing resolves so the
-    caller can raise synchronously with an actionable message.
+    The connected ``index`` input is the authoritative, deterministic source. An
+    explicit ``configured_index_node_id`` that exists in the prompt is honored as
+    a power-user override; otherwise the node feeding the connected ``index``
+    input wins, so a stale or mis-shifted id self-heals. ``fallback_id`` (e.g. a
+    numeric label recovered from a shifted save) is a last resort, used only when
+    nothing else resolves, so it never overrides real wiring. Returns
+    ``("", "")`` when nothing resolves so the caller can raise synchronously with
+    an actionable message.
     """
     configured = str(configured_index_node_id or "").strip()
     inferred = infer_index_node_id(prompt, unique_id)
@@ -116,6 +121,9 @@ def resolve_index_node_id(
         return inferred, f"using connected {_describe_prompt_node(prompt, inferred)}"
     if configured:
         return configured, f"using configured node {configured}"
+    fallback = str(fallback_id or "").strip()
+    if fallback:
+        return fallback, f"using recovered node {fallback}"
     return "", ""
 
 
@@ -345,18 +353,22 @@ class KoolookLoopStatus:
         next_index = frame + 1
         index_node_id = str(index_node_id or "").strip()
         label = str(label or "").strip()
+        numeric_label_id = ""
         if not index_node_id and label.isdigit():
-            index_node_id = label
+            numeric_label_id = label
             label = "EXR_SAFE"
             print(
-                "[Koolook Loop Status] numeric label treated as index_node_id; "
-                "using label EXR_SAFE"
+                "[Koolook Loop Status] numeric label looks like a node id; using "
+                "EXR_SAFE as the label and keeping the number only as a fallback id"
             )
-        # Resolve the frame-index node to advance: prefer a configured id that
-        # exists, else the node feeding the connected `index` input — so a stale
-        # or mis-shifted index_node_id self-heals instead of aborting the loop in
-        # the background queue thread. `index_note` records which node was used.
-        index_node_id, index_note = resolve_index_node_id(prompt, unique_id, index_node_id)
+        # The connected `index` input is the authoritative frame-index source: an
+        # explicit index_node_id that exists wins as a power-user override, else
+        # the connected node is used (self-healing a stale/mis-shifted id). A
+        # numeric label is a last-resort fallback that never overrides the wiring.
+        # `index_note` records which node was used.
+        index_node_id, index_note = resolve_index_node_id(
+            prompt, unique_id, index_node_id, fallback_id=numeric_label_id
+        )
         max_depth = max(1, min(int(max_auto_queue_depth), MAX_AUTO_QUEUE_DEPTH))
         remaining_depth = int(remaining_auto_queue_depth)
         if remaining_depth < 0:
