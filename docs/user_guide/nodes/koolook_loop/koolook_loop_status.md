@@ -33,11 +33,11 @@ Key inputs:
   value shifted to `0`), the connected `index` input is used instead so the loop
   self-heals; if it still cannot resolve a real node, auto-queue fails up front
   with a clear message instead of silently aborting into a marker file.
-- `server_url`: local ComfyUI server URL. Defaults to `http://127.0.0.1:8188`,
-  but when left at that default (or blank) the node auto-detects the address the
-  running server actually bound to — so an install launched with `--port 8000`
-  (or `--listen`) queues correctly without editing the widget. Set an explicit
-  value only to target a different host/port; a custom value is used verbatim.
+- `server_url`: where to queue the next prompt. Defaults to `auto`, which detects
+  the running ComfyUI server (its real port included) — so an install launched
+  with `--port 8000` queues correctly without editing the widget. Leave it at
+  `auto` (or blank) for normal use; set an explicit `http://host:port` only to
+  target a different server, where it is used verbatim.
 - `max_auto_queue_depth`: hard safety cap for how many child prompts this node
   may chain from the current frame.
 - `remaining_auto_queue_depth`: internal countdown carried into child prompts.

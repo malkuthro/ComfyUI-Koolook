@@ -145,6 +145,29 @@ def test_resolve_server_url_blank_falls_back_to_default_when_undetectable(monkey
     assert _resolve_server_url("") == DEFAULT_SERVER_URL
 
 
+def test_resolve_server_url_auto_triggers_detection(monkeypatch):
+    """The `auto` sentinel (the widget default) auto-detects, case-insensitively."""
+    monkeypatch.setattr(
+        k_loop_status, "_detect_local_server_url", lambda: "http://127.0.0.1:8000"
+    )
+
+    assert _resolve_server_url("auto") == "http://127.0.0.1:8000"
+    assert _resolve_server_url("AUTO") == "http://127.0.0.1:8000"
+    assert _resolve_server_url("  auto  ") == "http://127.0.0.1:8000"
+
+
+def test_resolve_server_url_auto_falls_back_to_default_when_undetectable(monkeypatch):
+    monkeypatch.setattr(k_loop_status, "_detect_local_server_url", lambda: None)
+
+    assert _resolve_server_url("auto") == DEFAULT_SERVER_URL
+
+
+def test_server_url_widget_defaults_to_auto():
+    optional = KoolookLoopStatus.INPUT_TYPES()["optional"]
+
+    assert optional["server_url"][1]["default"] == "auto"
+
+
 def test_compose_server_url_brackets_ipv6_literal():
     assert k_loop_status._compose_server_url("::1", 8000) == "http://[::1]:8000"
     assert (

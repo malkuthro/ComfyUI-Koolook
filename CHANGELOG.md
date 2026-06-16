@@ -162,11 +162,11 @@ The format is inspired by Keep a Changelog and SemVer.
   node's `server_url` defaulted to ComfyUI's standard port
   (`http://127.0.0.1:8188`), so installs launched with `--port` (or
   `--listen`) aborted the loop with `ComfyUI server is not reachable`
-  while probing the dead default. When `server_url` is left at the default
-  (or blank), the node now auto-detects the address the running server
-  actually bound to (via `comfy.cli_args` / the running `PromptServer`),
-  so workflows saved on the default port queue correctly against any port.
-  A custom `server_url` is still honored verbatim.
+  while probing the dead default. The widget now defaults to `auto`; when
+  `server_url` is `auto` or blank (or the legacy `:8188` default) the node
+  auto-detects the address the running server actually bound to (via
+  `comfy.cli_args` / the running `PromptServer`), so loops queue correctly
+  against any port. A custom `http://host:port` is still honored verbatim.
 - **`Koolook_LoopStatus` aborted into a marker file when `index_node_id` was
   stale.** A shifted widget value (e.g. `index_node_id`/numeric label resolving
   to `0`) is not a real node, so the background queue thread failed with

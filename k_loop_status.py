@@ -205,15 +205,15 @@ def _detect_local_server_url() -> str | None:
 
 
 def _resolve_server_url(server_url: str) -> str:
-    """Return the URL to queue against, auto-detecting when left at default.
+    """Return the URL to queue against, auto-detecting for the ``auto`` default.
 
-    A custom URL is respected verbatim; an empty value or the baked-in
-    default is replaced with the running server's real address when it can
-    be detected, so workflows saved on the default port still queue against
-    an install launched with ``--port``.
+    ``auto`` (the widget default), an empty value, or the legacy baked-in
+    ``DEFAULT_SERVER_URL`` all mean "detect the running server" — replaced with
+    the server's real address when it can be detected, falling back to the
+    default otherwise. Any other value is an explicit URL used verbatim.
     """
     server_url = str(server_url or "").strip()
-    if server_url and server_url != DEFAULT_SERVER_URL:
+    if server_url and server_url.lower() != "auto" and server_url != DEFAULT_SERVER_URL:
         return server_url
     detected = _detect_local_server_url()
     if detected and detected != server_url:
@@ -311,7 +311,7 @@ class KoolookLoopStatus:
                 "index_node_id": ("STRING", {"default": "", "multiline": False}),
                 "server_url": (
                     "STRING",
-                    {"default": DEFAULT_SERVER_URL, "multiline": False},
+                    {"default": "auto", "multiline": False},
                 ),
                 "max_auto_queue_depth": (
                     "INT",
@@ -342,7 +342,7 @@ class KoolookLoopStatus:
         label="loop",
         auto_queue_next=False,
         index_node_id="",
-        server_url=DEFAULT_SERVER_URL,
+        server_url="auto",
         max_auto_queue_depth=100,
         remaining_auto_queue_depth=-1,
         prompt=None,
