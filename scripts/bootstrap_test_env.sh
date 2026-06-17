@@ -56,8 +56,11 @@ fi
 echo "Creating .venv ..."
 "$PYTHON_BIN" -m venv .venv
 
-echo "Upgrading pip ..."
-.venv/bin/python -m pip install --quiet --upgrade pip
+echo "Upgrading pip + setuptools ..."
+# setuptools is seeded into the venv by ensurepip (often an old, CVE-flagged
+# version) and is NOT captured in the lock (pip freeze skips it), so upgrade it
+# here or pip-audit fails every fresh bootstrap.
+.venv/bin/python -m pip install --quiet --upgrade pip setuptools
 
 if [ -f "$CONSTRAINTS" ] && [ -z "$RELOCK" ]; then
     echo "Installing project + test extras (locked via $CONSTRAINTS) ..."

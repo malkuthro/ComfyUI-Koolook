@@ -34,8 +34,11 @@ if (Test-Path .venv) {
 Write-Host "Creating .venv ..."
 python -m venv .venv
 
-Write-Host "Upgrading pip ..."
-.\.venv\Scripts\python -m pip install --quiet --upgrade pip
+Write-Host "Upgrading pip + setuptools ..."
+# setuptools is seeded into the venv by ensurepip (often an old, CVE-flagged
+# version) and is NOT captured in the lock (pip freeze skips it), so upgrade it
+# here or pip-audit fails every fresh bootstrap.
+.\.venv\Scripts\python -m pip install --quiet --upgrade pip setuptools
 
 if ((Test-Path $Constraints) -and (-not $Relock)) {
     Write-Host "Installing project + test extras (locked via $Constraints) ..."
