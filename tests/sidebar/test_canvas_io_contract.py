@@ -45,3 +45,22 @@ def test_api_prompt_capture_restore_failure_blocks_publish() -> None:
     assert "restoreError" in capture_fn
     assert "could not restore the current canvas" in capture_fn
     assert "console.warn(\"[Koolook] failed to restore canvas after API prompt capture:" not in capture_fn
+
+
+def test_api_prompt_capture_closes_temporary_workflow_tabs() -> None:
+    source = (REPO_ROOT / "web/sidebar/canvas_io.js").read_text(encoding="utf-8")
+    capture_fn = source[source.index("export async function captureWorkflowApiPrompt"):]
+    capture_fn = capture_fn[:capture_fn.index("export async function loadWorkflowOntoCanvas")]
+
+    # The capture loads graphs onto the canvas, which spawns throwaway
+    # "Unsaved Workflow" tabs. It must snapshot the open workflows before
+    # capture and close whatever is new afterward so a publish leaves no stray
+    # tabs behind.
+    assert "openWorkflowsSnapshot(store)" in capture_fn
+    assert "closeWorkflowsOpenedDuringCapture(store, openBefore, originalWorkflow)" in capture_fn
+
+    # Cleanup must go through Comfy's workflow store, stay guarded (the API is
+    # version-specific), and never warn the user about unsaved throwaway tabs.
+    assert "app?.extensionManager?.workflow" in source
+    assert "typeof store.closeWorkflow !== \"function\"" in source
+    assert "warnIfUnsaved: false" in source

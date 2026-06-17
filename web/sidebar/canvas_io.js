@@ -225,9 +225,68 @@ export function canvasIsNonEmpty() {
     }
 }
 
+// ComfyUI's API-prompt capture has to load the published graph onto the canvas
+// to call graphToPrompt(), then reload the prior canvas. In current Comfy each
+// loadGraphData spawns a throwaway "Unsaved Workflow" tab, so a publish would
+// otherwise leave two stray tabs behind. We snapshot the open workflows before
+// capture and close whatever is new afterward, re-activating the user's
+// original tab. All best-effort and guarded: the workflow-store API is
+// Comfy-version specific, and tab cleanup must never break a publish.
+function publishWorkflowStore() {
+    try {
+        const store = app?.extensionManager?.workflow;
+        return store && typeof store === "object" ? store : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function openWorkflowsSnapshot(store) {
+    try {
+        const open = store?.openWorkflows;
+        return Array.isArray(open) ? open.slice() : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+async function closeWorkflowsOpenedDuringCapture(store, openBefore, originalWorkflow) {
+    if (!store || typeof store.closeWorkflow !== "function") return;
+    try {
+        const created = openWorkflowsSnapshot(store).filter(wf => !openBefore.includes(wf));
+        if (!created.length) return;
+        // Re-activate the user's original tab first so closing the active temp
+        // tab doesn't drop Comfy onto an arbitrary fallback workflow.
+        if (originalWorkflow && typeof store.openWorkflow === "function") {
+            try {
+                await store.openWorkflow(originalWorkflow);
+            } catch (e) {
+                console.warn("[Koolook] could not re-activate workflow after API prompt capture:", e);
+            }
+        }
+        for (const wf of created) {
+            try {
+                await store.closeWorkflow(wf, { warnIfUnsaved: false });
+            } catch (e) {
+                console.warn("[Koolook] could not close temp publish workflow tab:", e);
+            }
+        }
+    } catch (e) {
+        console.warn("[Koolook] publish workflow-tab cleanup failed:", e);
+    }
+}
+
 export async function captureWorkflowApiPrompt(visualGraph) {
     if (!visualGraph || typeof visualGraph !== "object") {
         throw new Error("API prompt capture failed: saved workflow graph is missing.");
+    }
+    const store = publishWorkflowStore();
+    const openBefore = openWorkflowsSnapshot(store);
+    let originalWorkflow = null;
+    try {
+        originalWorkflow = store?.activeWorkflow ?? null;
+    } catch (e) {
+        originalWorkflow = null;
     }
     let previousGraph;
     try {
@@ -258,6 +317,7 @@ export async function captureWorkflowApiPrompt(visualGraph) {
         } catch (e) {
             restoreError = e;
         }
+        await closeWorkflowsOpenedDuringCapture(store, openBefore, originalWorkflow);
     }
     if (restoreError) {
         throw new Error(`API prompt capture failed: could not restore the current canvas (${restoreError.message || restoreError}).`);
