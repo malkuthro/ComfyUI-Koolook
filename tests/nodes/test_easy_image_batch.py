@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Tests for ``easy_ImageBatch`` offset mode.
+"""Tests for ``easy_ImageBatch`` insert modes and schema.
 
-The node imports ``torch`` at module load, but the offset *planner*
-(``plan_offset_placements``) is pure Python and never touches torch — it
-just computes which incoming frame lands at which output index. CI installs
+The node imports ``torch`` at module load, but its *planners*
+(``plan_offset_placements`` for insert placement, ``plan_source_base_fill``
+for the insert-over-source background) are pure Python and never touch torch
+— they just compute which frame lands at which output index. CI installs
 only ``pytest`` / ``aiohttp`` / ``Pillow`` (no torch), so we stub the module
 to import the node torch-free and test the placement logic directly.
 """
@@ -19,6 +20,7 @@ sys.modules.setdefault("torch", types.ModuleType("torch"))
 from k_easy_image_batch import (  # noqa: E402  (import after stub)
     easy_ImageBatch,
     plan_offset_placements,
+    plan_source_base_fill,
 )
 
 
@@ -89,14 +91,58 @@ def test_cut_start_offsets_output_indices():
     assert plan.placements == [(0, 0, 41), (1, 22, 63)]
 
 
-def test_input_types_exposes_keyframe_batch_with_tooltip():
+def test_source_base_fill_full_window_maps_one_to_one():
+    # cut_start=1: output i -> source i (source_batch[0] is VFX frame 1).
+    placements, fallback = plan_source_base_fill(total_frames=5, cut_start_frame=1, base_len=10)
+    assert placements == [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+    assert fallback == 0
+
+
+def test_source_base_fill_offsets_with_cut_start():
+    # cut_start=41: output 0 -> source 40 (VFX frame 41), etc.
+    placements, fallback = plan_source_base_fill(total_frames=3, cut_start_frame=41, base_len=121)
+    assert placements == [(0, 40), (1, 41), (2, 42)]
+    assert fallback == 0
+
+
+def test_source_base_fill_beyond_source_falls_back_to_placeholder():
+    # base only covers 2 frames; the remaining 3 cut frames stay placeholder.
+    placements, fallback = plan_source_base_fill(total_frames=5, cut_start_frame=1, base_len=2)
+    assert placements == [(0, 0), (1, 1)]
+    assert fallback == 3
+
+
+def test_source_base_fill_cut_starts_past_source_end():
+    # Cut window starts beyond the source entirely → all placeholder.
+    placements, fallback = plan_source_base_fill(total_frames=4, cut_start_frame=50, base_len=10)
+    assert placements == []
+    assert fallback == 4
+
+
+def test_input_types_exposes_keyframes_insert_with_tooltip():
     spec = easy_ImageBatch.INPUT_TYPES()
-    assert "keyframe_batch" in spec["optional"], "new offset-mode input must be declared"
-    entry = spec["optional"]["keyframe_batch"]
+    assert "keyframes_insert" in spec["optional"], "insert-mode input must be declared"
+    # The pre-rename name must be gone so the rename is unambiguous.
+    assert "keyframe_batch" not in spec["optional"]
+    entry = spec["optional"]["keyframes_insert"]
     assert entry[0] == "IMAGE"
     tooltip = entry[1]["tooltip"].lower()
-    assert "offset" in tooltip
-    assert "frame list" in tooltip
+    assert "insert" in tooltip
+    assert "source_frames" in tooltip
+
+
+def test_input_types_exposes_width_height_fallback_at_end():
+    spec = easy_ImageBatch.INPUT_TYPES()
+    # Fallback-only and declared OPTIONAL so they append to the END of the
+    # widget list — keeping positional widgets_values of older saved workflows
+    # aligned (inserting them earlier shifts placeholder_color/source_frames).
+    for key in ("width", "height"):
+        assert key in spec["optional"], f"{key} fallback widget must be optional"
+        assert key not in spec["required"]
+        assert spec["optional"][key][0] == "INT"
+        assert spec["optional"][key][1]["default"] == 512
+    # They must be the last two optional keys (= last two widgets).
+    assert list(spec["optional"])[-2:] == ["width", "height"]
 
 
 def test_registration_exports_unchanged():

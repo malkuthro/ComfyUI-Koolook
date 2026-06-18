@@ -21,7 +21,7 @@ class OffsetPlan:
 
     - ``placements``        — ``(source_index, output_index, vfx_frame)`` for
       each incoming frame that lands inside the cut window, ascending by
-      position. ``source_index`` is the frame's ordinal in ``keyframe_batch``.
+      position. ``source_index`` is the frame's ordinal in ``keyframes_insert``.
     - ``outside_cut``       — VFX frame numbers paired to a frame but whose
       output index fell outside ``[0, total_frames)`` (dropped, like select
       mode).
@@ -69,6 +69,32 @@ def plan_offset_placements(
     unused_source = max(0, source_count - len(ordered))
     missing_positions = ordered[source_count:] if source_count < len(ordered) else []
     return OffsetPlan(placements, outside_cut, unused_source, missing_positions)
+
+
+def plan_source_base_fill(
+    total_frames: int, cut_start_frame: int, base_len: int
+) -> tuple[list[tuple[int, int]], int]:
+    """Map each output index in the cut window onto a ``source_batch`` index.
+
+    Used by insert-over-source mode to lay down the source video as the
+    background before the inserts overwrite it. Output index ``i`` represents
+    VFX frame ``cut_start_frame + i``, and ``source_batch[0]`` is VFX frame 1,
+    so ``source_index = i + cut_start_frame - 1``.
+
+    Returns ``(placements, fallback_count)`` where ``placements`` is the list
+    of ``(output_index, source_index)`` the source actually covers and
+    ``fallback_count`` is how many cut frames fell beyond the source (and stay
+    placeholder). Pure Python — no torch — so it is unit-testable in CI.
+    """
+    placements: list[tuple[int, int]] = []
+    fallback = 0
+    for output_index in range(total_frames):
+        source_index = output_index + cut_start_frame - 1
+        if 0 <= source_index < base_len:
+            placements.append((output_index, source_index))
+        else:
+            fallback += 1
+    return placements, fallback
 
 
 class easy_ImageBatch:
@@ -145,16 +171,28 @@ class easy_ImageBatch:
 
     Priority order (later wins): `source_frames` list → 4 manual slots.
     Explicit `imageN` inputs always override list entries at the same
-    cut-output position. Output dedup is automatic (set-based). At least
-    one of `image1` or `source_batch` must be provided. All keyframes
-    (and `source_batch` frames) must share the same H/W/C.
+    cut-output position. Output dedup is automatic (set-based). All keyframes
+    (and `source_batch` frames) must share the same H/W/C. When no image
+    source is connected at all, the node emits a clean placeholder batch
+    sized by the `width`/`height` widgets instead of erroring.
 
-    Offset mode (the inverse) — connect a packed sequence to
-    `keyframe_batch` and the node instead *scatters* those frames back onto
-    the `source_frames` positions (i-th frame → i-th position, ascending),
-    filling the rest with the placeholder. `source_batch` and the manual
-    slots are ignored while `keyframe_batch` is connected. Round-trips with
-    `selected_image_batch` + `selected_frames`. See `create_batch_from_frames`.
+    Insert modes (the inverse) — connect a packed sequence to
+    `keyframes_insert` and the node instead *scatters* those frames onto the
+    `source_frames` positions (i-th frame → i-th position, ascending). The
+    manual slots are ignored. The background depends on `source_batch`:
+
+    - `source_batch` NOT connected → gaps filled with the placeholder
+      (offset / reconstruct mode). Round-trips with `selected_image_batch` +
+      `selected_frames`.
+    - `source_batch` connected → the inserts are composited *over* the
+      `source_batch` cut window (insert-over-source mode): the source video
+      is the background and the listed positions are overwritten with the
+      insert frames.
+
+    With an empty `source_frames` list nothing is inserted: a clean
+    placeholder batch (no `source_batch`) or a clean `source_batch`
+    cut-window passthrough. `alpha_batch` always marks only the inserted
+    positions as placed. See `create_batch_from_frames`.
 
     Useful for preparing sparse control sequences for video models like
     Wan 2.2, where placeholder frames indicate no latent update.
@@ -236,18 +274,19 @@ class easy_ImageBatch:
                 }),
             },
             "optional": {
-                "keyframe_batch": ("IMAGE", {
+                "keyframes_insert": ("IMAGE", {
                     "tooltip": (
-                        "Connect a packed sequence of already-selected/processed "
-                        "frames to switch the node into OFFSET mode: each incoming "
-                        "frame is placed onto the timeline at the matching number "
-                        "from the frame list (1st frame -> 1st number, 2nd -> 2nd, "
-                        "...), with every other position filled by "
-                        "placeholder_color. The frame list (source_frames) supplies "
-                        "the positions; source_batch and image1-4 are ignored while "
-                        "this is connected. Use it to rebuild a full-length sequence "
-                        "from frames you exported, processed, and want back in their "
-                        "original positions."
+                        "Connect a packed sequence of frames to INSERT them onto the "
+                        "timeline at the positions from the frame list (source_frames): "
+                        "1st frame -> 1st number, 2nd -> 2nd, ... image1-4 are ignored "
+                        "while this is connected. The background depends on source_batch: "
+                        "if source_batch is NOT connected, the gaps are filled with "
+                        "placeholder_color (offset/reconstruct mode); if source_batch IS "
+                        "connected, the inserts are composited over the source frames in "
+                        "the cut window (insert-over-source mode). With an empty frame "
+                        "list nothing is inserted: a clean placeholder batch (no "
+                        "source_batch) or a clean source-batch passthrough (with "
+                        "source_batch)."
                     ),
                 }),
                 "source_batch": ("IMAGE", ),
@@ -279,6 +318,25 @@ class easy_ImageBatch:
                     "display": "number",
                     "tooltip": "1-based VFX frame number for image4, or source_batch pick when source_frames is empty.",
                 }),
+                # width/height are intentionally LAST so they append to the end
+                # of the widget list — inserting them earlier would shift the
+                # positional widgets_values of every previously-saved workflow.
+                "width": ("INT", {
+                    "default": 512,
+                    "min": 1,
+                    "max": 8192,
+                    "step": 8,
+                    "display": "number",
+                    "tooltip": "Fallback output width. Used ONLY when no image input provides dimensions (e.g. a fully empty node producing a clean placeholder batch). Ignored whenever an image source is connected.",
+                }),
+                "height": ("INT", {
+                    "default": 512,
+                    "min": 1,
+                    "max": 8192,
+                    "step": 8,
+                    "display": "number",
+                    "tooltip": "Fallback output height. Used ONLY when no image input provides dimensions (e.g. a fully empty node producing a clean placeholder batch). Ignored whenever an image source is connected.",
+                }),
             }
         }
 
@@ -304,23 +362,30 @@ class easy_ImageBatch:
         image3_frame=None,
         image4=None,
         image4_frame=None,
-        keyframe_batch=None,
+        keyframes_insert=None,
+        width=512,
+        height=512,
     ):
-        # Offset mode: when keyframe_batch is connected, switch behaviour from
-        # "select frames out of source_batch" to "scatter this packed sequence
-        # back onto the frame-list positions". See create_batch_from_frames.
-        if keyframe_batch is not None:
-            ignored = source_batch is not None or any(
+        # Insert modes: when keyframes_insert is connected, switch from "select
+        # frames out of source_batch" to "scatter this packed sequence onto the
+        # frame-list positions". The background depends on source_batch:
+        #   - no source_batch  -> placeholder gaps (offset / reconstruct mode)
+        #   - with source_batch -> composite the inserts over the source cut
+        #     window (insert-over-source mode)
+        # See create_batch_from_frames.
+        if keyframes_insert is not None:
+            slots_connected = any(
                 img is not None for img in (image1, image2, image3, image4)
             )
             return self.create_batch_from_frames(
-                keyframe_batch,
+                keyframes_insert,
                 source_frames,
                 total_frames,
                 cut_start_frame,
                 placeholder_color,
                 invert_alpha,
-                ignored_inputs_connected=ignored,
+                base_batch=source_batch,
+                ignored_slots_connected=slots_connected,
             )
 
         # Validate per-slot image inputs (must be single-frame tensors,
@@ -338,15 +403,17 @@ class easy_ImageBatch:
                 )
 
         # Determine reference H/W/C/device/dtype from the first available source.
-        # Priority: image1 → source_batch → image2 → image3 → image4.
+        # Priority: image1 → source_batch → image2 → image3 → image4. With no
+        # image source connected at all, fall back to the width/height widgets
+        # and emit a clean placeholder batch instead of erroring.
         reference = None
         for candidate in (image1, source_batch, image2, image3, image4):
             if candidate is not None:
                 reference = candidate
                 break
         if reference is None:
-            raise ValueError(
-                "easy_ImageBatch needs at least one of: image1, source_batch, image2, image3, image4."
+            return self._clean_placeholder_batch(
+                total_frames, height, width, 3, placeholder_color, invert_alpha
             )
 
         h, w, c = reference.shape[1:]
@@ -511,46 +578,99 @@ class easy_ImageBatch:
 
         return (image_batch, alpha_batch, selected_image_batch, selected_frames_out, )
 
+    def _clean_placeholder_batch(
+        self, total_frames, h, w, c, placeholder_color, invert_alpha, device=None, dtype=None
+    ):
+        """Build a fully-empty batch (no placed frames) of the placeholder color.
+
+        Used when nothing drives placement: a totally empty node (sized by the
+        width/height widgets, so ``device``/``dtype`` are absent → CPU/float).
+        ``image_batch`` is uniform placeholder; ``alpha_batch`` is all-empty
+        (1.0, flipped by ``invert_alpha``); ``selected_*`` outputs are
+        zero-length. Returns the standard 4-tuple.
+        """
+        fill_value = _PLACEHOLDER_FILL[placeholder_color]
+        if device is None:
+            image_batch = torch.full((total_frames, h, w, c), fill_value)
+            alpha_batch = torch.ones((total_frames, h, w), dtype=torch.float32)
+        else:
+            image_batch = torch.full(
+                (total_frames, h, w, c), fill_value, device=device, dtype=dtype
+            )
+            alpha_batch = torch.ones(
+                (total_frames, h, w), device=device, dtype=torch.float32
+            )
+        if invert_alpha:
+            alpha_batch = 1.0 - alpha_batch
+        print(
+            f"[easy_ImageBatch] clean batch: {total_frames} frames of "
+            f"{placeholder_color} placeholder; nothing placed."
+        )
+        return (image_batch, alpha_batch, image_batch[:0], "")
+
     def create_batch_from_frames(
         self,
-        keyframe_batch,
+        keyframes_insert,
         source_frames,
         total_frames,
         cut_start_frame,
         placeholder_color,
         invert_alpha,
-        ignored_inputs_connected=False,
+        base_batch=None,
+        ignored_slots_connected=False,
     ):
-        """Offset mode — active when ``keyframe_batch`` is connected.
+        """Insert mode — active when ``keyframes_insert`` is connected.
 
-        Scatter the packed ``keyframe_batch`` sequence back onto the timeline
-        at the positions listed in ``source_frames`` (i-th frame → i-th
-        position, ascending), filling the rest with ``placeholder_color``. This
-        is the inverse of the node's select behaviour: feed back a processed
-        copy of a previous ``selected_image_batch`` together with the same
-        ``selected_frames`` list to rebuild a full-length sequence in the
-        original spacing. ``source_batch`` and the 4 manual slots are ignored
-        in this mode (the wire-driven switch keeps the behaviour unambiguous).
+        Scatter the packed ``keyframes_insert`` sequence onto the timeline at
+        the positions listed in ``source_frames`` (i-th frame → i-th position,
+        ascending). The background depends on ``base_batch`` (the connected
+        ``source_batch``, or ``None``):
 
-        Outputs match the select path: ``image_batch`` (cut window),
-        ``alpha_batch`` (placed = 0.0 / empty = 1.0, flipped by
-        ``invert_alpha``), ``selected_image_batch`` (the placed frames packed
-        ascending), and ``selected_frames`` (their VFX numbers, round-trippable).
+        - **No ``base_batch`` (offset / reconstruct mode).** Gaps are filled
+          with ``placeholder_color``. Feed back a processed copy of a previous
+          ``selected_image_batch`` plus the same ``selected_frames`` list to
+          rebuild a full-length sequence in the original spacing.
+        - **With ``base_batch`` (insert-over-source mode).** The cut window of
+          ``base_batch`` is laid down first (VFX frame ``cut_start_frame + i``
+          → ``base_batch[cut_start_frame + i - 1]``; frames beyond the source
+          fall back to the placeholder), then the inserts overwrite at the
+          listed positions. The inserts are composited *over* the source video.
+
+        The 4 manual slots are always ignored in this mode (the wire-driven
+        switch keeps the behaviour unambiguous).
+
+        ``alpha_batch`` marks only the inserted positions as placed (0.0),
+        regardless of the background — so ``selected_image_batch`` /
+        ``selected_frames`` describe just the inserts. With an empty frame list
+        nothing is inserted: a clean placeholder batch (no ``base_batch``) or a
+        clean ``base_batch`` cut-window passthrough.
         """
-        if ignored_inputs_connected:
+        if ignored_slots_connected:
             print(
-                "[easy_ImageBatch] offset mode (keyframe_batch connected): "
-                "source_batch and image1-4 are ignored; the frame list controls "
-                "placement."
+                "[easy_ImageBatch] insert mode (keyframes_insert connected): "
+                "image1-4 are ignored; the frame list controls placement."
             )
 
-        h, w, c = keyframe_batch.shape[1:]
-        device = keyframe_batch.device
-        dtype = keyframe_batch.dtype
+        h, w, c = keyframes_insert.shape[1:]
+        device = keyframes_insert.device
+        dtype = keyframes_insert.dtype
 
+        # Background: source cut window (insert-over-source) or placeholder.
         fill_value = _PLACEHOLDER_FILL[placeholder_color]
         image_batch = torch.full((total_frames, h, w, c), fill_value, device=device, dtype=dtype)
-        # Same convention as the select path: 1.0 (white/empty), 0.0 on placed.
+        base_short_fallback = 0
+        if base_batch is not None:
+            if tuple(base_batch.shape[1:]) != (h, w, c):
+                raise ValueError(
+                    f"source_batch shape {tuple(base_batch.shape[1:])} does not match "
+                    f"keyframes_insert ({h}, {w}, {c}). Both must share the same H/W/C."
+                )
+            base_placements, base_short_fallback = plan_source_base_fill(
+                total_frames, cut_start_frame, base_batch.shape[0]
+            )
+            for output_index, source_index in base_placements:
+                image_batch[output_index] = base_batch[source_index]
+        # Convention: 1.0 (white/empty), 0.0 on inserted positions only.
         alpha_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
 
         # Parse the position list (mirrors the select-mode tokenizer: commas,
@@ -565,12 +685,12 @@ class easy_ImageBatch:
             except ValueError:
                 print(f"[easy_ImageBatch] source_frames: ignoring non-integer token '{tok}'.")
 
-        source_count = keyframe_batch.shape[0]
+        source_count = keyframes_insert.shape[0]
         plan = plan_offset_placements(positions, source_count, total_frames, cut_start_frame)
 
         placed_indices: list[int] = []
         for source_index, output_index, _vfx in plan.placements:
-            image_batch[output_index] = keyframe_batch[source_index]
+            image_batch[output_index] = keyframes_insert[source_index]
             alpha_batch[output_index] = 0.0
             placed_indices.append(output_index)
 
@@ -586,9 +706,10 @@ class easy_ImageBatch:
             str(idx + cut_start_frame) for idx in sorted_indices
         )
 
-        # One-line summary (mirrors select mode) with offset-specific notes so
-        # silent surprises (extra frames, short lists, outside-cut, empty list)
-        # are visible without scrolling per-frame logs.
+        # One-line summary (mirrors select mode) with insert-specific notes so
+        # silent surprises (extra frames, short lists, outside-cut, empty list,
+        # source shorter than the cut) are visible without per-frame logs.
+        mode_label = "insert-over-source mode" if base_batch is not None else "offset mode"
         cut_end = cut_start_frame + total_frames - 1
         notes: list[str] = []
         if plan.outside_cut:
@@ -598,19 +719,23 @@ class easy_ImageBatch:
             )
         if plan.unused_source:
             notes.append(
-                f"{plan.unused_source} extra source frame(s) had no listed position"
+                f"{plan.unused_source} extra insert frame(s) had no listed position"
             )
         if plan.missing_positions:
             notes.append(
-                f"{len(plan.missing_positions)} position(s) had no source frame: "
+                f"{len(plan.missing_positions)} position(s) had no insert frame: "
                 + ", ".join(str(f) for f in plan.missing_positions)
             )
+        if base_short_fallback:
+            notes.append(
+                f"{base_short_fallback} cut frame(s) beyond source_batch filled with placeholder"
+            )
         if not source_frames_str:
-            notes.append("frame list is empty — nothing placed")
+            notes.append("frame list is empty — nothing inserted")
         suffix = (" " + "; ".join(notes) + ".") if notes else ""
         print(
-            f"[easy_ImageBatch] offset mode: cut window frames {cut_start_frame}.."
-            f"{cut_end} ({total_frames} frames). {len(sorted_indices)} placed.{suffix}"
+            f"[easy_ImageBatch] {mode_label}: cut window frames {cut_start_frame}.."
+            f"{cut_end} ({total_frames} frames). {len(sorted_indices)} inserted.{suffix}"
         )
 
         return (image_batch, alpha_batch, selected_image_batch, selected_frames_out, )

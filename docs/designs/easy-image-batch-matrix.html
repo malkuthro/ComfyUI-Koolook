@@ -1,0 +1,368 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Easy Image Batch — behavior matrix demo</title>
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --panel: #151515;
+      --panel-soft: #1a1a1f;
+      --border: #302f2f;
+      --border-strong: #4f4f54;
+      --text: #f9fafb;
+      --muted: #8f959c;
+      --dim: #555b62;
+      --sky: #6db4ff;
+      --sky-bg: #1f4f74;
+      --green: #7bcf80;
+      --green-bg: #1d6a3a;
+      --orange: #e0a64a;
+      --orange-bg: #8a5a16;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #090909; color: var(--text);
+      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1240px; margin: 0 auto; padding: 24px 28px 60px; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .intro { margin: 0 0 20px; color: var(--muted); max-width: 880px; }
+    .intro code { color: var(--sky); }
+    a { color: var(--sky); }
+
+    .layout { display: grid; grid-template-columns: 340px 1fr; gap: 22px; align-items: start; }
+    @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
+
+    .panel { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; }
+    .panel h2 { margin: 0; padding: 12px 14px; font-size: 13px; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .panel-body { padding: 14px; }
+
+    .ctl { margin-bottom: 13px; }
+    .ctl:last-child { margin-bottom: 0; }
+    .ctl label.head { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+    .ctl .sub { display: flex; align-items: center; gap: 8px; margin: 7px 0 0 24px; color: var(--muted); font-size: 12px; }
+    .ctl .sub.off { opacity: .35; pointer-events: none; }
+    input[type="number"], input[type="text"], select {
+      background: var(--panel-soft); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 5px; padding: 4px 7px; font: inherit; font-size: 12px;
+    }
+    input[type="number"] { width: 64px; }
+    input[type="text"] { width: 150px; }
+    input[type="range"] { width: 120px; }
+    .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: middle; }
+
+    .presets { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+    .presets button {
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; cursor: pointer;
+    }
+    .presets button:hover { border-color: var(--sky); color: var(--sky); }
+
+    .mode-line { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .mode-badge { font-weight: 700; font-size: 15px; }
+    .summary { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+
+    .grids { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    .grid-block h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+    .frames { display: grid; gap: 5px; grid-template-columns: repeat(var(--cols), 1fr); }
+    .cell {
+      aspect-ratio: 1 / 1; border-radius: 4px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+      border: 2px solid transparent; position: relative; min-height: 38px;
+    }
+    .cell .vfx { position: absolute; top: 2px; left: 4px; font-size: 8px; font-weight: 500; color: var(--dim); }
+    .cell.placed { border-color: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+    .cell.ph-black { background: #000; color: #3a3a3a; }
+    .cell.ph-gray  { background: #808080; color: #cfcfcf; }
+    .cell.ph-white { background: #fff; color: #9a9a9a; }
+    .cell.source   { background: var(--sky-bg); color: var(--sky); }
+    .cell.insert   { background: var(--green-bg); color: #d7ffd9; }
+    .cell.manual   { background: var(--orange-bg); color: #ffe9c4; }
+
+    .alpha { display: grid; gap: 3px; grid-template-columns: repeat(var(--cols), 1fr); }
+    .acell { aspect-ratio: 1/1; border-radius: 2px; min-height: 22px; border: 1px solid #222; }
+    .acell.on  { background: #000; }   /* alpha 0.0 (placed, inpaint default) */
+    .acell.off { background: #fff; }   /* alpha 1.0 (empty) */
+
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .key { width: 14px; height: 14px; border-radius: 3px; }
+    .key.placed-ring { border: 2px solid #fff; }
+    .notes { margin-top: 14px; font-size: 12px; color: var(--muted); }
+    .notes b { color: var(--text); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Easy Image Batch — behavior matrix demo</h1>
+  <p class="intro">
+    A live model of the proposed <code>easy_ImageBatch</code> logic. Frames are
+    labelled like the <b>Easy Pattern (Koolook)</b> test node: <code>S#</code> =
+    a <b>source_batch</b> frame (VFX number), <code>I#</code> = an
+    <b>keyframes_insert</b> frame (ordinal), <code>M#</code> = a connected
+    <b>image1–4</b> override. A white ring = "placed" (counts toward
+    <code>alpha_batch</code> / <code>selected_*</code>). Spec:
+    <a href="easy-image-batch-behavior.md">easy-image-batch-behavior.md</a>.
+  </p>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="layout">
+    <!-- Controls -->
+    <div class="panel">
+      <h2>Inputs</h2>
+      <div class="panel-body" id="controls">
+
+        <div class="ctl">
+          <label class="head"><input type="checkbox" id="ki_on"> <span>keyframes_insert connected</span></label>
+          <div class="sub" data-dep="ki_on">frames <input type="range" id="ki_count" min="1" max="12" value="4"><span id="ki_count_v">4</span></div>
+        </div>
+
+        <div class="ctl">
+          <label class="head"><input type="checkbox" id="sb_on"> <span>source_batch connected</span></label>
+          <div class="sub" data-dep="sb_on">length <input type="number" id="sb_len" min="1" max="60" value="24"></div>
+        </div>
+
+        <div class="ctl">
+          <label class="head"><span>source_frames (multiline)</span></label>
+          <div class="sub"><input type="text" id="frames" value="1, 5, 9, 13"></div>
+        </div>
+
+        <div class="ctl" id="slots"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+
+        <div class="ctl">
+          <div class="sub" style="margin-left:0">total_frames <input type="number" id="total" min="1" max="48" value="24"></div>
+          <div class="sub" style="margin-left:0">cut_start_frame <input type="number" id="cut" min="1" max="40" value="1"></div>
+          <div class="sub" style="margin-left:0">placeholder
+            <select id="ph"><option>Black</option><option selected>Gray</option><option>White</option></select>
+          </div>
+          <div class="sub" style="margin-left:0"><label><input type="checkbox" id="inv"> invert_alpha (compositing)</label></div>
+          <div class="sub" style="margin-left:0" id="wh_row">width <input type="number" id="w" min="1" value="512" style="width:58px"> height <input type="number" id="h" min="1" value="512" style="width:58px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="panel">
+      <h2>Output</h2>
+      <div class="panel-body">
+        <div class="mode-line">
+          <span class="mode-badge" id="mode"></span>
+          <span class="summary" id="summary"></span>
+        </div>
+        <div class="grids">
+          <div class="grid-block">
+            <h3>image_batch</h3>
+            <div class="frames" id="image_batch"></div>
+          </div>
+          <div class="grid-block">
+            <h3>alpha_batch <span style="color:var(--dim)">(black = 0.0 / placed, white = 1.0 / empty)</span></h3>
+            <div class="alpha" id="alpha_batch"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="key" style="background:var(--sky-bg)"></i> source frame (S#)</span>
+          <span><i class="key" style="background:var(--green-bg)"></i> insert (I#)</span>
+          <span><i class="key" style="background:var(--orange-bg)"></i> manual override (M#)</span>
+          <span><i class="key placed-ring" style="background:transparent"></i> placed (alpha 0)</span>
+        </div>
+        <div class="notes" id="selected"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---- build slot controls (image1..image4) ----
+const slotFrames = [3, 8, 14, 20];
+$('slots').innerHTML = '<label class="head" style="cursor:default"><span>image1–image4 (super-overwrite)</span></label>' +
+  [1,2,3,4].map(n => `
+    <div class="sub">
+      <label><input type="checkbox" id="slot${n}_on"> image${n}</label>
+      <span style="margin-left:auto">@ <input type="number" id="slot${n}_f" min="1" max="48" value="${slotFrames[n-1]}" style="width:52px"></span>
+    </div>`).join('');
+
+// ---- model (mirrors k_easy_image_batch.py) ----
+function parsePositions(str){
+  return (str||'').split(/[\s,]+/).filter(Boolean)
+    .map(t => parseInt(t,10)).filter(n => Number.isFinite(n));
+}
+function planOffset(positions, sourceCount, total, cutStart){
+  const ordered = [...new Set(positions)].sort((a,b)=>a-b);
+  const paired = Math.min(sourceCount, ordered.length);
+  const placements=[], outside=[];
+  for(let s=0;s<paired;s++){
+    const vfx = ordered[s], out = vfx - cutStart;
+    if(out>=0 && out<total) placements.push({s,out,vfx}); else outside.push(vfx);
+  }
+  return {
+    placements, outside,
+    unused: Math.max(0, sourceCount - ordered.length),
+    missing: sourceCount < ordered.length ? ordered.slice(sourceCount) : [],
+  };
+}
+
+function readState(){
+  const slots = [1,2,3,4].map(n => ({
+    connected: $('slot'+n+'_on').checked,
+    frame: parseInt($('slot'+n+'_f').value,10) || 1,
+    label: 'M'+n,
+  }));
+  return {
+    ki: $('ki_on').checked, kiCount: parseInt($('ki_count').value,10),
+    sb: $('sb_on').checked, sbLen: parseInt($('sb_len').value,10) || 0,
+    frames: $('frames').value,
+    total: Math.max(1, parseInt($('total').value,10) || 1),
+    cut: Math.max(1, parseInt($('cut').value,10) || 1),
+    ph: $('ph').value, inv: $('inv').checked,
+    w: parseInt($('w').value,10), h: parseInt($('h').value,10),
+    slots,
+  };
+}
+
+function build(st){
+  const total = st.total, cut = st.cut;
+  const cells = Array.from({length: total}, () => ({kind:'ph'}));
+  const placed = new Set();
+  const notes = [];
+  const anyImage = st.ki || st.sb || st.slots.some(s=>s.connected);
+  const insert = st.ki;
+
+  // ---- Layer 1: background ----
+  let baseFallback = 0;
+  if(insert && st.sb){
+    for(let i=0;i<total;i++){
+      const v = cut + i, srcIdx = v - 1;
+      if(srcIdx>=0 && srcIdx < st.sbLen) cells[i] = {kind:'source', vfx:v};
+      else baseFallback++;
+    }
+  } // else placeholder everywhere (already)
+
+  // ---- Layer 2: sequence ----
+  if(insert){
+    const positions = parsePositions(st.frames);
+    const plan = planOffset(positions, st.kiCount, total, cut);
+    plan.placements.forEach(p => { cells[p.out] = {kind:'insert', label:'I'+(p.s+1), vfx:p.vfx}; placed.add(p.out); });
+    if(plan.outside.length) notes.push(plan.outside.length+' outside cut: '+plan.outside.join(', '));
+    if(plan.unused) notes.push(plan.unused+' extra insert frame(s) had no listed position');
+    if(plan.missing.length) notes.push(plan.missing.length+' position(s) had no insert frame: '+plan.missing.join(', '));
+    if(!positions.length) notes.push('frame list is empty — nothing inserted');
+  } else if(st.sb){
+    const positions = parsePositions(st.frames);
+    positions.forEach(N => {
+      const srcIdx = N-1, out = N-cut;
+      if(srcIdx<0 || srcIdx>=st.sbLen){ notes.push('VFX '+N+' not in source_batch'); return; }
+      if(out<0 || out>=total){ notes.push('VFX '+N+' outside cut'); return; }
+      cells[out] = {kind:'source-pick', label:'S'+N, vfx:N}; placed.add(out);
+    });
+  }
+
+  // ---- Layer 3: super-overwrite (connected slots only) ----
+  st.slots.forEach(s => {
+    if(!s.connected) return;            // UNCONNECTED = inert (the fix)
+    const out = s.frame - cut;
+    if(out<0 || out>=total){ notes.push(s.label+' @VFX'+s.frame+' outside cut'); return; }
+    cells[out] = {kind:'manual', label:s.label, vfx:s.frame}; placed.add(out);
+  });
+
+  if(baseFallback) notes.push(baseFallback+' cut frame(s) beyond source_batch → placeholder');
+
+  // ---- mode label ----
+  let mode;
+  if(!anyImage) mode = 'clean batch · '+st.w+'×'+st.h;
+  else if(insert && st.sb) mode = placed.size ? 'insert-over-source' : 'source passthrough';
+  else if(insert) mode = placed.size ? 'offset / reconstruct' : 'clean (nothing inserted)';
+  else mode = placed.size ? 'select' : 'clean (nothing placed)';
+
+  const selected = [...placed].sort((a,b)=>a-b);
+  return {cells, placed, notes, mode, baseFallback,
+    selectedFrames: selected.map(i => i+cut).join(', '),
+    cutEnd: cut + total - 1};
+}
+
+const PH_CLASS = {Black:'ph-black', Gray:'ph-gray', White:'ph-white'};
+
+function render(){
+  const st = readState();
+  const r = build(st);
+  const cols = Math.min(12, st.total);
+  $('image_batch').style.setProperty('--cols', cols);
+  $('alpha_batch').style.setProperty('--cols', cols);
+
+  // image_batch
+  $('image_batch').innerHTML = r.cells.map((c, i) => {
+    const vfx = st.cut + i;
+    let cls, label;
+    if(c.kind === 'ph'){ cls = PH_CLASS[st.ph]; label = '·'; }
+    else if(c.kind === 'source'){ cls='source'; label='S'+c.vfx; }
+    else if(c.kind === 'source-pick'){ cls='source'; label=c.label; }
+    else if(c.kind === 'insert'){ cls='insert'; label=c.label; }
+    else { cls='manual'; label=c.label; }
+    const placed = r.placed.has(i) ? ' placed' : '';
+    return `<div class="cell ${cls}${placed}"><span class="vfx">${vfx}</span>${label}</div>`;
+  }).join('');
+
+  // alpha_batch (default: placed=0.0=black; invert flips)
+  $('alpha_batch').innerHTML = r.cells.map((c,i) => {
+    let on = r.placed.has(i);            // on => alpha 0.0 (black)
+    if(st.inv) on = !on;
+    return `<div class="acell ${on?'on':'off'}"></div>`;
+  }).join('');
+
+  $('mode').textContent = r.mode;
+  const suffix = r.notes.length ? ' — ' + r.notes.join('; ') + '.' : '';
+  $('summary').textContent = `cut ${st.cut}..${r.cutEnd} (${st.total}f) · ${r.placed.size} placed${suffix}`;
+  $('selected').innerHTML = `<b>selected_frames:</b> ${r.selectedFrames || '(empty)'} &nbsp;·&nbsp; <b>selected_image_batch:</b> ${r.placed.size} frame(s)`;
+
+  // dependent-control dimming
+  document.querySelectorAll('[data-dep]').forEach(el => {
+    el.classList.toggle('off', !$(el.dataset.dep).checked);
+  });
+  $('wh_row').style.opacity = (st.ki || st.sb || st.slots.some(s=>s.connected)) ? .35 : 1;
+  $('ki_count_v').textContent = st.kiCount;
+}
+
+// ---- presets (matrix rows) ----
+const PRESETS = [
+  ['1 · empty → clean',        {ki:0,sb:0,frames:'',slots:[]}],
+  ['2 · select: source+list',  {ki:0,sb:1,frames:'1, 5, 9, 13, 17, 21',slots:[]}],
+  ['3 · select: 4 slots',      {ki:0,sb:0,frames:'',slots:[1,2,3,4]}],
+  ['4 · select: list + slot override', {ki:0,sb:1,frames:'1, 5, 9, 13, 17',slots:[1]}],
+  ['6 · offset over placeholder', {ki:1,kiCount:4,sb:0,frames:'3, 8, 14, 20',slots:[]}],
+  ['7 · offset empty → clean',  {ki:1,kiCount:4,sb:0,frames:'',slots:[]}],
+  ['8 · insert-over-source',    {ki:1,kiCount:3,sb:1,frames:'5, 12, 19',slots:[]}],
+  ['9 · empty → passthrough',   {ki:1,kiCount:3,sb:1,frames:'',slots:[]}],
+  ['10 · insert + slot override', {ki:1,kiCount:3,sb:1,frames:'5, 12, 19',slots:[1]}],
+  ['11 · disconnected slots inert', {ki:0,sb:1,frames:'',slots:[],_note:'slots set but OFF'}],
+  ['cut window (cut=10)',       {ki:0,sb:1,frames:'10, 14, 18, 22',slots:[],cut:10,total:16}],
+];
+$('presets').innerHTML = PRESETS.map((p,i)=>`<button data-i="${i}">${p[0]}</button>`).join('');
+$('presets').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  const p = PRESETS[+b.dataset.i][1];
+  $('ki_on').checked = !!p.ki; $('ki_count').value = p.kiCount||4;
+  $('sb_on').checked = !!p.sb;
+  $('frames').value = p.frames||'';
+  $('cut').value = p.cut||1; $('total').value = p.total||24;
+  [1,2,3,4].forEach(n => {
+    $('slot'+n+'_on').checked = (p.slots||[]).includes(n);
+    $('slot'+n+'_f').value = slotFrames[n-1];
+  });
+  render();
+});
+
+document.addEventListener('input', render);
+document.addEventListener('change', render);
+render();
+</script>
+</body>
+</html>

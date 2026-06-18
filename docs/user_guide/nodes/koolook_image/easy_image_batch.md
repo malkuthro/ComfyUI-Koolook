@@ -23,14 +23,25 @@ carry real image data and the rest tell the model "no latent update
 here". The cut window lets you grab any sub-range of a longer sequence
 without needing an external `ImageFromBatch` slicer.
 
-**Offset mode (the inverse).** Connect a packed sequence to
-`keyframe_batch` and the node flips around: instead of *selecting* sparse
+**Insert modes (the inverse).** Connect a packed sequence to
+`keyframes_insert` and the node flips around: instead of *selecting* sparse
 keyframes out of a dense source, it *scatters* an already-dense short
-sequence back onto the keyframe positions from the frame list — placing
-frame *i* at the *i*-th listed number, placeholder in between. Use it to
-rebuild a full-length sequence from frames you selected, exported,
-processed, and want back in their original spacing (step 2 of a
-select → process → reconstruct workflow).
+sequence onto the keyframe positions from the frame list — placing frame
+*i* at the *i*-th listed number. The background depends on whether
+`source_batch` is connected:
+
+- **`source_batch` not connected (offset / reconstruct mode):** gaps are
+  filled with the placeholder. Use it to rebuild a full-length sequence
+  from frames you selected, exported, processed, and want back in their
+  original spacing (step 2 of a select → process → reconstruct workflow).
+- **`source_batch` connected (insert-over-source mode):** the source cut
+  window is the background and the listed positions are overwritten with
+  the insert frames — composite more-than-one processed frames back into
+  the source video at chosen indexes.
+
+**No inputs ⇒ clean batch.** With no image source connected at all, the
+node emits a clean placeholder batch sized by the `width`/`height` widgets
+instead of raising an error.
 
 ## Inputs
 
@@ -49,14 +60,27 @@ select → process → reconstruct workflow).
 
 | Input | Type | Description |
 |---|---|---|
-| `keyframe_batch` | `IMAGE` | Packed sequence for **offset mode**. When connected, the node switches from *select* to *offset*: frame *i* is placed at the *i*-th position in `source_frames` (ascending), placeholder elsewhere. `source_batch` and `image1…image4` are ignored while this is connected. |
-| `source_batch` | `IMAGE` | Pre-batched image stack, e.g. straight from `Load Video`. `source_batch[0]` is treated as VFX frame 1; `source_batch[k]` is VFX frame `k + 1`. |
+| `keyframes_insert` | `IMAGE` | Packed sequence for **insert modes**. When connected, the node switches from *select* to *insert*: frame *i* is placed at the *i*-th position in `source_frames` (ascending). `image1…image4` are ignored. The background is placeholder (no `source_batch`) or the `source_batch` cut window (insert-over-source). |
+| `source_batch` | `IMAGE` | Pre-batched image stack, e.g. straight from `Load Video`. `source_batch[0]` is treated as VFX frame 1; `source_batch[k]` is VFX frame `k + 1`. In insert mode it becomes the composite background. |
 | `image1` … `image4` | `IMAGE` | Per-slot keyframes. Each must be a single-frame `IMAGE` (batch size 1). Pre-batched stacks must come through `source_batch` instead. |
 
-At least one of `image1` or `source_batch` must be connected; otherwise
-the node raises a clear `ValueError`. All connected inputs must share
-the same `H × W × C`. (In **offset mode** — `keyframe_batch` connected —
-that input alone is sufficient and the others are ignored.)
+### Fallback widgets (last two)
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `width` | `INT` | `512` | Fallback output width. Used **only** when no image input provides dimensions (a fully empty node producing a clean placeholder batch). Ignored whenever an image source is connected. Range: `1..8192`. |
+| `height` | `INT` | `512` | Fallback output height. Same fallback-only semantics as `width`. Range: `1..8192`. |
+
+These two are deliberately the **last** widgets on the node so they append
+to the end of the saved widget list — keeping older saved workflows (which
+predate them) correctly aligned.
+
+With **no image source connected at all**, the node emits a clean
+placeholder batch sized by the `width`/`height` widgets (no error). When a
+source *is* connected, all connected inputs must share the same
+`H × W × C`. (In **insert modes** — `keyframes_insert` connected — that
+input drives placement and `image1…image4` are ignored; `source_batch`, if
+present, supplies the composite background.)
 
 ## Outputs
 
@@ -129,24 +153,40 @@ When more than one mode contributes:
 3. The set of placed keyframes is deduped automatically (`selected_*`
    outputs reflect the final, deduped state).
 
-### Mode 4 — Offset / reconstruct (`keyframe_batch`)
+### Mode 4 — Insert (`keyframes_insert`)
 
 The inverse of Modes 1–3. Connect a packed `IMAGE` sequence (e.g. frames
 you previously pulled via `selected_image_batch`, processed, and
-re-loaded) to `keyframe_batch`. The node switches to **offset mode** and
+re-loaded) to `keyframes_insert`. The node switches to **insert mode** and
 reads `source_frames` as *destination positions*: the *i*-th frame of
-`keyframe_batch` is placed at output index `position[i] - cut_start_frame`,
-everything else filled by `placeholder_color`. Positions are taken
-ascending and de-duplicated, so it round-trips cleanly with the ascending
-`selected_image_batch` + `selected_frames` a select-mode node produces.
+`keyframes_insert` is placed at output index `position[i] - cut_start_frame`.
+Positions are taken ascending and de-duplicated, so it round-trips cleanly
+with the ascending `selected_image_batch` + `selected_frames` a select-mode
+node produces.
 
-- **Wire-driven switch.** Offset mode is active whenever `keyframe_batch`
-  is connected; `source_batch` and `image1…image4` are ignored (a one-line
-  console note fires if they're connected, so nothing is silently dropped).
+The background depends on `source_batch`:
+
+- **Offset / reconstruct (no `source_batch`).** Gaps are filled with
+  `placeholder_color`, at the original sequence length.
+- **Insert-over-source (`source_batch` connected).** The `source_batch` cut
+  window is laid down first (output index *i* ← `source_batch[cut_start_frame
+  + i - 1]`; cut frames beyond the source fall back to the placeholder and
+  are reported), then the listed positions are overwritten with the insert
+  frames. This composites several processed frames back into the source
+  video at chosen indexes.
+
+- **Wire-driven switch.** Insert mode is active whenever `keyframes_insert`
+  is connected; `image1…image4` are ignored (a one-line console note fires
+  if they're connected, so nothing is silently dropped).
+- **Alpha marks only the inserts.** Regardless of background, `alpha_batch`
+  is `0.0` only at the inserted positions, and `selected_image_batch` /
+  `selected_frames` describe just the inserts.
 - **Counts needn't match.** Extra incoming frames beyond the list are
   reported as unused; positions beyond the available frames are reported as
   missing. Outside-cut positions are dropped, same as select mode.
-- **Empty list ⇒ nothing placed** (all placeholder), with a console note.
+- **Empty list ⇒ nothing inserted** — a clean placeholder batch (no
+  `source_batch`) or a clean `source_batch` cut-window passthrough — with a
+  console note.
 
 ## Conventions
 
@@ -209,7 +249,7 @@ the original length:
 
 | Field | Value |
 |---|---|
-| `keyframe_batch` | the 5 processed frames (e.g. `Load EXR` / image batch) |
+| `keyframes_insert` | the 5 processed frames (e.g. `Load EXR` / image batch) |
 | `source_frames` | `"1, 10, 19, 30, 40"` |
 | `cut_start_frame` | `1` |
 | `total_frames` | `41` |
@@ -222,7 +262,30 @@ the original length:
 | `selected_image_batch` | the 5 frames, packed back-to-back. |
 | `selected_frames` | `"1, 10, 19, 30, 40"` |
 
-Console summary: `offset mode: cut window frames 1..41 (41 frames). 5 placed.`
+Console summary: `offset mode: cut window frames 1..41 (41 frames). 5 inserted.`
+
+## Example D — Insert-over-source (composite into a video)
+
+Same 5 processed frames as Example C, but now you want them dropped back
+**into the original 41-frame video** at their positions rather than onto a
+black background — the untouched frames keep the source footage.
+
+| Field | Value |
+|---|---|
+| `keyframes_insert` | the 5 processed frames |
+| `source_batch` | the original 41-frame `Load Video` stack |
+| `source_frames` | `"1, 10, 19, 30, 40"` |
+| `cut_start_frame` | `1` |
+| `total_frames` | `41` |
+
+| Output | What you get |
+|---|---|
+| `image_batch` | 41 frames; the 5 processed frames overwrite indices 0 / 9 / 18 / 29 / 39, every other frame is the original source frame. |
+| `alpha_batch` | 41-frame mask; only those 5 indices are `0.0` (the inserts), the rest `1.0`. |
+| `selected_image_batch` | the 5 inserted frames, packed back-to-back. |
+| `selected_frames` | `"1, 10, 19, 30, 40"` |
+
+Console summary: `insert-over-source mode: cut window frames 1..41 (41 frames). 5 inserted.`
 
 ## Tips
 

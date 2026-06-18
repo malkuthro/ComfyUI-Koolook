@@ -7,21 +7,35 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
-- **Easy Image Batch — offset mode (`keyframe_batch`).** A new optional
-  `keyframe_batch` input adds the inverse of the node's select behaviour.
-  When connected, the node switches from *selecting* sparse keyframes out of
-  a dense `source_batch` to *scattering* an already-packed short sequence
-  back onto the `source_frames` positions — placing the *i*-th incoming
-  frame at the *i*-th listed number (ascending), placeholder colour in
-  between, at the original sequence length. This closes the
-  select → process → reconstruct loop: feed a processed copy of a previous
-  `selected_image_batch` plus the same `selected_frames` list back in to
-  rebuild the original spacing. The switch is wire-driven (`source_batch`
-  and `image1…image4` are ignored while `keyframe_batch` is connected, with
-  a console note); frame-count vs list-length mismatches and outside-cut
-  positions are reported in the end-of-run summary. Placement logic is a
-  pure, torch-free planner (`plan_offset_placements`) so it is unit-tested
-  in CI.
+- **Easy Image Batch — insert modes (`keyframes_insert`).** A new optional
+  `keyframes_insert` input (renamed from the unreleased `keyframe_batch`)
+  adds the inverse of the node's select behaviour. When connected, the node
+  switches from *selecting* sparse keyframes to *scattering* an
+  already-packed short sequence onto the `source_frames` positions — placing
+  the *i*-th incoming frame at the *i*-th listed number (ascending). The
+  **background depends on `source_batch`**:
+  - **not connected → offset / reconstruct mode** — gaps filled with the
+    placeholder colour, at the original sequence length. Closes the
+    select → process → reconstruct loop: feed a processed copy of a previous
+    `selected_image_batch` plus the same `selected_frames` list back in to
+    rebuild the original spacing.
+  - **connected → insert-over-source mode** — the `source_batch` cut window
+    is laid down as the background and the listed positions are overwritten
+    with the insert frames (composite N>1 processed frames back into the
+    source video at chosen indexes). Cut frames beyond the source fall back
+    to the placeholder, reported in the summary.
+
+  `image1…image4` are ignored while `keyframes_insert` is connected (console
+  note); `alpha_batch` marks only the inserted positions. An empty
+  `source_frames` list inserts nothing — a clean placeholder batch (no
+  `source_batch`) or a clean `source_batch` passthrough. Placement and the
+  source-base mapping are pure, torch-free planners (`plan_offset_placements`,
+  `plan_source_base_fill`) so both are unit-tested in CI.
+- **Easy Image Batch — clean batch instead of erroring + `width`/`height`
+  fallback.** With no image source connected at all, the node now emits a
+  clean placeholder batch (sized by the new `width`/`height` widgets, default
+  512×512) rather than raising. `width`/`height` are used **only** as the
+  fallback when no connected image provides dimensions.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and
