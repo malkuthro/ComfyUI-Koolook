@@ -67,7 +67,7 @@ When a knob's behaviour is stable across runs, promote it from `_AI/iterations.m
 | `Render time —` always | JSON and MP4 saved by ComfyUI's metadata-bundle have identical mtimes | Expected. The duration can't be derived from filesystem timestamps in this mode — left blank to avoid lying. |
 | Outcome scores all `?/5` | `OVERLAY - FEEDBACK` doesn't contain score lines | Add lines like `motion: 4/5`. Case-insensitive; `/5` optional. |
 | Card writes to wrong folder | `Working_Folder_PATH` node and `KOLOOK_AUTOMATIONS_WORK_DIR` env var are out of sync | Align both to the same path; the JSON node wins if present. |
-| `python` not found on Windows | Microsoft Store stub | Use absolute `C:\Python313\python.exe` (already wired in `.claude/launch.json`). |
+| `python` not found on Windows | Microsoft Store stub | Put a real Python 3.11+ first on `PATH`, or run the card script with an absolute path such as `C:\Python313\python.exe`. |
 
 ## Off-boarding (if you stop in the middle)
 

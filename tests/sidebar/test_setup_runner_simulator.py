@@ -81,6 +81,49 @@ def test_simulator_lists_setup_and_polls_public_run_routes() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_simulator_times_out_when_active_status_never_progresses() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { runAndPollPublishedSetup } from "./web/setup_runner_simulator.js";
+
+        let now = 0;
+        const originalNow = Date.now;
+        Date.now = () => now;
+        try {
+          const fetchImpl = async (url, options = {}) => {
+            const isRunRequest = options.method === "POST";
+            return {
+              ok: true,
+              status: 200,
+              async json() {
+                return isRunRequest
+                  ? { ok: true, run: { runId: "run-000001", promptId: "prompt-1", status: "queued" } }
+                  : { ok: true, run: { runId: "run-000001", promptId: "prompt-1", status: "running", outputs: [] } };
+              },
+            };
+          };
+
+          await assert.rejects(
+            () => runAndPollPublishedSetup({
+              setupId: "director-demo",
+              fetchImpl,
+              intervalMs: 1,
+              timeoutMs: 5,
+              sleepImpl: async ms => { now += ms; },
+            }),
+            /Timed out waiting for run/
+          );
+        } finally {
+          Date.now = originalNow;
+        }
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_simulator_accepts_bare_array_catalog_response() -> None:
     script = textwrap.dedent(
         """

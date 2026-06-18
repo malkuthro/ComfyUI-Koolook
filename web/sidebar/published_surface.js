@@ -71,8 +71,13 @@ const PUBLISH_INPUT_FIELDS = [
     ["sequence_folder", "Sequence folder", true],
     ["qt_file", "QT file", true],
     ["single_file", "Single file", true],
-    ["prompt", "Prompt", false],
 ];
+// The prompt is an always-on field, independent of the EXR/QT/Img source
+// switch: an external user picks a source AND can describe the shot. The
+// author's prompt-widget text becomes the placeholder hint; the submitted
+// default is empty so an untouched hint is never sent as the real prompt.
+const PUBLISH_PROMPT_HELP =
+    "Describe the shot in one simple line: subject + action + setting.";
 const PUBLISH_INPUT_MODES = [
     [0, "EXR", "sequence_folder"],
     [1, "QT", "qt_file"],
@@ -166,9 +171,27 @@ function inputSwitch(node, inputs) {
         options: PUBLISH_INPUT_MODES.map(([value, label, input]) => ({
             value,
             label,
-            visible: Boolean(inputsByKey[input]?.visible),
+            // Standalone fields (e.g. the always-on prompt) are not source
+            // modes, so they never appear as a switch option.
+            visible: Boolean(inputsByKey[input]?.visible) && !inputsByKey[input]?.standalone,
             input,
         })),
+    };
+}
+
+function promptField(node) {
+    if (!node) return null;
+    const hint = widgetValue(node, "prompt");
+    return {
+        key: "prompt",
+        label: "Prompt",
+        visible: true,
+        standalone: true,
+        multiline: true,
+        target: { node: String(node.id), input: "prompt" },
+        default: "",
+        placeholder: typeof hint === "string" ? hint : "",
+        help: PUBLISH_PROMPT_HELP,
     };
 }
 
@@ -178,6 +201,8 @@ function inferAppSurface(graph) {
     const outputNode = firstNodeOfType(outputNodes, PUBLISH_OUTPUT_CLASS);
     const resultNode = firstNodeOfType(outputNodes, PUBLISH_RESULT_CLASS);
     const inputs = fieldSpecs(inputNode, PUBLISH_INPUT_FIELDS);
+    const prompt = promptField(inputNode);
+    if (prompt) inputs.push(prompt);
     const app = {
         inputs,
         outputs: fieldSpecs(outputNode, PUBLISH_OUTPUT_FIELDS),

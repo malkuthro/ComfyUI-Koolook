@@ -18,10 +18,12 @@ from pathlib import Path
 
 import pytest
 
+import k_video_combine
 from k_video_combine import (
     _add_metadata_json_sidecar,
     _append_video_path_outputs,
     _append_version_to_prefix,
+    _auto_version_scan_target,
     _build_sidecar_workflow,
     _coerce_version_input,
     _compose_prefix,
@@ -334,6 +336,59 @@ def test_append_version_to_filename_root() -> None:
 
 def test_append_version_no_token_is_noop() -> None:
     assert _append_version_to_prefix("clip", "") == "clip"
+
+
+def test_auto_version_scan_target_for_relative_prefix_uses_comfy_output_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "comfy-output"
+    monkeypatch.setattr(
+        k_video_combine,
+        "folder_paths",
+        type("FolderPaths", (), {"get_output_directory": staticmethod(lambda: str(output_dir))}),
+        raising=False,
+    )
+
+    scan_dir, name = _auto_version_scan_target("AnimateDiff")
+
+    assert Path(scan_dir) == output_dir
+    assert name == "AnimateDiff"
+
+
+def test_auto_version_scan_target_for_relative_subfolder_uses_comfy_output_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "comfy-output"
+    monkeypatch.setattr(
+        k_video_combine,
+        "folder_paths",
+        type("FolderPaths", (), {"get_output_directory": staticmethod(lambda: str(output_dir))}),
+        raising=False,
+    )
+
+    scan_dir, name = _auto_version_scan_target("renders/AnimateDiff")
+
+    assert Path(scan_dir) == output_dir / "renders"
+    assert name == "AnimateDiff"
+
+
+def test_auto_version_scan_target_does_not_fallback_to_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_output_dir():
+        raise RuntimeError("output directory unavailable")
+
+    monkeypatch.setattr(
+        k_video_combine,
+        "folder_paths",
+        type("FolderPaths", (), {"get_output_directory": staticmethod(fail_output_dir)}),
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeError, match="output directory unavailable"):
+        _auto_version_scan_target("AnimateDiff")
 
 
 def test_strict_version_strips_counter_and_writes_matching_sidecar(tmp_path: Path) -> None:

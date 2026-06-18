@@ -548,6 +548,10 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
             return web.Response(
                 text=path.read_text(encoding="utf-8"),
                 content_type=content_type,
+                # These assets are dev-synced in place; without no-store the
+                # browser caches them and keeps running stale JS/HTML after an
+                # update, which looks like "the fix didn't land". Always revalidate.
+                headers={"Cache-Control": "no-store"},
             )
         except OSError as exc:
             raise web.HTTPNotFound(reason=f"Koolook web asset '{filename}' not found.") from exc
