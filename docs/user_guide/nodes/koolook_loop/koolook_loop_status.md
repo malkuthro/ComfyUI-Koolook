@@ -26,16 +26,27 @@ Key inputs:
 - `filepath`: optional sequence path used only for the printed status line.
 - `label`: status label, for example `EXR_SAFE`.
 - `auto_queue_next`: when enabled, submit the next prompt automatically.
-- `index_node_id`: node id of the connected `easy int` frame-index node. If this
-  is blank, the node attempts to infer it from the connected `index` input.
-- `server_url`: local ComfyUI server URL, usually `http://127.0.0.1:8188`.
+- `index_node_id`: advanced override for the connected `easy int` frame-index
+  node — leave it blank for normal use. The node infers the frame-index node from
+  the connected `index` input and logs the detected node class/id when it queues
+  the next frame. If a saved workflow carries a stale manual id (e.g. a widget
+  value shifted to `0`), the connected `index` input is used instead so the loop
+  self-heals; if it still cannot resolve a real node, auto-queue fails up front
+  with a clear message instead of silently aborting into a marker file.
+- `server_url`: where to queue the next prompt. Defaults to `auto`, which detects
+  the running ComfyUI server (its real port included) — so an install launched
+  with `--port 8000` queues correctly without editing the widget. Leave it at
+  `auto` (or blank) for normal use; set an explicit `http://host:port` only to
+  target a different server, where it is used verbatim.
 - `max_auto_queue_depth`: hard safety cap for how many child prompts this node
   may chain from the current frame.
 - `remaining_auto_queue_depth`: internal countdown carried into child prompts.
   Leave this at `-1` in normal canvas use.
 
 If an older saved workflow accidentally shifts widget values and puts a numeric
-node id into `label`, the node treats that numeric label as `index_node_id`,
-prints a recovery note, and uses `EXR_SAFE` as the label. This keeps older loop
-demo saves from crashing, but new workflows should set `label` and
-`index_node_id` explicitly.
+node id into `label`, the node resets the label to `EXR_SAFE` and keeps that
+number only as a *last-resort* fallback frame-index id — the connected `index`
+input still wins, so the loop follows the wiring deterministically (you do not
+need to clear the `label` by hand). This keeps older loop demo saves from
+crashing, but new workflows should set `label` explicitly and leave
+`index_node_id` blank unless there is a specific override reason.
