@@ -37,17 +37,30 @@ class KoolookLoadCameraPosesAbsolute:
                     {
                         "default": "input/poses/example_track.txt",
                         "multiline": False,
+                        "tooltip": "Absolute or user-expanded path to a RealEstate10k-style CameraCtrl pose TXT file.",
                     },
                 ),
             },
             "optional": {
                 "pose_width": (
                     "FLOAT",
-                    {"default": DEFAULT_POSE_WIDTH, "min": 1.0, "max": 16384.0, "step": 1.0},
+                    {
+                        "default": DEFAULT_POSE_WIDTH,
+                        "min": 1.0,
+                        "max": 16384.0,
+                        "step": 1.0,
+                        "tooltip": "Width value written into each pose row before returning CAMERACTRL_POSES.",
+                    },
                 ),
                 "pose_height": (
                     "FLOAT",
-                    {"default": DEFAULT_POSE_HEIGHT, "min": 1.0, "max": 16384.0, "step": 1.0},
+                    {
+                        "default": DEFAULT_POSE_HEIGHT,
+                        "min": 1.0,
+                        "max": 16384.0,
+                        "step": 1.0,
+                        "tooltip": "Height value written into each pose row before returning CAMERACTRL_POSES.",
+                    },
                 ),
             },
         }

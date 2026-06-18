@@ -77,6 +77,15 @@ The format is inspired by Keep a Changelog and SemVer.
   `docs/workflows/kforge-labs-workflows/` for release review and future demo
   additions. The loop demo ships with auto-queue disabled until the user sets a
   writable output folder.
+- **User help coverage for shipped publish and CameraCtrl helper nodes.** The
+  README and user-guide index now list the `Koolook/Publish` contract nodes
+  (`Koolook_PublishInput`, `Koolook_PublishOutput`,
+  `Koolook_PublishRouter`, `Koolook_PublishResult`) and the
+  `KoolookLoadCameraPosesAbsolute` camera helper. New user-guide pages explain
+  the published-setup authoring group layout, router/result roles, and the
+  RealEstate10k-style pose file format. Hover tooltips were filled in for the
+  loop-status and camera-pose widgets, and the publish-contract tooltips now
+  describe their external-app role more directly.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and
