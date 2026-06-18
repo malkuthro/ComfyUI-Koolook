@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Easy Image Batch — behavior matrix (proposed)
 
-Status: **DRAFT — awaiting maintainer approval.** Once approved this becomes
-the canonical behavior reference and is folded into
+Status: **Canonical** (approved 2026-06-18). Implemented in
+`k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
 Companions:
 - [`easy-image-batch-matrix.html`](easy-image-batch-matrix.html) — interactive
@@ -11,8 +11,9 @@ Companions:
   loadable ComfyUI workflow with one `Easy Pattern → Easy Image Batch →
   Preview Image` cluster per matrix row (regenerate via
   [`build_easy_image_batch_demo.py`](build_easy_image_batch_demo.py)). Load it
-  in ComfyUI to run all modes side by side. **Requires the new node code** —
-  the super-overwrite rows behave per this spec only after implementation.
+  in ComfyUI to run all modes side by side against the live node. (The
+  interactive demos were generated from an earlier draft; if a demo row
+  disagrees with the matrix below, the matrix and the node are canonical.)
 
 This captures the agreed changes:
 
@@ -54,6 +55,12 @@ output index i  ↔  VFX frame v = cut_start_frame + i        (window: i in [0, 
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**Background rule.** Layer 1 is the source cut window whenever `source_batch`
+is connected **and** either an insert is active (`keyframes_insert`) **or** the
+`source_frames` list is empty; otherwise it is `placeholder_color`. So an
+empty-list select with a `source_batch` passes the source straight through —
+the same backdrop as insert-over-source (rows 5 and 9 behave identically).
+
 **What counts as "placed"** (drives `alpha_batch`, `selected_image_batch`,
 `selected_frames`): Layer 2 placements **and** Layer 3 overwrites. The Layer 1
 `source_batch` *background* is **not** placed — it is just the backdrop. So
@@ -82,7 +89,7 @@ list = **list**, connected `image1–4` = **slots**.
 | 2 | ✗ | ✓ | has | none | placeholder | source picks at listed positions | the picks | select |
 | 3 | ✗ | ✗ | — | some | placeholder | connected slots | the slots | select (slots) |
 | 4 | ✗ | ✓ | has | some | placeholder | source picks **+** slots (slots win on overlap) | picks + slots | select |
-| 5 | ✗ | ✓ | empty | none | placeholder | nothing | empty | clean (nothing placed) |
+| 5 | ✗ | ✓ | empty | none | **source cut window** | nothing | empty | source passthrough |
 | 6 | ✓ | ✗ | has | none | placeholder | scattered inserts | the inserts | offset / reconstruct |
 | 7 | ✓ | ✗ | empty | none | placeholder | nothing | empty | **clean** (nothing inserted) |
 | 8 | ✓ | ✓ | has | none | **source cut window** | scattered inserts (overwrite source) | the inserts | insert-over-source |
@@ -90,9 +97,9 @@ list = **list**, connected `image1–4` = **slots**.
 | 10 | ✓ | ✓ | has | some | **source cut window** | inserts **+** slots (slots win) | inserts + slots | insert-over-source |
 | 11 | any | any | any | **set but NOT connected** | (per above) | **slots contribute nothing** | (per above) | (per above) |
 
-Row **11** is the bug being fixed: a slot with a non-default `imageN_frame`
-that is **not wired** must have zero effect on the output. Today an unconnected
-slot still pulls from `source_batch` (rows 2/5-like states) — that goes away.
+Row **11** was the bug fixed here: a slot with a non-default `imageN_frame`
+that is **not wired** has zero effect on the output. The old behaviour (an
+unconnected slot pulling from `source_batch`) is gone.
 
 ---
 
@@ -112,10 +119,12 @@ slot still pulls from `source_batch` (rows 2/5-like states) — that goes away.
 
 ---
 
-## Open questions for the maintainer
+## Decisions (resolved)
 
-1. **Tie-break direction** — is "higher-numbered slot wins" what you want, or
-   should `image1` win? (Either is one line.)
-2. **Row 9 label** — "source passthrough" vs something clearer in the console.
-3. Anything in the matrix that doesn't match your mental model — flag the row
-   number.
+1. **Tie-break direction** — higher-numbered slot wins (`image4` > `image1`);
+   a slot beats a sequence pick / insert at the same index (Layer 3 > Layer 2).
+2. **Empty-list passthrough** — `source_batch` + an empty list (no insert)
+   passes the source cut window through (row 5), consistent with the
+   insert-mode empty-list passthrough (row 9), rather than a placeholder batch.
+3. **Mode-2 fallback removed** — an unconnected slot never pulls from
+   `source_batch`; `imageN_frame` is only a placement target for a wired image.

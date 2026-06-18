@@ -7,6 +7,22 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Easy Image Batch — `image1-4` super-overwrite + source passthrough.** The
+  four manual slots are now the top compositing layer in **every** mode: a
+  connected `imageN` overwrites output frame `imageN_frame` on top of the
+  sequence/inserts and the background, in select *and* insert modes (they were
+  previously ignored whenever `keyframes_insert` was connected). On a
+  collision the higher-numbered slot wins (`image4` > `image1`), and a slot
+  beats a sequence pick / insert at the same position. Two model fixes ride
+  along: an **unconnected** slot now contributes nothing — `imageN_frame` is
+  only a placement target for a wired image, never a `source_batch` pick (the
+  old "pull `source_batch[imageN_frame-1]`" fallback that surfaced
+  seemingly-random frames is removed); and **`source_batch` + an empty frame
+  list (no insert) now passes the source cut window straight through** instead
+  of emitting a placeholder batch, matching the empty-list insert passthrough
+  so "source in → source out" is consistent. Slot placement is a pure,
+  torch-free planner (`plan_slot_overwrites`) unit-tested in CI alongside the
+  existing insert planners.
 - **Easy Image Batch — insert modes (`keyframes_insert`).** A new optional
   `keyframes_insert` input (renamed from the unreleased `keyframe_batch`)
   adds the inverse of the node's select behaviour. When connected, the node
