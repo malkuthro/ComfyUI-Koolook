@@ -178,7 +178,10 @@ The format is inspired by Keep a Changelog and SemVer.
   scripts upgrade `setuptools` alongside `pip` before audit. The test lock was
   regenerated to move `aiohttp` from 3.14.0 to the fixed 3.14.1 line, and the
   relock path now avoids editable Git metadata inspection so Windows
-  cross-drive worktrees can regenerate the lock cleanly.
+  cross-drive worktrees can regenerate the lock cleanly. The `[test]` extra's
+  `aiohttp` floor was also raised from `>=3.9` to `>=3.14.1` so the declared
+  dependency range can no longer resolve a vulnerable version, clearing the
+  eight range-based Dependabot alerts the lock bump alone left open.
 - **`Koolook_LoopStatus` auto-queue failed on non-default ports.** The
   node's `server_url` defaulted to ComfyUI's standard port
   (`http://127.0.0.1:8188`), so installs launched with `--port` (or

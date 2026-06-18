@@ -71,5 +71,7 @@ addopts = ["--import-mode=importlib"]
 # ComfyUI custom node is not installed as a package in the workflow.
 # Locally use ``.venv/bin/pip install -e '.[test]'`` from the repo root.
 # ``aiohttp`` is a runtime dep of ``koolook_routes`` and must be importable
-# even when only a pure helper is under test.
-test = ["pytest>=8", "aiohttp>=3.9", "pip-audit>=2.7", "Pillow>=10"]
+# even when only a pure helper is under test. The lower bound is pinned to
+# the CVE-2026-54273..54280 fix line (>=3.14.1) so the declared range can't
+# resolve a vulnerable aiohttp; the lock (constraints-test.txt) matches.
+test = ["pytest>=8", "aiohttp>=3.14.1", "pip-audit>=2.7", "Pillow>=10"]
