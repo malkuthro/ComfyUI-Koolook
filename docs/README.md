@@ -8,6 +8,7 @@ Three audience buckets — pick where to look based on what you're trying to do.
 | Look something up — a term, a node ID, a list | [`reference/`](reference/) | [Glossary](reference/glossary.md), node inventory, spec sheets |
 | Cut a release / fork a node / debug CI / hit the Comfy Registry API | [`maintainers/`](maintainers/) | [Releasing](maintainers/releasing.md), [Registry API](maintainers/registry-api.md), [Node versioning rules](maintainers/node-versioning.md) |
 | Compare UI design proposals before implementation | [`designs/`](designs/) | Focused mockups and screenshots for in-progress UX decisions |
+| Inspect bundled demo workflows | [`workflows/`](workflows/) | Source copies of release-ready workflows seeded into the Kforge Labs sidebar |
 | Run AI-assisted model evaluation loops | [`automations/`](automations/) | Visual loop overview, setup contract, per-model findings, and `/make-card` workflow |
 
 ## Files that intentionally stay at the repo root
