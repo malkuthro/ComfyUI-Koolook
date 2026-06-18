@@ -43,6 +43,12 @@ sequence onto the keyframe positions from the frame list — placing frame
 node emits a clean placeholder batch sized by the `width`/`height` widgets
 instead of raising an error.
 
+> **Demo workflow.** A runnable **Easy Image Batch — Select and Rebuild** demo
+> is bundled in the **Kforge Labs Workflows** sidebar folder (source:
+> `docs/workflows/kforge-labs-workflows/Easy Image Batch - Select and
+> Rebuild.json`). Load it to walk the select → process → rebuild loop and the
+> layer / passthrough behaviour end to end.
+
 ## Inputs
 
 ### Required widgets

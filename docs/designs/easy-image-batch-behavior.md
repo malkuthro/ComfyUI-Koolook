@@ -5,6 +5,12 @@ Status: **Canonical** (approved 2026-06-18). Implemented in
 `k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
 
+Runnable demo: the **Easy Image Batch — Select and Rebuild** workflow bundled
+in the Kforge Labs Workflows sidebar folder
+(`docs/workflows/kforge-labs-workflows/`), added in
+[#248](https://github.com/malkuthro/ComfyUI-Koolook/pull/248) — a maintainer
+workflow that supersedes the generated demo removed here.
+
 This captures the agreed changes:
 
 1. `keyframe_batch` → **`keyframes_insert`** (rename).
