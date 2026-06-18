@@ -7,6 +7,12 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Bundled Kforge Labs demo workflows.** Fresh sidebar installs now seed a
+  **Kforge Labs Workflows** folder with `Easy Image Batch - Select and
+  Rebuild` and `LOOP Demo`, and the source workflow JSONs are tracked under
+  `docs/workflows/kforge-labs-workflows/` for release review and future demo
+  additions. The loop demo ships with auto-queue disabled until the user sets a
+  writable output folder.
 - **Easy Image Batch — offset mode (`keyframe_batch`).** A new optional
   `keyframe_batch` input adds the inverse of the node's select behaviour.
   When connected, the node switches from *selecting* sparse keyframes out of
