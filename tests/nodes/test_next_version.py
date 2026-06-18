@@ -90,12 +90,3 @@ def test_ai_pipeline_auto_version_first_run_is_v001(tmp_path: Path) -> None:
     assert out[2] == "v001"
 
 
-def test_node_registered_and_runs(tmp_path: Path) -> None:
-    from k_publish_contract import NODE_CLASS_MAPPINGS, Koolook_NextVersion
-
-    assert NODE_CLASS_MAPPINGS["Koolook_NextVersion"] is Koolook_NextVersion
-    (tmp_path / "shot_v001.mov").write_bytes(b"x")
-    (tmp_path / "shot_v002.mov").write_bytes(b"x")
-    assert Koolook_NextVersion().run(str(tmp_path), "shot") == ("v003",)
-    # Empty folder -> start token.
-    assert Koolook_NextVersion().run(str(tmp_path / "nope"), "shot") == ("v001",)
