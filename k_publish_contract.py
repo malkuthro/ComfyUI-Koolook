@@ -6,6 +6,11 @@
 
 from __future__ import annotations
 
+try:
+    from .koolook_versioning import next_version_token
+except ImportError:  # pragma: no cover - direct import in tests
+    from koolook_versioning import next_version_token
+
 
 INPUT_MODES: tuple[str, ...] = ("EXR", "QT", "Img", "Prompt")
 INPUT_MODE_TO_INDEX = {name: index for index, name in enumerate(INPUT_MODES)}
@@ -200,11 +205,78 @@ class Koolook_PublishRouter:
         return (payload, payload, payload, payload)
 
 
+class Koolook_NextVersion:
+    """Auto-detect the next free output version token for an existing path.
+
+    Scans ``folder`` for existing ``<name>_vNNN`` files/sequence-folders and
+    outputs the next token (e.g. ``v003``). Wire ``version`` into the writers'
+    version inputs so a re-run lands on a fresh version instead of failing on an
+    existing file. One source feeds every branch (EXR + video) so they stay in
+    sync. ``folder``/``name`` typically come from ``Koolook Publish Output``.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "Output directory to scan for existing <name>_vNNN entries.",
+                    },
+                ),
+                "name": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "Base output name (the part before _vNNN).",
+                    },
+                ),
+            },
+            "optional": {
+                "version_prefix": (
+                    "STRING",
+                    {"default": "v", "tooltip": "Version prefix; 'v' -> v001."},
+                ),
+                "padding": (
+                    "INT",
+                    {"default": 3, "min": 1, "max": 8, "tooltip": "Zero-pad width, e.g. 3 -> v001."},
+                ),
+                "start": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 0,
+                        "max": 99999,
+                        "tooltip": "Token to use when no existing version is found.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("version",)
+    CATEGORY = "Koolook/Publish"
+    FUNCTION = "run"
+
+    def run(self, folder, name, version_prefix="v", padding=3, start=1):
+        return (next_version_token(folder, name, version_prefix, padding, start),)
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        # The next version depends on current directory contents, so re-scan on
+        # every run rather than caching a stale token.
+        return float("nan")
+
+
 NODE_CLASS_MAPPINGS = {
     "Koolook_PublishInput": Koolook_PublishInput,
     "Koolook_PublishOutput": Koolook_PublishOutput,
     "Koolook_PublishResult": Koolook_PublishResult,
     "Koolook_PublishRouter": Koolook_PublishRouter,
+    "Koolook_NextVersion": Koolook_NextVersion,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -212,4 +284,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Koolook_PublishOutput": "Koolook Publish Output",
     "Koolook_PublishResult": "Koolook Publish Result",
     "Koolook_PublishRouter": "Koolook Publish Router",
+    "Koolook_NextVersion": "Koolook Next Version",
 }
