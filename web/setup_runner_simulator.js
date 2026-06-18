@@ -343,6 +343,13 @@ export function defaultRunInputsFromSetup(setup) {
             if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
         }
     }
+    if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.standalone && field?.visible !== false && field?.key) {
+                inputs[field.key] = fieldDefault(field);
+            }
+        }
+    }
     if (Array.isArray(app.outputs)) {
         for (const field of app.outputs) {
             if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
@@ -368,6 +375,13 @@ export function runInputsFromAppValues(setup, values = {}) {
     } else if (Array.isArray(app.inputs)) {
         for (const field of app.inputs) {
             if (field?.visible !== false && field?.key) {
+                inputs[field.key] = values[field.key] ?? fieldDefault(field);
+            }
+        }
+    }
+    if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.standalone && field?.visible !== false && field?.key) {
                 inputs[field.key] = values[field.key] ?? fieldDefault(field);
             }
         }
@@ -438,7 +452,16 @@ function demoFetch(url, options = {}) {
                         { key: "sequence_folder", label: "Sequence folder", visible: true, default: "/shots/demo/plates" },
                         { key: "qt_file", label: "QT file", visible: true, default: "/shots/demo/source.mov" },
                         { key: "single_file", label: "Single file", visible: true, default: "/shots/demo/source.png" },
-                        { key: "prompt", label: "Prompt", visible: false, default: "" },
+                        {
+                            key: "prompt",
+                            label: "Prompt",
+                            visible: true,
+                            standalone: true,
+                            multiline: true,
+                            default: "",
+                            placeholder: "a bear talking to the camera in a sunny forest",
+                            help: "Describe the shot in one simple line: subject + action + setting.",
+                        },
                     ],
                     outputs: [
                         { key: "folder", label: "Output folder", visible: true, default: "/shots/demo/output" },
@@ -534,10 +557,17 @@ function bindSimulator(documentRef, fetchImpl) {
         const label = documentRef.createElement("label");
         label.dataset.fieldKey = name || field.key;
         label.textContent = fieldLabelText(field);
-        const input = documentRef.createElement("input");
+        const input = documentRef.createElement(field?.multiline ? "textarea" : "input");
         input.dataset.appField = name || field.key;
         input.value = value == null ? "" : String(value);
+        if (field?.placeholder) input.placeholder = String(field.placeholder);
         label.appendChild(input);
+        if (field?.help) {
+            const help = documentRef.createElement("small");
+            help.className = "field-help";
+            help.textContent = String(field.help);
+            label.appendChild(help);
+        }
         input.addEventListener("input", updatePayloadPreview);
         return label;
     }
@@ -591,6 +621,13 @@ function bindSimulator(documentRef, fetchImpl) {
             };
             select.addEventListener("change", renderSourceField);
             renderSourceField();
+            // Always-on inputs (e.g. the prompt) render alongside the source,
+            // independent of the selected switch mode.
+            for (const field of app.inputs || []) {
+                if (field?.standalone && field?.visible !== false && field?.key) {
+                    appForm.appendChild(createInputField(field, { value: fieldDefault(field) }));
+                }
+            }
         } else if (Array.isArray(app.inputs)) {
             for (const field of app.inputs) {
                 if (field?.visible !== false && field?.key) {
