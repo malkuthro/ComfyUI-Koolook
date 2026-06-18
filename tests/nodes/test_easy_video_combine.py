@@ -374,6 +374,23 @@ def test_auto_version_scan_target_for_relative_subfolder_uses_comfy_output_dir(
     assert name == "AnimateDiff"
 
 
+def test_auto_version_scan_target_does_not_fallback_to_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_output_dir():
+        raise RuntimeError("output directory unavailable")
+
+    monkeypatch.setattr(
+        k_video_combine,
+        "folder_paths",
+        type("FolderPaths", (), {"get_output_directory": staticmethod(fail_output_dir)}),
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeError, match="output directory unavailable"):
+        _auto_version_scan_target("AnimateDiff")
+
+
 def test_strict_version_strips_counter_and_writes_matching_sidecar(tmp_path: Path) -> None:
     """The headline contract: <root>_v001_00001.mp4 -> <root>_v001.mp4 with a
     matching <root>_v001.json beside it."""

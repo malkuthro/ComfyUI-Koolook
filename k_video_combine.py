@@ -401,10 +401,7 @@ def _auto_version_scan_target(effective_prefix: str) -> tuple[str, str]:
     directory = os.path.dirname(effective_prefix)
     if os.path.isabs(effective_prefix):
         return directory, name
-    try:
-        output_root = folder_paths.get_output_directory()
-    except Exception:
-        output_root = os.getcwd()
+    output_root = folder_paths.get_output_directory()
     return os.path.normpath(os.path.join(output_root, directory)), name
 
 
