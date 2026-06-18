@@ -6,7 +6,7 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-06-18
+## [0.4.1] - 2026-06-18
 
 ### Added
 - **Sidebar update notice.** The Kforge Labs sidebar now checks the installed
