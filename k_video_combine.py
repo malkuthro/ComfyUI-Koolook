@@ -37,9 +37,17 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 try:
-    from .koolook_versioning import resolve_version_token
+    from .koolook_versioning import (
+        is_auto_version,
+        next_version_token,
+        resolve_version_token,
+    )
 except ImportError:  # pragma: no cover - standalone (pytest / tooling)
-    from koolook_versioning import resolve_version_token
+    from koolook_versioning import (
+        is_auto_version,
+        next_version_token,
+        resolve_version_token,
+    )
 
 try:
     import folder_paths  # ComfyUI core; always present at runtime.
@@ -765,9 +773,9 @@ if _VHS_AVAILABLE:
             # Strict versioning: a wired/typed token replaces VHS's automatic
             # _NNNNN counter with a deterministic <prefix>_<token>.<ext> name.
             # Empty -> the counter stays (the casual, non-professional default).
-            version_token = resolve_version_token(
-                _coerce_version_input(kwargs.pop("version", ""))
-            )
+            # The token is resolved below, once the output dir + name root are
+            # known (so `auto`/`next` can scan that folder).
+            raw_version = _coerce_version_input(kwargs.pop("version", ""))
             metadata_payload = _build_sidecar_workflow(
                 kwargs.get("prompt"),
                 kwargs.get("extra_pnginfo"),
@@ -795,6 +803,17 @@ if _VHS_AVAILABLE:
             # slipped past per-field normalization (e.g. a path that
             # already carried `\undefined\` as a literal segment).
             effective_prefix = _strip_sentinel_components(effective_prefix)
+            # Resolve the version token now that the output dir + name root are
+            # known. `auto`/`next` scans that directory for existing
+            # <name>_vNNN outputs and picks the next free one; otherwise the
+            # typed/wired token is used verbatim.
+            if is_auto_version(raw_version):
+                version_token = next_version_token(
+                    os.path.dirname(effective_prefix),
+                    os.path.basename(effective_prefix),
+                )
+            else:
+                version_token = resolve_version_token(raw_version)
             # Strict versioning bakes the token into the filename root; VHS
             # then appends its counter, which _finalize_output strips back off.
             if version_token:

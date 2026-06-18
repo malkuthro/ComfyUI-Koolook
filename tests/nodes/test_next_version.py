@@ -53,6 +53,43 @@ def test_empty_name_matches_bare_version_tokens(tmp_path: Path) -> None:
     assert next_version_token(str(tmp_path), "") == "v005"
 
 
+def test_is_auto_version_detects_keywords() -> None:
+    from koolook_versioning import is_auto_version
+
+    for yes in ("auto", "AUTO", " next ", "Next", '"auto"'):
+        assert is_auto_version(yes) is True
+    for no in ("", "v001", "3", "final", "automatic", None):
+        assert is_auto_version(no) is False
+
+
+def test_ai_pipeline_auto_version_picks_next(tmp_path: Path) -> None:
+    from k_ai_pipeline import build_pipeline_outputs
+
+    # Existing version folders v001/v002 under the base (no_subfolders mode).
+    (tmp_path / "v001").mkdir()
+    (tmp_path / "v002").mkdir()
+    out = build_pipeline_outputs(
+        81, 1, "", str(tmp_path), ".png", "bearMask", "", "auto",
+        False, False, True,
+        create_directory=False, check_overwrite=False,
+    )
+    file_path, name, version_str = out[0], out[1], out[2]
+    assert version_str == "v003"
+    assert name == "bearMask_v003.png"
+    assert file_path.endswith("/v003/bearMask_v003.png")
+
+
+def test_ai_pipeline_auto_version_first_run_is_v001(tmp_path: Path) -> None:
+    from k_ai_pipeline import build_pipeline_outputs
+
+    out = build_pipeline_outputs(
+        81, 1, "", str(tmp_path), ".png", "bearMask", "", "auto",
+        False, False, True,
+        create_directory=False, check_overwrite=False,
+    )
+    assert out[2] == "v001"
+
+
 def test_node_registered_and_runs(tmp_path: Path) -> None:
     from k_publish_contract import NODE_CLASS_MAPPINGS, Koolook_NextVersion
 

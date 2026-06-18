@@ -29,6 +29,16 @@ import re
 # "undefined" / "null" / "None" instead of "".
 _SENTINEL_STRINGS = ("undefined", "null", "none")
 
+# Typed into a version field to request filesystem auto-detection of the next
+# free version instead of a literal token. Nodes detect this and call
+# ``next_version_token`` with their own output directory + name.
+_AUTO_VERSION_TOKENS = ("auto", "next")
+
+
+def is_auto_version(value) -> bool:
+    """True when a version field requests auto-detection (``auto`` / ``next``)."""
+    return normalize_version_token(value).lower() in _AUTO_VERSION_TOKENS
+
 
 def normalize_version_token(value) -> str:
     """Clean a wired/typed version string into a safe single token.

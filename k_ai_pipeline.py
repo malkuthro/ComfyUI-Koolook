@@ -2,9 +2,17 @@ import ntpath
 import os
 
 try:
-    from .koolook_versioning import resolve_version_token
+    from .koolook_versioning import (
+        is_auto_version,
+        next_version_token,
+        resolve_version_token,
+    )
 except ImportError:  # pragma: no cover - standalone (pytest / tooling)
-    from koolook_versioning import resolve_version_token
+    from koolook_versioning import (
+        is_auto_version,
+        next_version_token,
+        resolve_version_token,
+    )
 
 
 _SENTINEL_STRINGS = ("undefined", "null", "none")
@@ -235,7 +243,6 @@ def build_pipeline_outputs(
     # splitext returns ".exr " with the space, which doesn't match ".exr".
     # Strip all whitespace (internal + surrounding), not just control chars.
     extension = "".join(extension.split())
-    version_str = resolve_version_token(version, disable_versioning)
 
     # Sanitize the segments that get joined onto base_directory_path. Without this an
     # absolute-looking shot_name like "/oops" or "C:/Windows" would escape the base via
@@ -243,6 +250,22 @@ def build_pipeline_outputs(
     # the return tuple (downstream nodes that use shot_name as a label, not a path).
     shot_name_seg = _sanitize_segment(shot_name)
     ai_method_seg = _sanitize_segment(ai_method)
+
+    # Resolve the version token. ``auto``/``next`` scans the folder that holds the
+    # vNNN version dirs (base, or base/shot/method when subfolders are on) and
+    # picks the next free version, so a re-run never collides with an existing
+    # output. Otherwise the typed/wired token is used verbatim.
+    if disable_versioning:
+        version_str = ""
+    elif is_auto_version(version):
+        if no_subfolders:
+            version_parent = base_directory_path
+        else:
+            version_parent = os.path.join(base_directory_path, shot_name_seg, ai_method_seg)
+        version_parent = _strip_sentinel_components(version_parent.replace("\\", "/"))
+        version_str = next_version_token(version_parent, "")
+    else:
+        version_str = resolve_version_token(version, disable_versioning)
 
     # Build output directory. With no_subfolders on, shot_name and ai_method drop out
     # of the path entirely (they only end up in the filename below); the version
