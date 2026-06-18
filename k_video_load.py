@@ -300,6 +300,11 @@ if _VHS_AVAILABLE:
             if composed == EMPTY_BRANCH_SENTINEL:
                 # Unselected branch (existing folder, no filename): return an
                 # empty, correctly-shaped result so the prompt does not crash.
+                print(
+                    "[Easy_LoadVideo] input_path resolved to an existing folder "
+                    "with no video filename; returning an empty branch result. "
+                    "If this is the selected video branch, set the video filename."
+                )
                 return _empty_load_video_result(self.RETURN_TYPES)
             kwargs["video"] = composed
             if _is_existing_local_video_path(kwargs["video"]):

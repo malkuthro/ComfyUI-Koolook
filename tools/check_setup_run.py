@@ -56,6 +56,31 @@ def _post(url: str, payload: dict, timeout: float = 60.0):
         return json.load(r)
 
 
+def _progress_signature(run: dict) -> str:
+    outputs = []
+    for output in run.get("outputs") or []:
+        if not isinstance(output, dict):
+            continue
+        items = output.get("items") if isinstance(output.get("items"), list) else []
+        outputs.append(
+            {
+                "key": output.get("key"),
+                "itemCount": len(items),
+                "values": [item.get("value", "") for item in items if isinstance(item, dict) and item.get("value")],
+            }
+        )
+    return json.dumps(
+        {
+            "status": str(run.get("status", "")).lower(),
+            "promptId": run.get("promptId", ""),
+            "queuePosition": run.get("queuePosition", run.get("position")),
+            "updatedAt": run.get("updatedAt") or run.get("timestamp") or run.get("lastUpdate") or "",
+            "outputs": outputs,
+        },
+        sort_keys=True,
+    )
+
+
 def list_setups(base: str) -> list[dict]:
     body = _get(f"{base}/koolook/api/setups")
     rows = body.get("setups") if isinstance(body, dict) else body
@@ -123,10 +148,12 @@ def main() -> int:
         print("FAIL: no runId returned.")
         return 1
 
-    # Poll exactly like the simulator: treat --stall as a no-progress window that
-    # resets while ComfyUI keeps reporting the run active, so long renders are fine.
+    # Poll exactly like the simulator: treat --stall as a no-progress window.
+    # The deadline resets only when the run payload changes in a meaningful way;
+    # repeated queued/running responses with no changing marker are a stall.
     deadline = time.monotonic() + args.stall
     last_status = None
+    last_progress = _progress_signature(run)
     while time.monotonic() <= deadline:
         time.sleep(args.interval)
         try:
@@ -149,7 +176,10 @@ def main() -> int:
                         print(f"  {out.get('label') or out.get('key')}: {item['value']}")
             return 0 if ok else 1
         if status in ACTIVE:
-            deadline = time.monotonic() + args.stall
+            progress = _progress_signature(run)
+            if progress != last_progress:
+                last_progress = progress
+                deadline = time.monotonic() + args.stall
 
     print(f"\nFAIL: no terminal status within the {args.stall}s no-progress window.")
     return 1

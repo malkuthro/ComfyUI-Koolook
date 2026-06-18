@@ -211,11 +211,11 @@ export async function runAndPollPublishedSetup({
         return queued;
     }
     let lastRun = queued;
+    let lastProgress = runProgressSignature(queued);
     // Renders can run for many minutes, so timeoutMs is a "no progress" window
-    // rather than a total budget: while ComfyUI keeps reporting the run as
-    // queued/running, the deadline is pushed forward, so a long-but-active
-    // render never spuriously times out. Only a stalled or vanished run (no
-    // active/terminal status within the window) gives up.
+    // rather than a total budget. The deadline resets only when the run payload
+    // changes in a meaningful way; the same queued/running response forever is
+    // treated as stalled instead of active progress.
     let deadline = Date.now() + timeoutMs;
     while (Date.now() <= deadline) {
         await sleepImpl(intervalMs);
@@ -223,11 +223,37 @@ export async function runAndPollPublishedSetup({
         if (typeof onUpdate === "function") onUpdate(lastRun);
         const status = String(lastRun?.status || "").toLowerCase();
         if (TERMINAL_RUN_STATUSES.has(status)) return lastRun;
-        if (ACTIVE_RUN_STATUSES.has(status)) deadline = Date.now() + timeoutMs;
+        if (ACTIVE_RUN_STATUSES.has(status)) {
+            const progress = runProgressSignature(lastRun);
+            if (progress !== lastProgress) {
+                lastProgress = progress;
+                deadline = Date.now() + timeoutMs;
+            }
+        }
     }
     const error = new Error(`Timed out waiting for run ${runId}.`);
     error.run = lastRun;
     throw error;
+}
+
+function runProgressSignature(run) {
+    if (!run || typeof run !== "object") return "";
+    const outputs = Array.isArray(run.outputs)
+        ? run.outputs.map(output => ({
+            key: output?.key,
+            itemCount: Array.isArray(output?.items) ? output.items.length : 0,
+            values: Array.isArray(output?.items)
+                ? output.items.map(item => item?.value ?? "").filter(Boolean)
+                : [],
+        }))
+        : [];
+    return JSON.stringify({
+        status: String(run.status || "").toLowerCase(),
+        promptId: run.promptId || "",
+        queuePosition: run.queuePosition ?? run.position ?? null,
+        updatedAt: run.updatedAt || run.timestamp || run.lastUpdate || "",
+        outputs,
+    });
 }
 
 export function formatRun(run) {

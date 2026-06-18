@@ -64,3 +64,11 @@ def test_api_prompt_capture_closes_temporary_workflow_tabs() -> None:
     assert "app?.extensionManager?.workflow" in source
     assert "typeof store.closeWorkflow !== \"function\"" in source
     assert "warnIfUnsaved: false" in source
+
+
+def test_api_prompt_capture_warns_when_workflow_discovery_fails() -> None:
+    source = (REPO_ROOT / "web/sidebar/canvas_io.js").read_text(encoding="utf-8")
+
+    assert "could not inspect Comfy workflow store for publish cleanup" in source
+    assert "could not snapshot open workflows for publish cleanup" in source
+    assert "could not read active workflow for publish cleanup" in source

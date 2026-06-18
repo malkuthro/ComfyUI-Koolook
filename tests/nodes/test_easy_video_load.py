@@ -323,6 +323,7 @@ def test_easy_load_video_rejoins_wrapped_input_path_before_direct_vhs_loader(
 def test_easy_load_video_returns_empty_result_for_existing_directory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     # When the loader is handed an existing folder (the unselected EXR branch of
     # an upstream switch), it must return an empty, correctly-shaped result
@@ -356,12 +357,14 @@ def test_easy_load_video_returns_empty_result_for_existing_directory(
     seq_dir = tmp_path / "exr_seq"
     seq_dir.mkdir()
     result = loaded.Easy_LoadVideo().load_video(input_path=str(seq_dir), video="")
+    captured = capsys.readouterr()
 
     assert isinstance(result, tuple) and len(result) == 4
     assert result[0] == ("zeros", ((1, 64, 64, 3),))  # empty IMAGE (shape passed as one arg)
     assert result[1] == 0  # frame_count
     assert result[2]["sample_rate"] == 44100  # empty AUDIO
     assert result[3] == {}  # empty VHS_VIDEOINFO
+    assert "existing folder with no video filename" in captured.out
 
     monkeypatch.delitem(sys.modules, "nodes")
     monkeypatch.delitem(sys.modules, "folder_paths")

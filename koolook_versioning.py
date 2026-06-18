@@ -102,10 +102,12 @@ def next_version_token(
     ``bearMask_v002.0001.exr``, or a ``bearMask_v003/`` sequence folder -- and
     returns the highest detected version plus one, zero-padded to ``padding``.
 
-    A missing/empty/unreadable directory (or no matching entries) yields
-    ``start`` (default ``v001``). Matching is on the **exact** base name, so a
-    different shot's versions never bump this one. An empty ``name`` matches
-    bare ``<prefix>NNN`` tokens. Whatever follows the digits (extension, frame
+    A missing or empty directory (or no matching entries) yields ``start``
+    (default ``v001``). Permission errors and other unexpected filesystem
+    failures surface to the caller so a broken output mount cannot silently
+    become ``v001``. Matching is on the **exact** base name, so a different
+    shot's versions never bump this one. An empty ``name`` matches bare
+    ``<prefix>NNN`` tokens. Whatever follows the digits (extension, frame
     number, ``_suffix``) is ignored.
     """
     prefix = normalize_version_token(version_prefix) or "v"
@@ -125,7 +127,7 @@ def next_version_token(
     highest: int | None = None
     try:
         entries = os.listdir(directory) if directory else []
-    except OSError:
+    except FileNotFoundError:
         entries = []
     for entry in entries:
         match = pattern.match(entry)

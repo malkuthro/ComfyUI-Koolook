@@ -395,6 +395,19 @@ def _append_version_to_prefix(prefix: str, token: str) -> str:
     return f"{prefix}_{token}"
 
 
+def _auto_version_scan_target(effective_prefix: str) -> tuple[str, str]:
+    """Return ``(directory, name)`` matching where VHS will write the prefix."""
+    name = os.path.basename(effective_prefix.rstrip("/\\"))
+    directory = os.path.dirname(effective_prefix)
+    if os.path.isabs(effective_prefix):
+        return directory, name
+    try:
+        output_root = folder_paths.get_output_directory()
+    except Exception:
+        output_root = os.getcwd()
+    return os.path.normpath(os.path.join(output_root, directory)), name
+
+
 def _coerce_version_input(raw):
     """Defend the ``version`` field against a stale boolean.
 
@@ -808,9 +821,10 @@ if _VHS_AVAILABLE:
             # <name>_vNNN outputs and picks the next free one; otherwise the
             # typed/wired token is used verbatim.
             if is_auto_version(raw_version):
+                scan_dir, scan_name = _auto_version_scan_target(effective_prefix)
                 version_token = next_version_token(
-                    os.path.dirname(effective_prefix),
-                    os.path.basename(effective_prefix),
+                    scan_dir,
+                    scan_name,
                 )
             else:
                 version_token = resolve_version_token(raw_version)

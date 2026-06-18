@@ -237,6 +237,7 @@ function publishWorkflowStore() {
         const store = app?.extensionManager?.workflow;
         return store && typeof store === "object" ? store : null;
     } catch (e) {
+        console.warn("[Koolook] could not inspect Comfy workflow store for publish cleanup:", e);
         return null;
     }
 }
@@ -246,6 +247,7 @@ function openWorkflowsSnapshot(store) {
         const open = store?.openWorkflows;
         return Array.isArray(open) ? open.slice() : [];
     } catch (e) {
+        console.warn("[Koolook] could not snapshot open workflows for publish cleanup:", e);
         return [];
     }
 }
@@ -286,6 +288,7 @@ export async function captureWorkflowApiPrompt(visualGraph) {
     try {
         originalWorkflow = store?.activeWorkflow ?? null;
     } catch (e) {
+        console.warn("[Koolook] could not read active workflow for publish cleanup:", e);
         originalWorkflow = null;
     }
     let previousGraph;

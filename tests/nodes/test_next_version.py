@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from koolook_versioning import next_version_token
 
 
@@ -13,6 +15,16 @@ def test_missing_directory_returns_start(tmp_path: Path) -> None:
 
 def test_empty_directory_returns_start(tmp_path: Path) -> None:
     assert next_version_token(str(tmp_path), "bearMask") == "v001"
+
+
+def test_unreadable_directory_error_is_not_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    def blocked(_directory):
+        raise PermissionError("no access")
+
+    monkeypatch.setattr("koolook_versioning.os.listdir", blocked)
+
+    with pytest.raises(PermissionError, match="no access"):
+        next_version_token("blocked-output", "bearMask")
 
 
 def test_next_after_existing_versioned_files(tmp_path: Path) -> None:
