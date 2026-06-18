@@ -4,16 +4,14 @@
 Status: **Canonical** (approved 2026-06-18). Implemented in
 `k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
-Companions:
-- [`easy-image-batch-matrix.html`](easy-image-batch-matrix.html) — interactive
-  demo implementing this exact model; every row below can be clicked through.
+Companion:
 - [`easy-image-batch-demo-setup.json`](easy-image-batch-demo-setup.json) — a
   loadable ComfyUI workflow with one `Easy Pattern → Easy Image Batch →
   Preview Image` cluster per matrix row (regenerate via
   [`build_easy_image_batch_demo.py`](build_easy_image_batch_demo.py)). Load it
-  in ComfyUI to run all modes side by side against the live node. (The
-  interactive demos were generated from an earlier draft; if a demo row
-  disagrees with the matrix below, the matrix and the node are canonical.)
+  in ComfyUI to run the modes side by side against the live node. (Generated
+  from an earlier draft — if a row disagrees with the matrix below, the matrix
+  and the node are canonical.)
 
 This captures the agreed changes:
 

@@ -353,3 +353,33 @@ def test_select_nonempty_list_ignores_unwired_slot_defaults():
     assert image_batch[7] == "src8"
     assert image_batch[19] == "src20"
     assert image_batch[8] == _GRAY    # frame 9 stays placeholder, no phantom pick
+
+
+@requires_fake_torch
+def test_selected_image_batch_is_picks_plus_slots_slots_win_overlap():
+    # selected_image_batch = union of multiline picks AND slot overwrites,
+    # ascending by frame, with the slot winning where they overlap.
+    node = easy_ImageBatch()
+    _img, _alpha, selected, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5 8",
+        image1_frame=5, source_batch=_source(24),
+        image1=_FakeTensor(["slotA"]),          # overlaps the pick at frame 5
+        image2=_FakeTensor(["slotB"]), image2_frame=12,  # slot-only position
+    )
+    assert frames == "5, 8, 12"
+    assert [selected[i] for i in range(len(selected))] == ["slotA", "src8", "slotB"]
+
+
+@requires_fake_torch
+def test_selected_image_batch_includes_inserts_and_slots_in_insert_mode():
+    # Same rule under insert mode: selected = inserts + slot overwrites.
+    node = easy_ImageBatch()
+    _img, _alpha, selected, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5 7 20",
+        image1_frame=4, keyframes_insert=_FakeTensor(["ins1", "ins2", "ins3"]),
+        image1=_FakeTensor(["slotA"]),          # slot-only position at frame 4
+    )
+    assert frames == "4, 5, 7, 20"
+    assert [selected[i] for i in range(len(selected))] == ["slotA", "ins1", "ins2", "ins3"]
