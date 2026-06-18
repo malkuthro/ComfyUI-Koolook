@@ -24,23 +24,35 @@ import json
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 TERMINAL = {"succeeded", "failed", "lost"}
 ACTIVE = {"queued", "running"}
+ALLOWED_URL_SCHEMES = {"http", "https"}
+
+
+def _checked_url(url: str) -> str:
+    scheme = urllib.parse.urlsplit(url).scheme
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise ValueError(f"unsupported URL scheme: {scheme or '<empty>'}")
+    return url
 
 
 def _get(url: str, timeout: float = 30.0):
-    with urllib.request.urlopen(url, timeout=timeout) as r:
+    with urllib.request.urlopen(_checked_url(url), timeout=timeout) as r:  # nosec B310
         return json.load(r)
 
 
 def _post(url: str, payload: dict, timeout: float = 60.0):
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+        _checked_url(url),
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310
         return json.load(r)
 
 
