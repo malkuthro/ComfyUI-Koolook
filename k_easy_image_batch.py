@@ -135,6 +135,37 @@ def plan_slot_overwrites(
     return placements, outside_cut
 
 
+def parse_frame_tokens(source_frames: str) -> tuple[list[int], list[str]]:
+    """Parse a frame-list string into 1-based VFX frame numbers.
+
+    Tokens are separated by commas, spaces, tabs, or newlines. A token is
+    either a single integer (``7``) or an inclusive ascending range
+    (``14-17`` → 14, 15, 16, 17). Returns ``(values, bad_tokens)`` where
+    ``bad_tokens`` are the tokens that could not be parsed (non-integer, or a
+    descending range like ``5-1``) so the caller can warn. Pure Python — no
+    torch — so it is unit-testable in CI. Shared by select picks and insert
+    positions.
+    """
+    values: list[int] = []
+    bad_tokens: list[str] = []
+    for tok in re.split(r"[,\s]+", (source_frames or "").strip()):
+        if not tok:
+            continue
+        span = re.fullmatch(r"(\d+)-(\d+)", tok)
+        if span:
+            lo, hi = int(span.group(1)), int(span.group(2))
+            if lo <= hi:
+                values.extend(range(lo, hi + 1))
+            else:
+                bad_tokens.append(tok)
+            continue
+        try:
+            values.append(int(tok))
+        except ValueError:
+            bad_tokens.append(tok)
+    return values, bad_tokens
+
+
 class easy_ImageBatch:
     """
     Place up to N keyframes on a 1-based VFX timeline, then output a
@@ -185,14 +216,17 @@ class easy_ImageBatch:
     -----------------------------------------------------------------------
     1. Background: with `source_batch` connected and an EMPTY `source_frames`
        list, the source cut window passes straight through (source in →
-       source out). Otherwise the background is `placeholder_color`. The
-       background is never counted as "placed".
+       source out) as kept content (`alpha` 0.0). Any tail beyond the source
+       stays placeholder, and that uncovered gap becomes the `selected_*`
+       output — the frames to inpaint/generate (the inverse of the usual
+       "selected = picks/slots"). Otherwise the background is
+       `placeholder_color` and is not counted as "placed".
     2. `source_frames` (optional comma/newline/whitespace string like
-       `"1, 27, 41, 63"`): each number picks `source_batch[N - 1]` and places
-       it at output index `N - cut_start_frame` (if inside the cut), onto the
-       placeholder. Bad tokens warn and are skipped; frames not present in
-       `source_batch` warn; frames outside the cut window are dropped and
-       summarised at the end.
+       `"1, 27, 41, 63"`, with inclusive ranges `"14-17"` → 14,15,16,17): each
+       number picks `source_batch[N - 1]` and places it at output index
+       `N - cut_start_frame` (if inside the cut), onto the placeholder. Bad
+       tokens warn and are skipped; frames not present in `source_batch` warn;
+       frames outside the cut window are dropped and summarised at the end.
     3. Manual slots (`image1`-`image4`): connect `imageN` and set
        `imageN_frame` to its VFX position; the image overwrites that output
        frame on TOP of everything. A higher-numbered slot wins a slot-vs-slot
@@ -293,8 +327,8 @@ class easy_ImageBatch:
                 "source_frames": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "placeholder": "extra frames from source_batch, e.g. 1, 27, 41, 63, 85 (commas and/or newlines)",
-                    "tooltip": "Optional 1-based VFX frame list to pick from source_batch. Separators can be commas, spaces, tabs, or newlines.",
+                    "placeholder": "frames from source_batch, e.g. 1, 27, 41-50, 63 (commas/newlines; ranges with -)",
+                    "tooltip": "Optional 1-based VFX frame list to pick from source_batch (in insert mode, the destination positions). Separators: commas, spaces, tabs, or newlines. Inclusive ranges like 14-17 expand to 14,15,16,17.",
                 }),
                 "image1_frame": ("INT", {
                     "default": 5,
@@ -489,25 +523,31 @@ class easy_ImageBatch:
         # are, so alpha / selected_* describe just those.
         fill_value = _PLACEHOLDER_FILL[placeholder_color]
         image_batch = torch.full((total_frames, h, w, c), fill_value, device=device, dtype=dtype)
-        base_short_fallback = 0
-        if source_batch is not None and not source_frames_str:
-            base_placements, base_short_fallback = plan_source_base_fill(
+        # Alpha (default convention): 1.0 (white) = empty/to-fill; set to 0.0 on
+        # frames that carry real content. `invert_alpha` flips at the end.
+        alpha_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
+
+        # Timeline indices with a keyframe placed (picks + slots), used to build
+        # the selected_* outputs. `outside_cut` collects referenced VFX frames
+        # that fell outside the window (summarised once at the end).
+        placed_indices: set[int] = set()
+        outside_cut: list[int] = []
+
+        # Passthrough (empty list + source): the source cut window is the kept
+        # background — covered frames carry real content (alpha 0.0), the
+        # uncovered tail stays placeholder. `covered_indices` lets the selection
+        # below resolve to the GAP (the to-inpaint frames) rather than to the
+        # picks/slots that drive select mode.
+        passthrough = source_batch is not None and not source_frames_str
+        covered_indices: set[int] = set()
+        if passthrough:
+            base_placements, _ = plan_source_base_fill(
                 total_frames, cut_start_frame, source_len
             )
             for output_index, source_index in base_placements:
                 image_batch[output_index] = source_batch[source_index]
-        # Alpha (default convention): 1.0 (white) = empty, set to 0.0 on occupied frames below.
-        # `invert_alpha` flips the result to compositing-style at the end.
-        alpha_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
-
-        # Track timeline indices that actually got a keyframe placed. Used at the
-        # end to build `selected_image_batch` (just the placed frames, packed)
-        # and `selected_frames` (their VFX numbers as a comma-separated string).
-        placed_indices: set[int] = set()
-        # VFX frame numbers that were referenced but landed outside the cut
-        # window. Collected once and printed as a single summary line at the
-        # end so each frame doesn't generate its own console warning.
-        outside_cut: list[int] = []
+                alpha_batch[output_index] = 0.0
+                covered_indices.add(output_index)
 
         # 1) source_frames list (optional). Each token is a VFX-numbered frame:
         #    it picks source_batch[N - 1] (VFX 1-based) AND places it at output
@@ -524,15 +564,12 @@ class easy_ImageBatch:
                     "ignoring the list (it only picks frames from source_batch)."
                 )
             else:
-                tokens = [t for t in re.split(r"[,\s]+", source_frames_str) if t]
-                for tok in tokens:
-                    try:
-                        f = int(tok)
-                    except ValueError:
-                        print(
-                            f"[easy_ImageBatch] source_frames: ignoring non-integer token '{tok}'."
-                        )
-                        continue
+                values, bad_tokens = parse_frame_tokens(source_frames_str)
+                for tok in bad_tokens:
+                    print(
+                        f"[easy_ImageBatch] source_frames: ignoring invalid token '{tok}'."
+                    )
+                for f in values:
                     source_index = f - 1
                     output_index = f - cut_start_frame
                     if not (0 <= source_index < source_len):
@@ -558,6 +595,17 @@ class easy_ImageBatch:
             image_batch, alpha_batch, placed_indices, slots,
             total_frames, cut_start_frame, outside_cut, (h, w, c),
         )
+
+        # Passthrough selection: the "selected" frames are the GAP — placeholder
+        # frames with no source coverage and no slot, i.e. the ones to inpaint /
+        # generate. This is the inverse of select mode (where selected = the
+        # placed picks/slots); covered source and slot overwrites are kept
+        # content and excluded from the selection.
+        if passthrough:
+            content = covered_indices | placed_indices
+            placed_indices = {
+                i for i in range(total_frames) if i not in content
+            }
 
         if invert_alpha:
             alpha_batch = 1.0 - alpha_batch
@@ -586,11 +634,11 @@ class easy_ImageBatch:
                 f"{len(unique_outside)} outside cut: "
                 + ", ".join(str(f) for f in unique_outside)
             )
-        if source_batch is not None and not source_frames_str:
-            notes.append("source passthrough (empty list)")
-        if base_short_fallback:
+        if passthrough:
+            # kept = everything not in the gap (covered source + any slot fills).
             notes.append(
-                f"{base_short_fallback} cut frame(s) beyond source_batch filled with placeholder"
+                f"source passthrough: {total_frames - len(sorted_indices)} kept, "
+                f"{len(sorted_indices)} gap frame(s) selected to inpaint"
             )
         suffix = (" " + "; ".join(notes) + ".") if notes else ""
         print(
@@ -729,17 +777,12 @@ class easy_ImageBatch:
         # Convention: 1.0 (white/empty), 0.0 on inserted positions only.
         alpha_batch = torch.ones((total_frames, h, w), device=device, dtype=torch.float32)
 
-        # Parse the position list (mirrors the select-mode tokenizer: commas,
-        # spaces, tabs, newlines, or any mix).
-        positions: list[int] = []
+        # Parse the position list (commas, spaces, tabs, newlines, or any mix;
+        # inclusive ranges like "5-7" expand via parse_frame_tokens).
         source_frames_str = (source_frames or "").strip()
-        for tok in re.split(r"[,\s]+", source_frames_str):
-            if not tok:
-                continue
-            try:
-                positions.append(int(tok))
-            except ValueError:
-                print(f"[easy_ImageBatch] source_frames: ignoring non-integer token '{tok}'.")
+        positions, bad_tokens = parse_frame_tokens(source_frames_str)
+        for tok in bad_tokens:
+            print(f"[easy_ImageBatch] source_frames: ignoring invalid token '{tok}'.")
 
         source_count = keyframes_insert.shape[0]
         plan = plan_offset_placements(positions, source_count, total_frames, cut_start_frame)

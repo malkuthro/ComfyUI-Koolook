@@ -55,15 +55,20 @@ output index i  ↔  VFX frame v = cut_start_frame + i        (window: i in [0, 
 
 **Background rule.** Layer 1 is the source cut window whenever `source_batch`
 is connected **and** either an insert is active (`keyframes_insert`) **or** the
-`source_frames` list is empty; otherwise it is `placeholder_color`. So an
-empty-list select with a `source_batch` passes the source straight through —
-the same backdrop as insert-over-source (rows 5 and 9 behave identically).
+`source_frames` list is empty; otherwise it is `placeholder_color`.
 
 **What counts as "placed"** (drives `alpha_batch`, `selected_image_batch`,
-`selected_frames`): Layer 2 placements **and** Layer 3 overwrites. The Layer 1
-`source_batch` *background* is **not** placed — it is just the backdrop. So
-`alpha_batch` is `0.0` only at sequence inserts/picks and connected-slot
-overwrites; `1.0` everywhere else (flipped by `invert_alpha`).
+`selected_frames`): normally the Layer 2 placements **and** Layer 3 overwrites;
+the Layer 1 `source_batch` backdrop is *not* placed (just the background). So
+`alpha_batch` is `0.0` at sequence inserts/picks and connected-slot overwrites,
+`1.0` everywhere else (flipped by `invert_alpha`).
+
+**Select passthrough is the exception (row 5).** When the source passes through
+with an empty list, the covered source frames *are* kept content (`alpha`
+`0.0`), and the **uncovered tail becomes the selection** (`alpha` `1.0`,
+emitted in `selected_*`) — an extend-a-clip inpaint mask. The selection here is
+the *gap*, the inverse of every other row. Insert-mode passthrough (row 9)
+keeps the plain backdrop semantics (nothing placed).
 
 **Resolution / dtype** come from the first connected image (insert: from
 `keyframes_insert`; select: `image1` → `source_batch` → `image2…4`). With **no**
@@ -87,7 +92,7 @@ list = **list**, connected `image1–4` = **slots**.
 | 2 | ✗ | ✓ | has | none | placeholder | source picks at listed positions | the picks | select |
 | 3 | ✗ | ✗ | — | some | placeholder | connected slots | the slots | select (slots) |
 | 4 | ✗ | ✓ | has | some | placeholder | source picks **+** slots (slots win on overlap) | picks + slots | select |
-| 5 | ✗ | ✓ | empty | none | **source cut window** | nothing | empty | source passthrough |
+| 5 | ✗ | ✓ | empty | none | **source cut window** | covered source (kept) | the uncovered **gap** | source passthrough / extend |
 | 6 | ✓ | ✗ | has | none | placeholder | scattered inserts | the inserts | offset / reconstruct |
 | 7 | ✓ | ✗ | empty | none | placeholder | nothing | empty | **clean** (nothing inserted) |
 | 8 | ✓ | ✓ | has | none | **source cut window** | scattered inserts (overwrite source) | the inserts | insert-over-source |
@@ -103,6 +108,8 @@ unconnected slot pulling from `source_batch`) is gone.
 
 ## Edge cases & logging
 
+- **List ranges.** `N-M` (e.g. `14-17`) expands inclusively; a descending
+  `M-N` or any non-integer token warns and is skipped. Applies in both modes.
 - **List token not in `source_batch`** (select): warn + skip that number.
 - **List/insert position outside the cut window**: dropped, summarized once.
 - **More inserts than list positions** / **more positions than inserts**:
@@ -121,8 +128,12 @@ unconnected slot pulling from `source_batch`) is gone.
 
 1. **Tie-break direction** — higher-numbered slot wins (`image4` > `image1`);
    a slot beats a sequence pick / insert at the same index (Layer 3 > Layer 2).
-2. **Empty-list passthrough** — `source_batch` + an empty list (no insert)
-   passes the source cut window through (row 5), consistent with the
-   insert-mode empty-list passthrough (row 9), rather than a placeholder batch.
+2. **Empty-list passthrough (select)** — `source_batch` + an empty list passes
+   the source cut window through (row 5). Covered source frames are kept content
+   (`alpha` 0.0); a source shorter than the output leaves a placeholder tail
+   that becomes the selection (`selected_*`) — an extend/inpaint mask. The
+   selection here is the *gap*, the inverse of other rows.
 3. **Mode-2 fallback removed** — an unconnected slot never pulls from
    `source_batch`; `imageN_frame` is only a placement target for a wired image.
+4. **Range syntax** — the frame list accepts inclusive ranges (`14-17` →
+   14,15,16,17) in both select and insert; descending/non-integer tokens warn.

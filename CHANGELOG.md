@@ -7,6 +7,17 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Easy Image Batch — passthrough inpaint mask + frame-range syntax.** Two
+  refinements: (1) when `source_batch` is shorter than the output (empty list),
+  the covered source frames are kept as real content (`alpha` 0.0) while the
+  uncovered tail stays placeholder and becomes the `selected_image_batch` /
+  `selected_frames` output — an extend-a-clip inpaint mask (keep the first N,
+  generate the rest). A full-coverage passthrough has no gap, so `alpha` is
+  all-kept and the selection is empty. This makes `selected_*` the *gap* in
+  passthrough — the inverse of select mode, where it is the placed picks/slots.
+  (2) The `source_frames` field now accepts inclusive ranges: `1-5, 7, 9,
+  14-17` expands to `1,2,3,4,5,7,9,14,15,16,17`, in both select and insert
+  modes (shared torch-free `parse_frame_tokens`, unit-tested in CI).
 - **Easy Image Batch — `image1-4` super-overwrite + source passthrough.** The
   four manual slots are now the top compositing layer in **every** mode: a
   connected `imageN` overwrites output frame `imageN_frame` on top of the

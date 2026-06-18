@@ -87,6 +87,7 @@ requires_fake_torch = pytest.mark.skipif(
 
 from k_easy_image_batch import (  # noqa: E402  (import after stub)
     easy_ImageBatch,
+    parse_frame_tokens,
     plan_offset_placements,
     plan_slot_overwrites,
     plan_source_base_fill,
@@ -383,3 +384,129 @@ def test_selected_image_batch_includes_inserts_and_slots_in_insert_mode():
     )
     assert frames == "4, 5, 7, 20"
     assert [selected[i] for i in range(len(selected))] == ["slotA", "ins1", "ins2", "ins3"]
+
+
+# --- Feature: range syntax in the frame list (parse_frame_tokens) ---
+
+
+def test_parse_frame_tokens_expands_inclusive_ranges():
+    values, bad = parse_frame_tokens("1-5, 7, 9, 14-17")
+    assert values == [1, 2, 3, 4, 5, 7, 9, 14, 15, 16, 17]
+    assert bad == []
+
+
+def test_parse_frame_tokens_mixed_separators():
+    values, bad = parse_frame_tokens("1-3 7\n10")
+    assert values == [1, 2, 3, 7, 10]
+    assert bad == []
+
+
+def test_parse_frame_tokens_single_value_range():
+    values, bad = parse_frame_tokens("7-7")
+    assert values == [7]
+    assert bad == []
+
+
+def test_parse_frame_tokens_descending_range_is_bad():
+    values, bad = parse_frame_tokens("5-1, 8")
+    assert values == [8]
+    assert bad == ["5-1"]
+
+
+def test_parse_frame_tokens_non_integer_tokens_are_bad():
+    values, bad = parse_frame_tokens("3, foo, 5-x, 9")
+    assert values == [3, 9]
+    assert bad == ["foo", "5-x"]
+
+
+@requires_fake_torch
+def test_select_accepts_range_syntax_in_list():
+    node = easy_ImageBatch()
+    _img, _alpha, _sel, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="1-3, 5",
+        image1_frame=4, source_batch=_source(24),
+    )
+    assert frames == "1, 2, 3, 5"
+
+
+@requires_fake_torch
+def test_insert_accepts_range_syntax_in_positions():
+    node = easy_ImageBatch()
+    _img, _alpha, _sel, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5-7",
+        image1_frame=4, keyframes_insert=_FakeTensor(["a", "b", "c"]),
+    )
+    assert frames == "5, 6, 7"
+
+
+# --- Feature: passthrough shorter than output -> keep + gap-as-selection ---
+
+
+@requires_fake_torch
+def test_passthrough_shorter_source_keeps_covered_and_selects_gap():
+    # source = 17 frames, output = 24: frames 1-17 are kept (alpha 0/black),
+    # frames 18-24 are the gap (alpha 1/white) and become the selection.
+    node = easy_ImageBatch()
+    image_batch, alpha, selected, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="",
+        image1_frame=4, source_batch=_source(17),
+    )
+    # image: 1-17 source, 18-24 placeholder
+    assert image_batch[16] == "src17"
+    assert image_batch[17] == _GRAY
+    # alpha (inpaint): covered black (0.0), gap white (1.0)
+    assert alpha[0] == 0.0 and alpha[16] == 0.0
+    assert alpha[17] == 1.0 and alpha[23] == 1.0
+    # selection = the gap frames 18..24 (to inpaint)
+    assert frames == "18, 19, 20, 21, 22, 23, 24"
+    assert len(selected) == 7
+    assert selected[0] == _GRAY
+
+
+@requires_fake_torch
+def test_passthrough_full_coverage_selects_nothing():
+    # source >= output: no gap -> alpha all black (kept), selection empty.
+    node = easy_ImageBatch()
+    image_batch, alpha, selected, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="",
+        image1_frame=4, source_batch=_source(24),
+    )
+    assert [image_batch[i] for i in range(24)] == [f"src{k + 1}" for k in range(24)]
+    assert alpha[0] == 0.0 and alpha[23] == 0.0
+    assert frames == ""
+    assert len(selected) == 0
+
+
+@requires_fake_torch
+def test_passthrough_slot_in_gap_counts_as_kept_not_gap():
+    # A slot filling a gap frame becomes kept content, excluded from the
+    # inpaint selection.
+    node = easy_ImageBatch()
+    _img, alpha, _sel, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="",
+        image1_frame=20, source_batch=_source(17), image1=_FakeTensor(["slotA"]),
+    )
+    assert alpha[19] == 0.0                      # frame 20 filled by slot -> kept
+    assert frames == "18, 19, 21, 22, 23, 24"    # gap excludes frame 20
+
+
+@requires_fake_torch
+def test_passthrough_gap_with_cut_start_offset():
+    # cut_start=41, total=10 -> output is VFX 41..50. source has 45 frames, so
+    # VFX 41..45 are covered (output 0..4) and 46..50 are the gap.
+    node = easy_ImageBatch()
+    image_batch, alpha, _sel, frames = node.create_batch(
+        total_frames=10, cut_start_frame=41, placeholder_color="Gray",
+        invert_alpha=False, source_frames="",
+        image1_frame=4, source_batch=_source(45),
+    )
+    assert image_batch[0] == "src41" and image_batch[4] == "src45"
+    assert image_batch[5] == _GRAY                       # VFX 46 = gap
+    assert alpha[0] == 0.0 and alpha[4] == 0.0           # covered kept
+    assert alpha[5] == 1.0 and alpha[9] == 1.0           # gap to inpaint
+    assert frames == "46, 47, 48, 49, 50"                # gap selection

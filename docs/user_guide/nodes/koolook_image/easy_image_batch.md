@@ -53,7 +53,7 @@ instead of raising an error.
 | `cut_start_frame` | `INT` | `1` | First VFX frame in the output. The output represents `[cut_start_frame .. cut_start_frame + total_frames - 1]`. Frames placed outside this window are dropped from the cut and listed in a single end-of-run summary log. |
 | `placeholder_color` | enum | `Black` | Fill colour for unoccupied frames in `image_batch`. `Black = 0.0`, `Gray = 0.5`, `White = 1.0`. Independent of `alpha_batch`. |
 | `invert_alpha` | `BOOLEAN` | `false` (`inpaint`) | Off = inpaint convention (selected = `0.0` black, empty = `1.0` white). On = compositing alpha (selected = `1.0`, empty = `0.0`). |
-| `source_frames` | multiline `STRING` | `""` | Optional list of VFX frame numbers to pick from `source_batch`. Tokens may be separated by commas, newlines, spaces, tabs, or any mix (`"1, 27\n41 63"` → `[1, 27, 41, 63]`). Each token picks `source_batch[N - 1]` and places it at output index `N - cut_start_frame`. Bad tokens warn and skip. Frames not present in `source_batch` warn; frames outside the cut window are dropped silently and reported in the end-of-run summary. |
+| `source_frames` | multiline `STRING` | `""` | Optional list of VFX frame numbers to pick from `source_batch`. Tokens may be separated by commas, newlines, spaces, tabs, or any mix (`"1, 27\n41 63"` → `[1, 27, 41, 63]`); inclusive ranges expand (`"14-17"` → `14, 15, 16, 17`). Each number picks `source_batch[N - 1]` and places it at output index `N - cut_start_frame`. Bad tokens warn and skip. Frames not present in `source_batch` warn; frames outside the cut window are dropped silently and reported in the end-of-run summary. |
 | `image1_frame` … `image4_frame` | `INT` | `5`, `9`, `13`, `17` | VFX timeline position (1-based) for the slot's keyframe. Used **only** when the matching `imageN` is connected — it's the output frame that image overwrites (the top layer). No longer a `source_batch` pick index. |
 
 ### Optional input slots
@@ -87,8 +87,8 @@ the composite background; and connected `image1…image4` overwrite on top.)
 | Output | Type | Description |
 |---|---|---|
 | `image_batch` | `IMAGE` | The cut window as a `total_frames`-long batch starting at VFX frame `cut_start_frame`. Selected positions carry the picked images; everything else is the chosen placeholder colour. |
-| `alpha_batch` | `MASK` | Same length as `image_batch`. Default convention: selected = `0.0`, empty = `1.0`. Toggle `invert_alpha` to flip. |
-| `selected_image_batch` | `IMAGE` | **Only** the keyframes that actually landed inside the cut window, packed back-to-back in ascending order. Length = number of placed keyframes; empty (length 0) if nothing was placed. |
+| `alpha_batch` | `MASK` | Same length as `image_batch`. Default (inpaint): content = `0.0`, empty/to-fill = `1.0`. Toggle `invert_alpha` to flip. In a short-source passthrough the covered frames are `0.0` (kept) and the uncovered tail `1.0` (to inpaint). |
+| `selected_image_batch` | `IMAGE` | **Only** the keyframes that landed inside the cut, packed back-to-back ascending; empty if nothing was placed. **In passthrough** this is instead the uncovered *gap* frames — the inverse: the frames to generate. |
 | `selected_frames` | `STRING` | Comma-separated VFX frame numbers of the placed-inside-cut keyframes, sorted ascending and deduped (e.g. `"41, 63, 78, 88, 98, 121"`). Same format as the `source_frames` input — paste it (or wire it) into another `easy_ImageBatch` to reuse the same selection. |
 
 ## Frame-numbering model
@@ -119,16 +119,20 @@ output index.
 
 - **`source_batch` connected and `source_frames` empty → passthrough.** The
   source cut window is laid down as the output (output index *i* ←
-  `source_batch[cut_start_frame + i - 1]`; frames beyond the source stay
-  placeholder). "Source in → source out" with nothing else to do — the same
-  backdrop insert-over-source uses, so the empty-list case behaves the same
-  whether or not an insert is wired.
+  `source_batch[cut_start_frame + i - 1]`). Those covered frames are **kept
+  content** (`alpha` `0.0`). If the source is **shorter** than the output, the
+  uncovered tail stays placeholder and becomes the **selection** — `alpha`
+  `1.0`, plus the `selected_image_batch` / `selected_frames` outputs — i.e. an
+  extend-a-clip inpaint mask: keep the first N real frames, generate the rest.
+  (This is the inverse of select mode, where the selection is the picks/slots.)
+  A full-coverage passthrough has no gap → all kept, empty selection.
 - **Otherwise → placeholder.** A non-empty `source_frames` list means *select*
   mode: the named frames are pulled onto a neutral `placeholder_color`
-  background. With no `source_batch` at all the background is placeholder too.
+  background, and only those picks/slots are *placed*. With no `source_batch`
+  at all the background is placeholder too.
 
-The background is never counted as *placed* — `alpha_batch` and the
-`selected_*` outputs describe only the picks and slots placed on top of it.
+In select mode the placeholder background is never counted as *placed* —
+`alpha_batch` and the `selected_*` outputs describe only the picks and slots.
 
 ### Layer 2 — `source_frames` picks
 
