@@ -247,8 +247,10 @@ def test_slot_overwrites_empty_input_places_nothing():
 def test_input_types_exposes_keyframes_insert_with_tooltip():
     spec = easy_ImageBatch.INPUT_TYPES()
     assert "keyframes_insert" in spec["optional"], "insert-mode input must be declared"
-    # The pre-rename name must be gone so the rename is unambiguous.
-    assert "keyframe_batch" not in spec["optional"]
+    # `keyframe_batch` is retained as a deprecated alias so pre-rename workflows
+    # keep loading (unreleased, but origin/main exposed it).
+    assert "keyframe_batch" in spec["optional"]
+    assert "deprecated" in spec["optional"]["keyframe_batch"][1]["tooltip"].lower()
     entry = spec["optional"]["keyframes_insert"]
     assert entry[0] == "IMAGE"
     tooltip = entry[1]["tooltip"].lower()
@@ -510,3 +512,65 @@ def test_passthrough_gap_with_cut_start_offset():
     assert alpha[0] == 0.0 and alpha[4] == 0.0           # covered kept
     assert alpha[5] == 1.0 and alpha[9] == 1.0           # gap to inpaint
     assert frames == "46, 47, 48, 49, 50"                # gap selection
+
+
+# --- Review-round fixes: deprecated alias + input guards ---
+
+
+def test_parse_frame_tokens_rejects_overlong_range():
+    values, bad = parse_frame_tokens("1-99999999, 7")
+    assert values == [7]
+    assert bad == ["1-99999999"]
+
+
+def test_parse_frame_tokens_allows_large_bounded_range():
+    values, bad = parse_frame_tokens("1-100")
+    assert len(values) == 100 and bad == []
+
+
+def test_parse_frame_tokens_range_span_boundary():
+    # exactly _MAX_RANGE_SPAN (8192) frames is allowed; one more is rejected.
+    ok, bad = parse_frame_tokens("1-8192")
+    assert len(ok) == 8192 and bad == []
+    over, bad_over = parse_frame_tokens("1-8193")
+    assert over == [] and bad_over == ["1-8193"]
+
+
+@requires_fake_torch
+def test_keyframe_batch_alias_routes_to_insert_mode():
+    # A pre-rename workflow wires `keyframe_batch` (not `keyframes_insert`); it
+    # must still behave like an insert.
+    node = easy_ImageBatch()
+    _img, _alpha, _sel, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5 7 20",
+        image1_frame=4, keyframe_batch=_FakeTensor(["a", "b", "c"]),
+    )
+    assert frames == "5, 7, 20"
+
+
+@requires_fake_torch
+def test_keyframes_insert_wins_over_deprecated_alias():
+    node = easy_ImageBatch()
+    _img, _alpha, selected, _frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5",
+        image1_frame=4,
+        keyframes_insert=_FakeTensor(["new"]), keyframe_batch=_FakeTensor(["old"]),
+    )
+    assert selected[0] == "new"
+
+
+@requires_fake_torch
+def test_nonempty_list_without_image_source_warns_and_returns_clean(capsys):
+    # source_frames set but no source_batch / imageN -> clean placeholder batch,
+    # with a warning that the list was ignored (no silent drop).
+    node = easy_ImageBatch()
+    image_batch, _alpha, selected, frames = node.create_batch(
+        total_frames=5, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="2 3",
+        image1_frame=4, width=8, height=8,
+    )
+    assert len(image_batch) == 5
+    assert frames == "" and len(selected) == 0
+    assert "source_frames is set but no image source" in capsys.readouterr().out

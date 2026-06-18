@@ -5,15 +5,16 @@ Status: **Canonical** (approved 2026-06-18). Implemented in
 `k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
 
-Runnable demo: the **Easy Image Batch — Select and Rebuild** workflow bundled
-in the Kforge Labs Workflows sidebar folder
-(`docs/workflows/kforge-labs-workflows/`), added in
-[#248](https://github.com/malkuthro/ComfyUI-Koolook/pull/248) — a maintainer
-workflow that supersedes the generated demo removed here.
+Runnable demo (pending): the **Easy Image Batch — Select and Rebuild** workflow
+is being bundled into the Kforge Labs Workflows sidebar folder via
+[#248](https://github.com/malkuthro/ComfyUI-Koolook/pull/248) (it will live at
+`docs/workflows/kforge-labs-workflows/`). It supersedes the generated demo
+removed here, and lands when that PR merges.
 
 This captures the agreed changes:
 
-1. `keyframe_batch` → **`keyframes_insert`** (rename).
+1. `keyframe_batch` → **`keyframes_insert`** (rename; the old name is kept as a
+   deprecated alias input so pre-rename workflows keep loading).
 2. **No image source connected → clean placeholder batch** sized by new
    `width`/`height` widgets (no error).
 3. **Insert-over-source mode** — `keyframes_insert` + `source_batch` composite
@@ -107,7 +108,10 @@ unconnected slot pulling from `source_batch`) is gone.
 ## Edge cases & logging
 
 - **List ranges.** `N-M` (e.g. `14-17`) expands inclusively; a descending
-  `M-N` or any non-integer token warns and is skipped. Applies in both modes.
+  `M-N`, an over-wide range (more than 8192 frames), or any non-integer token
+  warns and is skipped. Applies in both modes.
+- **List set but no image source** (select): the list is ignored and a clean
+  placeholder batch is returned, with a console warning (not a silent drop).
 - **List token not in `source_batch`** (select): warn + skip that number.
 - **List/insert position outside the cut window**: dropped, summarized once.
 - **More inserts than list positions** / **more positions than inserts**:

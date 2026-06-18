@@ -7,6 +7,13 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Easy Image Batch — review hardening.** `keyframe_batch` is kept as a
+  **deprecated alias** of `keyframes_insert` (pre-rename workflows keep loading;
+  an explicit `keyframes_insert` wins if both are wired; removal deferred to a
+  release boundary). A non-empty `source_frames` with **no image source
+  connected** now logs a warning instead of silently returning a clean batch.
+  Frame-list **ranges are capped** — a single `N-M` token can't expand past
+  8192 frames — guarding against typos like `1-99999999`.
 - **Easy Image Batch — passthrough inpaint mask + frame-range syntax.** Two
   refinements: (1) when `source_batch` is shorter than the output (empty list),
   the covered source frames are kept as real content (`alpha` 0.0) while the

@@ -14,6 +14,11 @@ _PLACEHOLDER_FILL = {
     "White": 1.0,
 }
 
+# Upper bound on how many frames a single ``N-M`` range token may expand to, so
+# a typo like ``1-99999999`` can't balloon the frame list into millions of
+# entries. Comfortably above the node's max cut window (total_frames <= 1024).
+_MAX_RANGE_SPAN = 8192
+
 
 @dataclass(frozen=True)
 class OffsetPlan:
@@ -141,10 +146,10 @@ def parse_frame_tokens(source_frames: str) -> tuple[list[int], list[str]]:
     Tokens are separated by commas, spaces, tabs, or newlines. A token is
     either a single integer (``7``) or an inclusive ascending range
     (``14-17`` → 14, 15, 16, 17). Returns ``(values, bad_tokens)`` where
-    ``bad_tokens`` are the tokens that could not be parsed (non-integer, or a
-    descending range like ``5-1``) so the caller can warn. Pure Python — no
-    torch — so it is unit-testable in CI. Shared by select picks and insert
-    positions.
+    ``bad_tokens`` are the tokens that could not be parsed (non-integer, a
+    descending range like ``5-1``, or a range wider than ``_MAX_RANGE_SPAN``)
+    so the caller can warn. Pure Python — no torch — so it is unit-testable in
+    CI. Shared by select picks and insert positions.
     """
     values: list[int] = []
     bad_tokens: list[str] = []
@@ -154,7 +159,9 @@ def parse_frame_tokens(source_frames: str) -> tuple[list[int], list[str]]:
         span = re.fullmatch(r"(\d+)-(\d+)", tok)
         if span:
             lo, hi = int(span.group(1)), int(span.group(2))
-            if lo <= hi:
+            # Reject descending or absurdly large ranges (a typo like
+            # "1-99999999" would otherwise expand into millions of entries).
+            if lo <= hi <= lo + _MAX_RANGE_SPAN - 1:
                 values.extend(range(lo, hi + 1))
             else:
                 bad_tokens.append(tok)
@@ -355,6 +362,15 @@ class easy_ImageBatch:
                         "passthrough (with source_batch)."
                     ),
                 }),
+                "keyframe_batch": ("IMAGE", {
+                    "tooltip": (
+                        "Deprecated alias for keyframes_insert (the input was "
+                        "renamed before release). Use keyframes_insert; this alias "
+                        "keeps pre-rename workflows loading and will be removed in "
+                        "a future release. Ignored when keyframes_insert is also "
+                        "connected."
+                    ),
+                }),
                 "source_batch": ("IMAGE", ),
                 "image1": ("IMAGE", ),
                 "image2": ("IMAGE", ),
@@ -429,9 +445,20 @@ class easy_ImageBatch:
         image4=None,
         image4_frame=None,
         keyframes_insert=None,
+        keyframe_batch=None,
         width=512,
         height=512,
     ):
+        # Deprecated alias: `keyframe_batch` was renamed to `keyframes_insert`
+        # before release. Honour a pre-rename workflow's connection so it keeps
+        # loading; an explicit `keyframes_insert` wins if both are wired.
+        if keyframes_insert is None and keyframe_batch is not None:
+            keyframes_insert = keyframe_batch
+            print(
+                "[easy_ImageBatch] 'keyframe_batch' is deprecated; use "
+                "'keyframes_insert'. Routing the connected batch to insert mode."
+            )
+
         # Validate per-slot image inputs (must be single-frame tensors, not
         # pre-batched) for BOTH modes — manual slots are now composited as the
         # top layer in insert mode too, not just select. source_batch is the
@@ -488,6 +515,12 @@ class easy_ImageBatch:
                 reference = candidate
                 break
         if reference is None:
+            if (source_frames or "").strip():
+                print(
+                    "[easy_ImageBatch] source_frames is set but no image source "
+                    "(source_batch / image1-4) is connected; the list is ignored "
+                    "and a clean placeholder batch is returned."
+                )
             return self._clean_placeholder_batch(
                 total_frames, height, width, 3, placeholder_color, invert_alpha
             )
