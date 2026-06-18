@@ -5,11 +5,11 @@ Status: **Canonical** (approved 2026-06-18). Implemented in
 `k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
 
-Runnable demo (pending): the **Easy Image Batch — Select and Rebuild** workflow
-is being bundled into the Kforge Labs Workflows sidebar folder via
-[#248](https://github.com/malkuthro/ComfyUI-Koolook/pull/248) (it will live at
-`docs/workflows/kforge-labs-workflows/`). It supersedes the generated demo
-removed here, and lands when that PR merges.
+Runnable demo: the **Easy Image Batch — Select and Rebuild** workflow bundled in
+the Kforge Labs Workflows sidebar folder
+([`docs/workflows/kforge-labs-workflows/`](../workflows/kforge-labs-workflows/),
+from [#248](https://github.com/malkuthro/ComfyUI-Koolook/pull/248)). It
+supersedes the generated demo removed here.
 
 This captures the agreed changes:
 
