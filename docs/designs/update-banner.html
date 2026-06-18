@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Update Available Banner - Sidebar Mockup</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111316;
+      --panel: #1b1d22;
+      --panel-soft: #20242a;
+      --line: rgba(255,255,255,0.1);
+      --text: #e6e8ec;
+      --muted: #9299a4;
+      --blue: #6db4ff;
+      --blue-soft: rgba(109,180,255,0.12);
+      --green: #79c17d;
+      --input: rgba(0,0,0,0.22);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1040px, calc(100vw - 32px));
+      margin: 28px auto 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    .intro {
+      max-width: 720px;
+      margin: 0 0 22px;
+      color: var(--muted);
+    }
+
+    .proposal {
+      width: min(520px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.025);
+      padding: 14px;
+    }
+
+    .proposal h2 {
+      margin: 0 0 5px;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .proposal-copy {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .sidebar {
+      width: 296px;
+      height: 620px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 18px 44px rgba(0,0,0,0.32);
+    }
+
+    .sidebar-inner {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      padding-top: 10px;
+    }
+
+    .actions-row {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      flex-shrink: 0;
+    }
+
+    .label {
+      flex: 1;
+      min-width: 0;
+      color: rgba(230,232,236,0.58);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .status {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      font-size: 11px;
+      color: rgba(230,232,236,0.86);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      margin-right: 7px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+      flex-shrink: 0;
+    }
+
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .state {
+      margin-left: 4px;
+      color: rgba(230,232,236,0.55);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      width: 28px;
+      height: 17px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: var(--input);
+      color: rgba(230,232,236,0.8);
+      font: 700 11px/1 system-ui, sans-serif;
+    }
+
+    .btn.green {
+      background: rgba(120,165,100,0.25);
+      border-color: rgba(120,165,100,0.5);
+    }
+
+    .divider {
+      margin: 8px 8px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+
+    .search {
+      margin: 6px;
+      padding: 5px 8px 5px 26px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--input);
+      color: rgba(230,232,236,0.55);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .tree {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      padding: 0 4px 8px;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 25px;
+      padding: 3px 6px;
+      border-radius: 3px;
+      color: rgba(230,232,236,0.88);
+      white-space: nowrap;
+    }
+
+    .tree-row.dim { color: rgba(230,232,236,0.58); }
+    .tree-row.indent { padding-left: 20px; }
+    .chev { width: 10px; color: rgba(230,232,236,0.62); text-align: center; }
+    .count {
+      margin-left: auto;
+      padding: 1px 7px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.08);
+      color: rgba(230,232,236,0.72);
+      font-size: 11px;
+    }
+
+    .inline-update {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      padding: 4px 10px 12px;
+      color: rgba(230,232,236,0.62);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .inline-update a {
+      color: #b9d8ff;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .notes {
+      margin: 12px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 760px) {
+      .sidebar { width: min(296px, 100%); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sidebar Update Available Banner</h1>
+  <p class="intro">Chosen quiet footer treatment for a future release-check feature. It points users to release notes without interrupting ComfyUI work or stealing space from the main sidebar lists. The notice uses the normal user-facing empty footer slot; the dev build line is omitted because normal users will not see it.</p>
+
+    <section class="proposal">
+      <h2>Footer Slot Text</h2>
+      <p class="proposal-copy">Discreet release notice at the bottom of the sidebar, using the footer slot instead of adding another row.</p>
+      <div class="sidebar">
+        <div class="sidebar-inner">
+          <div class="actions-row">
+            <div class="status"><span class="dot"></span><span class="name">Koolook_v03</span><span class="state">saved</span></div>
+            <button class="btn">L</button><button class="btn">S</button><button class="btn">A/B</button>
+          </div>
+          <div class="divider"></div>
+          <div class="actions-row"><span class="label">Tools</span><button class="btn">I</button><button class="btn">H</button><button class="btn">P</button></div>
+          <div class="divider"></div>
+          <div class="search">Search nodes and workflows...</div>
+          <div class="divider"></div>
+          <div class="actions-row"><span class="label">Nodes</span><button class="btn">R</button><button class="btn">C</button><button class="btn green">+</button></div>
+          <div class="divider"></div>
+          <div class="actions-row"><span class="label">Workflows</span><button class="btn">S</button><button class="btn">M</button></div>
+          <div class="divider"></div>
+          <div class="tree">
+            <div class="tree-row"><span class="chev">v</span>Nodes (favorites)<span class="count">11</span></div>
+            <div class="tree-row indent dim"><span class="chev">></span>image<span class="count">1</span></div>
+            <div class="tree-row indent dim"><span class="chev">></span>Koolook<span class="count">7</span></div>
+            <div class="divider"></div>
+            <div class="tree-row"><span class="chev">v</span>Workflows<span class="count">6</span></div>
+            <div class="tree-row indent dim"><span class="chev">></span>Kforge Labs Workflows<span class="count">2</span></div>
+            <div class="tree-row indent dim"><span class="chev">></span>_Modules<span class="count">3</span></div>
+          </div>
+          <div class="inline-update">
+            <span>Update Available</span>
+            <a href="https://github.com/malkuthro/ComfyUI-Koolook/releases" target="_blank" rel="noopener noreferrer">Release notes</a>
+          </div>
+        </div>
+      </div>
+      <p class="notes">Lowest visual weight. This is the closest match if we want the notice to live where the hidden dev footer would otherwise be.</p>
+    </section>
+</main>
+</body>
+</html>

@@ -320,7 +320,11 @@ export function ensureStyle() {
 .koolook-preview-widget-name { text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-preview-widget-value { text-align: right; font-size: 11px; opacity: 0.85; font-family: monospace; text-overflow: ellipsis; white-space: nowrap; }
 .koolook-preview-desc { margin: 10px 9px 0; padding: 7px 9px; background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-style: italic; font-weight: 500; font-size: 11px; line-height: 1.45; word-break: break-word; opacity: 0.86; max-height: 120px; overflow: hidden; }
-.koolook-build-tag { flex-shrink: 0; padding: 6px 10px 14px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
+.koolook-update-footer { flex-shrink: 0; display: none; justify-content: center; gap: 6px; padding: 4px 10px 12px; color: var(--input-text, inherit); opacity: 0.62; font-size: 11px; line-height: 1.45; text-align: center; }
+.koolook-update-footer-visible { display: flex; }
+.koolook-update-footer a { color: #b9d8ff; font-weight: 700; text-decoration: none; opacity: 1; }
+.koolook-update-footer a:hover { color: #ffffff; }
+.koolook-build-tag { flex-shrink: 0; padding: 0 10px 12px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
 .koolook-build-sha { font-size: 13px; letter-spacing: 0.06em; }
 .koolook-build-scope { display: block; font-size: 12px; margin-top: 3px; letter-spacing: 0.02em; font-family: var(--font-family, sans-serif); font-style: italic; }
 /* Folder-browse picker (issue #137, mockup section 6). Navigate-into

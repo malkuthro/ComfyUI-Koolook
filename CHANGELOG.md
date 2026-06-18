@@ -6,7 +6,14 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-18
+
 ### Added
+- **Sidebar update notice.** The Kforge Labs sidebar now checks the installed
+  pack version against GitHub's latest release and shows a discreet
+  footer-slot "Update Available" notice only when a newer release exists. The
+  notice links to the release notes and stays hidden when the check fails or
+  the install is already current, so offline ComfyUI sessions remain quiet.
 - **Easy Image Batch — review hardening.** `keyframe_batch` is kept as a
   **deprecated alias** of `keyframes_insert` (pre-rename workflows keep loading;
   an explicit `keyframes_insert` wins if both are wired; removal deferred to a

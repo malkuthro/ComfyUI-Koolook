@@ -90,6 +90,26 @@ _DIRNAME_RE = re.compile(r"^[A-Za-z0-9 _.()\-]+$")
 # filter; can be removed in a future major if we choose to migrate.
 _HIDDEN_LIST_PREFIXES = ("_autosave_",)
 _WEB_DIR = Path(__file__).resolve().parent / "web"
+_REPO_ROOT = Path(__file__).resolve().parent
+_GITHUB_RELEASES_URL = "https://github.com/malkuthro/ComfyUI-Koolook/releases"
+_GITHUB_LATEST_RELEASE_API_URL = (
+    "https://api.github.com/repos/malkuthro/ComfyUI-Koolook/releases/latest"
+)
+
+
+def _read_pack_version() -> str:
+    """Read the installed Koolook pack version from ``pyproject.toml``.
+
+    Kept local and dependency-free so the ComfyUI runtime does not need package
+    metadata installed. Returns ``"unknown"`` if the file is unavailable or
+    malformed; the frontend treats that as "do not show update notice".
+    """
+    try:
+        text = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return "unknown"
+    match = re.search(r'(?m)^\s*version\s*=\s*["\']([^"\']+)["\']', text)
+    return match.group(1).strip() if match else "unknown"
 
 
 def _latest_autosave_mtime(autosave_dir: Path, named_mtime: float) -> float | None:
@@ -563,6 +583,16 @@ def register_routes(routes, setup_registry_factory=None, setup_runner_factory=No
     @routes.get("/koolook/setup_runner_simulator.js")
     async def setup_runner_simulator_js(_request):
         return _web_asset_response("setup_runner_simulator.js", "application/javascript")
+
+    @routes.get("/koolook/api/version")
+    async def get_koolook_version(_request):
+        return web.json_response(
+            {
+                "version": _read_pack_version(),
+                "releasesUrl": _GITHUB_RELEASES_URL,
+                "latestReleaseApiUrl": _GITHUB_LATEST_RELEASE_API_URL,
+            }
+        )
 
     @routes.get("/koolook/api/setups")
     async def list_published_setups(_request):
