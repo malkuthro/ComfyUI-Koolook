@@ -110,7 +110,7 @@ def test_infer_setup_surface_app_contract_from_publish_nodes() -> None:
             { key: "sequence_folder", label: "Sequence folder", visible: true, target: { node: "100", input: "sequence_folder" }, default: "/shots/example/frames" },
             { key: "qt_file", label: "QT file", visible: true, target: { node: "100", input: "qt_file" }, default: "/shots/example/movie.mov" },
             { key: "single_file", label: "Single file", visible: true, target: { node: "100", input: "single_file" }, default: "/shots/example/image.png" },
-            { key: "prompt", label: "Prompt", visible: false, target: { node: "100", input: "prompt" }, default: "unused prompt" },
+            { key: "prompt", label: "Prompt", visible: true, standalone: true, multiline: true, target: { node: "100", input: "prompt" }, default: "", placeholder: "unused prompt", help: "Describe the shot in one simple line: subject + action + setting." },
           ],
           outputs: [
             { key: "folder", label: "Output folder", visible: true, target: { node: "200", input: "folder" }, default: "/shots/example/output" },
@@ -134,6 +134,59 @@ def test_infer_setup_surface_app_contract_from_publish_nodes() -> None:
             ],
           },
         });
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_prompt_is_an_always_on_field_not_a_source_mode() -> None:
+    # The prompt must render independently of the EXR/QT/Img source switch:
+    # visible + standalone, with the author's prompt-widget text surfaced as a
+    # placeholder hint (not a submitted default), and excluded from the switch's
+    # source options.
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { inferSetupSurface } from "./web/sidebar/published_surface.js";
+
+        const surface = inferSetupSurface({
+          nodes: [
+            {
+              id: 100,
+              type: "Koolook_PublishInput",
+              title: "Koolook Publish Input",
+              pos: [40, 60],
+              size: [360, 320],
+              widgets_values: [
+                "EXR",
+                "/shots/example/frames",
+                "/shots/example/movie.mov",
+                "/shots/example/image.png",
+                "a bear talking to the camera in a sunny forest",
+              ],
+            },
+          ],
+          groups: [
+            { title: "Koolook Input", bounding: [20, 20, 440, 420] },
+          ],
+        });
+
+        const prompt = surface.app.inputs.find(field => field.key === "prompt");
+        assert.ok(prompt, "prompt field is present");
+        assert.equal(prompt.visible, true);
+        assert.equal(prompt.standalone, true);
+        assert.equal(prompt.multiline, true);
+        assert.equal(prompt.default, "");
+        assert.equal(prompt.placeholder, "a bear talking to the camera in a sunny forest");
+        assert.ok(prompt.help && prompt.help.length > 0, "prompt carries a help hint");
+
+        // The prompt is never offered as a source mode in the switch.
+        const promptOption = surface.app.switch.options.find(o => o.input === "prompt");
+        assert.equal(promptOption.visible, false);
+        const visibleSources = surface.app.switch.options.filter(o => o.visible !== false).map(o => o.input);
+        assert.deepEqual(visibleSources, ["sequence_folder", "qt_file", "single_file"]);
         """
     )
 

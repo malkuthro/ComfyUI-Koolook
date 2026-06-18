@@ -21,10 +21,23 @@ Two entry points:
 """
 from __future__ import annotations
 
+import os
+import re
+
 # Same frontend-quirk sentinels the node modules already defend against: an
 # untouched STRING widget can arrive at the backend as the literal string
 # "undefined" / "null" / "None" instead of "".
 _SENTINEL_STRINGS = ("undefined", "null", "none")
+
+# Typed into a version field to request filesystem auto-detection of the next
+# free version instead of a literal token. Nodes detect this and call
+# ``next_version_token`` with their own output directory + name.
+_AUTO_VERSION_TOKENS = ("auto", "next")
+
+
+def is_auto_version(value) -> bool:
+    """True when a version field requests auto-detection (``auto`` / ``next``)."""
+    return normalize_version_token(value).lower() in _AUTO_VERSION_TOKENS
 
 
 def normalize_version_token(value) -> str:
@@ -73,3 +86,54 @@ def resolve_version_token(version, disable_versioning: bool = False) -> str:
     if token.isdigit():
         return f"v{int(token):03d}"
     return token
+
+
+def next_version_token(
+    directory,
+    name,
+    version_prefix: str = "v",
+    padding: int = 3,
+    start: int = 1,
+) -> str:
+    """Return the next free ``<prefix>NNN`` token for ``name`` in ``directory``.
+
+    Scans ``directory`` for entries (files *and* subfolders) of the form
+    ``<name>_<prefix><digits>`` -- e.g. ``bearMask_v002.png``,
+    ``bearMask_v002.0001.exr``, or a ``bearMask_v003/`` sequence folder -- and
+    returns the highest detected version plus one, zero-padded to ``padding``.
+
+    A missing or empty directory (or no matching entries) yields ``start``
+    (default ``v001``). Permission errors and other unexpected filesystem
+    failures surface to the caller so a broken output mount cannot silently
+    become ``v001``. Matching is on the **exact** base name, so a different
+    shot's versions never bump this one. An empty ``name`` matches bare
+    ``<prefix>NNN`` tokens. Whatever follows the digits (extension, frame
+    number, ``_suffix``) is ignored.
+    """
+    prefix = normalize_version_token(version_prefix) or "v"
+    try:
+        pad = max(1, int(padding))
+    except (TypeError, ValueError):
+        pad = 3
+    try:
+        start_int = int(start)
+    except (TypeError, ValueError):
+        start_int = 1
+
+    base = normalize_version_token(name)
+    lead = f"{re.escape(base)}_" if base else ""
+    pattern = re.compile(rf"^{lead}{re.escape(prefix)}(\d+)")
+
+    highest: int | None = None
+    try:
+        entries = os.listdir(directory) if directory else []
+    except FileNotFoundError:
+        entries = []
+    for entry in entries:
+        match = pattern.match(entry)
+        if match:
+            value = int(match.group(1))
+            highest = value if highest is None else max(highest, value)
+
+    nxt = start_int if highest is None else highest + 1
+    return f"{prefix}{nxt:0{pad}d}"

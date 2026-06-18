@@ -125,6 +125,15 @@ The external frontend should render `mode` first, then show the matching path
 field for the selected mode. It should preserve the numeric switch values
 because the graph depends on them.
 
+`prompt` is an **always-on** field: it is emitted with `standalone: true` and
+renders independently of the `mode` switch (the user picks a source **and** can
+describe the shot), so it is never offered as a source-mode option. Its widget
+text is surfaced as a `placeholder` hint, not a submitted default — the default
+is empty so an untouched hint is never sent as the real prompt. A `help` string
+carries the phrasing guidance ("subject + action + setting"). Wire the
+`Koolook_PublishInput` `prompt` output into the graph's positive prompt to use
+it.
+
 Naming convention: a field ending in `_folder` means a directory path. A field
 ending in `_file` means a full file path string, including both the directory
 path and the selected filename. This matters for folders that may contain many

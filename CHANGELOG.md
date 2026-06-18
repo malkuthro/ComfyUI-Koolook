@@ -59,8 +59,9 @@ The format is inspired by Keep a Changelog and SemVer.
     source video at chosen indexes). Cut frames beyond the source fall back
     to the placeholder, reported in the summary.
 
-  `image1…image4` are ignored while `keyframes_insert` is connected (console
-  note); `alpha_batch` marks only the inserted positions. An empty
+  Connected `image1…image4` still composite on top of the inserts in this mode
+  (see the super-overwrite note above); `alpha_batch` marks the inserted
+  positions and any slot overwrites. An empty
   `source_frames` list inserts nothing — a clean placeholder batch (no
   `source_batch`) or a clean `source_batch` passthrough. Placement and the
   source-base mapping are pure, torch-free planners (`plan_offset_placements`,
@@ -70,6 +71,12 @@ The format is inspired by Keep a Changelog and SemVer.
   clean placeholder batch (sized by the new `width`/`height` widgets, default
   512×512) rather than raising. `width`/`height` are used **only** as the
   fallback when no connected image provides dimensions.
+- **Bundled Kforge Labs demo workflows.** Fresh sidebar installs now seed a
+  **Kforge Labs Workflows** folder with `Easy Image Batch - Select and
+  Rebuild` and `LOOP Demo`, and the source workflow JSONs are tracked under
+  `docs/workflows/kforge-labs-workflows/` for release review and future demo
+  additions. The loop demo ships with auto-queue disabled until the user sets a
+  writable output folder.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and

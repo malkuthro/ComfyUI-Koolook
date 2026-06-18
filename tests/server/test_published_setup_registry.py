@@ -1058,9 +1058,13 @@ def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
             {
                 "key": "prompt",
                 "label": "Prompt",
-                "visible": False,
+                "visible": True,
+                "standalone": True,
+                "multiline": True,
                 "target": {"node": "100", "input": "prompt"},
-                "default": "unused prompt",
+                "default": "",
+                "placeholder": "unused prompt",
+                "help": "Describe the shot in one simple line: subject + action + setting.",
             },
         ],
         "outputs": [

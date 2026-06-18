@@ -10,6 +10,7 @@ import pytest
 
 import k_video_load
 from k_video_load import (
+    EMPTY_BRANCH_SENTINEL,
     _compose_input_video_path,
     _is_existing_local_video_path,
     _normalize_path_input,
@@ -126,8 +127,28 @@ def test_input_path_strips_windows_video_path_components(tmp_path: Path) -> None
 
 
 def test_input_path_requires_filename() -> None:
+    # A non-existent path with no filename is a genuine mistake and still errors.
     with pytest.raises(ValueError, match="video must include a filename"):
-        _compose_input_video_path("", "/projects/shot01")
+        _compose_input_video_path("", "/no/such/projects/shot01")
+
+
+def test_existing_directory_input_path_degrades_to_empty_sentinel(tmp_path: Path) -> None:
+    # A real folder (e.g. an EXR sequence dir) handed to the video loader is the
+    # unselected branch of an upstream mode switch. Instead of crashing the whole
+    # prompt, _compose_input_video_path signals a graceful empty so the loader can
+    # return nothing rather than raise -- mirroring how lenient sequence loaders
+    # ignore a wrong-type path.
+    seq_dir = tmp_path / "exr_seq"
+    seq_dir.mkdir()
+    assert _compose_input_video_path("", str(seq_dir)) == EMPTY_BRANCH_SENTINEL
+
+
+def test_relative_existing_directory_input_path_degrades(tmp_path: Path) -> None:
+    (tmp_path / "shots" / "shot01").mkdir(parents=True)
+    assert (
+        _compose_input_video_path("", "shots/shot01", input_root=str(tmp_path))
+        == EMPTY_BRANCH_SENTINEL
+    )
 
 
 def test_normalize_text_input_handles_frontend_sentinels() -> None:
@@ -296,4 +317,56 @@ def test_easy_load_video_rejoins_wrapped_input_path_before_direct_vhs_loader(
 
     monkeypatch.delitem(sys.modules, "nodes")
     monkeypatch.delitem(sys.modules, "folder_paths")
+    importlib.reload(k_video_load)
+
+
+def test_easy_load_video_returns_empty_result_for_existing_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # When the loader is handed an existing folder (the unselected EXR branch of
+    # an upstream switch), it must return an empty, correctly-shaped result
+    # instead of raising -- so the dead branch never crashes the prompt.
+    class FakeVHSLoadVideoPath:
+        RETURN_TYPES = ("IMAGE", "INT", "AUDIO", "VHS_VIDEOINFO")
+
+        @classmethod
+        def INPUT_TYPES(cls):
+            return {"required": {"video": ("STRING", {})}, "optional": {}}
+
+        def load_video(self, **kwargs):
+            raise AssertionError("loader must not run for an empty/unselected branch")
+
+    FakeVHSLoadVideoPath.load_video.__globals__["load_video"] = lambda **kwargs: (
+        _ for _ in ()
+    ).throw(AssertionError("shared loader must not run for an empty branch"))
+    fake_nodes = types.SimpleNamespace(
+        NODE_CLASS_MAPPINGS={"VHS_LoadVideoPath": FakeVHSLoadVideoPath}
+    )
+    fake_folder_paths = types.SimpleNamespace(get_input_directory=lambda: str(tmp_path))
+    fake_torch = types.SimpleNamespace(
+        zeros=lambda *shape, **kw: ("zeros", shape),
+        float32="float32",
+    )
+    monkeypatch.setitem(sys.modules, "nodes", fake_nodes)
+    monkeypatch.setitem(sys.modules, "folder_paths", fake_folder_paths)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    loaded = importlib.reload(k_video_load)
+
+    seq_dir = tmp_path / "exr_seq"
+    seq_dir.mkdir()
+    result = loaded.Easy_LoadVideo().load_video(input_path=str(seq_dir), video="")
+    captured = capsys.readouterr()
+
+    assert isinstance(result, tuple) and len(result) == 4
+    assert result[0] == ("zeros", ((1, 64, 64, 3),))  # empty IMAGE (shape passed as one arg)
+    assert result[1] == 0  # frame_count
+    assert result[2]["sample_rate"] == 44100  # empty AUDIO
+    assert result[3] == {}  # empty VHS_VIDEOINFO
+    assert "existing folder with no video filename" in captured.out
+
+    monkeypatch.delitem(sys.modules, "nodes")
+    monkeypatch.delitem(sys.modules, "folder_paths")
+    monkeypatch.delitem(sys.modules, "torch")
     importlib.reload(k_video_load)

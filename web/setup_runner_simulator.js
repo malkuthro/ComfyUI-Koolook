@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "lost"]);
+const ACTIVE_RUN_STATUSES = new Set(["queued", "running"]);
 const DEFAULT_LOCAL_COMFY_BASE = "http://127.0.0.1:8188";
 const LOCAL_SETUP_FILE_FLAG = "__koolookLocalSetupFile";
 
@@ -199,7 +200,7 @@ export async function runAndPollPublishedSetup({
     baseUrl = "",
     fetchImpl = fetch,
     intervalMs = 1000,
-    timeoutMs = 30000,
+    timeoutMs = 120000,
     sleepImpl = sleep,
     onUpdate,
 }) {
@@ -209,19 +210,50 @@ export async function runAndPollPublishedSetup({
     if (!runId || TERMINAL_RUN_STATUSES.has(String(queued.status || "").toLowerCase())) {
         return queued;
     }
-    const startedAt = Date.now();
     let lastRun = queued;
-    while (Date.now() - startedAt <= timeoutMs) {
+    let lastProgress = runProgressSignature(queued);
+    // Renders can run for many minutes, so timeoutMs is a "no progress" window
+    // rather than a total budget. The deadline resets only when the run payload
+    // changes in a meaningful way; the same queued/running response forever is
+    // treated as stalled instead of active progress.
+    let deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
         await sleepImpl(intervalMs);
         lastRun = await getPublishedSetupRun({ runId, baseUrl, fetchImpl });
         if (typeof onUpdate === "function") onUpdate(lastRun);
-        if (TERMINAL_RUN_STATUSES.has(String(lastRun?.status || "").toLowerCase())) {
-            return lastRun;
+        const status = String(lastRun?.status || "").toLowerCase();
+        if (TERMINAL_RUN_STATUSES.has(status)) return lastRun;
+        if (ACTIVE_RUN_STATUSES.has(status)) {
+            const progress = runProgressSignature(lastRun);
+            if (progress !== lastProgress) {
+                lastProgress = progress;
+                deadline = Date.now() + timeoutMs;
+            }
         }
     }
     const error = new Error(`Timed out waiting for run ${runId}.`);
     error.run = lastRun;
     throw error;
+}
+
+function runProgressSignature(run) {
+    if (!run || typeof run !== "object") return "";
+    const outputs = Array.isArray(run.outputs)
+        ? run.outputs.map(output => ({
+            key: output?.key,
+            itemCount: Array.isArray(output?.items) ? output.items.length : 0,
+            values: Array.isArray(output?.items)
+                ? output.items.map(item => item?.value ?? "").filter(Boolean)
+                : [],
+        }))
+        : [];
+    return JSON.stringify({
+        status: String(run.status || "").toLowerCase(),
+        promptId: run.promptId || "",
+        queuePosition: run.queuePosition ?? run.position ?? null,
+        updatedAt: run.updatedAt || run.timestamp || run.lastUpdate || "",
+        outputs,
+    });
 }
 
 export function formatRun(run) {
@@ -343,6 +375,13 @@ export function defaultRunInputsFromSetup(setup) {
             if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
         }
     }
+    if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.standalone && field?.visible !== false && field?.key) {
+                inputs[field.key] = fieldDefault(field);
+            }
+        }
+    }
     if (Array.isArray(app.outputs)) {
         for (const field of app.outputs) {
             if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
@@ -368,6 +407,13 @@ export function runInputsFromAppValues(setup, values = {}) {
     } else if (Array.isArray(app.inputs)) {
         for (const field of app.inputs) {
             if (field?.visible !== false && field?.key) {
+                inputs[field.key] = values[field.key] ?? fieldDefault(field);
+            }
+        }
+    }
+    if (Array.isArray(app.inputs)) {
+        for (const field of app.inputs) {
+            if (field?.standalone && field?.visible !== false && field?.key) {
                 inputs[field.key] = values[field.key] ?? fieldDefault(field);
             }
         }
@@ -438,7 +484,16 @@ function demoFetch(url, options = {}) {
                         { key: "sequence_folder", label: "Sequence folder", visible: true, default: "/shots/demo/plates" },
                         { key: "qt_file", label: "QT file", visible: true, default: "/shots/demo/source.mov" },
                         { key: "single_file", label: "Single file", visible: true, default: "/shots/demo/source.png" },
-                        { key: "prompt", label: "Prompt", visible: false, default: "" },
+                        {
+                            key: "prompt",
+                            label: "Prompt",
+                            visible: true,
+                            standalone: true,
+                            multiline: true,
+                            default: "",
+                            placeholder: "a bear talking to the camera in a sunny forest",
+                            help: "Describe the shot in one simple line: subject + action + setting.",
+                        },
                     ],
                     outputs: [
                         { key: "folder", label: "Output folder", visible: true, default: "/shots/demo/output" },
@@ -534,10 +589,17 @@ function bindSimulator(documentRef, fetchImpl) {
         const label = documentRef.createElement("label");
         label.dataset.fieldKey = name || field.key;
         label.textContent = fieldLabelText(field);
-        const input = documentRef.createElement("input");
+        const input = documentRef.createElement(field?.multiline ? "textarea" : "input");
         input.dataset.appField = name || field.key;
         input.value = value == null ? "" : String(value);
+        if (field?.placeholder) input.placeholder = String(field.placeholder);
         label.appendChild(input);
+        if (field?.help) {
+            const help = documentRef.createElement("small");
+            help.className = "field-help";
+            help.textContent = String(field.help);
+            label.appendChild(help);
+        }
         input.addEventListener("input", updatePayloadPreview);
         return label;
     }
@@ -591,6 +653,13 @@ function bindSimulator(documentRef, fetchImpl) {
             };
             select.addEventListener("change", renderSourceField);
             renderSourceField();
+            // Always-on inputs (e.g. the prompt) render alongside the source,
+            // independent of the selected switch mode.
+            for (const field of app.inputs || []) {
+                if (field?.standalone && field?.visible !== false && field?.key) {
+                    appForm.appendChild(createInputField(field, { value: fieldDefault(field) }));
+                }
+            }
         } else if (Array.isArray(app.inputs)) {
             for (const field of app.inputs) {
                 if (field?.visible !== false && field?.key) {
@@ -695,6 +764,7 @@ function bindSimulator(documentRef, fetchImpl) {
         }
         runBtn.disabled = true;
         setStatus("Queueing setup...");
+        const startedAt = Date.now();
         try {
             const finalRun = await runAndPollPublishedSetup({
                 setupId: setupSelect.value,
@@ -702,7 +772,9 @@ function bindSimulator(documentRef, fetchImpl) {
                 baseUrl: baseUrl(),
                 fetchImpl,
                 onUpdate: run => {
-                    setStatus(`Run ${run.status || "unknown"}`);
+                    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+                    const active = ACTIVE_RUN_STATUSES.has(String(run.status || "").toLowerCase());
+                    setStatus(`Run ${run.status || "unknown"}${active ? ` (${elapsed}s)` : ""}`);
                     setDetail(formatRun(run));
                 },
             });
