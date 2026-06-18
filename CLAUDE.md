@@ -32,6 +32,8 @@
   to skip the audit (e.g. offline). Do not install into system Python or
   user-site packages. If `.venv` cannot be used, stop and explain the
   blocker before installing anywhere broader.
+- Maintainer-facing dependency CVE response and relock instructions live in
+  `docs/maintainers/dependency-security.md`.
 - Keep MAIN limited to:
   - custom Koolook nodes
   - wrapper loaders under `forks/`
