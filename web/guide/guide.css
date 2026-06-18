@@ -581,6 +581,19 @@ figcaption {
   pointer-events: none;
 }
 
+.snapshot-transfer {
+  padding-top: 8px;
+}
+
+.snapshot-transfer .showcase:first-of-type {
+  border-top: 1px solid var(--line);
+}
+
+.snapshot-transfer-small img {
+  width: min(100%, 360px);
+  margin: 0 auto;
+}
+
 @media (max-width: 980px) {
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));

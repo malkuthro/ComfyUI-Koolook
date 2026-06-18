@@ -86,6 +86,11 @@ The format is inspired by Keep a Changelog and SemVer.
   RealEstate10k-style pose file format. Hover tooltips were filled in for the
   loop-status and camera-pose widgets, and the publish-contract tooltips now
   describe their external-app role more directly.
+- **In-app guide snapshot transfer section.** The bundled sidebar guide now
+  ends with a Snapshot transfer walkthrough showing A/B compare, source
+  expansion, copy-folder transfer, and the return to the normal saved-kit view.
+  The workflow right-click screenshot was refreshed with the current compact
+  menu.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and
