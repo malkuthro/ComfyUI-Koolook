@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "lost"]);
+const ACTIVE_RUN_STATUSES = new Set(["queued", "running"]);
 const DEFAULT_LOCAL_COMFY_BASE = "http://127.0.0.1:8188";
 const LOCAL_SETUP_FILE_FLAG = "__koolookLocalSetupFile";
 
@@ -199,7 +200,7 @@ export async function runAndPollPublishedSetup({
     baseUrl = "",
     fetchImpl = fetch,
     intervalMs = 1000,
-    timeoutMs = 30000,
+    timeoutMs = 120000,
     sleepImpl = sleep,
     onUpdate,
 }) {
@@ -209,15 +210,20 @@ export async function runAndPollPublishedSetup({
     if (!runId || TERMINAL_RUN_STATUSES.has(String(queued.status || "").toLowerCase())) {
         return queued;
     }
-    const startedAt = Date.now();
     let lastRun = queued;
-    while (Date.now() - startedAt <= timeoutMs) {
+    // Renders can run for many minutes, so timeoutMs is a "no progress" window
+    // rather than a total budget: while ComfyUI keeps reporting the run as
+    // queued/running, the deadline is pushed forward, so a long-but-active
+    // render never spuriously times out. Only a stalled or vanished run (no
+    // active/terminal status within the window) gives up.
+    let deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
         await sleepImpl(intervalMs);
         lastRun = await getPublishedSetupRun({ runId, baseUrl, fetchImpl });
         if (typeof onUpdate === "function") onUpdate(lastRun);
-        if (TERMINAL_RUN_STATUSES.has(String(lastRun?.status || "").toLowerCase())) {
-            return lastRun;
-        }
+        const status = String(lastRun?.status || "").toLowerCase();
+        if (TERMINAL_RUN_STATUSES.has(status)) return lastRun;
+        if (ACTIVE_RUN_STATUSES.has(status)) deadline = Date.now() + timeoutMs;
     }
     const error = new Error(`Timed out waiting for run ${runId}.`);
     error.run = lastRun;
@@ -732,6 +738,7 @@ function bindSimulator(documentRef, fetchImpl) {
         }
         runBtn.disabled = true;
         setStatus("Queueing setup...");
+        const startedAt = Date.now();
         try {
             const finalRun = await runAndPollPublishedSetup({
                 setupId: setupSelect.value,
@@ -739,7 +746,9 @@ function bindSimulator(documentRef, fetchImpl) {
                 baseUrl: baseUrl(),
                 fetchImpl,
                 onUpdate: run => {
-                    setStatus(`Run ${run.status || "unknown"}`);
+                    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+                    const active = ACTIVE_RUN_STATUSES.has(String(run.status || "").toLowerCase());
+                    setStatus(`Run ${run.status || "unknown"}${active ? ` (${elapsed}s)` : ""}`);
                     setDetail(formatRun(run));
                 },
             });
