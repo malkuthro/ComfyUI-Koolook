@@ -39,6 +39,12 @@ except (ImportError, RuntimeError) as _exc:
     _VHS_LOAD_VIDEO_FN = None
 
 
+# Returned by _compose_input_video_path when input_path is an existing folder
+# with no filename -- typically the unselected branch of an upstream mode switch
+# (e.g. an EXR sequence dir handed to the video loader). load_video turns this
+# into an empty, correctly-shaped result instead of crashing the whole prompt.
+EMPTY_BRANCH_SENTINEL = "\x00__koolook_empty_video_branch__"
+
 _SENTINEL_STRINGS = ("undefined", "null", "none")
 _VIDEO_EXTENSIONS = {
     ".avi",
@@ -104,6 +110,16 @@ def _strip_outer_quotes(path: str) -> str:
 def _is_existing_local_video_path(path: str) -> bool:
     clean = _strip_outer_quotes(path)
     return _looks_like_video_file(clean) and os.path.isfile(clean)
+
+
+def _input_path_is_existing_dir(path: str, input_root: str | None = None) -> bool:
+    """True when ``path`` resolves to a real directory on disk.
+
+    Absolute dirs are checked directly; relative dirs are rooted under ComfyUI's
+    input directory, matching how the loader resolves relative paths elsewhere.
+    """
+    candidate = _existing_local_path_candidate(path, input_root)
+    return bool(candidate) and os.path.isdir(candidate)
 
 
 def _existing_local_path_candidate(path: str, input_root: str | None = None) -> str:
@@ -190,6 +206,14 @@ def _compose_input_video_path(
 
     name = _basename_any_sep(video) or video
     if not name:
+        # input_path is a directory with no filename. If that folder actually
+        # exists it is almost always the unselected branch of an upstream mode
+        # switch -- e.g. an EXR sequence dir routed into the video loader. Signal
+        # a graceful empty so the loader returns nothing instead of crashing the
+        # whole prompt (a lenient sequence loader would just ignore it). A path
+        # that does not exist is a genuine mistake and still raises.
+        if _input_path_is_existing_dir(clean_dir, input_root):
+            return EMPTY_BRANCH_SENTINEL
         raise ValueError("video must include a filename when input_path is set.")
 
     if os.path.isabs(clean_dir):
@@ -197,6 +221,41 @@ def _compose_input_video_path(
 
     root = input_root if input_root is not None else _input_root()
     return os.path.normpath(os.path.join(root, clean_dir, name))
+
+
+def _empty_value_for_type(type_name: str):
+    """Build an empty, correctly-typed output value for a VHS return slot.
+
+    ``torch`` is imported lazily so the path-composition logic stays importable
+    (and unit-testable) without torch installed; it is always present at runtime
+    inside ComfyUI.
+    """
+    name = str(type_name)
+    if name in ("IMAGE", "MASK", "LATENT"):
+        import torch
+
+        if name == "IMAGE":
+            return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+        if name == "MASK":
+            return torch.zeros((1, 64, 64), dtype=torch.float32)
+        return {"samples": torch.zeros((1, 4, 8, 8), dtype=torch.float32)}
+    if name == "AUDIO":
+        import torch
+
+        return {"waveform": torch.zeros((1, 2, 1), dtype=torch.float32), "sample_rate": 44100}
+    if name == "INT":
+        return 0
+    if name == "FLOAT":
+        return 0.0
+    if name == "STRING":
+        return ""
+    if name == "VHS_VIDEOINFO":
+        return {}
+    return None
+
+
+def _empty_load_video_result(return_types) -> tuple:
+    return tuple(_empty_value_for_type(t) for t in return_types)
 
 
 if _VHS_AVAILABLE:
@@ -234,10 +293,15 @@ if _VHS_AVAILABLE:
             return types
 
         def load_video(self, *args, **kwargs):
-            kwargs["video"] = _compose_input_video_path(
+            composed = _compose_input_video_path(
                 kwargs.get("video", ""),
                 kwargs.pop("input_path", ""),
             )
+            if composed == EMPTY_BRANCH_SENTINEL:
+                # Unselected branch (existing folder, no filename): return an
+                # empty, correctly-shaped result so the prompt does not crash.
+                return _empty_load_video_result(self.RETURN_TYPES)
+            kwargs["video"] = composed
             if _is_existing_local_video_path(kwargs["video"]):
                 kwargs["video"] = _strip_outer_quotes(kwargs["video"])
                 return _VHS_LOAD_VIDEO_FN(*args, **kwargs)
@@ -246,6 +310,8 @@ if _VHS_AVAILABLE:
         @classmethod
         def IS_CHANGED(cls, video, input_path="", **kwargs):
             resolved = _compose_input_video_path(video, input_path)
+            if resolved == EMPTY_BRANCH_SENTINEL:
+                return EMPTY_BRANCH_SENTINEL
             return _VHS_LoadVideoPath.IS_CHANGED(resolved, **kwargs)
 
         @classmethod
@@ -255,6 +321,10 @@ if _VHS_AVAILABLE:
             if video is None or input_path is None:
                 return True
             resolved = _compose_input_video_path(video, input_path)
+            # An existing-folder branch validates fine; it degrades to empty at
+            # run time rather than blocking the whole prompt.
+            if resolved == EMPTY_BRANCH_SENTINEL:
+                return True
             if _is_existing_local_video_path(resolved):
                 return True
             return _VHS_LoadVideoPath.VALIDATE_INPUTS(resolved)
