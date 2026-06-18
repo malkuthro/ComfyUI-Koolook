@@ -300,26 +300,88 @@ class KoolookLoopStatus:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "value": (ANY_TYPE,),
-                "index": ("INT", {"default": 0, "min": 0, "max": 999999}),
-                "total": ("INT", {"default": 1, "min": 1, "max": 100000}),
+                "value": (
+                    ANY_TYPE,
+                    {
+                        "tooltip": "Payload to pass through unchanged while this node reports loop progress.",
+                    },
+                ),
+                "index": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 999999,
+                        "tooltip": "Current zero-based frame index. Wire this from the easy int node that drives the loop.",
+                    },
+                ),
+                "total": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 100000,
+                        "tooltip": "Total frames/prompts in this loop. Auto-queue stops when index + 1 reaches total.",
+                    },
+                ),
             },
             "optional": {
-                "filepath": ("STRING", {"default": "", "multiline": True}),
-                "label": ("STRING", {"default": "loop", "multiline": False}),
-                "auto_queue_next": ("BOOLEAN", {"default": False}),
-                "index_node_id": ("STRING", {"default": "", "multiline": False}),
+                "filepath": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "Optional sequence path for the printed status line. %04d-style frame tokens are previewed with the current index.",
+                    },
+                ),
+                "label": (
+                    "STRING",
+                    {
+                        "default": "loop",
+                        "multiline": False,
+                        "tooltip": "Short label printed before progress, for example EXR_SAFE or plate_pass.",
+                    },
+                ),
+                "auto_queue_next": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "Queue the next prompt automatically after this frame, advancing the connected index node.",
+                    },
+                ),
+                "index_node_id": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Advanced override for the frame-index node id. Leave blank; the connected index input is normally detected automatically.",
+                    },
+                ),
                 "server_url": (
                     "STRING",
-                    {"default": "auto", "multiline": False},
+                    {
+                        "default": "auto",
+                        "multiline": False,
+                        "tooltip": "ComfyUI server used for auto-queue. Leave auto to detect the running server and port.",
+                    },
                 ),
                 "max_auto_queue_depth": (
                     "INT",
-                    {"default": 100, "min": 1, "max": MAX_AUTO_QUEUE_DEPTH},
+                    {
+                        "default": 100,
+                        "min": 1,
+                        "max": MAX_AUTO_QUEUE_DEPTH,
+                        "tooltip": "Safety cap for child prompts this run may chain, preventing accidental runaway loops.",
+                    },
                 ),
                 "remaining_auto_queue_depth": (
                     "INT",
-                    {"default": -1, "min": -1, "max": MAX_AUTO_QUEUE_DEPTH},
+                    {
+                        "default": -1,
+                        "min": -1,
+                        "max": MAX_AUTO_QUEUE_DEPTH,
+                        "tooltip": "Internal countdown carried into child prompts. Leave at -1 in normal canvas use.",
+                    },
                 ),
             },
             "hidden": {

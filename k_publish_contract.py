@@ -35,7 +35,7 @@ class Koolook_PublishInput:
                     list(INPUT_MODES),
                     {
                         "default": "Img",
-                        "tooltip": "External app source mode. The node outputs the stable numeric switch index.",
+                        "tooltip": "Source mode exposed to the external app. The switch output keeps this mode's stable numeric index.",
                     },
                 ),
                 "sequence_folder": (
@@ -43,7 +43,7 @@ class Koolook_PublishInput:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Folder path for EXR/image sequence sources.",
+                        "tooltip": "Directory path for sequence sources such as EXR or numbered image frames.",
                     },
                 ),
                 "qt_file": (
@@ -51,7 +51,7 @@ class Koolook_PublishInput:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Full path to a QuickTime/video file.",
+                        "tooltip": "Full path to one QuickTime/video file, including directory and filename.",
                     },
                 ),
                 "single_file": (
@@ -59,7 +59,7 @@ class Koolook_PublishInput:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Full path to a single source image/file.",
+                        "tooltip": "Full path to one still image or single source file.",
                     },
                 ),
                 "prompt": (
@@ -67,7 +67,7 @@ class Koolook_PublishInput:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Internal prompt placeholder for setups that need the shared input structure.",
+                        "tooltip": "Prompt text field for setups that route a text prompt through the published app surface.",
                     },
                 ),
             },
@@ -77,6 +77,7 @@ class Koolook_PublishInput:
     RETURN_NAMES = ("sequence_folder", "qt_file", "single_file", "prompt", "switch")
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
+    DESCRIPTION = "Declare source inputs for a workflow published to an external app."
 
     def run(
         self,
@@ -107,7 +108,7 @@ class Koolook_PublishOutput:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Folder where the setup should write outputs.",
+                        "tooltip": "Destination folder exposed to the external app and wired into downstream writer/path nodes.",
                     },
                 ),
                 "name": (
@@ -115,7 +116,7 @@ class Koolook_PublishOutput:
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Base output name.",
+                        "tooltip": "Base output name exposed to the external app.",
                     },
                 ),
                 "version": (
@@ -123,7 +124,7 @@ class Koolook_PublishOutput:
                     {
                         "default": "1",
                         "multiline": False,
-                        "tooltip": "Output version token or number.",
+                        "tooltip": "Output version token or number exposed to the external app.",
                     },
                 ),
             },
@@ -133,6 +134,7 @@ class Koolook_PublishOutput:
     RETURN_NAMES = ("folder", "name", "version")
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
+    DESCRIPTION = "Declare output folder, name, and version controls for a published setup."
 
     def run(self, folder: str, name: str, version: str):
         return (folder, name, version)
@@ -150,7 +152,7 @@ class Koolook_PublishResult:
                     {
                         "default": "",
                         "multiline": True,
-                        "tooltip": "Final resolved output path, folder, or status from the workflow.",
+                        "tooltip": "Resolved result path, folder, or status string to show after the external app run finishes.",
                     },
                 ),
             },
@@ -161,6 +163,7 @@ class Koolook_PublishResult:
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
     OUTPUT_NODE = True
+    DESCRIPTION = "Report a resolved setup result string back to the published setup runner."
 
     def run(self, result: str):
         return {"ui": {"text": [result]}, "result": (result,)}
@@ -179,13 +182,13 @@ class Koolook_PublishRouter:
                         "default": INPUT_MODE_TO_INDEX["Img"],
                         "min": 0,
                         "max": len(INPUT_MODES) - 1,
-                        "tooltip": "Switch index from Koolook Publish Input. External setup runs keep the matching output branch.",
+                        "tooltip": "Switch index from Koolook Publish Input. Published setup runs keep only the matching writer branch.",
                     },
                 ),
                 "payload": (
                     "*",
                     {
-                        "tooltip": "Payload to route to the switch-aligned writer branches.",
+                        "tooltip": "Main workflow payload to send to the switch-aligned writer branches.",
                     },
                 ),
             },
@@ -195,6 +198,7 @@ class Koolook_PublishRouter:
     RETURN_NAMES = INPUT_MODES
     CATEGORY = "Koolook/Publish"
     FUNCTION = "route"
+    DESCRIPTION = "Route one payload into switch-aligned writer branches for published setup runs."
 
     def route(self, selector: int, payload):
         return (payload, payload, payload, payload)
