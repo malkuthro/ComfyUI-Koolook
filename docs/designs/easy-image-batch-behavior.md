@@ -1,17 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Easy Image Batch — behavior matrix (proposed)
+# Easy Image Batch — behavior matrix
 
 Status: **Canonical** (approved 2026-06-18). Implemented in
 `k_easy_image_batch.py` and mirrored in
 [`docs/user_guide/nodes/koolook_image/easy_image_batch.md`](../user_guide/nodes/koolook_image/easy_image_batch.md).
-Companion:
-- [`easy-image-batch-demo-setup.json`](easy-image-batch-demo-setup.json) — a
-  loadable ComfyUI workflow with one `Easy Pattern → Easy Image Batch →
-  Preview Image` cluster per matrix row (regenerate via
-  [`build_easy_image_batch_demo.py`](build_easy_image_batch_demo.py)). Load it
-  in ComfyUI to run the modes side by side against the live node. (Generated
-  from an earlier draft — if a row disagrees with the matrix below, the matrix
-  and the node are canonical.)
 
 This captures the agreed changes:
 
