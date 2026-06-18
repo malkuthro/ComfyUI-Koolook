@@ -158,6 +158,13 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **Dependency CVE audit is now enforced in CI (#245).** The committed
+  `constraints-test.txt` lock is audited with `pip-audit` on pull requests and
+  weekly scheduled runs, pytest installs from that same lock, and the bootstrap
+  scripts upgrade `setuptools` alongside `pip` before audit. The test lock was
+  regenerated to move `aiohttp` from 3.14.0 to the fixed 3.14.1 line, and the
+  relock path now avoids editable Git metadata inspection so Windows
+  cross-drive worktrees can regenerate the lock cleanly.
 - **`Koolook_LoopStatus` auto-queue failed on non-default ports.** The
   node's `server_url` defaulted to ComfyUI's standard port
   (`http://127.0.0.1:8188`), so installs launched with `--port` (or
