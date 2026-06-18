@@ -7,27 +7,76 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Easy Image Batch — review hardening.** `keyframe_batch` is kept as a
+  **deprecated alias** of `keyframes_insert` (pre-rename workflows keep loading;
+  an explicit `keyframes_insert` wins if both are wired; removal deferred to a
+  release boundary). A non-empty `source_frames` with **no image source
+  connected** now logs a warning instead of silently returning a clean batch.
+  Frame-list **ranges are capped** — a single `N-M` token can't expand past
+  8192 frames — guarding against typos like `1-99999999`.
+- **Easy Image Batch — passthrough inpaint mask + frame-range syntax.** Two
+  refinements: (1) when `source_batch` is shorter than the output (empty list),
+  the covered source frames are kept as real content (`alpha` 0.0) while the
+  uncovered tail stays placeholder and becomes the `selected_image_batch` /
+  `selected_frames` output — an extend-a-clip inpaint mask (keep the first N,
+  generate the rest). A full-coverage passthrough has no gap, so `alpha` is
+  all-kept and the selection is empty. This makes `selected_*` the *gap* in
+  passthrough — the inverse of select mode, where it is the placed picks/slots.
+  (2) The `source_frames` field now accepts inclusive ranges: `1-5, 7, 9,
+  14-17` expands to `1,2,3,4,5,7,9,14,15,16,17`, in both select and insert
+  modes (shared torch-free `parse_frame_tokens`, unit-tested in CI).
+- **Easy Image Batch — `image1-4` super-overwrite + source passthrough.** The
+  four manual slots are now the top compositing layer in **every** mode: a
+  connected `imageN` overwrites output frame `imageN_frame` on top of the
+  sequence/inserts and the background, in select *and* insert modes (they were
+  previously ignored whenever `keyframes_insert` was connected). On a
+  collision the higher-numbered slot wins (`image4` > `image1`), and a slot
+  beats a sequence pick / insert at the same position. Two model fixes ride
+  along: an **unconnected** slot now contributes nothing — `imageN_frame` is
+  only a placement target for a wired image, never a `source_batch` pick (the
+  old "pull `source_batch[imageN_frame-1]`" fallback that surfaced
+  seemingly-random frames is removed); and **`source_batch` + an empty frame
+  list (no insert) now passes the source cut window straight through** instead
+  of emitting a placeholder batch, matching the empty-list insert passthrough
+  so "source in → source out" is consistent. Slot placement is a pure,
+  torch-free planner (`plan_slot_overwrites`) unit-tested in CI alongside the
+  existing insert planners.
+- **Easy Image Batch — insert modes (`keyframes_insert`).** A new optional
+  `keyframes_insert` input (renamed from the unreleased `keyframe_batch`)
+  adds the inverse of the node's select behaviour. When connected, the node
+  switches from *selecting* sparse keyframes to *scattering* an
+  already-packed short sequence onto the `source_frames` positions — placing
+  the *i*-th incoming frame at the *i*-th listed number (ascending). The
+  **background depends on `source_batch`**:
+  - **not connected → offset / reconstruct mode** — gaps filled with the
+    placeholder colour, at the original sequence length. Closes the
+    select → process → reconstruct loop: feed a processed copy of a previous
+    `selected_image_batch` plus the same `selected_frames` list back in to
+    rebuild the original spacing.
+  - **connected → insert-over-source mode** — the `source_batch` cut window
+    is laid down as the background and the listed positions are overwritten
+    with the insert frames (composite N>1 processed frames back into the
+    source video at chosen indexes). Cut frames beyond the source fall back
+    to the placeholder, reported in the summary.
+
+  Connected `image1…image4` still composite on top of the inserts in this mode
+  (see the super-overwrite note above); `alpha_batch` marks the inserted
+  positions and any slot overwrites. An empty
+  `source_frames` list inserts nothing — a clean placeholder batch (no
+  `source_batch`) or a clean `source_batch` passthrough. Placement and the
+  source-base mapping are pure, torch-free planners (`plan_offset_placements`,
+  `plan_source_base_fill`) so both are unit-tested in CI.
+- **Easy Image Batch — clean batch instead of erroring + `width`/`height`
+  fallback.** With no image source connected at all, the node now emits a
+  clean placeholder batch (sized by the new `width`/`height` widgets, default
+  512×512) rather than raising. `width`/`height` are used **only** as the
+  fallback when no connected image provides dimensions.
 - **Bundled Kforge Labs demo workflows.** Fresh sidebar installs now seed a
   **Kforge Labs Workflows** folder with `Easy Image Batch - Select and
   Rebuild` and `LOOP Demo`, and the source workflow JSONs are tracked under
   `docs/workflows/kforge-labs-workflows/` for release review and future demo
   additions. The loop demo ships with auto-queue disabled until the user sets a
   writable output folder.
-- **Easy Image Batch — offset mode (`keyframe_batch`).** A new optional
-  `keyframe_batch` input adds the inverse of the node's select behaviour.
-  When connected, the node switches from *selecting* sparse keyframes out of
-  a dense `source_batch` to *scattering* an already-packed short sequence
-  back onto the `source_frames` positions — placing the *i*-th incoming
-  frame at the *i*-th listed number (ascending), placeholder colour in
-  between, at the original sequence length. This closes the
-  select → process → reconstruct loop: feed a processed copy of a previous
-  `selected_image_batch` plus the same `selected_frames` list back in to
-  rebuild the original spacing. The switch is wire-driven (`source_batch`
-  and `image1…image4` are ignored while `keyframe_batch` is connected, with
-  a console note); frame-count vs list-length mismatches and outside-cut
-  positions are reported in the end-of-run summary. Placement logic is a
-  pure, torch-free planner (`plan_offset_placements`) so it is unit-tested
-  in CI.
 - **Publish setup success feedback (#227).** Publishing a saved sidebar
   workflow no longer closes the dialog silently — a confirmation card now
   shows where the setup was saved (the registry `setups.json` path) and
@@ -170,7 +219,10 @@ The format is inspired by Keep a Changelog and SemVer.
   scripts upgrade `setuptools` alongside `pip` before audit. The test lock was
   regenerated to move `aiohttp` from 3.14.0 to the fixed 3.14.1 line, and the
   relock path now avoids editable Git metadata inspection so Windows
-  cross-drive worktrees can regenerate the lock cleanly.
+  cross-drive worktrees can regenerate the lock cleanly. The `[test]` extra's
+  `aiohttp` floor was also raised from `>=3.9` to `>=3.14.1` so the declared
+  dependency range can no longer resolve a vulnerable version, clearing the
+  eight range-based Dependabot alerts the lock bump alone left open.
 - **`Koolook_LoopStatus` auto-queue failed on non-default ports.** The
   node's `server_url` defaulted to ComfyUI's standard port
   (`http://127.0.0.1:8188`), so installs launched with `--port` (or
