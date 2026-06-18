@@ -74,6 +74,7 @@ import {
     clearWorkflowsRenderSource,
 } from "./workflows_store.js";
 import { diffPicks, diffWorkflows, getWorkflowEntryFromStore } from "./snapshot_diff.js";
+import { checkForUpdate, renderUpdateFooter } from "./update_check.js";
 import {
     serializeFullCanvas,
     serializeSelection,
@@ -2544,6 +2545,7 @@ export function renderSidebar(container) {
         signal,
         readOnly: !liveIsActive,
         pullIn: liveIsActive ? null : pullIn,
+        showUpdateFooter: false,
     });
     renderPanel(rightCol.host, {
         compare: true,
@@ -2553,6 +2555,7 @@ export function renderSidebar(container) {
         compareName: snapName,
         readOnly: true,
         pullIn: liveIsActive ? pullIn : null,
+        showUpdateFooter: false,
     });
     // Diff/tint/filter follow the SOURCE (the read-only side you copy FROM):
     // "new" = in the source, not the target — the copy candidates — so the
@@ -3105,7 +3108,7 @@ function applyCompareTint(panelEl, targetPicks, targetStore, sourcePicks, source
 }
 
 export function renderPanel(container, options = {}) {
-    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "", readOnly = compare, pullIn = null } = options;
+    const { compare = false, snapshot = null, onToggleCompare = null, signal = null, compareName = "", readOnly = compare, pullIn = null, showUpdateFooter = true } = options;
     // Compare mode (#181): when `compare` is set, every tree (re-)render in
     // this panel reads from the loaded `snapshot` via the read-only store
     // overrides, and the live-change listeners at the bottom are skipped so
@@ -3827,6 +3830,13 @@ export function renderPanel(container, options = {}) {
     container.appendChild(tree);
 
     withSource(() => renderTree({ treeEl: tree, query: "" }));
+
+    const updateFooter = document.createElement("div");
+    updateFooter.className = "koolook-update-footer";
+    container.appendChild(updateFooter);
+    if (showUpdateFooter) {
+        checkForUpdate().then((update) => renderUpdateFooter(updateFooter, update));
+    }
 
     // ---- Build tag (dev-sync verification) ----
     // `scripts/sync_to_dev.py` writes `web/_dev_build.json` post-sync so the

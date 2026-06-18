@@ -53,6 +53,21 @@ def test_setup_runner_simulator_routes_serve_html_and_js() -> None:
     asyncio.run(exercise())
 
 
+def test_version_route_exposes_installed_version_and_release_urls() -> None:
+    async def exercise() -> None:
+        app = _app_with_registry(PublishedSetupRegistry(StaticSetupStorage([])))
+
+        response = await _handle(app, "GET", "/koolook/api/version")
+
+        assert response.status == 200
+        body = _json_body(response)
+        assert body["version"] == "0.4.0"
+        assert body["releasesUrl"] == "https://github.com/malkuthro/ComfyUI-Koolook/releases"
+        assert body["latestReleaseApiUrl"].endswith("/malkuthro/ComfyUI-Koolook/releases/latest")
+
+    asyncio.run(exercise())
+
+
 def test_catalog_list_omits_invalid_setups() -> None:
     async def exercise() -> None:
         invalid = deepcopy(_valid_setup())

@@ -40,6 +40,7 @@ jobs:
         run: |
           node tests/js/test_ai_pipeline_preview.mjs
           node tests/js/test_draft_guard.mjs
+          node tests/js/test_update_check.mjs
 
   security-gate:
     name: Security Gate
