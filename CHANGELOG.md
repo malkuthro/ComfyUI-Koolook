@@ -158,6 +158,44 @@ The format is inspired by Keep a Changelog and SemVer.
   pre-removal commit.
 
 ### Fixed
+- **Dependency CVE audit is now enforced in CI (#245).** The committed
+  `constraints-test.txt` lock is audited with `pip-audit` on pull requests and
+  weekly scheduled runs, pytest installs from that same lock, and the bootstrap
+  scripts upgrade `setuptools` alongside `pip` before audit. The test lock was
+  regenerated to move `aiohttp` from 3.14.0 to the fixed 3.14.1 line, and the
+  relock path now avoids editable Git metadata inspection so Windows
+  cross-drive worktrees can regenerate the lock cleanly.
+- **`Koolook_LoopStatus` auto-queue failed on non-default ports.** The
+  node's `server_url` defaulted to ComfyUI's standard port
+  (`http://127.0.0.1:8188`), so installs launched with `--port` (or
+  `--listen`) aborted the loop with `ComfyUI server is not reachable`
+  while probing the dead default. The widget now defaults to `auto`; when
+  `server_url` is `auto` or blank (or the legacy `:8188` default) the node
+  auto-detects the address the running server actually bound to (via
+  `comfy.cli_args` / the running `PromptServer`), so loops queue correctly
+  against any port. A custom `http://host:port` is still honored verbatim.
+- **`Koolook_LoopStatus` aborted into a marker file when `index_node_id` was
+  stale.** A shifted widget value (e.g. `index_node_id`/numeric label resolving
+  to `0`) is not a real node, so the background queue thread failed with
+  `index node id '0' is not in prompt` and only left an abort-marker file. The
+  node now falls back to the node feeding the connected `index` input when the
+  supplied id isn't in the prompt (self-healing the common widget-shift case),
+  and when it still can't resolve a real node it raises synchronously with an
+  actionable message so the error surfaces in the ComfyUI UI immediately.
+- **`Koolook_LoopStatus` ignored saved `auto_queue_next` strings and was quiet
+  about which frame-index node it drove.** A workflow that persisted
+  `auto_queue_next` as the string `"false"` still auto-queued (a non-empty string
+  is truthy), and the node never logged which `easy int` node advanced the loop.
+  `auto_queue_next` now coerces saved string booleans (`"true"`/`"false"`/`"1"`/
+  `"0"`/`"yes"`/`"no"`/`"on"`/`"off"`), `index_node_id` is treated as an advanced
+  override (leave blank for normal use), and the node logs the detected
+  frame-index node class/id each time it queues the next frame.
+- **`Koolook_LoopStatus` now follows the connected `index` wire
+  deterministically.** A numeric node id left in the `label` field — or any
+  stale `index_node_id` — no longer overrides the actual wiring: the node feeding
+  the connected `index` input is authoritative, and a recovered numeric label is
+  used only as a last-resort fallback when nothing is connected. Loops no longer
+  need the `label` cleared by hand to pick the right frame-index node.
 - **"Failed to save workflow draft" toasts returned on ComfyUI frontend
   1.44+.** The browser draft-quota guard is now its own global extension,
   `web/koolook_draft_guard.js`, and matches Comfy draft keys by prefix

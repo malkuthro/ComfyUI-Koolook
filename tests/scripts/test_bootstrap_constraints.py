@@ -73,3 +73,36 @@ def test_no_duplicate_pins():
             names.append(_canonical(line.split("==", 1)[0]))
     dupes = sorted({name for name in names if names.count(name) > 1})
     assert not dupes, f"duplicate pins in constraints-test.txt: {dupes}"
+
+
+def test_bootstrap_upgrades_setuptools_before_audit():
+    """Fresh venvs should not fail audit on the ensurepip setuptools seed."""
+    ps1 = (REPO_ROOT / "scripts" / "bootstrap_test_env.ps1").read_text(encoding="utf-8")
+    sh = (REPO_ROOT / "scripts" / "bootstrap_test_env.sh").read_text(encoding="utf-8")
+
+    assert "--upgrade pip setuptools" in ps1
+    assert "--upgrade pip setuptools" in sh
+
+
+def test_bootstrap_relock_does_not_inspect_editable_git_metadata():
+    """Relock should work from cross-drive git worktrees on Windows."""
+    ps1 = (REPO_ROOT / "scripts" / "bootstrap_test_env.ps1").read_text(encoding="utf-8")
+    sh = (REPO_ROOT / "scripts" / "bootstrap_test_env.sh").read_text(encoding="utf-8")
+
+    assert "pip list --format=freeze" in ps1
+    assert "pip list --format=freeze" in sh
+    assert "pip freeze --exclude-editable" not in ps1
+    assert "pip freeze --exclude-editable" not in sh
+
+
+def test_ci_audits_committed_lock_on_prs_and_schedule():
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "schedule:" in ci
+    assert "pip-audit -r constraints-test.txt" in ci
+
+
+def test_ci_pytest_installs_from_committed_lock():
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert '-e ".[test]" -c constraints-test.txt' in ci

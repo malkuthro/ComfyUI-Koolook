@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,11 +51,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install bandit
-        run: pip install bandit==1.7.10
+      - name: Install security tools
+        run: pip install bandit==1.7.10 pip-audit -c constraints-test.txt
 
       - name: Bandit scan
         run: bandit -r . -x ./.venv,./forks,./upscaler_FIX,./nuke_CAM_exporter -ll
+
+      - name: Dependency audit
+        run: pip-audit -r constraints-test.txt
 
   preflight:
     name: Pre-flight Release
@@ -89,15 +95,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install test deps
-        # Install the deps directly — this project is a ComfyUI custom node,
-        # not a pip-installable package, so ``pip install .[test]`` tries to
-        # build a wheel and fails on flat-layout discovery of ``web/`` and
-        # ``forks/``. The pyproject's ``[project.optional-dependencies]
-        # test`` block is the spec; CI mirrors it explicitly. ``aiohttp`` is
-        # a runtime dep of ``koolook_routes`` and must be importable even
-        # when only a pure helper is under test. ``Pillow`` backs the
-        # audio-card metadata tests.
-        run: pip install "pytest>=8" "aiohttp>=3.9" "Pillow>=10"
+        # Install from the committed test lock so CI exercises the same
+        # dependency set that local bootstrap audits.
+        run: pip install -e ".[test]" -c constraints-test.txt
 
       - name: Run pytest
         run: pytest -q

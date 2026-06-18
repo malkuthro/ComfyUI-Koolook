@@ -56,8 +56,8 @@ fi
 echo "Creating .venv ..."
 "$PYTHON_BIN" -m venv .venv
 
-echo "Upgrading pip ..."
-.venv/bin/python -m pip install --quiet --upgrade pip
+echo "Upgrading pip + setuptools ..."
+.venv/bin/python -m pip install --quiet --upgrade pip setuptools
 
 if [ -f "$CONSTRAINTS" ] && [ -z "$RELOCK" ]; then
     echo "Installing project + test extras (locked via $CONSTRAINTS) ..."
@@ -66,7 +66,22 @@ else
     echo "Resolving + installing project + test extras ..."
     .venv/bin/python -m pip install --quiet -e '.[test]'
     echo "Writing locked set to $CONSTRAINTS ..."
-    .venv/bin/python -m pip freeze --exclude-editable > "$CONSTRAINTS"
+    cat > "$CONSTRAINTS" <<'EOF'
+# Locked test dependency set for ComfyUI-Koolook.
+#
+# Pinned resolve of the `[test]` extras in pyproject.toml plus their full
+# transitive closure. The bootstrap scripts install with `-c
+# constraints-test.txt`, so every fresh .venv is reproducible and
+# pip-audit-verifiable.
+#
+# DO NOT hand-edit the version pins. To change the set: edit the `[test]`
+# extras in pyproject.toml, then regenerate this file with
+#   bash scripts/bootstrap_test_env.sh --force --relock   (POSIX)
+#   scripts\bootstrap_test_env.ps1 -Force -Relock         (Windows)
+# and commit the diff -- that diff is the dependency-change review surface.
+#
+EOF
+    .venv/bin/python -m pip list --format=freeze --exclude pip --exclude setuptools --exclude wheel --exclude koolook >> "$CONSTRAINTS"
 fi
 
 if [ -n "$AUDIT" ]; then
