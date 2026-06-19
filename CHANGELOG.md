@@ -6,6 +6,8 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-19
+
 ### Fixed
 - **Comfy Registry node-list parsing.** The package entrypoint now behaves as a
   package even when registry scanners load `__init__.py` directly from a file
@@ -14,6 +16,15 @@ The format is inspired by Keep a Changelog and SemVer.
   Koolook's nodes instead of showing "No nodes found." The entrypoint also
   carries the same lightweight `@title` / `@nickname` / `@description` metadata
   used by other custom-node packs.
+
+### Changed
+- **Automated releases.** Pushing a `vX.Y.Z` tag now drives the whole release
+  via `release.yml`: it publishes to the Comfy Registry and creates the
+  matching GitHub Release from this changelog — only on a successful publish —
+  and refuses any tag that is not on `main`. This removes the manual
+  post-merge tag/release steps that previously left v0.4.1 on the Comfy
+  Registry without a GitHub Release. See
+  [`docs/maintainers/releasing.md`](docs/maintainers/releasing.md).
 
 ## [0.4.1] - 2026-06-18
 
