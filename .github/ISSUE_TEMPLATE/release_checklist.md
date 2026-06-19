@@ -18,19 +18,15 @@ assignees: []
 - [ ] `pyproject.toml` `version` bumped to `X.Y.Z`
 - [ ] Release PR opened from `release/vX.Y.Z-prep` → `main`
 
-## Validate registry publish before merge
-
-- [ ] `gh workflow run publish.yml --ref release/vX.Y.Z-prep` succeeds
-- [ ] `curl https://api.comfy.org/publishers/kforgelabs` returns the publisher
-- [ ] `curl https://api.comfy.org/nodes/koolook/versions` lists `X.Y.Z`
-
-## Merge + tag + release
+## Merge + tag (the tag drives publish + release)
 
 - [ ] Squash-merge the PR (`gh pr merge --squash --delete-branch`)
+- [ ] `git fetch origin`
 - [ ] Annotated tag at the squash-merge SHA on `main` (`git tag -a vX.Y.Z origin/main`)
-- [ ] Push tag (`git push origin vX.Y.Z`)
+- [ ] Push tag (`git push origin vX.Y.Z`) — fires `release.yml`
 - [ ] `git describe --tags origin/main` returns `vX.Y.Z`
-- [ ] Publish GitHub Release with notes from `CHANGELOG.md`
+- [ ] `release.yml` run is green: registry publish + GitHub Release both succeeded
+- [ ] `curl https://api.comfy.org/nodes/koolook/versions` lists `X.Y.Z`
 
 ## Post-release
 

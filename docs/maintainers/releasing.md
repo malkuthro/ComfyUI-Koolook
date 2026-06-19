@@ -47,72 +47,76 @@ PR body template:
 - <other release-relevant changes>
 
 ## Test plan
-- [ ] Manual workflow_dispatch of publish.yml against this branch succeeds.
-- [ ] curl https://api.comfy.org/nodes/koolook returns the new version.
-- [ ] After merge: tag pushed, GitHub Release created, git describe --tags
-      origin/main returns vX.Y.Z.
+- [ ] CI green on the release PR.
+- [ ] After merge + tag push: the `release.yml` run is green (registry publish + GitHub Release).
+- [ ] curl https://api.comfy.org/nodes/koolook/versions lists the new version.
+- [ ] git describe --tags origin/main returns vX.Y.Z.
 ```
 
-### 3. Validate the registry publish *before* merging
+### 3. Squash-merge
 
-Trigger the publish workflow against the PR branch:
-
-```bash
-gh workflow run publish.yml --ref release/vX.Y.Z-prep
-gh run watch <run-id> --exit-status
-curl -sS https://api.comfy.org/nodes/koolook | jq '.publisher.id, .id'
-```
-
-Expectations:
-
-- Workflow run status: success.
-- `publisher.id` returns `kforgelabs` (matches `[tool.comfy] PublisherId`).
-- `GET /nodes/koolook/versions` includes the new version.
-
-If publish fails:
-
-| Error | Likely cause | Fix |
-|---|---|---|
-| `400 "Failed to validate token"` | `[tool.comfy] PublisherId` does not match a real publisher on the Comfy Registry, **or** the secret `REGISTRY_ACCESS_TOKEN` is empty / corrupted | Verify with `curl https://api.comfy.org/publishers/<id>`. On Windows, never CTRL+V the token — right-click paste only (CTRL+V can append `\x16`). |
-| `409` / duplicate version | The version already exists in the registry | Bump `pyproject.toml` to a new version, update `CHANGELOG.md`, force-push the PR branch, re-validate. |
-| Auth 401/403 | Secret missing | Set `REGISTRY_ACCESS_TOKEN` in repo Settings → Secrets, or via `gh secret set REGISTRY_ACCESS_TOKEN --repo malkuthro/ComfyUI-Koolook`. |
-
-A successful dispatch *is* the publish — `publish-node-action@v1` has no
-dry-run mode. Once the run is green, the version is sealed on the Registry
-and the merge afterward is just sealing the branch state.
-
-### 4. Squash-merge
+Always squash-merge (see [Conventions](#conventions) for why), then refresh
+the local remote-tracking ref so the tag lands on the right commit:
 
 ```bash
 gh pr merge <PR#> --squash --delete-branch
+git fetch origin
 ```
 
-### 5. Tag and push
+### 4. Tag to release — the automation does the rest
 
-The tag must point at the squash-merge commit on `main`, **not** at the
-release branch tip:
+Pushing a semver tag at the squash-merge commit is the **single release
+trigger**. The [`release.yml`](../../.github/workflows/release.yml) workflow
+fires on the tag and, in order:
+
+1. **Publishes to the Comfy Registry** (`publish-node-action`), after checking
+   the tag matches `pyproject.toml` `version` and a `CHANGELOG.md` section
+   exists for it.
+2. **Creates the GitHub Release** from that `CHANGELOG.md` section — only if
+   the publish succeeded.
+
+The tag must point at the squash-merge commit on `main`, **not** the release
+branch tip (a tag on an orphaned commit makes ComfyUI-Manager report the
+installed version as `unknown`). `release.yml` enforces this — it refuses to
+publish a tag that is not on `main`, so a slip fails loudly instead of
+shipping an orphan:
 
 ```bash
-git fetch origin
 git tag -a vX.Y.Z origin/main -m "Release vX.Y.Z
 
 <short release summary>"
-git push origin vX.Y.Z
-git describe --tags origin/main   # must return vX.Y.Z
+git push origin vX.Y.Z              # fires release.yml
+git describe --tags origin/main     # must return vX.Y.Z
 ```
 
-### 6. Create the GitHub Release
-
-Use the matching `CHANGELOG.md` section as the release notes:
+Then watch the run:
 
 ```bash
-awk '/^## \[X\.Y\.Z\]/{flag=1;next} /^## \[/{flag=0} flag' CHANGELOG.md \
-  > /tmp/vXYZ-notes.md
-gh release create vX.Y.Z --title "vX.Y.Z" \
-  --notes-file /tmp/vXYZ-notes.md --verify-tag
+gh run watch "$(gh run list --workflow=release.yml --limit 1 \
+  --json databaseId --jq '.[0].databaseId')" --exit-status
 ```
 
-### 7. Post-release verification
+Because the registry only seals a version on a **successful** publish, a
+failed run is safe to retry: fix the cause (usually the token — see the table
+below) and **re-run the failed job**. No version bump, no double-publish —
+this removes the class of bug that used to force a `vX.Y.(Z+1)` bump mid-cut
+whenever a pre-merge publish was re-dispatched.
+
+| Error | Likely cause | Fix |
+|---|---|---|
+| `400 "Failed to validate token"` | `[tool.comfy] PublisherId` does not match a real publisher on the Comfy Registry, **or** the secret `REGISTRY_ACCESS_TOKEN` is empty / corrupted | Verify with `curl https://api.comfy.org/publishers/<id>`. On Windows, never CTRL+V the token — right-click paste only (CTRL+V can append `\x16`). Re-run the failed job. |
+| `409` / duplicate version | The version is already sealed on the registry and cannot be re-published | Cut the next patch (`vX.Y.(Z+1)`): bump `pyproject.toml` + `CHANGELOG.md`, re-merge, re-tag. |
+| Auth 401/403 | Secret missing | `gh secret set REGISTRY_ACCESS_TOKEN --repo malkuthro/ComfyUI-Koolook`, then re-run the failed job. |
+
+> **Manual fallback.** [`publish.yml`](../../.github/workflows/publish.yml)
+> (`workflow_dispatch`) still exists for a one-off re-publish against a chosen
+> ref — e.g. recovering a registry-side hiccup without cutting a new tag. The
+> normal path is the tag; reach for the dispatch only when you specifically
+> need to publish *without* a tag. Do **not** dispatch it during a normal
+> release — publishing the real version before the tag re-introduces the
+> double-publish/version-bump trap the tag flow exists to remove.
+
+### 5. Post-release verification
 
 - ComfyUI-Manager displays version `X.Y.Z` (no longer `unknown`).
 - `https://api.comfy.org/nodes/koolook/versions` lists the new version
@@ -125,11 +129,15 @@ gh release create vX.Y.Z --title "vX.Y.Z" \
 - **Do not move existing tags.** If you need to re-tag a release, cut a
   new patch version. Anyone who already pinned to the old tag must keep
   the bytes they installed.
-- **Do not skip the registry validation step.** Every prior failure of
-  `publish.yml` was masked by the misleading `Failed to validate token`
-  error. The registry check (`curl /publishers/<id>`) is the only way to
-  catch a `PublisherId` mismatch before users do.
-- **Do not forget the dispatch step.** `publish.yml` is `workflow_dispatch`
-  only — merging a release PR no longer auto-publishes. If you skip step 3
-  the version never reaches the Registry; ComfyUI-Manager will keep
-  reporting the previous release.
+- **Do not tag before `main` is correct.** Push the tag only after the
+  squash-merge lands and `pyproject.toml` + `CHANGELOG.md` match the tag.
+  `release.yml` hard-fails the publish on a mismatch, but a stray tag on
+  `main` is still cleanup you don't want.
+- **Do not dispatch `publish.yml` during a normal release.** Publishing the
+  real version before the tag seals it on the Registry, so the tag's own
+  publish then `409`s and you're back to bumping the patch number. Let the
+  tag be the only publish.
+- **`Failed to validate token` usually isn't the token.** It almost always
+  means `[tool.comfy] PublisherId` doesn't match a real publisher. Confirm
+  with `curl https://api.comfy.org/publishers/<id>` before touching the
+  secret, then re-run the failed job.
