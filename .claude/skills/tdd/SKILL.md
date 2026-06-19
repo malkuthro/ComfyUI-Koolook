@@ -173,10 +173,15 @@ fine in code review but cause incidents in this codebase:
 - **Vendored upstream code into MAIN** instead of into `forks/`. Project
   CLAUDE.md is explicit: third-party code stays outside MAIN; MAIN holds
   wrapper loaders + tracking docs only.
-- **Renamed a namespaced node ID** that already appears in saved
-  workflows. Node IDs are external API — never rename `Easy_*`,
-  `*__koolook_v2_3_3`, or any other ID present in `tests/workflows/*.json`
-  without a deprecation + alias.
+- **Renamed a namespaced node ID.** For a **Koolook-created node** (root
+  `k_*.py`, e.g. `easy_ImageBatch`) this is fine by default — backward
+  compatibility is opt-in (project CLAUDE.md → *Change management*); just
+  update the matching `tests/workflows/*.json` fixtures to the new ID. **Fork
+  node IDs are the exception** — anything under `forks/` (the `Easy_hdr_VAE_*`
+  / `*__koolook_v2_3_3` IDs) keeps full back-compat discipline by default:
+  never rename those in saved workflows without a deprecation alias. The trap
+  to avoid for Koolook nodes is an *accidental* rename that leaves fixtures
+  stale.
 - **Modified a `forks/<vendor>/versions/vX_Y_Z/`** file expecting upstream
   to also change — those are frozen baseline pins (per Radiance fork
   policy).

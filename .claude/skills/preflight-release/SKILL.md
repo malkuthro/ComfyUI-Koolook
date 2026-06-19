@@ -18,8 +18,10 @@ This one is about **code/metadata correctness**.
 - **Before cutting a release.** Run it after the release-prep PR is
   open, before triggering the publish workflow.
 - **Before merging any PR that touches node IDs or fork structure.** A
-  changed `NODE_CLASS_MAPPINGS` or a renamed fork directory is exactly
-  the kind of edit that can silently break saved workflows.
+  changed `NODE_CLASS_MAPPINGS` or a renamed fork directory surfaces here
+  so the workflow breakage is a *conscious* choice, not an accident.
+  (Breaking a **Koolook** node is allowed by default; breaking a **fork**
+  node is not — see the `workflows` check below for the split.)
 - **After running [`docs-sync`](../docs-sync/SKILL.md) on a fork-version
   bump.** The string-sweep can leave references stale if anything is
   missed; pre-flight catches it before merge.
@@ -105,10 +107,19 @@ from the CI job and let it become a release blocker.
 - Asserts every Koolook ID found in the fixtures is still in the
   AST-extracted set from check 1.
 
-If a fixture references a node ID we no longer register, **the saved
-workflow would break for any user who has it**. The pre-flight fails
-loudly so the rename gets either reverted, aliased for back-compat, or
-treated as a `_v2`-suffix breaking change with a deprecation cycle.
+If a fixture references a node ID we no longer register, this check fails
+loudly. How to read the failure depends on which node it is (see
+[`CLAUDE.md`](../../../CLAUDE.md) → *Change management*):
+
+- **Koolook-created node** (root `k_*.py`, e.g. `easy_ImageBatch`): treat
+  this as a **drift detector**, not a back-compat gate. Back-compat is
+  opt-in for Koolook nodes, so an *intentional* rename is fine — the fix is
+  to **update the fixture** to the new ID. The value here is catching an
+  *unintended* rename you didn't mean to make.
+- **Fork node** (anything under `forks/`, e.g. the `Easy_hdr_VAE_*` or a
+  `*__koolook_vX_Y_Z` ID): this is a real **back-compat gate**. Fork IDs
+  must stay stable — add the old ID back as an alias or version it; do
+  **not** just edit the fixture.
 
 Adding more fixtures over time grows coverage without code changes:
 drop a new `*.json` into `tests/workflows/`, the script picks it up
@@ -124,7 +135,7 @@ convention.
 | dispatch | Assertion fails on one of the five branches | Look at the changed file in `forks/radiance_koolook/versions/v2_3_3/`. Trace the dispatch logic in `nodes_vae.py:Easy_hdr_VAE_{encode,decode}`. The branch that broke tells you which rank/VAE combination regressed. |
 | manager-meta (phantom IDs) | Upstream Manager metadata has IDs we don't register | File / update issue #44; not a code fix on our side. Skip the check. |
 | manager-meta (missing IDs) | Our code has IDs upstream Manager doesn't list yet | Wait for the next upstream "update DB" run, or open an upstream PR. Skip the check until it propagates. |
-| workflows | Fixture references a node ID no longer registered | (a) Add the old ID back as a `NODE_CLASS_MAPPINGS` alias pointing at the renamed class, OR (b) update the fixture if the rename was intentional + announced + the user was warned, OR (c) introduce a `_v2` suffix on the new node and start a deprecation cycle. |
+| workflows | Fixture references a node ID no longer registered | **Koolook node (`k_*.py`):** update the fixture to the new ID — an intentional rename is fine. **Fork node (under `forks/`), or any node after `check backward compatibility`:** (a) add the old ID back as a `NODE_CLASS_MAPPINGS` alias pointing at the renamed class, OR (b) introduce a `_v2` suffix and start a deprecation cycle. |
 
 ## Companion docs
 

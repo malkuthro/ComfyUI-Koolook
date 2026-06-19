@@ -68,6 +68,15 @@ new wrapper version too.
 
 ## Public node-ID versioning (the `_v2` rule)
 
+> **Scope.** This section is **mandatory for fork nodes** (anything under
+> `forks/`, like the `Easy_hdr_VAE_*` example used below) — they keep full
+> back-compat discipline by default. For **Koolook-created nodes** (the root
+> `k_*.py` custom nodes) it is **opt-in**: by default a breaking change is made
+> **in place** — rename or alter the existing ID, note it in the CHANGELOG,
+> done — with no `_v2` suffix and no deprecation cycle, unless the maintainer
+> asked to `check backward compatibility`. See [`CLAUDE.md`](../../CLAUDE.md) →
+> *Change management*.
+
 Independent of the three axes above, individual node IDs can carry a
 public version suffix when a breaking change forces it:
 

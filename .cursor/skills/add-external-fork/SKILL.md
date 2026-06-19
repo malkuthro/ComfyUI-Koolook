@@ -22,7 +22,7 @@ Use this skill whenever the user wants to:
 - **Local version paths in MAIN:** `forks/<package>/versions/v<MAJOR>_<MINOR>_<PATCH>/`
 - **Node ID namespace suffix:** `__koolook_v<MAJOR>_<MINOR>_<PATCH>` (must match the version folder).
 - **Single source of truth:** `forks/forks_manifest.yaml`. Every external repo must have an entry there.
-- **Never rename existing namespaced node IDs** that already appear in saved workflows. New versions get a new suffix.
+- **Never rename existing namespaced node IDs** that already appear in saved workflows. New versions get a new suffix. Fork nodes keep full backward-compat discipline by **default** — the opt-in "clean rename" default in `CLAUDE.md` → *Change management* applies to Koolook-created nodes only, **not** forks.
 
 ## Phase 1 — Discover
 
