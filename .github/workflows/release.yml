@@ -18,23 +18,28 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
-permissions:
-  contents: write   # github-release: create the Release
-  issues: write     # publish-node-action: opens an issue on failure
-
 jobs:
   publish-comfy:
     name: Publish to Comfy registry
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'malkuthro' }}
+    permissions:
+      contents: read    # checkout
+      issues: write     # publish-node-action opens an issue on failure
     steps:
       - name: Check out the tag
         uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Verify tag matches pyproject + CHANGELOG
+          fetch-depth: 0   # full history so the tag-on-main ancestry check resolves
+      - name: Verify tag is on main, and matches pyproject + CHANGELOG
         run: |
           set -euo pipefail
+          git fetch --no-tags --quiet origin "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on origin/main — refusing to publish an orphan tag"
+            exit 1
+          fi
           version="${GITHUB_REF_NAME#v}"
           pyproject_version="$(grep -m1 -E '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           if [ "$pyproject_version" != "$version" ]; then
@@ -55,6 +60,8 @@ jobs:
     needs: publish-comfy
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'malkuthro' }}
+    permissions:
+      contents: write   # create the GitHub Release
     steps:
       - name: Check out the tag
         uses: actions/checkout@v4

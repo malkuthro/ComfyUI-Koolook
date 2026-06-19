@@ -77,7 +77,9 @@ fires on the tag and, in order:
 
 The tag must point at the squash-merge commit on `main`, **not** the release
 branch tip (a tag on an orphaned commit makes ComfyUI-Manager report the
-installed version as `unknown`):
+installed version as `unknown`). `release.yml` enforces this — it refuses to
+publish a tag that is not on `main`, so a slip fails loudly instead of
+shipping an orphan:
 
 ```bash
 git tag -a vX.Y.Z origin/main -m "Release vX.Y.Z
