@@ -145,11 +145,13 @@ def write_build_info(target: Path, scope: str | None) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
 
-# Files / dirs ComfyUI actually loads at runtime. Anything outside this
-# list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
-# pyproject.toml, README, fork manifest YAML, etc.) does not affect what
-# ComfyUI executes and is intentionally skipped.
+# Files / dirs ComfyUI loads at runtime, plus the package metadata ComfyUI
+# Manager reads when showing the installed custom-node version. Anything
+# outside this list (CI, docs, .claude/, .github/, .cursor/, CHANGELOG, LICENSE,
+# README, fork manifest YAML, etc.) does not affect what ComfyUI executes or
+# how the dev install is identified, and is intentionally skipped.
 RUNTIME_PATHS: tuple[str, ...] = (
+    "pyproject.toml",
     "__init__.py",
     "config.json",
     "k_ai_pipeline.py",

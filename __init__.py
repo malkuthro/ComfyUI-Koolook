@@ -1,5 +1,9 @@
 """ComfyUI-Koolook node registry.
 
+@title: ComfyUI-Koolook
+@nickname: Kforge Labs
+@description: Project-kit sidebar plus Koolook nodes for VFX, image, and video workflows.
+
 Two layers of resilience guard the import:
 
 1. Duplicate-install guard (#162) — if two Koolook folders exist in
@@ -65,6 +69,15 @@ def _merge_node_group(label: str, module_name: str) -> None:
 
 
 _here = Path(__file__).resolve().parent
+if "__path__" not in globals():
+    # Registry scanners commonly load custom-node entrypoints directly from
+    # ``__init__.py`` instead of as an installed package. Mark this module as a
+    # package so the same relative imports ComfyUI uses can still resolve.
+    __path__ = [str(_here)]  # type: ignore[var-annotated]
+    __package__ = __name__
+    if __spec__ is not None:
+        __spec__.submodule_search_locations = [str(_here)]
+
 # The guard must never take down the plugin: any failure to scan or parse
 # siblings degrades to "register normally" (fail-safe) instead of aborting
 # the import (fail-silent — the plugin would vanish entirely, taking the

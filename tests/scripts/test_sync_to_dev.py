@@ -88,3 +88,13 @@ def test_init_load_deps_are_shipped_by_runtime_paths():
         f"ship them: {missing}. Add them to RUNTIME_PATHS in "
         "scripts/sync_to_dev.py so a plain dev-sync can't 404 the loader."
     )
+
+
+def test_dev_sync_ships_manager_visible_package_metadata():
+    """The live dev install should report the same pack version as the source.
+
+    ComfyUI Manager reads package metadata from ``pyproject.toml``. If dev-sync
+    skips it, the code can be current while the UI still reports an older
+    installed version.
+    """
+    assert "pyproject.toml" in sync_to_dev.RUNTIME_PATHS

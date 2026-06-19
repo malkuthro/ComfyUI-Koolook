@@ -6,6 +6,15 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **Comfy Registry node-list parsing.** The package entrypoint now behaves as a
+  package even when registry scanners load `__init__.py` directly from a file
+  path, so `NODE_CLASS_MAPPINGS` is no longer left empty in scanner-style
+  imports. This should let the public Registry/Manager details panel discover
+  Koolook's nodes instead of showing "No nodes found." The entrypoint also
+  carries the same lightweight `@title` / `@nickname` / `@description` metadata
+  used by other custom-node packs.
+
 ## [0.4.1] - 2026-06-18
 
 ### Added
