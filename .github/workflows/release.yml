@@ -1,0 +1,82 @@
+name: Release
+
+# Single source of truth for cutting a stable release.
+#
+# Push a semver tag (vMAJOR.MINOR.PATCH) at the squash-merge commit on `main`
+# and this workflow, in order:
+#   1. publishes the node to the Comfy Registry, and
+#   2. creates the matching GitHub Release from the CHANGELOG section
+#      — only if the publish succeeded.
+#
+# The tag is the only manual step, so the tag, the registry version, and the
+# GitHub Release can no longer drift apart. A failed run is safe to retry: the
+# registry only seals a version on a *successful* publish, so fix the cause
+# (usually the token) and re-run the failed job — no version bump, no
+# double-publish. See docs/maintainers/releasing.md.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write   # github-release: create the Release
+  issues: write     # publish-node-action: opens an issue on failure
+
+jobs:
+  publish-comfy:
+    name: Publish to Comfy registry
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'malkuthro' }}
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Verify tag matches pyproject + CHANGELOG
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          pyproject_version="$(grep -m1 -E '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [ "$pyproject_version" != "$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match pyproject version ${pyproject_version}"
+            exit 1
+          fi
+          if ! grep -qF "## [${version}]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${version}]' section"
+            exit 1
+          fi
+      - name: Publish Custom Node
+        uses: Comfy-Org/publish-node-action@v1
+        with:
+          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish-comfy
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'malkuthro' }}
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+      - name: Extract CHANGELOG section
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          header="## [${version}]"
+          awk -v h="$header" '
+            index($0, h) == 1 { f = 1; next }
+            f && /^## \[/      { exit }
+            f                  { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::no release notes extracted for ${version} (missing '## [${version}]' section?)"
+            exit 1
+          fi
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            --verify-tag
