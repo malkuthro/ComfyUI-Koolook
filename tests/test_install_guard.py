@@ -8,6 +8,8 @@ from the runtime so it can be exercised by stdlib pytest.
 """
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
 
 from koolook_install_guard import (
@@ -16,6 +18,36 @@ from koolook_install_guard import (
     pick_winning_install,
     read_pyproject_version,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_entrypoint_direct_file_import_exposes_scanner_visible_nodes() -> None:
+    """Registry scanners may load ``__init__.py`` directly from a file path.
+
+    That import style used to make relative imports fail and left
+    ``NODE_CLASS_MAPPINGS`` empty, which makes the public Registry render
+    "No nodes found" even though ComfyUI can load the pack normally.
+    """
+    module_name = "koolook_scanner_style_entrypoint_test"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        REPO_ROOT / "__init__.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+        mappings = module.NODE_CLASS_MAPPINGS
+    finally:
+        for name in list(sys.modules):
+            if name == module_name or name.startswith(f"{module_name}."):
+                sys.modules.pop(name, None)
+
+    assert "EasyAIPipeline" in mappings
+    assert "Koolook_PublishInput" in mappings
+    assert mappings
 
 
 def _make_install(parent: Path, name: str, version: str | None = "0.3.7") -> Path:
