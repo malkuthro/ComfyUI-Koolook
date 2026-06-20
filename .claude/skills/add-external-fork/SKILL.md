@@ -42,8 +42,13 @@ retroactive relicense to GPL-3.0 in v0.1.2. Don't repeat it.
   match the version folder).
 - **Single source of truth:** `forks/forks_manifest.yaml`. Every external
   repo must have an entry there.
-- **Never rename existing namespaced node IDs** that already appear in saved
-  workflows. New versions get a new suffix.
+- **Node IDs carry the `__koolook_vX_Y_Z` suffix** so a new fork version can
+  coexist with the old one and never collides with a separately-installed
+  upstream copy. **Never rename an existing fork node ID that appears in saved
+  workflows; new versions get a new suffix.** Fork nodes keep full
+  backward-compat discipline by **default** — the opt-in "clean rename" default
+  in [`CLAUDE.md`](../../../CLAUDE.md) → *Change management* applies to
+  Koolook-created nodes only, **not** forks.
 
 ## Phase 1 — Discover
 

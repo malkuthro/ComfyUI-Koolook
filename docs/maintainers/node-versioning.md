@@ -1,9 +1,21 @@
 # Node versioning — how to change a node without breaking saved workflows
 
+> **⚠️ Scope — OPT-IN for Koolook nodes, MANDATORY for forks.**
+> Backward compatibility is **not** a default constraint for Koolook-created
+> nodes (the root `k_*.py` custom nodes); for those, **ignore everything below**
+> and make the cleanest change — rename/drop/reorder freely — *unless* the
+> maintainer says `check backward compatibility`. **For anything under
+> `forks/`** (upstream ports/wrappers, including the Koolook-original nodes
+> exposed via `SKIP_VERSION_SUFFIX`) **these rules still apply by default** —
+> forks keep full back-compat discipline with no request needed. See
+> [`CLAUDE.md`](../../CLAUDE.md) → *Change management*.
+
 This is a hard-won list. ComfyUI's workflow format silently breaks in
 several non-obvious ways when you change a node's inputs, outputs, or
-class name. The rules below are what to follow whenever you touch
-`INPUT_TYPES`, `RETURN_TYPES`, or `NODE_CLASS_MAPPINGS`.
+class name. The rules below are what to follow whenever you touch a
+**fork** node's `INPUT_TYPES` / `RETURN_TYPES` / `NODE_CLASS_MAPPINGS`,
+or a **Koolook** node's once `check backward compatibility` has been
+requested.
 
 ## How ComfyUI loads a saved workflow
 
@@ -151,17 +163,29 @@ NODE_CLASS_MAPPINGS = {
 }
 ```
 
-## Anti-patterns to refuse
+## Anti-patterns to refuse — *for forks, or after `check backward compatibility`*
+
+These are anti-patterns for **any fork node**, and for a **Koolook node only
+once the maintainer has asked** to preserve backward compatibility. For a
+Koolook node with no such request, every one of them is the *correct* clean
+change — append-vs-insert is the lone exception below.
 
 - ❌ "I'll just add the field in the middle for clarity, the dict order
-  doesn't matter." It does. Append.
-- ❌ "I'll rename the input to be clearer." Don't. Add a new optional
-  input with the clearer name; deprecate the old one in display only.
-- ❌ "It's a small change, no need to bump the node version." If the
-  input/output surface changes in a way that could break a saved
-  workflow → new node ID. Period.
-- ❌ "Nobody's using the old node yet." You don't actually know. Default
-  to alias-then-deprecate; cost is one extra dict entry.
+  doesn't matter." It does. Append. *(This one is worth following even
+  without a back-compat request — a mid-list widget insertion silently
+  scrambles the `widgets_values` of any workflow already on disk, including
+  your own dev graphs, for zero benefit. Appending is free.)*
+- ❌ "I'll rename the input to be clearer." For a fork node, or any node
+  under a back-compat request: add a new optional input with the clearer
+  name and deprecate the old one in display only. For a Koolook node with
+  no request, **just rename it.**
+- ❌ "It's a small change, no need to bump the node version." For a fork
+  node, or under a back-compat request, a surface change that could break a
+  saved workflow → new node ID. For a Koolook node with no request, change
+  in place and note it in the CHANGELOG.
+- ❌ "Nobody's using the old node yet." For a fork node, or under a
+  back-compat request, you can't assume that. For a Koolook node with no
+  request you *do* assume it — clean change, move on.
 
 ## Tooling — what we have, what's still missing
 

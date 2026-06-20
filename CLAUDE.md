@@ -78,7 +78,27 @@ Two things still need your attention, and only these:
 ## Change management
 
 - When upgrading external forks (v2, v3, etc.), add a new wrapper/version namespace.
-- Never rename existing namespaced node IDs that already appear in saved workflows.
+- **Backward compatibility is opt-in for Koolook-created nodes ONLY.** This
+  means the custom nodes authored in MAIN — the root `k_*.py` files
+  (`easy_ImageBatch`, `EasyResize_Koolook`, etc.), **not** anything under
+  `forks/`. For those Koolook nodes, default to the cleanest change: rename
+  inputs/outputs/node IDs, drop fields, reorder combos *without* deprecation
+  aliases or `_v2` suffixes, and don't treat saved-workflow breakage as a
+  blocker. Only preserve compatibility when the maintainer explicitly asks.
+- **Forks are the exception — they KEEP full backward-compat discipline by
+  default, no request needed.** Anything under `forks/` (upstream
+  ports/wrappers, *including* the Koolook-original nodes exposed via
+  `SKIP_VERSION_SUFFIX` like `Easy_hdr_VAE_encode`) still follows
+  [`docs/maintainers/node-versioning.md`](docs/maintainers/node-versioning.md)
+  and [`docs/reference/versioning.md`](docs/reference/versioning.md) without
+  being asked: never rename a fork node ID that appears in saved workflows,
+  version via a new suffix/namespace, keep the `__koolook_vX_Y_Z` suffix to
+  avoid colliding with separately-installed upstream copies, treat
+  `RETURN_TYPES` as immutable, etc.
+- **Trigger phrase: `check backward compatibility`** (or an equivalent —
+  "don't break saved workflows", "keep it compatible") raises a *Koolook*
+  node to the same fork-grade discipline for that change. Absent the phrase,
+  Koolook-node breakage is acceptable; fork breakage is never the default.
 
 ## `dev-sync` — copy runtime files into a live ComfyUI install
 

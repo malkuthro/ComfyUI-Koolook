@@ -13,8 +13,8 @@ supersedes the generated demo removed here.
 
 This captures the agreed changes:
 
-1. `keyframe_batch` → **`keyframes_insert`** (rename; the old name is kept as a
-   deprecated alias input so pre-rename workflows keep loading).
+1. `keyframe_batch` → **`keyframes_insert`** (rename; the old name remains as a
+   deprecated alias input so workflows saved on 0.4.1/0.4.2 keep loading).
 2. **No image source connected → clean placeholder batch** sized by new
    `width`/`height` widgets (no error).
 3. **Insert-over-source mode** — `keyframes_insert` + `source_batch` composite

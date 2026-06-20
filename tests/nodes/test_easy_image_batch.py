@@ -247,8 +247,8 @@ def test_slot_overwrites_empty_input_places_nothing():
 def test_input_types_exposes_keyframes_insert_with_tooltip():
     spec = easy_ImageBatch.INPUT_TYPES()
     assert "keyframes_insert" in spec["optional"], "insert-mode input must be declared"
-    # `keyframe_batch` is retained as a deprecated alias so pre-rename workflows
-    # keep loading (unreleased, but origin/main exposed it).
+    # `keyframe_batch` is retained as a deprecated alias so workflows saved on
+    # v0.4.1/v0.4.2 keep loading.
     assert "keyframe_batch" in spec["optional"]
     assert "deprecated" in spec["optional"]["keyframe_batch"][1]["tooltip"].lower()
     entry = spec["optional"]["keyframes_insert"]
@@ -538,8 +538,7 @@ def test_parse_frame_tokens_range_span_boundary():
 
 @requires_fake_torch
 def test_keyframe_batch_alias_routes_to_insert_mode():
-    # A pre-rename workflow wires `keyframe_batch` (not `keyframes_insert`); it
-    # must still behave like an insert.
+    # A workflow saved with the deprecated alias still behaves like an insert.
     node = easy_ImageBatch()
     _img, _alpha, _sel, frames = node.create_batch(
         total_frames=24, cut_start_frame=1, placeholder_color="Gray",

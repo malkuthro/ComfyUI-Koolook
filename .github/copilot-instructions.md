@@ -44,9 +44,15 @@ ComfyUI-Koolook is a custom-node pack for ComfyUI. Two shipped surfaces:
 
 ## Things that bite if you don't know them
 
-- **Node IDs in saved workflows are stable.** Never rename a registered node
-  ID without a back-compat alias — see
-  [`docs/maintainers/node-versioning.md`](../docs/maintainers/node-versioning.md).
+- **Backward compatibility is opt-in for Koolook-created nodes only** (the root
+  `k_*.py` custom nodes). For those, make the cleanest change by default —
+  rename/drop/reorder IDs, inputs, and outputs freely, no aliases or `_v2`
+  suffixes — unless the maintainer says `check backward compatibility`.
+  **Fork nodes are different: anything under `forks/` keeps full back-compat
+  discipline by default** (never rename a fork ID in saved workflows, version
+  via new suffix/namespace, keep the `__koolook_vX_Y_Z` collision suffix). See
+  [`docs/maintainers/node-versioning.md`](../docs/maintainers/node-versioning.md)
+  and [`CLAUDE.md`](../CLAUDE.md) → *Change management*.
 - **Third-party code stays out of MAIN.** Modified fork code lives under
   `forks/<name>/versions/<vX_Y_Z>/`; raw upstream checkouts live in
   `../ComfyUI-Forks/`. See [`forks/README.md`](../forks/README.md) and

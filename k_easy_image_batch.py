@@ -366,9 +366,8 @@ class easy_ImageBatch:
                     "tooltip": (
                         "Deprecated alias for keyframes_insert (the input was "
                         "renamed before release). Use keyframes_insert; this alias "
-                        "keeps pre-rename workflows loading and will be removed in "
-                        "a future release. Ignored when keyframes_insert is also "
-                        "connected."
+                        "keeps pre-rename workflows loading. Ignored when "
+                        "keyframes_insert is also connected."
                     ),
                 }),
                 "source_batch": ("IMAGE", ),
