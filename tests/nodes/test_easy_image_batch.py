@@ -247,10 +247,10 @@ def test_slot_overwrites_empty_input_places_nothing():
 def test_input_types_exposes_keyframes_insert_with_tooltip():
     spec = easy_ImageBatch.INPUT_TYPES()
     assert "keyframes_insert" in spec["optional"], "insert-mode input must be declared"
-    # The pre-release `keyframe_batch` name must NOT be exposed: the rename to
-    # `keyframes_insert` landed before any workflow could depend on the old name,
-    # so the node shows a single insert input (no deprecated alias clutter).
-    assert "keyframe_batch" not in spec["optional"]
+    # `keyframe_batch` is retained as a deprecated alias so workflows saved on
+    # v0.4.1/v0.4.2 keep loading.
+    assert "keyframe_batch" in spec["optional"]
+    assert "deprecated" in spec["optional"]["keyframe_batch"][1]["tooltip"].lower()
     entry = spec["optional"]["keyframes_insert"]
     assert entry[0] == "IMAGE"
     tooltip = entry[1]["tooltip"].lower()
@@ -534,6 +534,30 @@ def test_parse_frame_tokens_range_span_boundary():
     assert len(ok) == 8192 and bad == []
     over, bad_over = parse_frame_tokens("1-8193")
     assert over == [] and bad_over == ["1-8193"]
+
+
+@requires_fake_torch
+def test_keyframe_batch_alias_routes_to_insert_mode():
+    # A workflow saved with the deprecated alias still behaves like an insert.
+    node = easy_ImageBatch()
+    _img, _alpha, _sel, frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5 7 20",
+        image1_frame=4, keyframe_batch=_FakeTensor(["a", "b", "c"]),
+    )
+    assert frames == "5, 7, 20"
+
+
+@requires_fake_torch
+def test_keyframes_insert_wins_over_deprecated_alias():
+    node = easy_ImageBatch()
+    _img, _alpha, selected, _frames = node.create_batch(
+        total_frames=24, cut_start_frame=1, placeholder_color="Gray",
+        invert_alpha=False, source_frames="5",
+        image1_frame=4,
+        keyframes_insert=_FakeTensor(["new"]), keyframe_batch=_FakeTensor(["old"]),
+    )
+    assert selected[0] == "new"
 
 
 @requires_fake_torch

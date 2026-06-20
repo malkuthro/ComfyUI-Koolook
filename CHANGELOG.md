@@ -6,14 +6,6 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
-### Removed
-- **Easy Image Batch — dropped the `keyframe_batch` deprecated alias.** The
-  input is gone; the node now exposes a single `keyframes_insert` insert input.
-  The `keyframe_batch` name shipped in 0.4.1 only as a deprecated bridge for
-  pre-rename local graphs, and removing it matches the new opt-in compatibility
-  policy for Koolook-created nodes. Re-wire any local pre-rename graph to
-  `keyframes_insert`.
-
 ## [0.4.2] - 2026-06-19
 
 ### Fixed
