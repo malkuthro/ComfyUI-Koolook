@@ -27,12 +27,12 @@ flowchart LR
   F["External frontend (WIP)<br/>browse · configure · run"]
   E["ComfyUI engine<br/>runs the graph, writes output"]
 
-  A -->|"publish: POST /api/setups"| S
-  S -->|"browse + load: GET /api/setups{,/id}"| F
-  F -->|"run: POST /api/setups/{id}/run"| S
+  A -->|"publish: POST /koolook/api/setups"| S
+  S -->|"browse + load: GET /koolook/api/setups + /{id}"| F
+  F -->|"run: POST /koolook/api/setups/{id}/run"| S
   S -->|"queue: POST /prompt"| E
   E -->|"rendered output"| S
-  S -->|"status + result: GET /api/runs/{id}"| F
+  S -->|"status + result: GET /koolook/api/runs/{id}"| F
 ```
 
 The publish edge is one-way into the registry; the run / queue / output / status
@@ -66,7 +66,7 @@ renders a form and polls — it never needs to understand the graph.
 *published record shape* (surface + contract + endpoints), not on ComfyUI
 internals. Any external UI that speaks those four endpoints can drive renders.
 The governing rule: **don't invent a separate external-app format — the file an
-external app reads is the same record `GET /api/setups/{id}` returns.**
+external app reads is the same record `GET /koolook/api/setups/{id}` returns.**
 
 ---
 
@@ -77,17 +77,18 @@ flow across the loop:
 
 ```mermaid
 flowchart LR
-  P["POST /api/setups<br/>publish"] --> L["GET /api/setups<br/>browse"]
-  L --> D["GET /api/setups/{id}<br/>load"]
-  D --> R["POST /api/setups/{id}/run<br/>run"]
-  R --> Q["GET /api/runs/{id}<br/>poll"]
+  P["POST /koolook/api/setups<br/>publish"] --> L["GET /koolook/api/setups<br/>browse"]
+  L --> D["GET /koolook/api/setups/{id}<br/>load"]
+  D --> R["POST /koolook/api/setups/{id}/run<br/>run"]
+  R --> Q["GET /koolook/api/runs/{id}<br/>poll"]
 ```
 
 ### Frontend — browser JS (`web/`)
 
 | File                            | Symbol                                          | Role                                        |
 | ------------------------------- | ----------------------------------------------- | ------------------------------------------- |
-| `sidebar/published_surface.js`  | `showPublishSetupModal()`                       | publish dialog; collects metadata + contract |
+| `sidebar/modals.js`             | `showPublishSetupModal()`                       | publish dialog; collects metadata + contract |
+| `sidebar/published_surface.js`  | `inferSetupSurface()`                           | infers `setupSurface.app` from publish-contract nodes |
 | `sidebar/canvas_io.js`          | `captureWorkflowApiPrompt()`, `serializeFullCanvas()` | exports executable `apiPrompt` + `visualGraph` |
 | `sidebar/published_setups.js`   | `publishSavedWorkflowSetup()`                   | `POST` → `/koolook/api/setups`              |
 | `setup_runner_simulator.js`     | renders `setupSurface.app`, run + poll          | **WIP** stand-in / contract test for the future frontend |
@@ -108,7 +109,7 @@ Behind the routes:
 | -------------------------- | --------------------------------------------------- | ------------------------------------------ |
 | `koolook_setups.py`        | `PublishedSetupRegistry`, `validate_setup()`        | schema v1; status `valid` / `draft` / `invalid` |
 | `koolook_setup_runner.py`  | `PublishedSetupRunner`, `AiohttpComfyClient`, `InMemorySetupRunStore` | prune branches → `POST /prompt`; run ids `run-000001` |
-| `koolook_setup_runner.py`  | `FileSetupStorage`                                  | on-disk registry at `…/koolook-published-setups/setups.json` |
+| `koolook_setups.py`        | `FileSetupStorage`                                  | on-disk registry at `…/koolook-published-setups/setups.json` |
 
 ### ComfyUI engine (same local server)
 
@@ -137,7 +138,7 @@ write, branch select, custom result path.
 - **Run contract** — body `{ "inputs": { … } }` → `{ runId, promptId, status }`;
   poll returns terminal status + result paths.
 - **One format only** — the file an external app reads === the record
-  `GET /api/setups/{id}` returns. Do not create an external-app-only format.
+  `GET /koolook/api/setups/{id}` returns. Do not create an external-app-only format.
 
 ---
 
