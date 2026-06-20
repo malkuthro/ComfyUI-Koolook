@@ -43,6 +43,15 @@ finds no actionable concerns that need to be flagged. If the review finds
 blockers, risks, missing validation, or anything that needs maintainer
 judgment, flag those items clearly to the user instead of approving silently.
 
+## Review Fix Completion
+
+When applying review feedback or fixing findings on an existing PR, finish the
+loop in the same session: validate the findings against the codebase, apply the
+surgical fixes, run the relevant verification, then commit and push the PR
+branch. Do not stop after local edits or a local commit. Stage only the files
+that belong to the review fix, and leave unrelated local artifacts (for
+example a worktree `.venv` symlink) out of the commit.
+
 ## Visual QA Is Mandatory For UI Work
 
 For any change that affects rendered UI, guide pages, screenshots,
