@@ -6,6 +6,23 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-06-20
+
+### Added
+- **Published setup loop architecture notes.** Added a maintainer-facing
+  architecture overview for the publish → external run → ComfyUI execution
+  loop, and linked it from the maintainer docs index.
+
+### Changed
+- **Koolook node compatibility policy.** Koolook-created root nodes now default
+  to clean in-place changes unless backward compatibility is explicitly
+  requested, while forked nodes keep full saved-workflow compatibility by
+  default. Agent and maintainer docs were updated to reflect that split.
+- **Easy Image Batch compatibility note.** The released `keyframe_batch`
+  deprecated alias remains available and still routes to `keyframes_insert`, so
+  workflows saved on 0.4.1/0.4.2 keep loading while new graphs use
+  `keyframes_insert`.
+
 ## [0.4.2] - 2026-06-19
 
 ### Fixed
