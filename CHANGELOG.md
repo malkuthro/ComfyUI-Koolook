@@ -29,6 +29,15 @@ The format is inspired by Keep a Changelog and SemVer.
   warning). This reduces the keyframe-boundary "jump" seen when pins fall near
   bucket edges.
 
+- **LTX A/V Bind Schedule node (`LTXAVBindSchedule`).** Decouples big motion
+  from lip-sync in LTX 2.3: a model patcher that scales the audio→video
+  cross-attention (`audio_to_video_attn`) by a per-step gain ramping from
+  `early_gain` (early/high-sigma steps, where coarse motion settles audio-blind)
+  up to full at low sigma (where lips bind). Targets the keyframe-transition jump
+  when a cut lands on an audio peak — one pass, no re-noise. `early_gain=1.0`
+  reproduces stock behavior. Ramp math is unit-tested; the model wiring is
+  validated by rendering against a live LTX 2.3 AV model.
+
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
