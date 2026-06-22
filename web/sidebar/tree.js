@@ -24,6 +24,7 @@ import {
     GROUP_MODE_DEFAULT,
     MODULE_TAG,
     GUIDE_URL,
+    GITHUB_REPO_URL,
     ensureStyle,
     toast,
     compareNames,
@@ -3836,6 +3837,31 @@ export function renderPanel(container, options = {}) {
     container.appendChild(updateFooter);
     if (showUpdateFooter) {
         checkForUpdate().then((update) => renderUpdateFooter(updateFooter, update));
+    }
+
+    // ---- GitHub discovery nudge ----
+    // A discreet line directly below the update footer. Always shown in the
+    // live panel (gated on the same `showUpdateFooter` flag so the read-only
+    // compare columns stay chrome-free). Ko-fi/funding deliberately lives in
+    // the GitHub repo only — this surface stays limited to the discovery ask.
+    if (showUpdateFooter) {
+        const starFooter = document.createElement("div");
+        starFooter.className = "koolook-star-footer";
+        const starGlyph = document.createElement("span");
+        starGlyph.className = "koolook-star-glyph";
+        starGlyph.textContent = "★";
+        starGlyph.setAttribute("aria-hidden", "true");
+        const starText = document.createElement("span");
+        starText.textContent = "Help creators find us on ";
+        const starLink = document.createElement("a");
+        starLink.href = GITHUB_REPO_URL;
+        starLink.target = "_blank";
+        starLink.rel = "noopener noreferrer";
+        starLink.textContent = "GitHub";
+        starLink.title = "Help creators find Kforge Labs on GitHub";
+        starText.append(starLink);
+        starFooter.append(starGlyph, starText);
+        container.appendChild(starFooter);
     }
 
     // ---- Build tag (dev-sync verification) ----
