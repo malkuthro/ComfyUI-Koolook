@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Derived from WhatDreamsCost-ComfyUI `prompt_relay.py`
+# Vendored VERBATIM from WhatDreamsCost-ComfyUI `prompt_relay.py`
 # (https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI) at commit
 # fe09f73756df202d08341c66b4dc5fc8d2acca22 (pyproject version 2.0.2).
-# Modified by ComfyUI-Koolook on 2026-06-22:
-#   - per-segment sigma in `build_segments` (Prompt-Relay paper formula)
+# Unmodified; `ltx_director.py` imports its Prompt Relay helpers.
 # License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
 
 import logging
@@ -127,12 +126,9 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
         audio_epsilon, audio_strength, audio_window_scale
     Audio knobs only affect architectures whose cross-attention takes the scaled
     (non-integer-frame) path — currently LTX audio_attn2.
-
-    Koolook: sigma is computed per segment using the Prompt-Relay paper formula
-    sigma = (L - w_eff) / (2 * sqrt(ln(1/epsilon))) so the penalty reaches the
-    threshold epsilon at each segment boundary regardless of segment length.
     """
-    sigma_fallback = 0.1448
+    # Paper uses constant sigma = 1/ln(1/epsilon) regardless of segment length
+    sigma = 1.0 / math.log(1.0 / epsilon) if 0 < epsilon < 1 else 0.1448
 
     opts = relay_options or {}
     v_strength = opts.get("video_strength", 1.0)
@@ -141,11 +137,10 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
     a_strength = opts.get("audio_strength", 1.0)
     a_window_scale = opts.get("audio_window_scale", 1.0)
 
-    denom_v = 2.0 * math.sqrt(math.log(1.0 / epsilon)) if (0 < epsilon < 1) else None
     if a_epsilon is not None and 0 < a_epsilon < 1:
-        denom_a = 2.0 * math.sqrt(math.log(1.0 / a_epsilon))
+        sigma_audio = 1.0 / math.log(1.0 / a_epsilon)
     else:
-        denom_a = denom_v
+        sigma_audio = sigma
 
     if relay_options:
         log.info(
@@ -165,22 +160,14 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
             continue
         midpoint = (2 * frame_cursor + L) // 2
         base_window = max(L // 2 - 2, 0)
-        eff_window_v = max(base_window * v_window_scale, 0.0)
-        eff_window_a = max(base_window * a_window_scale, 0.0)
-        sigma_v = (L - eff_window_v) / denom_v if (denom_v is not None and L > eff_window_v) else sigma_fallback
-        sigma_a = (L - eff_window_a) / denom_a if (denom_a is not None and L > eff_window_a) else sigma_fallback
-        log.info(
-            "[PromptRelay] seg L=%d w_v=%.2f sigma_v=%.4f | w_a=%.2f sigma_a=%.4f (strength v=%.2f a=%.2f)",
-            L, eff_window_v, sigma_v, eff_window_a, sigma_a, v_strength, a_strength,
-        )
         q_token_idx.append({
             "local_token_idx": torch.arange(tok_start, tok_end),
             "midpoint": midpoint,
-            "window": eff_window_v,
-            "sigma": sigma_v,
+            "window": max(base_window * v_window_scale, 0.0),
+            "sigma": sigma,
             "strength": v_strength,
-            "window_audio": eff_window_a,
-            "sigma_audio": sigma_a,
+            "window_audio": max(base_window * a_window_scale, 0.0),
+            "sigma_audio": sigma_audio,
             "strength_audio": a_strength,
         })
         frame_cursor += L

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Vendored UNMODIFIED from WhatDreamsCost-ComfyUI `patches.py`
+# Vendored VERBATIM from WhatDreamsCost-ComfyUI `patches.py`
 # (https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI) at commit
 # fe09f73756df202d08341c66b4dc5fc8d2acca22 (pyproject version 2.0.2).
+# Unmodified; `ltx_director.py` imports detect_model_type / apply_patches.
 # License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
 
 import logging

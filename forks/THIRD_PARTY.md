@@ -275,36 +275,35 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
 - **License:** GPL-3.0 (verified 2026-06-22 from the upstream `LICENSE`
   file).
 - **Local path(s):** [`forks/whatdreamscost_koolook/versions/v2_0_2/`](whatdreamscost_koolook/versions/v2_0_2/)
-- **What changed locally:**
-  - **`ltx_director.py` (modified).** Carries forward all v1.3.9 Koolook
-    deltas onto upstream 2.0.2: the `relay_overrides` multiline input, the
-    optional `audio_transcript_json` timed-transcript expansion, and the
-    `LTXDirector__koolook` / `LTXDirector__koolook_v1_3_2` node IDs. **New
-    (issue #258):** a `snap_keyframes_to_grid` toggle (default on) that snaps
-    each image keyframe's pixel position to the center of its LTX
-    latent-time bucket before the guide is built, so hard pins land on a
-    single latent frame and two pins never collide in one bucket (the later
-    is bumped, with a logged warning). Pixel positions in, pixel positions
-    out — the upstream `LTXDirectorGuide` re-derives latent indices, so it
-    needs no change.
-  - **`prompt_relay.py` (modified).** Per-segment sigma patch dropped in
-    verbatim — `build_segments` is byte-identical between upstream 1.3.9 and
-    2.0.2. The rest of 2.0.2's `prompt_relay` (audio cross-attention split,
-    dynamic EOS detection) is upstream-unmodified.
-  - **`patches.py` (verbatim vendored).** Carried unmodified from upstream
-    `fe09f73`.
+- **What changed locally:** A faithful replica of upstream 2.0.2 — the older
+  Koolook customizations (`relay_overrides`, `audio_transcript_json`,
+  per-segment sigma) are **intentionally dropped** as unused, so every latest
+  2.0.2 feature (Prompt Relay, audio, motion) behaves exactly as upstream.
+  - **`ltx_director.py` (upstream verbatim + 2 additive changes).** (1) the
+    node is namespaced as `LTXDirector__koolook` so it coexists with the
+    installed upstream copy; (2) **issue #258:** a `snap_keyframes_to_grid`
+    toggle (default on, appended last in the schema) snaps each image
+    keyframe's pixel position to the center of its LTX latent-time bucket
+    before the guide is built, so hard pins land on a single latent frame and
+    two pins never collide in one bucket (the later is bumped, with a logged
+    warning). Pixel positions in, pixel positions out — the upstream
+    `LTXDirectorGuide` re-derives latent indices, so it needs no change.
+    Nothing else is modified.
+  - **`prompt_relay.py` (verbatim vendored).** Unmodified upstream 2.0.2;
+    imported by `ltx_director.py` for its Prompt Relay helpers.
+  - **`patches.py` (verbatim vendored).** Unmodified upstream `fe09f73`.
   - **`keyframe_grid.py` (new, Koolook-original).** Pure stdlib latent-grid
     snapper; unit-tested in
     [`tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py`](../tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py).
-  - **`_relay_overrides.py` (Koolook-original).** Carried forward verbatim
-    from v1.3.9.
 - **What was *not* forked:** Same policy as v1.3.9 — `LTXDirectorGuide` and
   other WhatDreamsCost helper nodes remain runtime dependencies from the
   user's installed upstream package.
 - **Why the workflow-facing ID is stable:** the canonical
-  `LTXDirector__koolook` rolls to this 2.0.2 implementation (the package
-  entrypoint loads `v2_0_2` last), and `LTXDirector__koolook_v1_3_2` stays
-  registered as a legacy alias. v1.3.9 remains on disk for rollback.
+  `LTXDirector__koolook` rolls to this clean 2.0.2 implementation (the package
+  entrypoint loads `v2_0_2` last). The legacy `LTXDirector__koolook_v1_3_2` ID
+  is not registered here; it stays backed by the v1.3.9 package for workflows
+  saved against it. v1.3.9 (with the older customizations) remains on disk for
+  rollback.
 - **Last reviewed:** 2026-06-22
 
 ## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)

@@ -3,12 +3,12 @@
 # Derived from WhatDreamsCost-ComfyUI `ltx_director.py`
 # (https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI) at commit
 # fe09f73756df202d08341c66b4dc5fc8d2acca22 (pyproject version 2.0.2).
-# Modified by ComfyUI-Koolook on 2026-06-22:
-#   - Prompt Relay `relay_overrides` widget + per-stream override parsing
-#   - `audio_transcript_json` timed-transcript expansion helpers
-#   - latent-bucket keyframe grid-snap (issue #258)
-#   - namespaced node IDs `LTXDirector__koolook` (+ `__koolook_v1_3_2` alias)
-# License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
+# Vendored VERBATIM from upstream 2.0.2 except for two additive Koolook changes,
+# modified by ComfyUI-Koolook on 2026-06-22:
+#   - namespaced node ID `LTXDirector__koolook` (coexists with installed upstream)
+#   - `snap_keyframes_to_grid` latent-bucket keyframe snap (issue #258)
+# No other behavior is changed: Prompt Relay, audio, and all 2.0.2 features are
+# upstream-exact. License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
 
 import logging
 import asyncio
@@ -41,7 +41,6 @@ from .prompt_relay import (
 )
 
 from .patches import detect_model_type, apply_patches
-from ._relay_overrides import parse_relay_overrides as _parse_relay_overrides
 from .keyframe_grid import snap_keyframes_to_grid as _snap_keyframes_to_grid
 
 log = logging.getLogger(__name__)
@@ -784,140 +783,7 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-DEFAULT_AUDIO_TRANSCRIPT_PROMPT_TEMPLATE = (
-    'The character faces the camera and says "{text}". '
-    "The mouth, jaw, and lips clearly form the spoken words."
-)
-DEFAULT_AUDIO_TRANSCRIPT_PAUSE_PROMPT = (
-    "The character pauses between spoken words. "
-    "The mouth closes naturally while the face stays alive and attentive."
-)
-
-
-def _frame_from_seconds(value: float, frame_rate: float) -> int:
-    return max(0, int(round(float(value) * float(frame_rate))))
-
-
-def _first_timeline_image_file(timeline: dict) -> str:
-    for seg in timeline.get("segments", []):
-        image_file = seg.get("imageFile")
-        if image_file:
-            return image_file
-    return ""
-
-
-def _build_audio_transcript_spans(
-    phrases: list[dict],
-    *,
-    duration_frames: int,
-    frame_rate: float,
-    prompt_template: str = DEFAULT_AUDIO_TRANSCRIPT_PROMPT_TEMPLATE,
-    pause_prompt: str = DEFAULT_AUDIO_TRANSCRIPT_PAUSE_PROMPT,
-    pause_threshold_seconds: float = 0.2,
-) -> list[dict]:
-    clean_phrases = []
-    for phrase in phrases:
-        text = str(phrase.get("text", "")).strip()
-        if not text:
-            continue
-        try:
-            start = float(phrase.get("start", 0.0))
-            end = float(phrase.get("end", start))
-        except (TypeError, ValueError):
-            continue
-        clean_phrases.append({"start": start, "end": max(start, end), "text": text})
-
-    clean_phrases.sort(key=lambda item: item["start"])
-
-    spans = []
-    cursor = 0
-    pause_threshold = _frame_from_seconds(pause_threshold_seconds, frame_rate)
-    for phrase in clean_phrases:
-        start = min(duration_frames, _frame_from_seconds(phrase["start"], frame_rate))
-        end = min(duration_frames, max(start + 1, _frame_from_seconds(phrase["end"], frame_rate)))
-        if start >= duration_frames:
-            continue
-        if start - cursor >= pause_threshold:
-            spans.append({"start": cursor, "length": start - cursor, "prompt": pause_prompt})
-        elif start > cursor and spans:
-            spans[-1]["length"] += start - cursor
-        spans.append(
-            {
-                "start": start,
-                "length": max(1, end - start),
-                "prompt": prompt_template.format(text=phrase["text"]),
-            }
-        )
-        cursor = end
-
-    if duration_frames > cursor:
-        spans.append({"start": cursor, "length": duration_frames - cursor, "prompt": pause_prompt})
-
-    return [span for span in spans if int(span["length"]) > 0]
-
-
-def _apply_audio_transcript_json(
-    timeline_data: str,
-    local_prompts: str,
-    segment_lengths: str,
-    audio_transcript_json: str,
-    *,
-    duration_frames: int,
-    frame_rate: float,
-) -> tuple[str, str, str]:
-    if not str(audio_transcript_json or "").strip():
-        return timeline_data, local_prompts, segment_lengths
-
-    try:
-        transcript = json.loads(audio_transcript_json)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"audio_transcript_json is not valid JSON: {exc}") from exc
-
-    phrases = transcript.get("phrases")
-    if not isinstance(phrases, list):
-        raise ValueError("audio_transcript_json must contain a phrases list.")
-    if not phrases:
-        raise ValueError("audio_transcript_json.phrases must not be empty.")
-
-    timeline = json.loads(timeline_data) if str(timeline_data or "").strip() else {}
-    if not isinstance(timeline, dict):
-        timeline = {}
-
-    spans = _build_audio_transcript_spans(
-        phrases,
-        duration_frames=int(duration_frames),
-        frame_rate=float(frame_rate),
-    )
-    image_file = _first_timeline_image_file(timeline)
-    speech_segments = [
-        {
-            "id": f"speech_{idx + 1:03d}",
-            "type": "image",
-            "start": int(span["start"]),
-            "length": int(span["length"]),
-            "prompt": span["prompt"],
-            **({"imageFile": image_file} if image_file else {}),
-        }
-        for idx, span in enumerate(spans)
-    ]
-    if not timeline.get("segments"):
-        timeline["segments"] = speech_segments
-    else:
-        log.warning(
-            "[AudioTranscript] Preserving existing timeline_data segments; "
-            "audio_transcript_json updated Prompt Relay local_prompts and "
-            "segment_lengths only."
-        )
-    timeline.setdefault("audioSegments", [])
-
-    return (
-        json.dumps(timeline, ensure_ascii=False, separators=(",", ":")),
-        " | ".join(str(span["prompt"]) for span in spans),
-        ",".join(str(int(span["length"])) for span in spans),
-    )
-
-
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, relay_overrides=""):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon):
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
                       ("segment_lengths", segment_lengths)):
@@ -974,7 +840,7 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
         latent_frames, tokens_per_frame, effective_lengths,
     )
 
-    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, _parse_relay_overrides(relay_overrides))
+    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None)
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, latent_frames)
 
     patched = model.clone()
@@ -986,14 +852,11 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
 class LTXDirector(io.ComfyNode):
     """WYSIWYG timeline variant — segments and lengths come from a visual editor in the node UI."""
 
-    NODE_ID = "LTXDirector__koolook"
-    DISPLAY_NAME = "LTX Director (Koolook)"
-
     @classmethod
     def define_schema(cls):
         return io.Schema(
-            node_id=cls.NODE_ID,
-            display_name=cls.DISPLAY_NAME,
+            node_id="LTXDirector__koolook",
+            display_name="LTX Director (Koolook)",
             category="Koolook/PromptRelay",
             description=(
                 "Same as Prompt Relay Encode, but local prompts and segment lengths are edited "
@@ -1100,37 +963,13 @@ class LTXDirector(io.ComfyNode):
                     "override_audio", default=False, optional=True,
                     tooltip="Use the audio from the IC-LoRA video instead of using the audio track.",
                 ),
-                # --- Koolook-added widgets, appended LAST so an upstream-saved
-                # workflow's positional widgets_values map onto the upstream
-                # widgets untouched and only these append with defaults. ---
-                io.String.Input(
-                    "relay_overrides", multiline=True, default="",
-                    optional=True,
-                    tooltip=(
-                        "Koolook: JSON dict of Prompt Relay per-stream overrides. "
-                        "Empty = upstream defaults. Supported keys: video_strength "
-                        "(float), video_window_scale (float), audio_strength (float), "
-                        "audio_window_scale (float), audio_epsilon (float). Example: "
-                        "{\"video_strength\": 10.0}. Underscore-prefixed keys are ignored."
-                    ),
-                ),
-                io.String.Input(
-                    "audio_transcript_json", multiline=True, default="",
-                    optional=True,
-                    tooltip=(
-                        "Koolook: optional timed speech transcript JSON. Paste or link "
-                        "{\"phrases\":[{\"start\":0,\"end\":0.5,\"text\":\"What?\"}]} "
-                        "to auto-build local_prompts, segment_lengths, and timeline_data "
-                        "before Prompt Relay conditioning runs."
-                    ),
-                ),
                 io.Boolean.Input(
                     "snap_keyframes_to_grid", default=True, optional=True,
                     tooltip=(
-                        "Koolook (issue #258): snap each image keyframe to the center of "
-                        "its LTX latent-time bucket so hard pins land cleanly on one latent "
-                        "frame, and bump pins that collide in the same bucket. Off = use raw "
-                        "timeline positions."
+                        "Koolook (issue #258): snap each image keyframe to the center "
+                        "of its LTX latent-time bucket so hard pins land cleanly on one "
+                        "latent frame, and bump pins that collide in the same bucket. "
+                        "Off = use raw timeline positions."
                     ),
                 ),
             ],
@@ -1153,17 +992,7 @@ class LTXDirector(io.ComfyNode):
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False,
-                relay_overrides="", audio_transcript_json="", snap_keyframes_to_grid=True) -> io.NodeOutput:
-
-        # Koolook: expand a timed transcript into Prompt Relay inputs first.
-        timeline_data, local_prompts, segment_lengths = _apply_audio_transcript_json(
-            timeline_data,
-            local_prompts,
-            segment_lengths,
-            audio_transcript_json,
-            duration_frames=duration_frames,
-            frame_rate=frame_rate,
-        )
+                snap_keyframes_to_grid=True) -> io.NodeOutput:
 
         # Parse timeline data
         try:
@@ -1339,8 +1168,8 @@ class LTXDirector(io.ComfyNode):
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
         # Koolook (issue #258): snap image keyframes to latent-bucket centers so
-        # hard pins land on one latent frame and don't collide. Pixel positions in,
-        # pixel positions out — the downstream guide node re-derives latent indices.
+        # hard pins land on one latent frame and don't collide. Pixel in, pixel out
+        # — the downstream guide node re-derives latent indices.
         if snap_keyframes_to_grid and guide_data["insert_frames"]:
             try:
                 _arch, _patch_size, _stride = detect_model_type(model)
@@ -1380,7 +1209,6 @@ class LTXDirector(io.ComfyNode):
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
-            relay_overrides=relay_overrides,
         )
 
         # --- Build Audio Output ---
@@ -1553,19 +1381,10 @@ class LTXDirector(io.ComfyNode):
         return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out)
 
 
-class LTXDirectorLegacyV132(LTXDirector):
-    """Compatibility alias for workflows saved before the stable node ID."""
-
-    NODE_ID = "LTXDirector__koolook_v1_3_2"
-    DISPLAY_NAME = "LTX Director (Koolook)"
-
-
 NODE_CLASS_MAPPINGS = {
     "LTXDirector__koolook": LTXDirector,
-    "LTXDirector__koolook_v1_3_2": LTXDirectorLegacyV132,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXDirector__koolook": "LTX Director (Koolook)",
-    "LTXDirector__koolook_v1_3_2": "LTX Director (Koolook)",
 }

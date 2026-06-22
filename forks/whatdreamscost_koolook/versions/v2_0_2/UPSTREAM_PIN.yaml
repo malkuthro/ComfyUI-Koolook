@@ -7,24 +7,26 @@ external_work_branch: "main"
 license: "GPL-3.0"
 license_verified_at: "2026-06-22"
 notes: |
+  A faithful replica of upstream 2.0.2 `LTXDirector` with exactly ONE additive
+  change. None of the older Koolook customizations (relay_overrides,
+  audio_transcript_json, per-segment sigma) are carried into this version — it
+  is a clean 2.0.2 base so all latest upstream features (Prompt Relay, audio,
+  motion) behave exactly as upstream.
+
   This version folder ships:
-    - ltx_director.py  (MODIFIED) carries forward the v1_3_9 Koolook deltas
-      (`relay_overrides` widget + per-stream overrides, `audio_transcript_json`
-      timed-transcript expansion) and adds the latent-bucket keyframe grid-snap
-      (`snap_keyframes_to_grid`, default on) from issue #258.
-    - prompt_relay.py  (MODIFIED) per-segment sigma per the Prompt-Relay paper.
-      `build_segments` is byte-identical between upstream 1.3.9 and 2.0.2, so the
-      v1_3_9 patch was dropped in verbatim; the rest of the 2.0.2 file (audio
-      cross-attention split, EOS detection) is upstream-unmodified.
-    - patches.py       (UNMODIFIED) vendored verbatim; ltx_director.py imports
-      detect_model_type / apply_patches from it.
+    - ltx_director.py  (upstream 2.0.2 VERBATIM + two additive changes only:
+      the namespaced node ID `LTXDirector__koolook`, and the
+      `snap_keyframes_to_grid` latent-bucket keyframe snap from issue #258).
+    - prompt_relay.py  (VERBATIM upstream 2.0.2; imported by ltx_director.py).
+    - patches.py       (VERBATIM upstream 2.0.2; imported by ltx_director.py).
     - keyframe_grid.py (NEW, Koolook-original) pure latent-grid snapper used by
       ltx_director.py; unit-tested in tests/forks/.
-    - _relay_overrides.py (Koolook-original) carried forward verbatim from v1_3_9.
 
-  Node IDs are unchanged from v1_3_9: the canonical `LTXDirector__koolook` rolls
-  to this 2.0.2 implementation (package entrypoint loads v2_0_2 last), and the
-  `LTXDirector__koolook_v1_3_2` compatibility alias is preserved. The companion
-  `LTXDirectorGuide` is upstream-unmodified and consumed from the user's install;
-  the grid-snap operates on the pixel `insert_frames` this node emits, so the
-  guide node needs no change.
+  Node IDs: the canonical `LTXDirector__koolook` rolls to this clean 2.0.2
+  implementation (package entrypoint loads v2_0_2 last). The legacy
+  `LTXDirector__koolook_v1_3_2` ID is NOT registered here; it stays backed by
+  the v1_3_9 package for workflows saved against it. The companion
+  `LTXDirectorGuide` is upstream-unmodified and consumed from the user's
+  install; the grid-snap operates on the pixel `insert_frames` this node emits,
+  so the guide node needs no change. v1.3.9 (with the older customizations)
+  remains on disk for rollback.

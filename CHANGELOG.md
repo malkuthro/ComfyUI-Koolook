@@ -9,16 +9,19 @@ The format is inspired by Keep a Changelog and SemVer.
 ### Added
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
-  commit `fe09f73`). The canonical `LTXDirector__koolook` node ID rolls to the
-  2.0.2 implementation; the `LTXDirector__koolook_v1_3_2` alias is preserved and
-  v1.3.9 stays on disk for rollback. All prior Koolook deltas (`relay_overrides`,
-  `audio_transcript_json`, per-segment sigma) carry forward.
-- **Keyframe latent-grid snapping (issue #258).** New `snap_keyframes_to_grid`
-  toggle on the Koolook LTX Director (default on) snaps each image keyframe to
-  the center of its LTX latent-time bucket, so hard-pinned keyframes land
-  cleanly on a single latent frame and two pins never collide in one bucket
-  (the later pin is bumped to the next free bucket with a logged warning). This
-  reduces the keyframe-boundary "jump" seen when pins fall near bucket edges.
+  commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
+  the older Koolook customizations (`relay_overrides`, `audio_transcript_json`,
+  per-segment sigma) are intentionally dropped as unused, so all latest 2.0.2
+  features (Prompt Relay, audio, motion) behave exactly as upstream. The
+  canonical `LTXDirector__koolook` node ID rolls to this implementation;
+  `LTXDirector__koolook_v1_3_2` stays backed by v1.3.9, which remains on disk.
+- **Keyframe latent-grid snapping (issue #258).** The single additive change on
+  the v2.0.2 node: a `snap_keyframes_to_grid` toggle (default on) snaps each
+  image keyframe to the center of its LTX latent-time bucket, so hard-pinned
+  keyframes land cleanly on a single latent frame and two pins never collide in
+  one bucket (the later pin is bumped to the next free bucket with a logged
+  warning). This reduces the keyframe-boundary "jump" seen when pins fall near
+  bucket edges.
 
 ## [0.4.4] - 2026-06-23
 
