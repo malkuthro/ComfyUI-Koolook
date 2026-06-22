@@ -1096,6 +1096,13 @@ class LTXDirector(io.ComfyNode):
                     "img_compression", default=18, min=0, max=100, step=1, optional=True,
                     tooltip="H.264 CRF compression to apply to each guide image. 0 = no compression, higher = more artefacts.",
                 ),
+                io.Boolean.Input(
+                    "override_audio", default=False, optional=True,
+                    tooltip="Use the audio from the IC-LoRA video instead of using the audio track.",
+                ),
+                # --- Koolook-added widgets, appended LAST so an upstream-saved
+                # workflow's positional widgets_values map onto the upstream
+                # widgets untouched and only these append with defaults. ---
                 io.String.Input(
                     "relay_overrides", multiline=True, default="",
                     optional=True,
@@ -1125,10 +1132,6 @@ class LTXDirector(io.ComfyNode):
                         "frame, and bump pins that collide in the same bucket. Off = use raw "
                         "timeline positions."
                     ),
-                ),
-                io.Boolean.Input(
-                    "override_audio", default=False, optional=True,
-                    tooltip="Use the audio from the IC-LoRA video instead of using the audio track.",
                 ),
             ],
             outputs=[
