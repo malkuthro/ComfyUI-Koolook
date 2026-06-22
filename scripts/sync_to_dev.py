@@ -199,6 +199,37 @@ def load_dotenv(env_path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def find_dotenv() -> Path | None:
+    """Locate the `.env` to load.
+
+    Worktree root first, then the **main repo root** when running from a git
+    worktree (where `.git` is a file pointing at
+    `<main>/.git/worktrees/<name>`). The committed `.env` lives only in the
+    main checkout, so without this fallback `dev-sync` is unusable from a
+    worktree. Mirrors `scripts/make_card.py` and the documented behavior in
+    the dev-sync docs.
+    """
+    direct = REPO_ROOT / ".env"
+    if direct.exists():
+        return direct
+    git_marker = REPO_ROOT / ".git"
+    if not git_marker.is_file():
+        return None
+    try:
+        content = git_marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not content.startswith("gitdir:"):
+        return None
+    gitdir = Path(content.split(":", 1)[1].strip())
+    if "worktrees" not in gitdir.parts:
+        return None
+    idx = gitdir.parts.index("worktrees")
+    main_repo_root = Path(*gitdir.parts[:idx]).parent
+    candidate = main_repo_root / ".env"
+    return candidate if candidate.exists() else None
+
+
 def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
@@ -337,7 +368,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    load_dotenv(REPO_ROOT / ".env")
+    env_path = find_dotenv()
+    if env_path is not None:
+        load_dotenv(env_path)
 
     target_str = os.environ.get("KOLOOK_COMFYUI_DEV_PATH")
     if not target_str:

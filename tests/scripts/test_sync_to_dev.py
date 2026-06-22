@@ -98,3 +98,32 @@ def test_dev_sync_ships_manager_visible_package_metadata():
     installed version.
     """
     assert "pyproject.toml" in sync_to_dev.RUNTIME_PATHS
+
+
+# --- find_dotenv: worktree -> main-repo .env fallback (dev-sync from a worktree) ---
+
+def test_find_dotenv_prefers_worktree_env(tmp_path, monkeypatch):
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".env").write_text("X=1\n", encoding="utf-8")
+    monkeypatch.setattr(sync_to_dev, "REPO_ROOT", wt)
+    assert sync_to_dev.find_dotenv() == wt / ".env"
+
+
+def test_find_dotenv_falls_back_to_main_repo_from_worktree(tmp_path, monkeypatch):
+    main = tmp_path / "ComfyUI-Koolook"
+    (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    (main / ".env").write_text("KOLOOK_COMFYUI_DEV_PATH=/somewhere\n", encoding="utf-8")
+    wt = main / ".claude" / "worktrees" / "wt"
+    wt.mkdir(parents=True)
+    gitdir = main / ".git" / "worktrees" / "wt"
+    (wt / ".git").write_text(f"gitdir: {gitdir.as_posix()}\n", encoding="utf-8")
+    monkeypatch.setattr(sync_to_dev, "REPO_ROOT", wt)
+    assert sync_to_dev.find_dotenv() == main / ".env"
+
+
+def test_find_dotenv_none_when_no_env_and_not_a_worktree(tmp_path, monkeypatch):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    monkeypatch.setattr(sync_to_dev, "REPO_ROOT", plain)
+    assert sync_to_dev.find_dotenv() is None

@@ -29,6 +29,14 @@ The format is inspired by Keep a Changelog and SemVer.
   warning). This reduces the keyframe-boundary "jump" seen when pins fall near
   bucket edges.
 
+### Fixed
+- **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
+  `.env` with the worktree→main-repo fallback (the committed `.env` lives only
+  in the main checkout), matching `sync_to_dev_audio.py` and the documented
+  behavior. The fallback is now a shared `find_dotenv()` that both scripts use,
+  so they can't drift. Previously plain `dev-sync` failed with
+  "KOLOOK_COMFYUI_DEV_PATH not set" from any worktree.
+
 ## [0.4.4] - 2026-06-23
 
 ### Added
