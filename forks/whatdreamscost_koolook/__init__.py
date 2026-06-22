@@ -11,17 +11,22 @@ from .versions.v1_3_2 import NODE_CLASS_MAPPINGS as V1_3_2_NODE_CLASS_MAPPINGS
 from .versions.v1_3_2 import NODE_DISPLAY_NAME_MAPPINGS as V1_3_2_NODE_DISPLAY_NAME_MAPPINGS
 from .versions.v1_3_9 import NODE_CLASS_MAPPINGS as V1_3_9_NODE_CLASS_MAPPINGS
 from .versions.v1_3_9 import NODE_DISPLAY_NAME_MAPPINGS as V1_3_9_NODE_DISPLAY_NAME_MAPPINGS
+from .versions.v2_0_2 import NODE_CLASS_MAPPINGS as V2_0_2_NODE_CLASS_MAPPINGS
+from .versions.v2_0_2 import NODE_DISPLAY_NAME_MAPPINGS as V2_0_2_NODE_DISPLAY_NAME_MAPPINGS
 
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-# v1.3.9 intentionally updates the legacy v1.3.2 workflow ID after the
-# historical v1.3.2 mappings load. Saved workflows keep opening, but the
-# implementation behind `LTXDirector__koolook_v1_3_2` is the upgraded
-# compatibility alias, not byte-identical v1.3.2 code.
+# Versions load oldest -> newest so the canonical stable IDs
+# (`LTXDirector__koolook`, `LTXDirector__koolook_v1_3_2`) resolve to the
+# newest implementation. Saved workflows keep opening; the implementation
+# behind them is the latest upgraded version, not byte-identical older code.
+# v2.0.2 is loaded last and therefore wins the shared IDs.
 NODE_CLASS_MAPPINGS.update(V1_3_2_NODE_CLASS_MAPPINGS)
 NODE_CLASS_MAPPINGS.update(V1_3_9_NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS.update(V2_0_2_NODE_CLASS_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS.update(V1_3_2_NODE_DISPLAY_NAME_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS.update(V1_3_9_NODE_DISPLAY_NAME_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(V2_0_2_NODE_DISPLAY_NAME_MAPPINGS)
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
