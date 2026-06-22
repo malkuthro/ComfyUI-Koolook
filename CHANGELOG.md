@@ -15,6 +15,12 @@ The format is inspired by Keep a Changelog and SemVer.
   features (Prompt Relay, audio, motion) behave exactly as upstream. The
   canonical `LTXDirector__koolook` node ID rolls to this implementation;
   `LTXDirector__koolook_v1_3_2` stays backed by v1.3.9, which remains on disk.
+  The timeline-editor web extension (`web/whatdreamscost_koolook/ltx_director.js`)
+  is now upstream 2.0.2's editor vendored verbatim and retargeted to the Koolook
+  node, so its UX matches upstream exactly (Add Video / Add IC Video / Retake
+  Mode / IC-LoRA track, correct widget visibility) — replacing the old
+  1.3.9-era editor. The localStorage quota guard stays in the global
+  `web/koolook_draft_guard.js`.
 - **Keyframe latent-grid snapping (issue #258).** The single additive change on
   the v2.0.2 node: a `snap_keyframes_to_grid` toggle (default on) snaps each
   image keyframe to the center of its LTX latent-time bucket, so hard-pinned
