@@ -120,6 +120,9 @@ For the fastest answer, include your ComfyUI version, Koolook version,
 operating system, install method, terminal log, browser console errors, and
 steps to reproduce. See [`SUPPORT.md`](SUPPORT.md) for the exact checklist.
 
+If Koolook helps your ComfyUI work, you can support development on
+[Ko-fi](https://ko-fi.com/kforgelabs).
+
 ## Stability
 
 For production work, install a pinned release tag or commit instead of following

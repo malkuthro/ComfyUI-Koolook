@@ -6,6 +6,10 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Project funding link.** Added GitHub funding metadata and a README Ko-fi
+  link for supporting Kforge Labs development.
+
 ## [0.4.3] - 2026-06-20
 
 ### Added
