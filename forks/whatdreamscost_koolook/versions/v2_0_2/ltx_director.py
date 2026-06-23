@@ -42,6 +42,7 @@ from .prompt_relay import (
 
 from .patches import detect_model_type, apply_patches
 from .keyframe_grid import snap_keyframes_to_grid as _snap_keyframes_to_grid
+from .keyframe_grid import expand_keyframe_ease as _expand_keyframe_ease
 
 log = logging.getLogger(__name__)
 
@@ -972,6 +973,25 @@ class LTXDirector(io.ComfyNode):
                         "Off = use raw timeline positions."
                     ),
                 ),
+                io.Int.Input(
+                    "keyframe_ease", default=0, min=0, max=4, optional=True,
+                    tooltip=(
+                        "Koolook: ease in/out of each hard pin. 0 = off (single "
+                        "frozen frame -> the robotic stop/dissolve). 1-2 adds "
+                        "strength-ramped neighbor pins of the SAME pose one latent "
+                        "bucket apart, so the model glides into and out of the "
+                        "locked pose instead of snapping. Center pose stays exact; "
+                        "costs extra guide frames (more compute)."
+                    ),
+                ),
+                io.Float.Input(
+                    "ease_falloff", default=0.5, min=0.0, max=1.0, step=0.05, optional=True,
+                    tooltip=(
+                        "Strength multiplier per ease step: neighbor k gets "
+                        "center_strength * falloff**k. Lower = quicker release "
+                        "(less dwell), higher = gentler/longer ease."
+                    ),
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -992,7 +1012,7 @@ class LTXDirector(io.ComfyNode):
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False,
-                snap_keyframes_to_grid=True) -> io.NodeOutput:
+                snap_keyframes_to_grid=True, keyframe_ease=0, ease_falloff=0.5) -> io.NodeOutput:
 
         # Parse timeline data
         try:
@@ -1183,6 +1203,27 @@ class LTXDirector(io.ComfyNode):
                     log.warning("[LTXDirector] keyframe grid-snap: %s", _w)
             except Exception as _e:
                 log.warning("[LTXDirector] keyframe grid-snap skipped: %s", _e)
+
+        # Koolook: ease in/out of each hard pin (smooth the robotic stop/dissolve)
+        # by emitting strength-ramped neighbor pins of the same pose. Center pose
+        # stays exact; default keyframe_ease=0 is a no-op.
+        if keyframe_ease and int(keyframe_ease) > 0 and guide_data["images"]:
+            try:
+                _arch, _ps, _stride = detect_model_type(model)
+                _stride = max(1, int(_stride))
+                _idxs, _frames, _strs = _expand_keyframe_ease(
+                    guide_data["insert_frames"], guide_data["strengths"],
+                    _stride, int(keyframe_ease), float(ease_falloff), int(duration_frames),
+                )
+                guide_data["images"] = [guide_data["images"][i] for i in _idxs]
+                guide_data["insert_frames"] = _frames
+                guide_data["strengths"] = _strs
+                log.info(
+                    "[LTXDirector] keyframe ease: expanded to %d pins "
+                    "(ease=%d, falloff=%.2f)", len(_idxs), int(keyframe_ease), float(ease_falloff),
+                )
+            except Exception as _e:
+                log.warning("[LTXDirector] keyframe ease skipped: %s", _e)
 
         # --- Auto-generate LTXV latent if none was provided ---
         # Apply the community 8n+1 rule directly to the timeline's duration_frames:

@@ -130,3 +130,52 @@ def test_empty_input():
     snapped, warns = snap([], S, latent_length=20)
     assert snapped == []
     assert warns == []
+
+
+# --- expand_keyframe_ease: strength-ramped neighbor clusters ---
+
+ease = _mod.expand_keyframe_ease
+
+
+def test_ease_zero_is_passthrough():
+    idxs, frames, strs = ease([0, 40], [1.0, 1.0], 8, 0, 0.5, 145)
+    assert idxs == [0, 1]
+    assert frames == [0, 40]
+    assert strs == [1.0, 1.0]
+
+
+def test_ease_keeps_centers_exact_first():
+    idxs, frames, strs = ease([40], [1.0], 8, 1, 0.5, 145)
+    # center emitted first, exact
+    assert idxs[0] == 0 and frames[0] == 40 and strs[0] == 1.0
+
+
+def test_ease_adds_ramped_neighbors_one_bucket_apart():
+    idxs, frames, strs = ease([40], [1.0], 8, 1, 0.5, 145)
+    # neighbors at 32 and 48, strength 0.5, reusing image index 0
+    pairs = sorted((f, s) for f, s in zip(frames[1:], strs[1:]))
+    assert pairs == [(32, 0.5), (48, 0.5)]
+    assert all(i == 0 for i in idxs)
+
+
+def test_ease_two_levels_falloff():
+    idxs, frames, strs = ease([40], [1.0], 8, 2, 0.5, 145)
+    m = {f: s for f, s in zip(frames, strs)}
+    assert m[40] == 1.0
+    assert m[32] == 0.5 and m[48] == 0.5     # k=1
+    assert m[24] == 0.25 and m[56] == 0.25   # k=2
+
+
+def test_ease_skips_out_of_range():
+    # center at 0: left neighbor (-8) dropped, right (8) kept
+    idxs, frames, strs = ease([0], [1.0], 8, 1, 0.5, 145)
+    assert sorted(frames) == [0, 8]
+
+
+def test_ease_skips_collision_with_other_center():
+    # centers 40 and 48 (one bucket apart): 40's +8 == 48 (a center) -> skipped
+    idxs, frames, strs = ease([40, 48], [1.0, 1.0], 8, 1, 0.5, 145)
+    # both centers present
+    assert frames.count(40) == 1 and frames.count(48) == 1
+    # no duplicate frame entries
+    assert len(frames) == len(set(frames))
