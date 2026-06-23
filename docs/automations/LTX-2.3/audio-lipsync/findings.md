@@ -13,6 +13,44 @@ Anything in this file is **locked in** — don't sweep it again without a reason
 
 ---
 
+## Audio→video binding must be sigma-scheduled, not full-on, to keep motion smooth AND lips synced
+
+**Finding.** In the LTX 2.3 AV transformer the audio→video coupling is one gated
+cross-attention per block (`audio_to_video_attn`, gated by
+`transformer_options["a2v_cross_attn"]`). Left full-on every denoise step, that
+coupling fights hard keyframe pose changes that land on an audio peak → the
+keyframe-boundary **jump**. The fix is the Koolook `LTXAVBindSchedule` node: it
+scales the a2v output by a gain that **ramps from `early_gain` (early/high-sigma
+steps) to 1.0 (late/low-sigma steps)**.
+
+**Validated knee: `early_gain=0.35, bind_start=0.25, bind_end=0.55`** (8-step base
+pass) → almost-perfect lip-sync **and** smooth motion, no jumps. Confirmed on the
+4-keyframe goat clip (`Grayscale-BLK` v003 / 00020-1x, single stage).
+
+**Why.** Lip-sync *timing* is itself coarse motion — decided in the early steps,
+the same place pose transitions resolve. So the knob is a single trade axis:
+
+| `early_gain` | result |
+|---|---|
+| `0.0` (audio off early, e.g. `0.0 / 0.50 / 0.80`) | smooth motion, **lips never sync** (mouth posed audio-blind) |
+| `1.0` (stock, full audio) | lips sync, **transitions jump** |
+| **`~0.35`** (`0.35 / 0.25 / 0.55`) | **the knee — both** |
+
+A ~35% audio floor from step 0 (plus full binding by mid-denoise) is enough to
+time the lips while staying low enough early that pose changes settle smoothly.
+Tuning: lips soft → raise `early_gain` / lower `bind_start`; motion jumps → the
+reverse.
+
+**Notes.** The global (scalar) ramp is the reliable lever. A per-frame
+"transition-window" mode exists in the node but currently falls back to scalar
+on the AV model (`grid_sizes` is `None` at the a2v call and the video token
+stream is padded with appended keyframe-guide frames — e.g. `19 timeline + 4
+guide = 23` frames × 819 tokens), so mapping tokens→frames isn't reliable yet.
+The architecturally-cleaner path for motion-rich lip-sync remains the IC-LoRA
+Video track. Node + ramp math: `k_ltx_av_bind_schedule.py` (ComfyUI-Koolook#259).
+
+---
+
 ## Hard-pinned image keyframes must land on a latent-bucket center, one per bucket
 
 **Finding.** A hard-pinned LTX Director image keyframe is injected as a *single
