@@ -11,6 +11,9 @@ The format is inspired by Keep a Changelog and SemVer.
 ### Added
 - **Project funding link.** Added GitHub funding metadata and a README Ko-fi
   link for supporting Kforge Labs development.
+- **GitHub discovery footer.** The Kforge Labs sidebar now shows a discreet
+  "Help creators find us on GitHub" line beneath the update-available footer,
+  gated on the same live-panel footer flag so compare columns stay clean.
 
 ## [0.4.3] - 2026-06-20
 
