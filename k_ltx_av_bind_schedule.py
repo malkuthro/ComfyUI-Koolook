@@ -114,30 +114,45 @@ def _parse_frames(s):
     return out
 
 
-def _make_a2v_scale_method(underlying, transition_fracs, window_frac):
+def _make_a2v_scale_method(underlying, transition_fracs, window_frac, diag):
     """Bound-method wrapper around audio_to_video_attn.forward: scale its output
-    by the per-step (and optionally per-frame) gain."""
+    by the per-step (and optionally per-frame) gain. ``diag`` is a shared 1-elem
+    list used to log geometry once per render."""
 
     def wrapped(_self_module, *args, **kwargs):
         out = underlying(*args, **kwargs)
         to = kwargs.get("transformer_options", {}) or {}
         sigma_gain = float(to.get(_GAIN_KEY, 1.0))
+        grid = to.get("grid_sizes", None)
+
+        def _diag(applied):
+            if not diag[0]:
+                diag[0] = True
+                log.info(
+                    "[LTXAVBindSchedule] a2v fired: out.shape=%s grid_sizes=%s "
+                    "transition_fracs=%s window_frac=%.4f -> %s",
+                    tuple(getattr(out, "shape", ())), grid, transition_fracs,
+                    window_frac, applied,
+                )
 
         # Global mode (no transition windows): uniform scalar gain.
         if not transition_fracs:
+            _diag("global scalar")
             return out if sigma_gain == 1.0 else out * sigma_gain
 
         # Windowed mode: need the latent grid to map tokens -> frames.
-        grid = to.get("grid_sizes", None)
         try:
             latent_frames = int(grid[0])
             tpf = int(grid[1]) * int(grid[2])
         except Exception:
-            # can't resolve geometry -> fall back to scalar
+            _diag("FALLBACK scalar (no grid_sizes)")
             return out if sigma_gain == 1.0 else out * sigma_gain
 
         if latent_frames <= 0 or tpf <= 0 or out.shape[1] != latent_frames * tpf:
+            _diag(f"FALLBACK scalar (shape mismatch: out[1]={out.shape[1]} vs "
+                  f"{latent_frames}*{tpf}={latent_frames * tpf})")
             return out if sigma_gain == 1.0 else out * sigma_gain
+        _diag(f"per-frame (latent_frames={latent_frames}, tpf={tpf})")
 
         ti = sorted({max(0, min(latent_frames - 1, round(fr * (latent_frames - 1))))
                      for fr in transition_fracs})
@@ -230,6 +245,7 @@ class LTXAVBindSchedule:
             mode = "global ramp"
 
         patched = 0
+        diag = [False]  # shared one-shot diagnostic flag across blocks
         try:
             dm = m.get_model_object("diffusion_model")
             for idx, block in enumerate(getattr(dm, "transformer_blocks", None) or []):
@@ -237,7 +253,7 @@ class LTXAVBindSchedule:
                     continue
                 key = f"diffusion_model.transformer_blocks.{idx}.audio_to_video_attn.forward"
                 underlying = m.get_model_object(key)
-                wrapper = _make_a2v_scale_method(underlying, transition_fracs, window_frac)
+                wrapper = _make_a2v_scale_method(underlying, transition_fracs, window_frac, diag)
                 m.add_object_patch(key, types.MethodType(wrapper, block.audio_to_video_attn))
                 patched += 1
         except Exception as e:  # pragma: no cover - live model
