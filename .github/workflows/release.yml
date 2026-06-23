@@ -28,7 +28,7 @@ jobs:
       issues: write     # publish-node-action opens an issue on failure
     steps:
       - name: Check out the tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
         with:
           submodules: true
           fetch-depth: 0   # full history so the tag-on-main ancestry check resolves
@@ -64,7 +64,7 @@ jobs:
       contents: write   # create the GitHub Release
     steps:
       - name: Check out the tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
       - name: Extract CHANGELOG section
         run: |
           set -euo pipefail
