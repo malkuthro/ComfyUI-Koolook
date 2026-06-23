@@ -76,3 +76,52 @@ def test_early_gain_one_is_stock_behavior():
     # early_gain=1.0 -> gain is 1.0 everywhere (node becomes a no-op)
     for frac in (0.0, 0.3, 0.6, 1.0):
         assert gain((1.0 - frac) * SMAX, SMAX, 0.55, 0.75, 1.0) == pytest.approx(1.0)
+
+
+# --- windowed_frame_gains: per-frame mask (transition-window mode) ---
+
+wfg = _m.windowed_frame_gains
+
+
+def test_windowed_full_audio_outside_bands():
+    # transition at latent frame 5, window 1, sigma_gain 0.0 -> only 4,5,6 dip
+    g = wfg(20, [5], 1, 0.0)
+    assert g[5] == 0.0                      # center fully suppressed
+    assert g[0] == 1.0 and g[10] == 1.0     # far frames untouched (lips sync)
+    assert all(g[f] == 1.0 for f in range(20) if abs(f - 5) > 1)
+
+
+def test_windowed_center_is_sigma_gain():
+    g = wfg(20, [5], 2, 0.3)
+    assert g[5] == pytest.approx(0.3)       # center floor = sigma_gain
+    assert g[3] == pytest.approx(1.0)       # at edge distance==window -> ~1.0
+    assert g[7] == pytest.approx(1.0)
+
+
+def test_windowed_tapers_between_center_and_edge():
+    g = wfg(40, [20], 4, 0.0)
+    # monotonic rise from center outward on each side
+    assert g[20] < g[21] < g[22] < g[23] <= g[24]
+    assert g[24] == pytest.approx(1.0, abs=1e-6)
+
+
+def test_windowed_multiple_transitions_take_min():
+    g = wfg(30, [5, 6], 1, 0.0)
+    # overlapping bands: frames 4..7 affected, 5 and 6 fully suppressed
+    assert g[5] == 0.0 and g[6] == 0.0
+    assert g[10] == 1.0
+
+
+def test_windowed_no_transitions_is_uniform_sigma_gain():
+    g = wfg(10, [], 3, 0.4)
+    assert g == [pytest.approx(0.4)] * 10
+
+
+def test_windowed_empty_latent_frames():
+    assert wfg(0, [5], 2, 0.0) == []
+
+
+def test_windowed_sigma_gain_one_is_noop():
+    # late steps: sigma_gain==1 -> even transition frames are full (lips rejoin)
+    g = wfg(20, [5], 2, 1.0)
+    assert all(x == pytest.approx(1.0) for x in g)
