@@ -80,6 +80,9 @@ export const WORKFLOWS_SEEDED_KEY = "koolook.workflows.seeded.v1";
 export const WORKFLOWS_CHANGED_EVENT = "koolook-workflows-changed";
 export const WORKFLOWS_DEFAULTS_URL = new URL("../workflow_defaults.json", import.meta.url).href;
 export const GUIDE_URL = new URL("../guide/index.html", import.meta.url).href;
+// Repo home — target of the sidebar's GitHub discovery footer nudge.
+// Same owner/repo the update-check module pins for release lookups.
+export const GITHUB_REPO_URL = "https://github.com/malkuthro/ComfyUI-Koolook";
 
 export function noStoreUrl(url) {
     const sep = url.includes("?") ? "&" : "?";
@@ -324,6 +327,10 @@ export function ensureStyle() {
 .koolook-update-footer-visible { display: flex; }
 .koolook-update-footer a { color: #b9d8ff; font-weight: 700; text-decoration: none; opacity: 1; }
 .koolook-update-footer a:hover { color: #ffffff; }
+.koolook-star-footer { flex-shrink: 0; display: flex; justify-content: center; align-items: baseline; gap: 5px; padding: 0 10px 12px; color: var(--input-text, inherit); opacity: 0.55; font-size: 11px; line-height: 1.45; text-align: center; }
+.koolook-star-footer a { color: #b9d8ff; font-weight: 700; text-decoration: none; opacity: 1; }
+.koolook-star-footer a:hover { color: #ffffff; }
+.koolook-star-footer .koolook-star-glyph { color: #ffd479; }
 .koolook-build-tag { flex-shrink: 0; padding: 0 10px 12px; font-size: 10px; opacity: 0.5; text-align: center; letter-spacing: 0.04em; font-family: monospace; color: var(--input-text, inherit); line-height: 1.45; }
 .koolook-build-sha { font-size: 13px; letter-spacing: 0.06em; }
 .koolook-build-scope { display: block; font-size: 12px; margin-top: 3px; letter-spacing: 0.02em; font-family: var(--font-family, sans-serif); font-style: italic; }
