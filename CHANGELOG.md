@@ -79,8 +79,14 @@ The format is inspired by Keep a Changelog and SemVer.
   supports `strength > 1.0` to amplify) scales **only the trailing
   `num_references` guide entries'** attention strength — keyframe pins and the
   noise-mask freezing are untouched, so it's orthogonal to `reference_strength`.
-  Single pass, no re-noise, no LoRA. The `ref_gain` ramp is unit-tested; model
-  behavior is validated by rendering against a live LTX 2.3 model.
+  Single pass, no re-noise. The `ref_gain` ramp is unit-tested; model behavior is
+  validated by rendering against a live LTX 2.3 model. **Requires an IC-LoRA:**
+  the per-guide attention entries this scales are only created by
+  `LTXDirectorGuide` when an IC-LoRA is active (`is_lora_active`) — in the
+  no-LoRA Ghost Mask path the list is empty and the node is inert (it logs a
+  clear INERT warning rather than no-op'ing silently). It's the partner to a
+  future IC-LoRA refinement stage; the no-LoRA reference lever is the noise-mask
+  pin (`reference_strength` / the LTX Guide Reference Strength node).
 
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves

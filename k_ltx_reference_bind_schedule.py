@@ -25,6 +25,15 @@ attention bias of the trailing `num_references` guide entries (references are
 appended after the keyframes) — the keyframe pins and the noise-mask freezing
 are untouched.
 
+REQUIRES AN IC-LoRA. The per-guide attention entries this node scales are only
+created by LTXDirectorGuide when an IC-LoRA is active (`ic_lora_name` set) — see
+`is_lora_active` gating its `_append_guide_attention_entry` calls. With NO LoRA
+the entry list is empty (`resolved_guide_entries=None`), so there is nothing to
+amplify and this node is INERT. In the no-LoRA Ghost Mask path the reference
+influence is the noise-mask pin only (`reference_strength` / the LTX Guide
+Reference Strength node) — use those instead. This node is the partner to a
+future IC-LoRA (MSR) refinement stage, where the attention lever exists.
+
 Mechanics (same as the A/V node): a `model_function_wrapper` captures the
 current sigma each step and stashes the gain in `transformer_options`; an
 object-patch on `_build_guide_self_attention_mask` reads it and scales the
@@ -92,17 +101,37 @@ def _make_guide_mask_wrapper(underlying, ref_count, diag):
     def wrapped(_self_module, x, transformer_options, merged_args, *args, **kwargs):
         to = transformer_options or {}
         gain = float(to.get(_REF_GAIN_KEY, 1.0))
-        if gain != 1.0 and ref_count > 0 and isinstance(merged_args, dict):
-            entries = merged_args.get("resolved_guide_entries")
+        ma = merged_args if isinstance(merged_args, dict) else {}
+        entries = ma.get("resolved_guide_entries")
+        # One-shot diagnostic / inert warning. The entries list is only
+        # populated when an IC-LoRA is active; without one this node can't do
+        # anything, so say so loudly rather than no-op silently.
+        if not diag.get("first"):
+            diag["first"] = True
+            if not entries:
+                log.warning(
+                    "[LTXReferenceBindSchedule] INERT: no guide attention entries "
+                    "(resolved_guide_entries=%s) — LTXDirectorGuide only creates them "
+                    "with an IC-LoRA active. Without a LoRA this node has NO effect; "
+                    "use reference_strength / LTX Guide Reference Strength instead.",
+                    entries,
+                )
+            else:
+                log.info(
+                    "[LTXReferenceBindSchedule] builder reached: %d guide entr(y/ies), "
+                    "ref_count=%d, gain ramps to peak at low sigma.",
+                    len(entries), int(ref_count),
+                )
+        if gain != 1.0 and ref_count > 0 and entries:
             boosted = _boosted_entries(entries, ref_count, gain)
             if boosted is not entries:
-                merged_args = {**merged_args, "resolved_guide_entries": boosted}
-                if not diag[0]:
-                    diag[0] = True
+                merged_args = {**ma, "resolved_guide_entries": boosted}
+                if not diag.get("boost"):
+                    diag["boost"] = True
                     log.info(
-                        "[LTXReferenceBindSchedule] reference attention scheduling "
-                        "active: %d trailing guide entr(y/ies), gain reaches x%.2f "
-                        "at low sigma.", min(int(ref_count), len(entries or [])), gain,
+                        "[LTXReferenceBindSchedule] DIAG boost active: gain x%.2f on "
+                        "the last %d of %d guide entr(y/ies).",
+                        gain, min(int(ref_count), len(entries)), len(entries),
                     )
         return underlying(x, transformer_options, merged_args, *args, **kwargs)
 
@@ -143,10 +172,12 @@ class LTXReferenceBindSchedule:
     FUNCTION = "patch"
     CATEGORY = "Koolook/LTX"
     DESCRIPTION = (
-        "Ramp the Ghost Mask reference's attention UP at low sigma so identity "
-        "locks during refinement without disturbing the motion that forms early. "
-        "The inverse of the motion curve; mirror of LTX A/V Bind Schedule. One "
-        "pass, no re-noise; touches only the reference guide entries."
+        "Ramp the reference's guide-attention UP at low sigma so identity locks "
+        "during refinement without disturbing early motion. REQUIRES AN IC-LoRA "
+        "active on LTXDirectorGuide — the attention entries this scales only "
+        "exist when ic_lora_name is set; with no LoRA it is INERT (use "
+        "reference_strength / LTX Guide Reference Strength instead). Mirror of "
+        "LTX A/V Bind Schedule. One pass, no re-noise."
     )
 
     def patch(self, model, num_references, peak_strength, ramp_start=0.5, ramp_end=0.9):
@@ -173,7 +204,7 @@ class LTXReferenceBindSchedule:
             )
             return (m,)
 
-        diag = [False]
+        diag = {}
         wrapper = _make_guide_mask_wrapper(underlying, int(num_references), diag)
         try:
             m.add_object_patch(key, types.MethodType(wrapper, dm))
