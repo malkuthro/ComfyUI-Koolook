@@ -142,12 +142,14 @@ entries:
       of the older Koolook customizations. relay_overrides, audio_transcript_json,
       and the per-segment sigma patch are intentionally dropped (unused), so all
       latest 2.0.2 features (Prompt Relay, audio, motion) behave exactly as
-      upstream. `ltx_director.py` is upstream 2.0.2 verbatim except for two
-      additive changes: the namespaced node ID `LTXDirector__koolook`, and the
+      upstream. `ltx_director.py` is upstream 2.0.2 verbatim except for three
+      additive changes: the namespaced node ID `LTXDirector__koolook`, the
       `snap_keyframes_to_grid` latent-bucket keyframe snap (default on, issue
       #258) — image keyframes snap to the center of their LTX latent-time bucket
       so hard pins land cleanly on one latent frame, with collision bumping +
-      warnings. `prompt_relay.py` and `patches.py` are vendored verbatim from
+      warnings — and `keyframe_ease` / `ease_falloff`, which optionally emit
+      strength-ramped neighbor pins of the same pose to smooth into and out of
+      hard keyframes. `prompt_relay.py` and `patches.py` are vendored verbatim from
       upstream fe09f73. The canonical `LTXDirector__koolook` rolls to this clean
       2.0.2 implementation (package entrypoint loads v2_0_2 last); the legacy
       `LTXDirector__koolook_v1_3_2` ID stays backed by the v1_3_9 package. The

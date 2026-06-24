@@ -3,10 +3,10 @@
 WhatDreamsCost Koolook v2.0.2 mappings.
 
 A faithful replica of upstream WhatDreamsCost-ComfyUI 2.0.2 `LTXDirector`,
-namespaced as `LTXDirector__koolook`, with exactly one additive change: the
-`snap_keyframes_to_grid` latent-bucket keyframe snap (issue #258). No other
-Koolook customizations — Prompt Relay, audio, and every 2.0.2 feature are
-upstream-exact.
+namespaced as `LTXDirector__koolook`, with two additive keyframe controls:
+`snap_keyframes_to_grid` (issue #258) and `keyframe_ease` / `ease_falloff`.
+No older Koolook customizations — Prompt Relay, audio, and every 2.0.2 feature
+are upstream-exact.
 
 The package entrypoint loads this version last, so the canonical
 `LTXDirector__koolook` resolves here. The legacy `LTXDirector__koolook_v1_3_2`

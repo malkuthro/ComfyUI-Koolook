@@ -21,13 +21,14 @@ The format is inspired by Keep a Changelog and SemVer.
   Mode / IC-LoRA track, correct widget visibility) — replacing the old
   1.3.9-era editor. The localStorage quota guard stays in the global
   `web/koolook_draft_guard.js`.
-- **Keyframe latent-grid snapping (issue #258).** The single additive change on
-  the v2.0.2 node: a `snap_keyframes_to_grid` toggle (default on) snaps each
+- **Keyframe latent-grid snapping and ease controls (issue #258).** The v2.0.2
+  node adds a `snap_keyframes_to_grid` toggle (default on) that snaps each
   image keyframe to the center of its LTX latent-time bucket, so hard-pinned
   keyframes land cleanly on a single latent frame and two pins never collide in
   one bucket (the later pin is bumped to the next free bucket with a logged
-  warning). This reduces the keyframe-boundary "jump" seen when pins fall near
-  bucket edges.
+  warning). It also adds opt-in `keyframe_ease` / `ease_falloff` controls that
+  emit strength-ramped neighbor pins of the same pose, smoothing into and out
+  of hard keyframes without weakening the exact center pose.
 
 - **LTX A/V Bind Schedule node (`LTXAVBindSchedule`).** Decouples big motion
   from lip-sync in LTX 2.3: a model patcher that scales the audio→video

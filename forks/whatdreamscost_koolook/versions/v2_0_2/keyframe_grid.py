@@ -31,6 +31,7 @@ animator's job; strength stays whatever the caller passes (no softening).
 
 from __future__ import annotations
 
+import math
 from typing import List, Tuple
 
 
@@ -51,6 +52,19 @@ def bucket_center(index: int, stride: int) -> int:
     if index <= 0:
         return 0
     return (index - 1) * stride + 1 + (stride - 1) // 2
+
+
+def latent_count_for_duration(duration_frames: int, stride: int) -> int:
+    """Latent frame count for an LTX timeline after the ``stride*n+1`` ceiling.
+
+    LTXV latent generation rounds pixel duration up to the next valid
+    ``stride*n+1`` length. The snapper must use that ceiled temporal length too;
+    using the floor count drops the final valid latent bucket for non-conforming
+    durations such as 120 frames at stride 8.
+    """
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1, got {stride}")
+    return 1 + int(math.ceil(max(0, int(duration_frames) - 1) / float(stride)))
 
 
 def snap_keyframes_to_grid(

@@ -279,7 +279,7 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   Koolook customizations (`relay_overrides`, `audio_transcript_json`,
   per-segment sigma) are **intentionally dropped** as unused, so every latest
   2.0.2 feature (Prompt Relay, audio, motion) behaves exactly as upstream.
-  - **`ltx_director.py` (upstream verbatim + 2 additive changes).** (1) the
+  - **`ltx_director.py` (upstream verbatim + 3 additive changes).** (1) the
     node is namespaced as `LTXDirector__koolook` so it coexists with the
     installed upstream copy; (2) **issue #258:** a `snap_keyframes_to_grid`
     toggle (default on, appended last in the schema) snaps each image
@@ -287,13 +287,15 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
     before the guide is built, so hard pins land on a single latent frame and
     two pins never collide in one bucket (the later is bumped, with a logged
     warning). Pixel positions in, pixel positions out — the upstream
-    `LTXDirectorGuide` re-derives latent indices, so it needs no change.
+    `LTXDirectorGuide` re-derives latent indices, so it needs no change; and
+    (3) `keyframe_ease` / `ease_falloff` optionally emit strength-ramped
+    neighbor pins of the same pose to smooth into and out of hard keyframes.
     Nothing else is modified.
   - **`prompt_relay.py` (verbatim vendored).** Unmodified upstream 2.0.2;
     imported by `ltx_director.py` for its Prompt Relay helpers.
   - **`patches.py` (verbatim vendored).** Unmodified upstream `fe09f73`.
   - **`keyframe_grid.py` (new, Koolook-original).** Pure stdlib latent-grid
-    snapper; unit-tested in
+    snap/ease helpers; unit-tested in
     [`tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py`](../tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py).
 - **What was *not* forked:** Same policy as v1.3.9 — `LTXDirectorGuide` and
   other WhatDreamsCost helper nodes remain runtime dependencies from the

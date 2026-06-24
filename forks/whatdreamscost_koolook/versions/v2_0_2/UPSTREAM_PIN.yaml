@@ -7,20 +7,21 @@ external_work_branch: "main"
 license: "GPL-3.0"
 license_verified_at: "2026-06-22"
 notes: |
-  A faithful replica of upstream 2.0.2 `LTXDirector` with exactly ONE additive
-  change. None of the older Koolook customizations (relay_overrides,
+  A faithful replica of upstream 2.0.2 `LTXDirector` with only scoped additive
+  keyframe controls. None of the older Koolook customizations (relay_overrides,
   audio_transcript_json, per-segment sigma) are carried into this version — it
   is a clean 2.0.2 base so all latest upstream features (Prompt Relay, audio,
   motion) behave exactly as upstream.
 
   This version folder ships:
-    - ltx_director.py  (upstream 2.0.2 VERBATIM + two additive changes only:
+    - ltx_director.py  (upstream 2.0.2 VERBATIM + three additive changes only:
       the namespaced node ID `LTXDirector__koolook`, and the
-      `snap_keyframes_to_grid` latent-bucket keyframe snap from issue #258).
+      `snap_keyframes_to_grid` latent-bucket keyframe snap from issue #258,
+      and `keyframe_ease` / `ease_falloff` strength-ramped neighbor pins).
     - prompt_relay.py  (VERBATIM upstream 2.0.2; imported by ltx_director.py).
     - patches.py       (VERBATIM upstream 2.0.2; imported by ltx_director.py).
-    - keyframe_grid.py (NEW, Koolook-original) pure latent-grid snapper used by
-      ltx_director.py; unit-tested in tests/forks/.
+    - keyframe_grid.py (NEW, Koolook-original) pure latent-grid snap/ease helpers
+      used by ltx_director.py; unit-tested in tests/forks/.
 
   Node IDs: the canonical `LTXDirector__koolook` rolls to this clean 2.0.2
   implementation (package entrypoint loads v2_0_2 last). The legacy

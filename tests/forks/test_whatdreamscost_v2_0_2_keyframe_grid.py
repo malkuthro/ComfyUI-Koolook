@@ -31,6 +31,7 @@ _spec.loader.exec_module(_mod)
 
 latent_index = _mod.latent_index
 bucket_center = _mod.bucket_center
+latent_count_for_duration = _mod.latent_count_for_duration
 snap = _mod.snap_keyframes_to_grid
 
 S = 8  # LTXV temporal stride
@@ -124,6 +125,21 @@ def test_collision_exhaustion_warns_when_no_free_bucket():
 def test_invalid_stride_raises():
     with pytest.raises(ValueError):
         snap([0, 8], 0, latent_length=20)
+
+
+def test_latent_count_for_duration_uses_ltxv_ceiling_rule():
+    # 120 is not 8n+1. LTXV rounds it to 121 pixel frames, i.e. 16 latent
+    # frames, so the final bucket (index 15) is valid for snapping.
+    assert latent_count_for_duration(120, S) == 16
+    snapped, warns = snap([119], S, latent_length=latent_count_for_duration(120, S))
+    assert snapped == [bucket_center(15, S)]
+    assert latent_index(snapped[0], S) == 15
+    assert warns == []
+
+
+def test_latent_count_rejects_invalid_stride():
+    with pytest.raises(ValueError):
+        latent_count_for_duration(120, 0)
 
 
 def test_empty_input():

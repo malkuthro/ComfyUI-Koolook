@@ -3,10 +3,11 @@
 # Derived from WhatDreamsCost-ComfyUI `ltx_director.py`
 # (https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI) at commit
 # fe09f73756df202d08341c66b4dc5fc8d2acca22 (pyproject version 2.0.2).
-# Vendored VERBATIM from upstream 2.0.2 except for two additive Koolook changes,
+# Vendored VERBATIM from upstream 2.0.2 except for three additive Koolook changes,
 # modified by ComfyUI-Koolook on 2026-06-22:
 #   - namespaced node ID `LTXDirector__koolook` (coexists with installed upstream)
 #   - `snap_keyframes_to_grid` latent-bucket keyframe snap (issue #258)
+#   - `keyframe_ease` / `ease_falloff` strength-ramped neighbor pins
 # No other behavior is changed: Prompt Relay, audio, and all 2.0.2 features are
 # upstream-exact. License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
 
@@ -41,6 +42,7 @@ from .prompt_relay import (
 )
 
 from .patches import detect_model_type, apply_patches
+from .keyframe_grid import latent_count_for_duration as _latent_count_for_duration
 from .keyframe_grid import snap_keyframes_to_grid as _snap_keyframes_to_grid
 from .keyframe_grid import expand_keyframe_ease as _expand_keyframe_ease
 
@@ -1194,7 +1196,7 @@ class LTXDirector(io.ComfyNode):
             try:
                 _arch, _patch_size, _stride = detect_model_type(model)
                 _stride = max(1, int(_stride))
-                _latent_count = 1 + max(0, int(duration_frames) - 1) // _stride
+                _latent_count = _latent_count_for_duration(duration_frames, _stride)
                 _snapped, _warns = _snap_keyframes_to_grid(
                     guide_data["insert_frames"], _stride, _latent_count
                 )
