@@ -37,7 +37,6 @@ LTX 2.3 AV model loaded (not in CI).
 """
 from __future__ import annotations
 
-import math
 import types
 import logging
 
