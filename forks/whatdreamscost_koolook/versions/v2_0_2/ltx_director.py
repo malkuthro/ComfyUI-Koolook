@@ -1315,6 +1315,12 @@ class LTXDirector(io.ComfyNode):
                 log.warning("[LTXDirector] reference Ghost Mask skipped: %s", _e)
                 n_refs = 0
 
+        # Tag how many of the trailing guide frames are references so a
+        # downstream node ("LTX Guide Reference Strength") can boost ONLY the
+        # references (e.g. harder pin in a stage-2 refinement) without touching
+        # the keyframe pins. References are always the LAST n_refs entries.
+        guide_data["reference_count"] = int(n_refs)
+
         # --- Auto-generate LTXV latent if none was provided ---
         # Sized to the CLEAN length only — references are appended (and cropped)
         # by the downstream guide pipeline, never by growing this latent.

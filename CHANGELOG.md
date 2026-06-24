@@ -59,6 +59,16 @@ The format is inspired by Keep a Changelog and SemVer.
   by rendering against a live LTX 2.3 model. (Phase 1: Ghost Mask only — the
   LoRA-backed Licon MSR prefix mode is intentionally not ported.)
 
+- **LTX Guide Reference Strength node (`LTXGuideReferenceStrength`).** Companion
+  to the Ghost Mask reference: rewrites the strength of *only* the reference
+  frames in `guide_data` (the trailing entries the Director tags with
+  `reference_count`), leaving the keyframe pins untouched. Intended for
+  two-stage pipelines — feed stage 1 the Director's `guide_data` unchanged
+  (light reference, motion forms freely) and route stage 2's guide_data through
+  this node at a higher reference strength, so identity locks during the
+  low-denoise refinement without disturbing stage-1 motion. Strength math is
+  unit-tested.
+
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
