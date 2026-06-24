@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-05-28"
+updated_at: "2026-06-22"
 external_forks:
   root_relative_to_main: "../ComfyUI-Forks"
   root_env_var: "KOLOOK_FORKS_DIR"
@@ -112,6 +112,55 @@ entries:
       `LTXDirector__koolook_v1_3_2` still load through a legacy alias backed
       by this v1.3.9 implementation. The original v1.3.2 source remains on
       disk for attribution, review, and rollback.
+
+  - id: "whatdreamscost_koolook_v2_0_2_ltx_director"
+    name: "WhatDreamsCost Koolook v2.0.2 LTX Director subset"
+    source_repo: "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git"
+    source_ref: "2.0.2 (pyproject/README version on main; upstream does not tag releases)"
+    pinned_commit: "fe09f73756df202d08341c66b4dc5fc8d2acca22"
+    external_checkout:
+      relative_path_from_forks_root: "whatdreamscost-v2.0.2-koolook"
+      upstream_tracking_path_from_forks_root: "whatdreamscost-main-upstream"
+      default_branch: "main"
+    local_paths:
+      - "forks/whatdreamscost_koolook/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/__init__.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/UPSTREAM_PIN.yaml"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/ltx_director.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/patches.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/keyframe_grid.py"
+      - "web/whatdreamscost_koolook/ltx_director.js"
+    status: "modified"
+    sync_state: "upstream-verbatim-plus-keyframe-snap"
+    license: "GPL-3.0"
+    license_verified_at: "2026-06-22"
+    exposed_node_ids:
+      - "LTXDirector__koolook"
+    notes: |
+      A faithful replica of upstream 2.0.2 `LTXDirector` — NOT a carry-forward
+      of the older Koolook customizations. relay_overrides, audio_transcript_json,
+      and the per-segment sigma patch are intentionally dropped (unused), so all
+      latest 2.0.2 features (Prompt Relay, audio, motion) behave exactly as
+      upstream. `ltx_director.py` is upstream 2.0.2 verbatim except for three
+      additive changes: the namespaced node ID `LTXDirector__koolook`, the
+      `snap_keyframes_to_grid` latent-bucket keyframe snap (default on, issue
+      #258) — image keyframes snap to the center of their LTX latent-time bucket
+      so hard pins land cleanly on one latent frame, with collision bumping +
+      warnings — and `keyframe_ease` / `ease_falloff`, which optionally emit
+      strength-ramped neighbor pins of the same pose to smooth into and out of
+      hard keyframes. `prompt_relay.py` and `patches.py` are vendored verbatim from
+      upstream fe09f73. The canonical `LTXDirector__koolook` rolls to this clean
+      2.0.2 implementation (package entrypoint loads v2_0_2 last); the legacy
+      `LTXDirector__koolook_v1_3_2` ID stays backed by the v1_3_9 package. The
+      companion `LTXDirectorGuide` is upstream-unmodified and consumed from the
+      user's install. v1.3.9 (with the older customizations) remains on disk.
+      The timeline editor `web/whatdreamscost_koolook/ltx_director.js` is the
+      upstream 2.0.2 `js/ltx_director.js` vendored verbatim with only two
+      retargeting edits (unique extension name + bind to `LTXDirector__koolook`),
+      so the editor UX matches upstream 2.0.2 exactly; the old 1.3.9-era editor
+      and its now-obsolete base64-scrub deltas are replaced. localStorage quota
+      guarding stays in the global `web/koolook_draft_guard.js`.
 
   - id: "easy_resize_inspiration"
     name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"

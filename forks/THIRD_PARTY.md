@@ -266,6 +266,48 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   `scripts/loop_audio.config.json`.
 - **Last reviewed:** 2026-05-29
 
+### WhatDreamsCost/WhatDreamsCost-ComfyUI — v2.0.2 LTX Director subset (Koolook fork)
+
+- **Name:** WhatDreamsCost-ComfyUI
+- **Upstream repo URL:** https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI
+- **Upstream commit/tag used:** `fe09f73756df202d08341c66b4dc5fc8d2acca22`
+  (pyproject/README version `2.0.2`; upstream does not tag releases).
+- **License:** GPL-3.0 (verified 2026-06-22 from the upstream `LICENSE`
+  file).
+- **Local path(s):** [`forks/whatdreamscost_koolook/versions/v2_0_2/`](whatdreamscost_koolook/versions/v2_0_2/)
+- **What changed locally:** A faithful replica of upstream 2.0.2 — the older
+  Koolook customizations (`relay_overrides`, `audio_transcript_json`,
+  per-segment sigma) are **intentionally dropped** as unused, so every latest
+  2.0.2 feature (Prompt Relay, audio, motion) behaves exactly as upstream.
+  - **`ltx_director.py` (upstream verbatim + 3 additive changes).** (1) the
+    node is namespaced as `LTXDirector__koolook` so it coexists with the
+    installed upstream copy; (2) **issue #258:** a `snap_keyframes_to_grid`
+    toggle (default on, appended last in the schema) snaps each image
+    keyframe's pixel position to the center of its LTX latent-time bucket
+    before the guide is built, so hard pins land on a single latent frame and
+    two pins never collide in one bucket (the later is bumped, with a logged
+    warning). Pixel positions in, pixel positions out — the upstream
+    `LTXDirectorGuide` re-derives latent indices, so it needs no change; and
+    (3) `keyframe_ease` / `ease_falloff` optionally emit strength-ramped
+    neighbor pins of the same pose to smooth into and out of hard keyframes.
+    Nothing else is modified.
+  - **`prompt_relay.py` (verbatim vendored).** Unmodified upstream 2.0.2;
+    imported by `ltx_director.py` for its Prompt Relay helpers.
+  - **`patches.py` (verbatim vendored).** Unmodified upstream `fe09f73`.
+  - **`keyframe_grid.py` (new, Koolook-original).** Pure stdlib latent-grid
+    snap/ease helpers; unit-tested in
+    [`tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py`](../tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py).
+- **What was *not* forked:** Same policy as v1.3.9 — `LTXDirectorGuide` and
+  other WhatDreamsCost helper nodes remain runtime dependencies from the
+  user's installed upstream package.
+- **Why the workflow-facing ID is stable:** the canonical
+  `LTXDirector__koolook` rolls to this clean 2.0.2 implementation (the package
+  entrypoint loads `v2_0_2` last). The legacy `LTXDirector__koolook_v1_3_2` ID
+  is not registered here; it stays backed by the v1.3.9 package for workflows
+  saved against it. v1.3.9 (with the older customizations) remains on disk for
+  rollback.
+- **Last reviewed:** 2026-06-22
+
 ## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)
 
 Six third-party trees were untracked from MAIN's git index in the

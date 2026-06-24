@@ -1,0 +1,12 @@
+name: "Koolook CodeQL config"
+
+# Vendored upstream code is NOT our security review surface. These are the same
+# paths marked `linguist-vendored` in .gitattributes — CodeQL does not read
+# linguist, so we restate the exclusion here. Keep this list in sync with
+# .gitattributes (the vendored-upstream block). Our genuinely-authored files
+# (ltx_director.py with the Koolook edits, keyframe_grid.py, k_*.py, the rest of
+# web/sidebar/**) are intentionally NOT excluded and remain fully scanned.
+paths-ignore:
+  - "web/whatdreamscost_koolook/ltx_director.js"
+  - "forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py"
+  - "forks/whatdreamscost_koolook/versions/v2_0_2/patches.py"

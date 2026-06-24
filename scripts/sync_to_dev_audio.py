@@ -134,28 +134,6 @@ def remove_stale_paths(target: Path, *, dry_run: bool, verbose: bool) -> int:
     return removed
 
 
-def _find_dotenv() -> Path | None:
-    direct = _dev.REPO_ROOT / ".env"
-    if direct.exists():
-        return direct
-    git_marker = _dev.REPO_ROOT / ".git"
-    if not git_marker.is_file():
-        return None
-    try:
-        content = git_marker.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    if not content.startswith("gitdir:"):
-        return None
-    gitdir = Path(content.split(":", 1)[1].strip())
-    if "worktrees" not in gitdir.parts:
-        return None
-    idx = gitdir.parts.index("worktrees")
-    main_repo_root = Path(*gitdir.parts[:idx]).parent
-    candidate = main_repo_root / ".env"
-    return candidate if candidate.exists() else None
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -191,7 +169,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    env_path = _find_dotenv()
+    env_path = _dev.find_dotenv()
     if env_path is not None:
         _dev.load_dotenv(env_path)
 

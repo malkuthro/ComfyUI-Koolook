@@ -1,0 +1,56 @@
+name: "CodeQL"
+
+# Advanced setup (replaces GitHub "default setup"). We need a committed config
+# so we can paths-ignore the vendored upstream WhatDreamsCost code — default
+# setup does not read codeql-config.yml. See .github/codeql/codeql-config.yml.
+#
+# IMPORTANT: GitHub will not run this workflow while "default setup" for CodeQL
+# is still enabled. Disable it once under Settings -> Code security -> CodeQL
+# analysis -> Default setup -> Disable, then this workflow takes over.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

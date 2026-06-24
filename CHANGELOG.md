@@ -6,6 +6,47 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Added
+- **LTX Director fork bumped to upstream v2.0.2** with a new
+  `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
+  commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
+  the older Koolook customizations (`relay_overrides`, `audio_transcript_json`,
+  per-segment sigma) are intentionally dropped as unused, so all latest 2.0.2
+  features (Prompt Relay, audio, motion) behave exactly as upstream. The
+  canonical `LTXDirector__koolook` node ID rolls to this implementation;
+  `LTXDirector__koolook_v1_3_2` stays backed by v1.3.9, which remains on disk.
+  The timeline-editor web extension (`web/whatdreamscost_koolook/ltx_director.js`)
+  is now upstream 2.0.2's editor vendored verbatim and retargeted to the Koolook
+  node, so its UX matches upstream exactly (Add Video / Add IC Video / Retake
+  Mode / IC-LoRA track, correct widget visibility) — replacing the old
+  1.3.9-era editor. The localStorage quota guard stays in the global
+  `web/koolook_draft_guard.js`.
+- **Keyframe latent-grid snapping and ease controls (issue #258).** The v2.0.2
+  node adds a `snap_keyframes_to_grid` toggle (default on) that snaps each
+  image keyframe to the center of its LTX latent-time bucket, so hard-pinned
+  keyframes land cleanly on a single latent frame and two pins never collide in
+  one bucket (the later pin is bumped to the next free bucket with a logged
+  warning). It also adds opt-in `keyframe_ease` / `ease_falloff` controls that
+  emit strength-ramped neighbor pins of the same pose, smoothing into and out
+  of hard keyframes without weakening the exact center pose.
+
+- **LTX A/V Bind Schedule node (`LTXAVBindSchedule`).** Decouples big motion
+  from lip-sync in LTX 2.3: a model patcher that scales the audio→video
+  cross-attention (`audio_to_video_attn`) by a per-step gain ramping from
+  `early_gain` (early/high-sigma steps, where coarse motion settles audio-blind)
+  up to full at low sigma (where lips bind). Targets the keyframe-transition jump
+  when a cut lands on an audio peak — one pass, no re-noise. `early_gain=1.0`
+  reproduces stock behavior. Ramp math is unit-tested; the model wiring is
+  validated by rendering against a live LTX 2.3 AV model.
+
+### Fixed
+- **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
+  `.env` with the worktree→main-repo fallback (the committed `.env` lives only
+  in the main checkout), matching `sync_to_dev_audio.py` and the documented
+  behavior. The fallback is now a shared `find_dotenv()` that both scripts use,
+  so they can't drift. Previously plain `dev-sync` failed with
+  "KOLOOK_COMFYUI_DEV_PATH not set" from any worktree.
+
 ## [0.4.4] - 2026-06-23
 
 ### Added

@@ -8,3 +8,14 @@
 # it (the PowerShell --relock path would otherwise write CRLF), so the diff
 # stays the review surface.
 constraints-test.txt text eol=lf
+
+# Vendored upstream fork code (WhatDreamsCost-ComfyUI 2.0.2). These ship with
+# the pack so the koolook Director runs/distributes, but they are upstream code
+# — verbatim or near-verbatim (the JS carries only 2 retargeting edits;
+# prompt_relay/patches are verbatim). Mark linguist-vendored so GitHub excludes
+# them from language stats, and -diff so the large JS blob collapses in PR diffs.
+# Our genuinely-authored files (ltx_director.py with the Koolook edits,
+# keyframe_grid.py, k_ltx_av_bind_schedule.py) are intentionally NOT marked.
+web/whatdreamscost_koolook/ltx_director.js                       linguist-vendored -diff
+forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py     linguist-vendored
+forks/whatdreamscost_koolook/versions/v2_0_2/patches.py          linguist-vendored

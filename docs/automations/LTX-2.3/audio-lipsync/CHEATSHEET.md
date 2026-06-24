@@ -14,6 +14,13 @@ the `relay_overrides` knobs on the Koolook fork of `LTXDirector`
 (model-generated audio path). Goal: get `use_custom_audio=True` to
 look as clean as baseline.
 
+As of the v2.0.2 fork, `LTXDirector__koolook` also exposes
+`snap_keyframes_to_grid` (default **on**): it snaps each image keyframe to
+its LTX latent-bucket center so hard pins stop "jumping" at bucket edges and
+two pins never collide in one bucket. Resolution ceiling is one pin per
+temporal-stride frames (~333 ms @ 24 fps). See
+[`findings.md`](findings.md) and ComfyUI-Koolook#258.
+
 ## Chat triggers (user-initiated only — never automatic)
 
 | Phrase | Script | What it does |
