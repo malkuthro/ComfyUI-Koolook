@@ -3847,20 +3847,25 @@ export function renderPanel(container, options = {}) {
     if (showUpdateFooter) {
         const starFooter = document.createElement("div");
         starFooter.className = "koolook-star-footer";
+        // One inline text flow (not separate flex children) so the footer's
+        // `gap` doesn't space out the words; the star glyph and GitHub link sit
+        // inline inside the sentence. The action ("Give a ★") leads the ask.
+        const starText = document.createElement("span");
+        starText.append("Help creators find us! Give a ");
         const starGlyph = document.createElement("span");
         starGlyph.className = "koolook-star-glyph";
         starGlyph.textContent = "★";
-        starGlyph.setAttribute("aria-hidden", "true");
-        const starText = document.createElement("span");
-        starText.textContent = "Help creators find us on ";
+        starGlyph.setAttribute("role", "img");
+        starGlyph.setAttribute("aria-label", "star");
+        starText.append(starGlyph, " on ");
         const starLink = document.createElement("a");
         starLink.href = GITHUB_REPO_URL;
         starLink.target = "_blank";
         starLink.rel = "noopener noreferrer";
         starLink.textContent = "GitHub";
-        starLink.title = "Help creators find Kforge Labs on GitHub";
+        starLink.title = "Star Kforge Labs on GitHub so more creators find it";
         starText.append(starLink);
-        starFooter.append(starGlyph, starText);
+        starFooter.append(starText);
         container.appendChild(starFooter);
     }
 
