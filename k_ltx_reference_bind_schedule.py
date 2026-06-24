@@ -25,19 +25,22 @@ attention bias of the trailing `num_references` guide entries (references are
 appended after the keyframes) — the keyframe pins and the noise-mask freezing
 are untouched.
 
-REQUIRES AN IC-LoRA. The per-guide attention entries this node scales are only
-created by LTXDirectorGuide when an IC-LoRA is active (`ic_lora_name` set) — see
-`is_lora_active` gating its `_append_guide_attention_entry` calls. With NO LoRA
-the entry list is empty (`resolved_guide_entries=None`), so there is nothing to
-amplify and this node is INERT. In the no-LoRA Ghost Mask path the reference
-influence is the noise-mask pin only (`reference_strength` / the LTX Guide
-Reference Strength node) — use those instead. This node is the partner to a
-future IC-LoRA (MSR) refinement stage, where the attention lever exists.
+WORKS WITHOUT AN IC-LoRA. The attention-bias machinery is BASE-model
+functionality — `_build_guide_self_attention_mask` builds the mask from
+`resolved_guide_entries` regardless of any LoRA. The catch is that
+LTXDirectorGuide only *populates* those entries `if is_lora_active`, so in the
+no-LoRA Ghost Mask path the list is empty. This node closes that gap: when the
+entries are missing it **fabricates them itself** for the trailing reference
+tokens (splitting `num_guide_tokens` across the `num_keyframes + num_references`
+guide frames and assigning the ramped strength to the reference share). So the
+reference gets the same amplified-attention channel an IC-LoRA would use, inside
+the Director, with no LoRA, no guide-node vendor, and no graph change. When an
+IC-LoRA *is* active and real entries exist, it scales those instead.
 
 Mechanics (same as the A/V node): a `model_function_wrapper` captures the
 current sigma each step and stashes the gain in `transformer_options`; an
-object-patch on `_build_guide_self_attention_mask` reads it and scales the
-reference entries' `strength` before the mask is built.
+object-patch on `_build_guide_self_attention_mask` reads it and fabricates (or
+scales) the reference entries' `strength` before the mask is built.
 
 NOTE: the `ref_gain` ramp is unit-tested; the model wiring is validated by
 rendering against a live LTX 2.3 model (not in CI).
@@ -93,46 +96,74 @@ def _boosted_entries(resolved_entries, ref_count, gain):
     return out
 
 
-def _make_guide_mask_wrapper(underlying, ref_count, diag):
-    """Bound-method wrapper around ``_build_guide_self_attention_mask``: scale the
-    reference entries' attention strength by the per-step gain before the mask is
-    built. ``diag`` is a shared 1-elem list for one-shot logging."""
+def fabricate_reference_entries(num_guide_tokens, num_references, num_keyframes, strength):
+    """Build ``resolved_guide_entries`` for the trailing reference tokens when the
+    guide node created none (the no-IC-LoRA path).
+
+    Splits ``num_guide_tokens`` evenly across the ``num_keyframes + num_references``
+    guide frames and gives the trailing reference share ``strength`` while the
+    keyframe share stays 1.0 (neutral). The entries match the shape the core
+    builder consumes (``strength`` + ``surviving_count`` + optional pixel_mask /
+    latent_shape). When ``num_keyframes`` is 0 the whole guide region is treated
+    as reference. Returns ``[]`` when there's nothing to amplify.
+    """
+    n_guide = int(num_guide_tokens)
+    n_ref = int(num_references)
+    n_kf = max(0, int(num_keyframes))
+    if n_guide <= 0 or n_ref <= 0:
+        return []
+    total_frames = n_ref + n_kf
+    ref_tokens = round(n_guide * n_ref / total_frames) if total_frames > 0 else n_guide
+    ref_tokens = max(1, min(int(ref_tokens), n_guide))
+    kf_tokens = n_guide - ref_tokens
+    entries = []
+    if kf_tokens > 0:
+        entries.append({"strength": 1.0, "surviving_count": kf_tokens, "pixel_mask": None, "latent_shape": None})
+    entries.append({"strength": float(strength), "surviving_count": ref_tokens, "pixel_mask": None, "latent_shape": None})
+    return entries
+
+
+def _make_guide_mask_wrapper(underlying, ref_count, kf_count, peak, diag):
+    """Bound-method wrapper around ``_build_guide_self_attention_mask``.
+
+    If the guide node already populated entries (IC-LoRA path) scale the trailing
+    ``ref_count`` of them by the per-step gain. If not (no-LoRA Ghost Mask path)
+    fabricate entries for the trailing reference tokens at the gain strength. Then
+    hand off to the original builder, which turns it into the additive bias.
+    """
 
     def wrapped(_self_module, x, transformer_options, merged_args, *args, **kwargs):
         to = transformer_options or {}
         gain = float(to.get(_REF_GAIN_KEY, 1.0))
         ma = merged_args if isinstance(merged_args, dict) else {}
         entries = ma.get("resolved_guide_entries")
-        # One-shot diagnostic / inert warning. The entries list is only
-        # populated when an IC-LoRA is active; without one this node can't do
-        # anything, so say so loudly rather than no-op silently.
+        n_guide = int(ma.get("num_guide_tokens") or 0)
+
+        mode = "passthrough"
+        if entries:  # IC-LoRA path — scale real entries
+            if gain != 1.0 and ref_count > 0:
+                boosted = _boosted_entries(entries, ref_count, gain)
+                if boosted is not entries:
+                    merged_args = {**ma, "resolved_guide_entries": boosted}
+                    mode = "scaled"
+        elif n_guide > 0 and ref_count > 0 and gain != 1.0:  # no-LoRA path — fabricate
+            fab = fabricate_reference_entries(n_guide, ref_count, kf_count, gain)
+            if fab:
+                merged_args = {**ma, "resolved_guide_entries": fab}
+                mode = "fabricated"
+
         if not diag.get("first"):
             diag["first"] = True
-            if not entries:
-                log.warning(
-                    "[LTXReferenceBindSchedule] INERT: no guide attention entries "
-                    "(resolved_guide_entries=%s) — LTXDirectorGuide only creates them "
-                    "with an IC-LoRA active. Without a LoRA this node has NO effect; "
-                    "use reference_strength / LTX Guide Reference Strength instead.",
-                    entries,
-                )
-            else:
-                log.info(
-                    "[LTXReferenceBindSchedule] builder reached: %d guide entr(y/ies), "
-                    "ref_count=%d, gain ramps to peak at low sigma.",
-                    len(entries), int(ref_count),
-                )
-        if gain != 1.0 and ref_count > 0 and entries:
-            boosted = _boosted_entries(entries, ref_count, gain)
-            if boosted is not entries:
-                merged_args = {**ma, "resolved_guide_entries": boosted}
-                if not diag.get("boost"):
-                    diag["boost"] = True
-                    log.info(
-                        "[LTXReferenceBindSchedule] DIAG boost active: gain x%.2f on "
-                        "the last %d of %d guide entr(y/ies).",
-                        gain, min(int(ref_count), len(entries)), len(entries),
-                    )
+            log.info(
+                "[LTXReferenceBindSchedule] active: num_guide_tokens=%s entries=%s "
+                "ref_count=%d num_keyframes=%d peak=%.2f (amplifies the trailing "
+                "reference tokens at low sigma).",
+                n_guide, (len(entries) if entries else 0), int(ref_count),
+                int(kf_count), float(peak),
+            )
+        if mode in ("scaled", "fabricated") and not diag.get(mode):
+            diag[mode] = True
+            log.info("[LTXReferenceBindSchedule] %s reference attention (gain x%.2f).", mode, gain)
         return underlying(x, transformer_options, merged_args, *args, **kwargs)
 
     return wrapped
@@ -148,14 +179,18 @@ class LTXReferenceBindSchedule:
                 "model": ("MODEL", {"tooltip": "LTX 2.3 model (the same one feeding the guide pipeline)."}),
                 "num_references": ("INT", {
                     "default": 1, "min": 0, "max": 64, "step": 1,
-                    "tooltip": "How many trailing guide frames are references (= how many images you fed LTX Director's reference_images). They're appended after the keyframes, so the LAST N guide entries are the references.",
+                    "tooltip": "How many trailing guide frames are references (= how many images you fed LTX Director's reference_images). They're appended after the keyframes, so the LAST N guide frames are the references.",
                 }),
                 "peak_strength": ("FLOAT", {
                     "default": 2.0, "min": 1.0, "max": 8.0, "step": 0.05,
-                    "tooltip": "Reference attention multiplier at the end of denoise (low sigma). 1.0 = no boost; 2.0 = double the identity pull during refinement.",
+                    "tooltip": "Reference attention multiplier at the end of denoise (low sigma). 1.0 = no boost; 2.0 = double the identity pull during refinement. Try 2-4.",
                 }),
             },
             "optional": {
+                "num_keyframes": ("INT", {
+                    "default": 0, "min": 0, "max": 256, "step": 1,
+                    "tooltip": "No-LoRA path only: how many timeline image keyframes precede the references, so the node knows the keyframe/reference token split. Set this = your number of timeline image segments (e.g. 4). Leave 0 and the WHOLE guide region is treated as reference (also boosts keyframes). Ignored when an IC-LoRA populated real entries.",
+                }),
                 "ramp_start": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Denoise progress (0=start, 1=end) where the reference boost begins. Keep above where big motion finalizes (~0.5-0.6) so motion forms first.",
@@ -173,14 +208,15 @@ class LTXReferenceBindSchedule:
     CATEGORY = "Koolook/LTX"
     DESCRIPTION = (
         "Ramp the reference's guide-attention UP at low sigma so identity locks "
-        "during refinement without disturbing early motion. REQUIRES AN IC-LoRA "
-        "active on LTXDirectorGuide — the attention entries this scales only "
-        "exist when ic_lora_name is set; with no LoRA it is INERT (use "
-        "reference_strength / LTX Guide Reference Strength instead). Mirror of "
-        "LTX A/V Bind Schedule. One pass, no re-noise."
+        "during refinement without disturbing early motion. Works WITHOUT an "
+        "IC-LoRA: it fabricates the per-guide attention entries for the trailing "
+        "reference tokens itself (set num_keyframes so it knows the split), so the "
+        "reference gets the same amplified-attention channel an IC-LoRA would use "
+        "— inside the Director, no guide-node changes. Mirror of LTX A/V Bind "
+        "Schedule. One pass, no re-noise."
     )
 
-    def patch(self, model, num_references, peak_strength, ramp_start=0.5, ramp_end=0.9):
+    def patch(self, model, num_references, peak_strength, num_keyframes=0, ramp_start=0.5, ramp_end=0.9):
         m = model.clone()
 
         if int(num_references) <= 0:
@@ -205,7 +241,9 @@ class LTXReferenceBindSchedule:
             return (m,)
 
         diag = {}
-        wrapper = _make_guide_mask_wrapper(underlying, int(num_references), diag)
+        wrapper = _make_guide_mask_wrapper(
+            underlying, int(num_references), int(num_keyframes), float(peak_strength), diag,
+        )
         try:
             m.add_object_patch(key, types.MethodType(wrapper, dm))
         except Exception as e:  # pragma: no cover - live model

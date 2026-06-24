@@ -19,6 +19,7 @@ _m = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_m)
 gain = _m.ref_gain
 boost = _m._boosted_entries
+fab = _m.fabricate_reference_entries
 
 SMAX = 10.0
 
@@ -94,3 +95,43 @@ def test_boost_count_capped_at_length():
     entries = [{"strength": 1.0}, {"strength": 1.0}]
     out = boost(entries, 9, 2.0)
     assert [e["strength"] for e in out] == [2.0, 2.0]
+
+
+# --- fabricate_reference_entries (no-LoRA path) ----------------------------
+
+def test_fabricate_splits_keyframes_and_refs():
+    # 5 guide frames (4 kf + 1 ref), 3275 guide tokens -> ref share ~ 1/5.
+    out = fab(3275, 1, 4, 2.0)
+    assert len(out) == 2
+    kf, ref = out
+    assert kf["strength"] == 1.0
+    assert ref["strength"] == 2.0
+    assert kf["surviving_count"] + ref["surviving_count"] == 3275
+    assert ref["surviving_count"] == round(3275 * 1 / 5)
+
+
+def test_fabricate_no_keyframes_is_all_reference():
+    out = fab(1000, 1, 0, 3.0)
+    assert len(out) == 1
+    assert out[0]["strength"] == 3.0
+    assert out[0]["surviving_count"] == 1000
+
+
+def test_fabricate_entry_shape_matches_core_builder():
+    # core reads strength, surviving_count, and .get(pixel_mask)/.get(latent_shape)
+    out = fab(800, 2, 2, 2.0)
+    for e in out:
+        assert set(("strength", "surviving_count", "pixel_mask", "latent_shape")) <= set(e)
+
+
+def test_fabricate_empty_when_no_refs_or_tokens():
+    assert fab(0, 1, 4, 2.0) == []
+    assert fab(3275, 0, 4, 2.0) == []
+
+
+def test_fabricate_ref_tokens_clamped_at_least_one():
+    # tiny ref share rounds toward >=1
+    out = fab(10, 1, 100, 2.0)
+    ref = out[-1]
+    assert ref["surviving_count"] >= 1
+    assert sum(e["surviving_count"] for e in out) == 10

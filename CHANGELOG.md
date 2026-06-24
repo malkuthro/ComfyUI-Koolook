@@ -80,13 +80,15 @@ The format is inspired by Keep a Changelog and SemVer.
   `num_references` guide entries'** attention strength — keyframe pins and the
   noise-mask freezing are untouched, so it's orthogonal to `reference_strength`.
   Single pass, no re-noise. The `ref_gain` ramp is unit-tested; model behavior is
-  validated by rendering against a live LTX 2.3 model. **Requires an IC-LoRA:**
-  the per-guide attention entries this scales are only created by
-  `LTXDirectorGuide` when an IC-LoRA is active (`is_lora_active`) — in the
-  no-LoRA Ghost Mask path the list is empty and the node is inert (it logs a
-  clear INERT warning rather than no-op'ing silently). It's the partner to a
-  future IC-LoRA refinement stage; the no-LoRA reference lever is the noise-mask
-  pin (`reference_strength` / the LTX Guide Reference Strength node).
+  validated by rendering against a live LTX 2.3 model. **Works without an
+  IC-LoRA:** the attention-bias machinery is base-model functionality, but
+  `LTXDirectorGuide` only *populates* the per-guide entries when an IC-LoRA is
+  active. So when the entries are missing this node **fabricates them itself**
+  for the trailing reference tokens (set `num_keyframes` so it knows the
+  keyframe/reference split of `num_guide_tokens`), giving the reference the same
+  amplified-attention channel an IC-LoRA would use — inside the Director, no
+  guide-node changes, no graph rewire. When an IC-LoRA *is* active it scales the
+  real entries instead. The split/fabrication math is unit-tested.
 
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
