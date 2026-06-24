@@ -23,9 +23,17 @@ keyframe-boundary **jump**. The fix is the Koolook `LTXAVBindSchedule` node: it
 scales the a2v output by a gain that **ramps from `early_gain` (early/high-sigma
 steps) to 1.0 (late/low-sigma steps)**.
 
-**Validated knee: `early_gain=0.35, bind_start=0.25, bind_end=0.55`** (8-step base
-pass) → almost-perfect lip-sync **and** smooth motion, no jumps. Confirmed on the
-4-keyframe goat clip (`Grayscale-BLK` v003 / 00020-1x, single stage).
+**Promising knee: `early_gain=0.35, bind_start=0.25, bind_end=0.55`** (8-step base
+pass) → almost-perfect lip-sync **and** smooth motion, no jumps on the 4-keyframe
+goat clip (`Grayscale-BLK` v003 / 00020-1x, single stage).
+
+> ⚠️ **Not yet a clean validation — confound.** That clip's transitions
+> (34/63/93) were deliberately placed on audio **lows**, so the absence of jumps
+> may be the placement, not the node. The controlled test is still **pending**:
+> same on-**peak** timeline, render `early_gain=1.0` (stock — should jump at the
+> on-peak transition) vs `early_gain=0.35`. The node is only proven if `0.35`
+> removes a jump that `1.0` shows on the *same* on-peak layout. Until then this
+> is a strong lead, not a settled finding.
 
 **Why.** Lip-sync *timing* is itself coarse motion — decided in the early steps,
 the same place pose transitions resolve. So the knob is a single trade axis:
