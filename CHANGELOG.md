@@ -69,6 +69,19 @@ The format is inspired by Keep a Changelog and SemVer.
   low-denoise refinement without disturbing stage-1 motion. Strength math is
   unit-tested.
 
+- **LTX Reference Bind Schedule node (`LTXReferenceBindSchedule`).** Ramps the
+  Ghost Mask reference's **attention** up as sigma falls — neutral early (motion
+  forms freely) rising to `peak_strength` late (identity locks during
+  refinement). The inverse of the motion curve and the mirror of
+  `LTXAVBindSchedule`. Mechanism: a `model_function_wrapper` captures the
+  per-step sigma and an object-patch on the core LTX
+  `_build_guide_self_attention_mask` (which is rebuilt every denoise step and
+  supports `strength > 1.0` to amplify) scales **only the trailing
+  `num_references` guide entries'** attention strength — keyframe pins and the
+  noise-mask freezing are untouched, so it's orthogonal to `reference_strength`.
+  Single pass, no re-noise, no LoRA. The `ref_gain` ramp is unit-tested; model
+  behavior is validated by rendering against a live LTX 2.3 model.
+
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only

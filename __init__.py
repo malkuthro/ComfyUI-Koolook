@@ -134,6 +134,7 @@ else:
         _merge_node_group("LTX A/V Bind Schedule", ".k_ltx_av_bind_schedule")
         _merge_node_group("Clean Latent Slice", ".k_clean_latent_slice")
         _merge_node_group("LTX Guide Reference Strength", ".k_ltx_guide_reference_strength")
+        _merge_node_group("LTX Reference Bind Schedule", ".k_ltx_reference_bind_schedule")
         # The VHS-dependent video wrappers degrade to empty mappings when
         # VideoHelperSuite is absent (they catch the import internally); the
         # guard also covers a hard ImportError should one ever slip through.
