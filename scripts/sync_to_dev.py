@@ -155,6 +155,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "__init__.py",
     "config.json",
     "k_ai_pipeline.py",
+    "k_clean_latent_slice.py",
     "k_easy_image_batch.py",
     "k_easy_pattern.py",
     "k_easy_resize.py",

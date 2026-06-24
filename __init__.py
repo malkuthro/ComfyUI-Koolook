@@ -132,6 +132,7 @@ else:
         _merge_node_group("Koolook Loop Status", ".k_loop_status")
         _merge_node_group("Koolook Publish Contract", ".k_publish_contract")
         _merge_node_group("LTX A/V Bind Schedule", ".k_ltx_av_bind_schedule")
+        _merge_node_group("Clean Latent Slice", ".k_clean_latent_slice")
         # The VHS-dependent video wrappers degrade to empty mappings when
         # VideoHelperSuite is absent (they catch the import internally); the
         # guard also covers a hard ImportError should one ever slip through.

@@ -39,6 +39,22 @@ The format is inspired by Keep a Changelog and SemVer.
   reproduces stock behavior. Ramp math is unit-tested; the model wiring is
   validated by rendering against a live LTX 2.3 AV model.
 
+- **LTX Director Ghost Mask reference (REF image / character sheet).** New
+  optional `reference_images` (IMAGE) + `reference_strength` inputs on
+  `LTXDirector__koolook`, plus `clean_latent_frames` / `clean_pixel_frames`
+  outputs. Reference image(s) are appended as masked guide frames *after* the
+  clean video region, so the model anchors identity (face / mouth shape) the
+  way a WAN VACE reference does — without the references appearing in the output
+  and **without a LoRA**. Targets mouth/identity drift when keyframes show a
+  closed (or different) mouth than the audio-driven motion needs. The new root
+  node **`CleanLatentSlice`** ("Clean Latent Slice (Koolook)") slices the
+  trailing reference frames off the result (`start=0`,
+  `length=clean_latent_frames`). The trailing-reference *approach* is adapted
+  (idea only, reimplemented) from CGlide's WhatDreamsCost-CSGlide (GPL-3.0); see
+  `forks/THIRD_PARTY.md`. Geometry is unit-tested; model behavior is validated
+  by rendering against a live LTX 2.3 model. (Phase 1: Ghost Mask only — the
+  LoRA-backed Licon MSR prefix mode is intentionally not ported.)
+
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
