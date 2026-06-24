@@ -16,6 +16,6 @@ constraints-test.txt text eol=lf
 # them from language stats, and -diff so the large JS blob collapses in PR diffs.
 # Our genuinely-authored files (ltx_director.py with the Koolook edits,
 # keyframe_grid.py, k_ltx_av_bind_schedule.py) are intentionally NOT marked.
-web/whatdreamscost_koolook/ltx_director.js                linguist-vendored -diff
-forks/whatdreamscost_koolook/versions/*/prompt_relay.py  linguist-vendored
-forks/whatdreamscost_koolook/versions/*/patches.py       linguist-vendored
+web/whatdreamscost_koolook/ltx_director.js                       linguist-vendored -diff
+forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py     linguist-vendored
+forks/whatdreamscost_koolook/versions/v2_0_2/patches.py          linguist-vendored

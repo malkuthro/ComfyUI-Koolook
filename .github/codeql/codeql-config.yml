@@ -8,5 +8,5 @@ name: "Koolook CodeQL config"
 # web/sidebar/**) are intentionally NOT excluded and remain fully scanned.
 paths-ignore:
   - "web/whatdreamscost_koolook/ltx_director.js"
-  - "forks/whatdreamscost_koolook/versions/*/prompt_relay.py"
-  - "forks/whatdreamscost_koolook/versions/*/patches.py"
+  - "forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py"
+  - "forks/whatdreamscost_koolook/versions/v2_0_2/patches.py"
