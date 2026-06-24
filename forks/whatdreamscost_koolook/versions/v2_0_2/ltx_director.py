@@ -46,7 +46,6 @@ from .keyframe_grid import latent_count_for_duration as _latent_count_for_durati
 from .keyframe_grid import snap_keyframes_to_grid as _snap_keyframes_to_grid
 from .keyframe_grid import expand_keyframe_ease as _expand_keyframe_ease
 from .reference_ghost import ghost_insert_frames as _ghost_insert_frames
-from .reference_ghost import ghost_total_latent_frames as _ghost_total_latent_frames
 
 log = logging.getLogger(__name__)
 
@@ -1001,14 +1000,14 @@ class LTXDirector(io.ComfyNode):
                     tooltip=(
                         "Koolook (Ghost Mask): optional reference image(s) / "
                         "character sheet to anchor identity (face, mouth shape) "
-                        "the way a WAN VACE reference does. Each image is appended "
-                        "as a masked guide frame AFTER the clean video region, so "
-                        "the model attends to it for identity but it never appears "
-                        "in the output. Strip the trailing reference frames from "
-                        "the result with the 'Clean Latent Slice (Koolook)' node "
-                        "(start=0, length=clean_latent_frames). No LoRA required. "
-                        "Only resizes the auto-generated latent — connect a "
-                        "matching-size optional_latent if you override it."
+                        "the way a WAN VACE reference does. Each image is added as "
+                        "a guide frame just past the clean timeline, so the model "
+                        "attends to it for identity but it never appears in the "
+                        "output. It rides the SAME guide path as your keyframes — "
+                        "LTXDirectorGuide appends it and LTXDirectorCropGuides "
+                        "removes it, so no extra wiring and the audio stays in "
+                        "sync. No LoRA required. Lower reference_strength if the "
+                        "reference suppresses motion."
                     ),
                 ),
                 io.Float.Input(
@@ -1265,24 +1264,25 @@ class LTXDirector(io.ComfyNode):
             except Exception as _e:
                 log.warning("[LTXDirector] keyframe ease skipped: %s", _e)
 
-        # --- Clean (pre-reference) latent geometry ---
+        # --- Latent geometry ---
         # Community 8n+1 rule on the timeline duration: ceil((duration-1)/8)*8 + 1
         # yields AT LEAST the requested pixel frames, snapped to LTXV requirements.
-        # ltxv_length stays the CLEAN pixel length (audio/retake logic below keys
-        # off it); reference frames are appended *beyond* it.
         ltxv_length = int(math.ceil((duration_frames - 1) / 8.0) * 8) + 1
         clean_pixel_frames = int(ltxv_length)
         clean_latent_frames = ((ltxv_length - 1) // 8) + 1
 
-        # --- Koolook (Ghost Mask): append reference image(s) as masked trailing
-        # guide frames so the model anchors identity (face / mouth shape) without
-        # the references appearing in the output. They occupy latent slots
-        # [clean_latent_frames .. clean_latent_frames + n_refs); the downstream
-        # guide node pins them, and the 'Clean Latent Slice (Koolook)' node strips
-        # them from the result. Trailing-reference trick adapted from CGlide's
-        # WhatDreamsCost-CSGlide (GPL-3.0). Appended AFTER snap/ease so refs are
-        # never grid-snapped or ease-expanded. ---
-        total_latent_frames = clean_latent_frames
+        # --- Koolook (Ghost Mask): add reference image(s) as guide frames so the
+        # model anchors identity (face / mouth shape) without the references
+        # appearing in the output. They are added to guide_data exactly like the
+        # timeline keyframes and therefore ride the SAME append-and-crop path:
+        # the downstream LTXDirectorGuide appends each as an extra latent frame
+        # and LTXDirectorCropGuides removes them again (and the audio track is
+        # untouched, so A/V stays in sync). We must NOT pre-grow the video latent
+        # here — doing that leaves the references uncropped AND desyncs the audio
+        # track, which breaks motion. Positioned just past the clean timeline so
+        # they anchor identity without pinning a visible pose. Added AFTER
+        # snap/ease so refs are never grid-snapped or ease-expanded. The trick is
+        # adapted from CGlide's WhatDreamsCost-CSGlide (GPL-3.0). ---
         n_refs = 0
         _ref_shape = getattr(reference_images, "shape", None)
         if reference_images is not None and _ref_shape is not None and int(_ref_shape[0]) > 0:
@@ -1305,41 +1305,33 @@ class LTXDirector(io.ComfyNode):
                     derived_w = ref_w
                 if derived_h <= 0:
                     derived_h = ref_h
-                total_latent_frames = _ghost_total_latent_frames(clean_latent_frames, n_refs)
                 log.info(
-                    "[LTXDirector] Ghost Mask: appended %d reference frame(s) at "
-                    "latent slots %d..%d (strength=%.2f); video latent grown to %d frames",
-                    n_refs, clean_latent_frames, total_latent_frames - 1,
-                    float(reference_strength), total_latent_frames,
+                    "[LTXDirector] Ghost Mask: added %d reference guide frame(s) "
+                    "past frame %d (strength=%.2f); they ride the guide "
+                    "append-and-crop path (LTXDirectorCropGuides removes them).",
+                    n_refs, clean_pixel_frames, float(reference_strength),
                 )
             except Exception as _e:
                 log.warning("[LTXDirector] reference Ghost Mask skipped: %s", _e)
-                total_latent_frames = clean_latent_frames
                 n_refs = 0
 
         # --- Auto-generate LTXV latent if none was provided ---
+        # Sized to the CLEAN length only — references are appended (and cropped)
+        # by the downstream guide pipeline, never by growing this latent.
         if optional_latent is None:
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)
+            latent_t = ((ltxv_length - 1) // 8) + 1
             samples = torch.zeros(
-                [1, 128, total_latent_frames, latent_h // 32, latent_w // 32],
+                [1, 128, latent_t, latent_h // 32, latent_w // 32],
                 device=comfy.model_management.intermediate_device(),
             )
             latent = {"samples": samples}
             log.info(
-                "[PromptRelay] Auto-generated LTXV latent: %dx%d, %d pixel frames "
-                "(%d latent frames%s)",
-                latent_w, latent_h, ltxv_length, total_latent_frames,
-                f", incl. {n_refs} reference" if n_refs else "",
+                "[PromptRelay] Auto-generated LTXV latent: %dx%d, %d pixel frames (%d latent frames)",
+                latent_w, latent_h, ltxv_length, latent_t,
             )
         else:
-            if n_refs:
-                log.warning(
-                    "[LTXDirector] reference_images set but optional_latent is "
-                    "connected — using it as-is; size it to %d latent frames "
-                    "(%d clean + %d reference) or the refs will misalign.",
-                    total_latent_frames, clean_latent_frames, n_refs,
-                )
             latent = optional_latent
 
         patched, conditioning = _encode_relay(

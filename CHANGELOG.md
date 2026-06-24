@@ -41,16 +41,20 @@ The format is inspired by Keep a Changelog and SemVer.
 
 - **LTX Director Ghost Mask reference (REF image / character sheet).** New
   optional `reference_images` (IMAGE) + `reference_strength` inputs on
-  `LTXDirector__koolook`, plus `clean_latent_frames` / `clean_pixel_frames`
-  outputs. Reference image(s) are appended as masked guide frames *after* the
-  clean video region, so the model anchors identity (face / mouth shape) the
-  way a WAN VACE reference does — without the references appearing in the output
-  and **without a LoRA**. Targets mouth/identity drift when keyframes show a
-  closed (or different) mouth than the audio-driven motion needs. The new root
-  node **`CleanLatentSlice`** ("Clean Latent Slice (Koolook)") slices the
-  trailing reference frames off the result (`start=0`,
-  `length=clean_latent_frames`). The trailing-reference *approach* is adapted
-  (idea only, reimplemented) from CGlide's WhatDreamsCost-CSGlide (GPL-3.0); see
+  `LTXDirector__koolook` (plus informational `clean_latent_frames` /
+  `clean_pixel_frames` outputs). Reference image(s) are added as guide frames
+  just past the clean timeline, so the model anchors identity (face / mouth
+  shape) the way a WAN VACE reference does — without the references appearing in
+  the output and **without a LoRA**. Targets mouth/identity drift when keyframes
+  show a closed (or different) mouth than the audio-driven motion needs. The
+  references ride the **same append-and-crop path as the timeline keyframes**:
+  `LTXDirectorGuide` appends each as an extra latent frame and
+  `LTXDirectorCropGuides` removes it, so the video latent is never pre-grown and
+  the audio track stays in sync (pre-growing it desyncs A/V and breaks motion).
+  A general-purpose root node **`CleanLatentSlice`** ("Clean Latent Slice
+  (Koolook)") is also included for bare pipelines that don't use
+  `LTXDirectorCropGuides`. The trailing-reference *approach* is adapted (idea
+  only, reimplemented) from CGlide's WhatDreamsCost-CSGlide (GPL-3.0); see
   `forks/THIRD_PARTY.md`. Geometry is unit-tested; model behavior is validated
   by rendering against a live LTX 2.3 model. (Phase 1: Ghost Mask only — the
   LoRA-backed Licon MSR prefix mode is intentionally not ported.)
