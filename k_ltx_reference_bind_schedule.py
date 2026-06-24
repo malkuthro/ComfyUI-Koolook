@@ -187,10 +187,10 @@ class LTXReferenceBindSchedule:
                 }),
             },
             "optional": {
-                "num_keyframes": ("INT", {
-                    "default": 0, "min": 0, "max": 256, "step": 1,
-                    "tooltip": "No-LoRA path only: how many timeline image keyframes precede the references, so the node knows the keyframe/reference token split. Set this = your number of timeline image segments (e.g. 4). Leave 0 and the WHOLE guide region is treated as reference (also boosts keyframes). Ignored when an IC-LoRA populated real entries.",
-                }),
+                # NOTE: ramp_start/ramp_end stay first to preserve widget order
+                # for workflows saved before num_keyframes existed; num_keyframes
+                # is appended last so old [num_references, peak_strength, ramp_start,
+                # ramp_end] values keep aligning.
                 "ramp_start": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Denoise progress (0=start, 1=end) where the reference boost begins. Keep above where big motion finalizes (~0.5-0.6) so motion forms first.",
@@ -198,6 +198,10 @@ class LTXReferenceBindSchedule:
                 "ramp_end": ("FLOAT", {
                     "default": 0.9, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Denoise progress where the boost reaches peak_strength.",
+                }),
+                "num_keyframes": ("INT", {
+                    "default": 0, "min": 0, "max": 256, "step": 1,
+                    "tooltip": "No-LoRA path only: how many timeline image keyframes precede the references, so the node knows the keyframe/reference token split. Set this = your number of timeline image segments (e.g. 4). Leave 0 and the WHOLE guide region is treated as reference (also boosts keyframes). Ignored when an IC-LoRA populated real entries.",
                 }),
             },
         }
