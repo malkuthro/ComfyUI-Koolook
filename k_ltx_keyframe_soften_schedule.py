@@ -207,12 +207,6 @@ class LTXKeyframeSoftenSchedule:
         eff_max_soften = max_soften_w * _MAX_SOFTEN_SCALE
         protect_until = float(protect_until)
 
-        try:
-            sigma_max = float(m.get_model_object("model_sampling").sigma_max)
-        except Exception as e:  # pragma: no cover - live model
-            log.warning("[LTXKeyframeSoftenSchedule] no model_sampling.sigma_max: %s", e)
-            sigma_max = 1.0
-
         # --- info string (display only; never drives behavior) ---
         preview = None
         if sigmas is not None:
@@ -229,7 +223,7 @@ class LTXKeyframeSoftenSchedule:
 
         # Chain any pre-existing denoise_mask_function instead of clobbering it.
         prev_fn = m.model_options.get("denoise_mask_function")
-        state = {"crossover": None}   # internal sigma-progress, resolved once at run time
+        state = {"crossover": None, "ref": 0.0}   # resolved once at run time
         diag = [False]
         warned = [False]
 
@@ -246,13 +240,16 @@ class LTXKeyframeSoftenSchedule:
                 rt = (extra_options or {}).get("sigmas")
                 try:
                     cutoff, threshold, n_steps = resolve_soften_window(rt, protect_until)
-                    state["crossover"] = max(0.0, 1.0 - threshold / sigma_max) if sigma_max > 0 else 0.0
+                    ref = float(rt[0])   # anchor the ramp to the schedule's START sigma
+                    state["ref"] = ref
+                    state["crossover"] = max(0.0, 1.0 - threshold / ref) if ref > 0 else 0.0
                     log.info(
                         "[LTXKeyframeSoftenSchedule] soften steps 0-%d of %d "
                         "(sigma %.3f->%.3f), max_soften=%.3f",
-                        cutoff, n_steps, float(rt[0]), threshold, eff_max_soften,
+                        cutoff, n_steps, ref, threshold, eff_max_soften,
                     )
                 except Exception as _e:
+                    state["ref"] = 0.0
                     state["crossover"] = 0.0
                     if not warned[0]:
                         warned[0] = True
@@ -267,8 +264,8 @@ class LTXKeyframeSoftenSchedule:
             try:
                 s = float(sigma.max()) if hasattr(sigma, "max") else float(sigma)
             except Exception:
-                s = sigma_max
-            gain = soften_gain(s, sigma_max, cp, eff_max_soften)
+                s = state["ref"]
+            gain = soften_gain(s, state["ref"], cp, eff_max_soften)
             if gain <= 0.0:
                 return denoise_mask
             if not diag[0]:
@@ -284,8 +281,7 @@ class LTXKeyframeSoftenSchedule:
         m.set_model_denoise_mask_function(denoise_mask_function)
         log.info(
             "[LTXKeyframeSoftenSchedule] patched: max_soften=%.2f (->%.3f) "
-            "protect_until=%.2f sigma_max=%.3f",
-            max_soften_w, eff_max_soften, protect_until, sigma_max,
+            "protect_until=%.2f", max_soften_w, eff_max_soften, protect_until,
         )
         return (m, info)
 
