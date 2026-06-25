@@ -1270,6 +1270,19 @@ class LTXDirector(io.ComfyNode):
         # Community 8n+1 rule on the timeline duration: ceil((duration-1)/8)*8 + 1
         # yields AT LEAST the requested pixel frames, snapped to LTXV requirements.
         ltxv_length = int(math.ceil((duration_frames - 1) / 8.0) * 8) + 1
+        # When the caller overrides the latent, the clean length (and therefore the
+        # Ghost-Mask reference geometry below AND the clean_*_frames outputs) must
+        # follow the ACTUAL latent, not the timeline duration — otherwise references
+        # are placed at the wrong frames and the reported counts are stale.
+        if optional_latent is not None:
+            try:
+                _lat_t = int(optional_latent["samples"].shape[2])
+                ltxv_length = (_lat_t - 1) * 8 + 1
+            except Exception as _e:
+                log.warning(
+                    "[LTXDirector] optional_latent shape unreadable (%s); "
+                    "clean length falls back to the timeline duration.", _e,
+                )
         clean_pixel_frames = int(ltxv_length)
         clean_latent_frames = ((ltxv_length - 1) // 8) + 1
 

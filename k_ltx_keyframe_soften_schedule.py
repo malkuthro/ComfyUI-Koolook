@@ -16,8 +16,12 @@ Hard pins held from step 0 force the model to hit exact poses immediately, so a
 transition between two different poses resolves as a CUT. This node schedules the
 pin by sigma instead: it **softens** the keyframe pins early (high sigma), when
 the model is deciding coarse motion — letting it form a smooth trajectory between
-the poses instead of snapping — then **restores** them by a crossover point (~step
-9 of 16) so the poses sharpen for the back half of denoise.
+the poses instead of snapping — then **restores** them by a configurable
+``crossover`` measured in denoise *progress* (``1 - sigma/sigma_max``) so the poses
+sharpen as denoise finishes. Because LTX's sigma schedule is front-loaded (sigma
+held high, dropping late), a SMALL progress fraction already covers the early
+motion-forming steps — hence the ``crossover`` widget maps its 0-1 range onto a
+small internal ``0-0.05`` progress band (see ``_CROSSOVER_SCALE``).
 
 It adds NOTHING (no extra guide frames / poses — that approach backfires; every
 guide is a pose target). It only loosens/tightens the keyframes you already have.
@@ -68,6 +72,30 @@ def soften_gain(sigma, sigma_max, crossover=0.55, max_soften=0.6):
 def soften_mask_value(mask_value, gain):
     """Raise a single denoise-mask value toward 1 (unpinned) by ``gain``."""
     return mask_value + (1.0 - mask_value) * float(gain)
+
+
+def soften_denoise_mask(denoise_mask, gain, nested_ctor=None):
+    """Soften a denoise mask, sparing the audio half of an A/V mask.
+
+    The A/V latent mask is a ``NestedTensor((video_mask, audio_mask))`` produced by
+    ``LTXVConcatAVLatent`` — video FIRST, audio SECOND. We soften ONLY part 0
+    (video keyframe pins) and pass part 1 (audio) through untouched, so lip-sync
+    timing is never disturbed. A plain (video-only) mask is softened whole.
+
+    ``nested_ctor`` rebuilds the nested mask; defaults to
+    ``comfy.nested_tensor.NestedTensor`` and is injectable so the audio-safety
+    behavior can be unit-tested with a stub. ``gain<=0`` / ``None`` is a no-op.
+    """
+    if gain <= 0.0 or denoise_mask is None:
+        return denoise_mask
+    if getattr(denoise_mask, "is_nested", False):
+        parts = list(denoise_mask.unbind())
+        parts[0] = soften_mask_value(parts[0], gain)   # video only; audio untouched
+        if nested_ctor is None:
+            import comfy.nested_tensor
+            nested_ctor = comfy.nested_tensor.NestedTensor
+        return nested_ctor(tuple(parts))
+    return soften_mask_value(denoise_mask, gain)
 
 
 class LTXKeyframeSoftenSchedule:
@@ -127,42 +155,40 @@ class LTXKeyframeSoftenSchedule:
             log.info("[LTXKeyframeSoftenSchedule] max_soften=0 — model passed through.")
             return (m,)
 
+        # Chain any pre-existing denoise_mask_function instead of clobbering it
+        # (mirrors how the sibling LTX patchers chain model_function_wrapper).
+        prev_fn = m.model_options.get("denoise_mask_function")
         diag = [False]
+        warned = [False]
 
         def denoise_mask_function(sigma, denoise_mask, extra_options=None):
+            if prev_fn is not None:
+                denoise_mask = prev_fn(sigma, denoise_mask, extra_options=extra_options)
             if denoise_mask is None:
                 return denoise_mask
             try:
                 s = float(sigma.max()) if hasattr(sigma, "max") else float(sigma)
-            except Exception:
+            except Exception as _e:
                 s = sigma_max
+                if not warned[0]:
+                    warned[0] = True
+                    log.warning(
+                        "[LTXKeyframeSoftenSchedule] could not read sigma (%s); "
+                        "softening at max this step.", _e,
+                    )
             gain = soften_gain(s, sigma_max, crossover, max_soften)
             if gain <= 0.0:
                 return denoise_mask
-
-            # A/V latent: mask is NestedTensor((video_mask, audio_mask)). Soften
-            # ONLY the video mask (parts[0]); leave audio (parts[1]) untouched.
-            if getattr(denoise_mask, "is_nested", False):
-                import comfy.nested_tensor
-                parts = list(denoise_mask.unbind())
-                parts[0] = soften_mask_value(parts[0], gain)
-                if not diag[0]:
-                    diag[0] = True
-                    log.info(
-                        "[LTXKeyframeSoftenSchedule] active (A/V): softening video "
-                        "keyframe pins, audio untouched. max_soften=%.2f crossover=%.2f",
-                        max_soften, crossover,
-                    )
-                return comfy.nested_tensor.NestedTensor(tuple(parts))
-
-            # Video-only latent: the whole mask is video.
             if not diag[0]:
                 diag[0] = True
+                nested = getattr(denoise_mask, "is_nested", False)
                 log.info(
-                    "[LTXKeyframeSoftenSchedule] active (video-only): softening "
-                    "keyframe pins. max_soften=%.2f crossover=%.2f", max_soften, crossover,
+                    "[LTXKeyframeSoftenSchedule] active (%s): softening video keyframe "
+                    "pins%s. max_soften=%.3f crossover=%.3f",
+                    "A/V" if nested else "video-only",
+                    ", audio untouched" if nested else "", max_soften, crossover,
                 )
-            return soften_mask_value(denoise_mask, gain)
+            return soften_denoise_mask(denoise_mask, gain)
 
         m.set_model_denoise_mask_function(denoise_mask_function)
         log.info(
@@ -178,5 +204,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {"LTXKeyframeSoftenSchedule": "LTX Keyframe Soften 
 
 __all__ = [
     "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS",
-    "soften_gain", "soften_mask_value",
+    "soften_gain", "soften_mask_value", "soften_denoise_mask",
 ]

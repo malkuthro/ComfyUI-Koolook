@@ -20,8 +20,20 @@ _m = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_m)
 gain = _m.soften_gain
 soften = _m.soften_mask_value
+soften_mask = _m.soften_denoise_mask
 
 SMAX = 10.0
+
+
+class _FakeNested:
+    """Minimal NestedTensor stub: holds (video, audio) parts, exposes is_nested + unbind."""
+    is_nested = True
+
+    def __init__(self, parts):
+        self.parts = tuple(parts)
+
+    def unbind(self):
+        return self.parts
 
 
 # --- soften_gain ramp (max early, 0 by crossover) --------------------------
@@ -82,3 +94,28 @@ def test_free_frame_stays_free():
 def test_partial_soften():
     # 0.2 pin, gain 0.5 -> 0.2 + 0.8*0.5 = 0.6
     assert soften(0.2, 0.5) == pytest.approx(0.6)
+
+
+# --- soften_denoise_mask: audio-safety on the A/V nested mask ---------------
+
+def test_nested_mask_softens_video_only_audio_untouched():
+    # NestedTensor((video_pin=0.2, audio_pin=0.3)). Only the video half moves.
+    nested = _FakeNested((0.2, 0.3))
+    out = soften_mask(nested, 0.5, nested_ctor=_FakeNested)
+    video, audio = out.unbind()
+    assert video == pytest.approx(0.6)   # 0.2 -> 0.2 + 0.8*0.5
+    assert audio == pytest.approx(0.3)   # audio mask untouched (lip-sync safe)
+
+
+def test_video_only_mask_softened_whole():
+    # plain (non-nested) mask -> softened directly
+    assert soften_mask(0.2, 0.5) == pytest.approx(0.6)
+
+
+def test_soften_mask_noop_when_gain_zero():
+    nested = _FakeNested((0.2, 0.3))
+    assert soften_mask(nested, 0.0, nested_ctor=_FakeNested) is nested
+
+
+def test_soften_mask_noop_when_none():
+    assert soften_mask(None, 0.5) is None
