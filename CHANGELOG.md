@@ -10,15 +10,19 @@ The format is inspired by Keep a Changelog and SemVer.
 - **LTX Keyframe Soften Schedule node (`LTXKeyframeSoftenSchedule`).** Smooths
   motion between keyframes without adding any guide frames: a model patcher that
   sigma-schedules the keyframe denoise-mask pins — loosening them early (high
-  sigma) so the model forms smooth motion between poses, then restoring them by a
-  crossover point so the poses sharpen for the back half of denoise. Uses the
-  sampler's per-step `denoise_mask_function` hook; works with **no IC-LoRA**.
-  Audio-safe: the A/V mask is a `NestedTensor((video, audio))`, so only the video
-  keyframe pins are softened and the audio mask passes through untouched (lip-sync
-  unaffected). Two normalized 0-1 widgets map onto the (very sensitive) useful
-  range: `max_soften` (ease amount, 0-1 → internal 0-0.20) and `crossover`
-  (invention window, 0-1 → internal 0-0.05). Pure `soften_gain` ramp unit-tested;
-  model wiring render-validated.
+  sigma) so the model forms smooth motion between poses, then restoring them so
+  the poses sharpen as denoise finishes. Uses the sampler's per-step
+  `denoise_mask_function` hook; works with **no IC-LoRA**. Audio-safe: the A/V
+  mask is a `NestedTensor((video, audio))`, so only the video keyframe pins are
+  softened and the audio mask passes through untouched (lip-sync unaffected).
+  Controls: `max_soften` (ease amplitude, 0-1 → internal 0-0.20; default 0.5 ≈
+  10% unpinned at peak) and **`protect_until`** — *how long* to soften as a
+  **fraction of the steps**, resolved against the sampler's actual sigma schedule
+  at run time, so "0.4 = first 40% of the steps" means the same thing on any
+  curve / step count (no per-schedule re-tuning). An optional `sigmas` input + an
+  `info` STRING output report the resolved window (softened steps + sigma range)
+  in-graph; the same coverage line is logged each run. Pure `soften_gain` ramp +
+  `resolve_soften_window` unit-tested; model wiring render-validated.
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
   commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
