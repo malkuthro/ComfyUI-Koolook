@@ -91,6 +91,14 @@ The format is inspired by Keep a Changelog and SemVer.
   real entries instead. The split/fabrication math is unit-tested.
 
 ### Fixed
+- **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
+  timeline editor auto-generated the `guide_strength` string from each clip's
+  per-segment `guideStrength`, filling **1.0** for any clip left unset — and the
+  Director's Python fallback did the same. 1.0 is a hard pin, so any clip you
+  forgot to lower snapped instead of transitioning smoothly. Unset clips now
+  default to **0.8** in both the editor (display + serialization) and the node;
+  per-clip values you set explicitly still override (e.g. a hard 1.0 pin on a
+  critical pose). Clips with no explicit strength shift from 1.0 → 0.8 on load.
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
   in the main checkout), matching `sync_to_dev_audio.py` and the documented

@@ -1138,7 +1138,9 @@ class LTXDirector(io.ComfyNode):
                     insert_frame = max(0, seg_start + int(seg.get("length", 1)) - 1 - start_frame)
                 else:
                     insert_frame = max(0, seg_start - start_frame)
-                strength = strengths[idx] if idx < len(strengths) else 1.0
+                # Koolook: unset guidance defaults to 0.8 (smooth transitions),
+                # not 1.0 (hard pin -> robotic snapping between keyframes).
+                strength = strengths[idx] if idx < len(strengths) else 0.8
                 guide_data["images"].append(tensor)
                 guide_data["insert_frames"].append(insert_frame)
                 guide_data["strengths"].append(float(strength))

@@ -5545,7 +5545,8 @@ class TimelineEditor {
         this.promptInput.style.opacity = "1.0";
 
         const isImage = (this.selectionType === "image") && (seg.type === "image" || seg.type === "video");
-        const strength = isImage ? (seg.guideStrength ?? 1.0) : 1.0;
+        // Koolook: default image-guide strength 0.8 (smooth), not 1.0 (hard pin).
+        const strength = isImage ? (seg.guideStrength ?? 0.8) : 1.0;
         this.strengthValue.value = strength.toFixed(2);
         this.strengthValue.disabled = !isImage;
         this.strengthValue.style.opacity = isImage ? "1.0" : "0.35";
@@ -8931,7 +8932,8 @@ class TimelineEditor {
         const strList = sortedSegments
           .filter(s => s.type !== "text")
           .filter(s => s.start + s.length > startFrames && s.start < endFrames)
-          .map(s => (s.guideStrength !== undefined ? s.guideStrength : 1.0).toFixed(2));
+          // Koolook: unset clips default to 0.8 (smooth) instead of 1.0 (hard pin / robotic transitions).
+          .map(s => (s.guideStrength !== undefined ? s.guideStrength : 0.8).toFixed(2));
         val = strList.join(",");
       }
       updateWidgetValue(this.guideStrengthWidget, val);
