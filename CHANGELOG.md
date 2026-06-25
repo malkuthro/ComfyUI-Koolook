@@ -7,6 +7,18 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **LTX Keyframe Soften Schedule node (`LTXKeyframeSoftenSchedule`).** Smooths
+  motion between keyframes without adding any guide frames: a model patcher that
+  sigma-schedules the keyframe denoise-mask pins — loosening them early (high
+  sigma) so the model forms smooth motion between poses, then restoring them by a
+  crossover point so the poses sharpen for the back half of denoise. Uses the
+  sampler's per-step `denoise_mask_function` hook; works with **no IC-LoRA**.
+  Audio-safe: the A/V mask is a `NestedTensor((video, audio))`, so only the video
+  keyframe pins are softened and the audio mask passes through untouched (lip-sync
+  unaffected). Two normalized 0-1 widgets map onto the (very sensitive) useful
+  range: `max_soften` (ease amount, 0-1 → internal 0-0.20) and `crossover`
+  (invention window, 0-1 → internal 0-0.05). Pure `soften_gain` ramp unit-tested;
+  model wiring render-validated.
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
   commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
@@ -39,7 +51,66 @@ The format is inspired by Keep a Changelog and SemVer.
   reproduces stock behavior. Ramp math is unit-tested; the model wiring is
   validated by rendering against a live LTX 2.3 AV model.
 
+- **LTX Director Ghost Mask reference (REF image / character sheet).** New
+  optional `reference_images` (IMAGE) + `reference_strength` inputs on
+  `LTXDirector__koolook` (plus informational `clean_latent_frames` /
+  `clean_pixel_frames` outputs). Reference image(s) are added as guide frames
+  just past the clean timeline, so the model anchors identity (face / mouth
+  shape) the way a WAN VACE reference does — without the references appearing in
+  the output and **without a LoRA**. Targets mouth/identity drift when keyframes
+  show a closed (or different) mouth than the audio-driven motion needs. The
+  references ride the **same append-and-crop path as the timeline keyframes**:
+  `LTXDirectorGuide` appends each as an extra latent frame and
+  `LTXDirectorCropGuides` removes it, so the video latent is never pre-grown and
+  the audio track stays in sync (pre-growing it desyncs A/V and breaks motion).
+  A general-purpose root node **`CleanLatentSlice`** ("Clean Latent Slice
+  (Koolook)") is also included for bare pipelines that don't use
+  `LTXDirectorCropGuides`. The trailing-reference *approach* is adapted (idea
+  only, reimplemented) from CGlide's WhatDreamsCost-CSGlide (GPL-3.0); see
+  `forks/THIRD_PARTY.md`. Geometry is unit-tested; model behavior is validated
+  by rendering against a live LTX 2.3 model. (Phase 1: Ghost Mask only — the
+  LoRA-backed Licon MSR prefix mode is intentionally not ported.)
+
+- **LTX Guide Reference Strength node (`LTXGuideReferenceStrength`).** Companion
+  to the Ghost Mask reference: rewrites the strength of *only* the reference
+  frames in `guide_data` (the trailing entries the Director tags with
+  `reference_count`), leaving the keyframe pins untouched. Intended for
+  two-stage pipelines — feed stage 1 the Director's `guide_data` unchanged
+  (light reference, motion forms freely) and route stage 2's guide_data through
+  this node at a higher reference strength, so identity locks during the
+  low-denoise refinement without disturbing stage-1 motion. Strength math is
+  unit-tested.
+
+- **LTX Reference Bind Schedule node (`LTXReferenceBindSchedule`).** Ramps the
+  Ghost Mask reference's **attention** up as sigma falls — neutral early (motion
+  forms freely) rising to `peak_strength` late (identity locks during
+  refinement). The inverse of the motion curve and the mirror of
+  `LTXAVBindSchedule`. Mechanism: a `model_function_wrapper` captures the
+  per-step sigma and an object-patch on the core LTX
+  `_build_guide_self_attention_mask` (which is rebuilt every denoise step and
+  supports `strength > 1.0` to amplify) scales **only the trailing
+  `num_references` guide entries'** attention strength — keyframe pins and the
+  noise-mask freezing are untouched, so it's orthogonal to `reference_strength`.
+  Single pass, no re-noise. The `ref_gain` ramp is unit-tested; model behavior is
+  validated by rendering against a live LTX 2.3 model. **Works without an
+  IC-LoRA:** the attention-bias machinery is base-model functionality, but
+  `LTXDirectorGuide` only *populates* the per-guide entries when an IC-LoRA is
+  active. So when the entries are missing this node **fabricates them itself**
+  for the trailing reference tokens (set `num_keyframes` so it knows the
+  keyframe/reference split of `num_guide_tokens`), giving the reference the same
+  amplified-attention channel an IC-LoRA would use — inside the Director, no
+  guide-node changes, no graph rewire. When an IC-LoRA *is* active it scales the
+  real entries instead. The split/fabrication math is unit-tested.
+
 ### Fixed
+- **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
+  timeline editor auto-generated the `guide_strength` string from each clip's
+  per-segment `guideStrength`, filling **1.0** for any clip left unset — and the
+  Director's Python fallback did the same. 1.0 is a hard pin, so any clip you
+  forgot to lower snapped instead of transitioning smoothly. Unset clips now
+  default to **0.8** in both the editor (display + serialization) and the node;
+  per-clip values you set explicitly still override (e.g. a hard 1.0 pin on a
+  critical pose). Clips with no explicit strength shift from 1.0 → 0.8 on load.
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
   in the main checkout), matching `sync_to_dev_audio.py` and the documented

@@ -279,24 +279,35 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   Koolook customizations (`relay_overrides`, `audio_transcript_json`,
   per-segment sigma) are **intentionally dropped** as unused, so every latest
   2.0.2 feature (Prompt Relay, audio, motion) behaves exactly as upstream.
-  - **`ltx_director.py` (upstream verbatim + 3 additive changes).** (1) the
-    node is namespaced as `LTXDirector__koolook` so it coexists with the
+  - **`ltx_director.py` (upstream verbatim + Koolook additive changes).** (1)
+    the node is namespaced as `LTXDirector__koolook` so it coexists with the
     installed upstream copy; (2) **issue #258:** a `snap_keyframes_to_grid`
-    toggle (default on, appended last in the schema) snaps each image
-    keyframe's pixel position to the center of its LTX latent-time bucket
-    before the guide is built, so hard pins land on a single latent frame and
-    two pins never collide in one bucket (the later is bumped, with a logged
-    warning). Pixel positions in, pixel positions out — the upstream
-    `LTXDirectorGuide` re-derives latent indices, so it needs no change; and
-    (3) `keyframe_ease` / `ease_falloff` optionally emit strength-ramped
-    neighbor pins of the same pose to smooth into and out of hard keyframes.
-    Nothing else is modified.
+    toggle (default on) snaps each image keyframe's pixel position to the
+    center of its LTX latent-time bucket before the guide is built, so hard
+    pins land on a single latent frame and two pins never collide in one
+    bucket (the later is bumped, with a logged warning); (3) `keyframe_ease` /
+    `ease_falloff` emit strength-ramped neighbor pins to soften the robotic
+    stop/dissolve at each hard pin; (4) **Ghost Mask reference** —
+    `reference_images` (IMAGE) + `reference_strength` inputs append the
+    reference image(s) as masked guide frames *after* the clean video region
+    so the model anchors identity (face / mouth shape) without the references
+    appearing in the output, plus `clean_latent_frames` / `clean_pixel_frames`
+    outputs to drive the slice-off (see CGlide attribution below). All inputs
+    are optional and appended last, so saved workflows are unaffected; pixel
+    positions in, pixel positions out — the upstream `LTXDirectorGuide`
+    re-derives latent indices and needs no change.
   - **`prompt_relay.py` (verbatim vendored).** Unmodified upstream 2.0.2;
     imported by `ltx_director.py` for its Prompt Relay helpers.
   - **`patches.py` (verbatim vendored).** Unmodified upstream `fe09f73`.
   - **`keyframe_grid.py` (new, Koolook-original).** Pure stdlib latent-grid
     snap/ease helpers; unit-tested in
     [`tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py`](../tests/forks/test_whatdreamscost_v2_0_2_keyframe_grid.py).
+  - **`reference_ghost.py` (new, Koolook-original).** Pure stdlib geometry for
+    the Ghost Mask trailing-reference layout (insert frames + grown latent
+    length + slice bounds); unit-tested in
+    [`tests/forks/test_whatdreamscost_v2_0_2_reference_ghost.py`](../tests/forks/test_whatdreamscost_v2_0_2_reference_ghost.py).
+    The trailing-reference *approach* is adapted from CGlide (see entry below);
+    the code is Koolook-original.
 - **What was *not* forked:** Same policy as v1.3.9 — `LTXDirectorGuide` and
   other WhatDreamsCost helper nodes remain runtime dependencies from the
   user's installed upstream package.
@@ -306,7 +317,37 @@ below — GPL-3.0 §5(c) requires the whole work to be GPL-3.0.
   is not registered here; it stays backed by the v1.3.9 package for workflows
   saved against it. v1.3.9 (with the older customizations) remains on disk for
   rollback.
-- **Last reviewed:** 2026-06-22
+- **Last reviewed:** 2026-06-24
+
+### CGlide/WhatDreamsCost-CSGlide — Ghost Mask reference approach (Koolook reimplementation)
+
+- **Name:** WhatDreamsCost-CSGlide (a fork of WhatDreamsCost-ComfyUI)
+- **Upstream repo URL:** https://github.com/CGlide/WhatDreamsCost-CSGlide
+- **Upstream commit/tag used:** `main_cs` @ `21dd0766898f6c3fed34dc9d2e9f87e67c4d7607`
+  (2026-06-23). Upstream does not tag releases.
+- **License:** GPL-3.0 (verified 2026-06-24 from the upstream `LICENSE` file;
+  `pyproject.toml` declares `license = {file = "LICENSE"}`). Compatible with
+  this package's GPL-3.0 — no relicense required.
+- **Scope of import:** clean-room reimplementation of one feature — *not* a
+  vendor. We read CGlide's `ltx_director.py` (Ghost Mask branch) and
+  `latent_slice.py` to learn the mechanism, then wrote our own code.
+- **What we took (idea, not code):** the **Ghost Mask** technique for
+  reference-image identity anchoring without a LoRA — append the reference
+  image(s) as guide frames *after* the clean video region (so the transformer
+  attends to them for identity), generate, then slice the trailing reference
+  frames off the output latent. Implemented in Koolook as: the
+  `reference_images` / `reference_strength` inputs + `clean_latent_frames` /
+  `clean_pixel_frames` outputs on `LTXDirector__koolook`
+  ([`versions/v2_0_2/ltx_director.py`](whatdreamscost_koolook/versions/v2_0_2/ltx_director.py)),
+  the pure geometry helper
+  [`versions/v2_0_2/reference_ghost.py`](whatdreamscost_koolook/versions/v2_0_2/reference_ghost.py),
+  and the new root node `CleanLatentSlice` ("Clean Latent Slice (Koolook)") in
+  [`k_clean_latent_slice.py`](../k_clean_latent_slice.py).
+- **What we did NOT take:** the Licon MSR (Prefix) mode and its companion
+  LiconStudio LoRA dependency, the `@charN` prompt-tag / character-slot editor
+  UI, the Ollama character-analysis endpoint, and CGlide's editor JS rewrite.
+  Ghost Mask here is fed by a plain IMAGE socket, not the timeline editor.
+- **Last reviewed:** 2026-06-24
 
 ## De-vendored upstream code (untracked in v0.1.4 / v0.1.5)
 

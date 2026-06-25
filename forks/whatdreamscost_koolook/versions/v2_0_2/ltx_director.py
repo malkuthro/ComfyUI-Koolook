@@ -45,6 +45,7 @@ from .patches import detect_model_type, apply_patches
 from .keyframe_grid import latent_count_for_duration as _latent_count_for_duration
 from .keyframe_grid import snap_keyframes_to_grid as _snap_keyframes_to_grid
 from .keyframe_grid import expand_keyframe_ease as _expand_keyframe_ease
+from .reference_ghost import ghost_insert_frames as _ghost_insert_frames
 
 log = logging.getLogger(__name__)
 
@@ -994,6 +995,29 @@ class LTXDirector(io.ComfyNode):
                         "(less dwell), higher = gentler/longer ease."
                     ),
                 ),
+                io.Image.Input(
+                    "reference_images", optional=True,
+                    tooltip=(
+                        "Koolook (Ghost Mask): optional reference image(s) / "
+                        "character sheet to anchor identity (face, mouth shape) "
+                        "the way a WAN VACE reference does. Each image is added as "
+                        "a guide frame just past the clean timeline, so the model "
+                        "attends to it for identity but it never appears in the "
+                        "output. It rides the SAME guide path as your keyframes — "
+                        "LTXDirectorGuide appends it and LTXDirectorCropGuides "
+                        "removes it, so no extra wiring and the audio stays in "
+                        "sync. No LoRA required. Lower reference_strength if the "
+                        "reference suppresses motion."
+                    ),
+                ),
+                io.Float.Input(
+                    "reference_strength", default=1.0, min=0.0, max=5.0, step=0.05, optional=True,
+                    tooltip=(
+                        "Guide strength for the reference image(s). 1.0 = full "
+                        "identity pull; lower it if the references bleed pose or "
+                        "lighting into the video."
+                    ),
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -1004,6 +1028,18 @@ class LTXDirector(io.ComfyNode):
                 MotionGuideData.Output(display_name="motion_guide_data"),
                 io.Float.Output(display_name="frame_rate", tooltip="The frame rate used for the timeline."),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined timeline audio layout."),
+                io.Int.Output(
+                    display_name="clean_latent_frames",
+                    tooltip=(
+                        "Latent frame count of the clean video region (excludes "
+                        "any appended reference frames). Wire to 'Clean Latent "
+                        "Slice (Koolook)' length with start=0 to drop the refs."
+                    ),
+                ),
+                io.Int.Output(
+                    display_name="clean_pixel_frames",
+                    tooltip="Pixel frame count of the clean video region.",
+                ),
             ],
         )
 
@@ -1014,7 +1050,8 @@ class LTXDirector(io.ComfyNode):
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False,
-                snap_keyframes_to_grid=True, keyframe_ease=0, ease_falloff=0.5) -> io.NodeOutput:
+                snap_keyframes_to_grid=True, keyframe_ease=0, ease_falloff=0.5,
+                reference_images=None, reference_strength=1.0) -> io.NodeOutput:
 
         # Parse timeline data
         try:
@@ -1101,7 +1138,9 @@ class LTXDirector(io.ComfyNode):
                     insert_frame = max(0, seg_start + int(seg.get("length", 1)) - 1 - start_frame)
                 else:
                     insert_frame = max(0, seg_start - start_frame)
-                strength = strengths[idx] if idx < len(strengths) else 1.0
+                # Koolook: unset guidance defaults to 0.8 (smooth transitions),
+                # not 1.0 (hard pin -> robotic snapping between keyframes).
+                strength = strengths[idx] if idx < len(strengths) else 0.8
                 guide_data["images"].append(tensor)
                 guide_data["insert_frames"].append(insert_frame)
                 guide_data["strengths"].append(float(strength))
@@ -1227,16 +1266,82 @@ class LTXDirector(io.ComfyNode):
             except Exception as _e:
                 log.warning("[LTXDirector] keyframe ease skipped: %s", _e)
 
-        # --- Auto-generate LTXV latent if none was provided ---
-        # Apply the community 8n+1 rule directly to the timeline's duration_frames:
-        # int(ceil(((duration_frames) - 1) / 8) * 8) + 1
-        # This ensures we get AT LEAST the requested frames, snapped to LTXV's requirements.
+        # --- Latent geometry ---
+        # Community 8n+1 rule on the timeline duration: ceil((duration-1)/8)*8 + 1
+        # yields AT LEAST the requested pixel frames, snapped to LTXV requirements.
         ltxv_length = int(math.ceil((duration_frames - 1) / 8.0) * 8) + 1
-        
+        # When the caller overrides the latent, the clean length (and therefore the
+        # Ghost-Mask reference geometry below AND the clean_*_frames outputs) must
+        # follow the ACTUAL latent, not the timeline duration — otherwise references
+        # are placed at the wrong frames and the reported counts are stale.
+        if optional_latent is not None:
+            try:
+                _lat_t = int(optional_latent["samples"].shape[2])
+                ltxv_length = (_lat_t - 1) * 8 + 1
+            except Exception as _e:
+                log.warning(
+                    "[LTXDirector] optional_latent shape unreadable (%s); "
+                    "clean length falls back to the timeline duration.", _e,
+                )
+        clean_pixel_frames = int(ltxv_length)
+        clean_latent_frames = ((ltxv_length - 1) // 8) + 1
+
+        # --- Koolook (Ghost Mask): add reference image(s) as guide frames so the
+        # model anchors identity (face / mouth shape) without the references
+        # appearing in the output. They are added to guide_data exactly like the
+        # timeline keyframes and therefore ride the SAME append-and-crop path:
+        # the downstream LTXDirectorGuide appends each as an extra latent frame
+        # and LTXDirectorCropGuides removes them again (and the audio track is
+        # untouched, so A/V stays in sync). We must NOT pre-grow the video latent
+        # here — doing that leaves the references uncropped AND desyncs the audio
+        # track, which breaks motion. Positioned just past the clean timeline so
+        # they anchor identity without pinning a visible pose. Added AFTER
+        # snap/ease so refs are never grid-snapped or ease-expanded. The trick is
+        # adapted from CGlide's WhatDreamsCost-CSGlide (GPL-3.0). ---
+        n_refs = 0
+        _ref_shape = getattr(reference_images, "shape", None)
+        if reference_images is not None and _ref_shape is not None and int(_ref_shape[0]) > 0:
+            try:
+                n_refs = int(_ref_shape[0])
+                # Match references to the established output dimensions; fall back
+                # to the references' own size when nothing else set them.
+                ref_w = derived_w if derived_w > 0 else int(_ref_shape[2])
+                ref_h = derived_h if derived_h > 0 else int(_ref_shape[1])
+                _ref_inserts = _ghost_insert_frames(clean_latent_frames, n_refs)
+                for i in range(n_refs):
+                    ref = reference_images[i:i + 1]
+                    ref = _resize_image(ref, ref_w, ref_h, resize_method, divisible_by)
+                    if img_compression > 0:
+                        ref = _compress_image(ref, img_compression)
+                    guide_data["images"].append(ref)
+                    guide_data["insert_frames"].append(int(_ref_inserts[i]))
+                    guide_data["strengths"].append(float(reference_strength))
+                if derived_w <= 0:
+                    derived_w = ref_w
+                if derived_h <= 0:
+                    derived_h = ref_h
+                log.info(
+                    "[LTXDirector] Ghost Mask: added %d reference guide frame(s) "
+                    "past frame %d (strength=%.2f); they ride the guide "
+                    "append-and-crop path (LTXDirectorCropGuides removes them).",
+                    n_refs, clean_pixel_frames, float(reference_strength),
+                )
+            except Exception as _e:
+                log.warning("[LTXDirector] reference Ghost Mask skipped: %s", _e)
+                n_refs = 0
+
+        # Tag how many of the trailing guide frames are references so a
+        # downstream node ("LTX Guide Reference Strength") can boost ONLY the
+        # references (e.g. harder pin in a stage-2 refinement) without touching
+        # the keyframe pins. References are always the LAST n_refs entries.
+        guide_data["reference_count"] = int(n_refs)
+
+        # --- Auto-generate LTXV latent if none was provided ---
+        # Sized to the CLEAN length only — references are appended (and cropped)
+        # by the downstream guide pipeline, never by growing this latent.
         if optional_latent is None:
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)
-            # LTXV temporal: ((length - 1) // 8) + 1 latent frames; invert to get pixel frames -> length
             latent_t = ((ltxv_length - 1) // 8) + 1
             samples = torch.zeros(
                 [1, 128, latent_t, latent_h // 32, latent_w // 32],
@@ -1421,7 +1526,7 @@ class LTXDirector(io.ComfyNode):
         guide_data["duration_frames"] = duration_frames
         guide_data["resize_method"] = resize_method
 
-        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out)
+        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out, int(clean_latent_frames), int(clean_pixel_frames))
 
 
 NODE_CLASS_MAPPINGS = {
