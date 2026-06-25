@@ -4,34 +4,25 @@
 # Copyright (C) 2026 ComfyUI-Koolook contributors (kforgelabs).
 """LTX Keyframe Soften Schedule (Koolook) — smooth motion early, sharp poses late.
 
-The LTX Director pins each keyframe by setting that latent frame's denoise mask
-to ``1 - strength`` (a value < 1). The sampler applies it EVERY step
-(``comfy/samplers.py``)::
+The LTX Director pins each keyframe via the latent's denoise mask. Held hard from
+step 0, the model must hit exact poses immediately, so a transition between two
+poses snaps as a CUT. This node eases those pins in the HIGH-SIGMA (early) part of
+denoise — where coarse motion forms — so the model glides between poses, then
+restores them so the poses sharpen. It adds no frames; only the keyframes you have.
 
-    if "denoise_mask_function" in model_options:
-        denoise_mask = model_options["denoise_mask_function"](sigma, denoise_mask, ...)
-    x = x * denoise_mask + guide * (1 - denoise_mask)   # the pin
+Two simple controls:
+  * ``max_soften`` — ease strength: the fraction the pins unpin at the peak
+    (0 = off, ~0.1 = gentle, 1 = max). Direct, schedule-independent.
+  * ``soften_range`` — ease the TOP ``soften_range`` of the sigma range
+    (sigma-progress ``1 - sigma/sigma_start``). 0.03 = top 3% of the range. This
+    is a LEVEL on the noise curve, not a step count; the number of steps it spans
+    depends on the schedule, so wire ``sigmas`` to see the exact steps on ``info``.
 
-Hard pins held from step 0 force the model to hit exact poses immediately, so a
-transition between two different poses resolves as a CUT. This node schedules the
-pin by sigma instead: it **softens** the keyframe pins early (high sigma), when
-the model is deciding coarse motion — letting it form a smooth trajectory between
-the poses instead of snapping — then **restores** them by a configurable
-``crossover`` measured in denoise *progress* (``1 - sigma/sigma_max``) so the poses
-sharpen as denoise finishes. Because LTX's sigma schedule is front-loaded (sigma
-held high, dropping late), a SMALL progress fraction already covers the early
-motion-forming steps — hence the ``crossover`` widget maps its 0-1 range onto a
-small internal ``0-0.05`` progress band (see ``_CROSSOVER_SCALE``).
+Audio-safe: the A/V mask is a ``NestedTensor((video, audio))`` — only the video
+pins are softened; the audio mask passes through untouched (lip-sync unaffected).
 
-It adds NOTHING (no extra guide frames / poses — that approach backfires; every
-guide is a pose target). It only loosens/tightens the keyframes you already have.
-
-Audio-safe: the A/V latent mask is a ``NestedTensor((video_mask, audio_mask))``
-(``LTXVConcatAVLatent``); we soften ONLY the video mask and pass the audio mask
-through untouched, so lip-sync timing is never disturbed.
-
-NOTE: the pure ``soften_gain`` ramp is unit-tested; the model wiring (the
-denoise-mask function) is validated by rendering against a live LTX 2.3 model.
+NOTE: ``soften_gain`` and ``steps_in_range`` are unit-tested; the model wiring is
+validated by rendering against a live LTX 2.3 model.
 """
 from __future__ import annotations
 
@@ -39,52 +30,40 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# The node widgets are normalized 0-1 sliders that map onto the *useful* internal
-# range (the effect is very sensitive, so the raw values bunch up near 0). Widget
-# value * SCALE = the internal value passed to soften_gain().
-_MAX_SOFTEN_SCALE = 0.2    # widget 0..1 -> internal max_soften 0..0.2
-_CROSSOVER_SCALE = 0.05    # widget 0..1 -> internal crossover 0..0.05
 
+def soften_gain(sigma, sigma_start, soften_range, max_soften):
+    """Ease strength at the current ``sigma``.
 
-def soften_gain(sigma, sigma_max, crossover=0.55, max_soften=0.6):
-    """How much to soften the keyframe pins at the current ``sigma``.
-
-    Denoise progress runs 0 at the start (``sigma == sigma_max``) to 1 at the end
-    (``sigma -> 0``). Returns ``max_soften`` at progress 0, smoothsteps down to 0
-    by ``crossover`` progress, and stays 0 afterwards (pins fully restored).
-
-    A returned gain ``g`` raises a pinned mask value ``m`` toward 1 (unpinned)
-    via ``m + (1 - m) * g``: g=0 keeps the exact pin, g=1 fully frees it.
+    Progress = ``1 - sigma/sigma_start`` (0 at the schedule start, growing as sigma
+    falls). Returns ``max_soften`` at progress 0 and smoothsteps to 0 by
+    ``soften_range`` progress (the top ``soften_range`` of the range), then 0.
+    A gain ``g`` raises a pinned mask value ``m`` toward 1 via ``m + (1-m)*g``.
     """
-    sigma_max = float(sigma_max)
-    if sigma_max <= 0.0:
+    sigma_start = float(sigma_start)
+    if sigma_start <= 0.0:
         return 0.0
-    progress = 1.0 - (float(sigma) / sigma_max)
+    progress = 1.0 - (float(sigma) / sigma_start)
     progress = 0.0 if progress < 0.0 else (1.0 if progress > 1.0 else progress)
-    crossover = float(crossover)
-    if crossover <= 0.0 or progress >= crossover:
+    soften_range = float(soften_range)
+    if soften_range <= 0.0 or progress >= soften_range:
         return 0.0
-    t = progress / crossover               # 0 at start -> 1 at crossover
-    s = t * t * (3.0 - 2.0 * t)            # smoothstep 0 -> 1
-    return float(max_soften) * (1.0 - s)   # max_soften at start -> 0 at crossover
+    t = progress / soften_range            # 0 at start -> 1 at the edge of the range
+    s = t * t * (3.0 - 2.0 * t)            # smoothstep
+    return float(max_soften) * (1.0 - s)   # max_soften at start -> 0 at the edge
 
 
 def soften_mask_value(mask_value, gain):
-    """Raise a single denoise-mask value toward 1 (unpinned) by ``gain``."""
+    """Raise a denoise-mask value toward 1 (unpinned) by ``gain``."""
     return mask_value + (1.0 - mask_value) * float(gain)
 
 
 def soften_denoise_mask(denoise_mask, gain, nested_ctor=None):
     """Soften a denoise mask, sparing the audio half of an A/V mask.
 
-    The A/V latent mask is a ``NestedTensor((video_mask, audio_mask))`` produced by
-    ``LTXVConcatAVLatent`` — video FIRST, audio SECOND. We soften ONLY part 0
-    (video keyframe pins) and pass part 1 (audio) through untouched, so lip-sync
-    timing is never disturbed. A plain (video-only) mask is softened whole.
-
-    ``nested_ctor`` rebuilds the nested mask; defaults to
-    ``comfy.nested_tensor.NestedTensor`` and is injectable so the audio-safety
-    behavior can be unit-tested with a stub. ``gain<=0`` / ``None`` is a no-op.
+    The A/V mask is a ``NestedTensor((video, audio))`` (``LTXVConcatAVLatent`` —
+    video FIRST). Soften ONLY part 0 (video pins); pass part 1 (audio) through
+    untouched. A plain (video-only) mask is softened whole. ``nested_ctor`` is
+    injectable for tests; ``gain<=0`` / ``None`` is a no-op.
     """
     if gain <= 0.0 or denoise_mask is None:
         return denoise_mask
@@ -98,105 +77,147 @@ def soften_denoise_mask(denoise_mask, gain, nested_ctor=None):
     return soften_mask_value(denoise_mask, gain)
 
 
+def steps_in_range(sigmas, soften_range):
+    """How many leading steps fall in the top ``soften_range`` of the sigma range.
+
+    ``sigmas`` is the sampler's sigma list (length n_steps+1; last ~0). A step is
+    "in range" while its sigma-progress (``1 - sigma/sigma_start``) is below
+    ``soften_range``. Returns ``(count, n_steps)`` — the bridge from the level to
+    actual steps for display only.
+    """
+    vals = [float(s) for s in sigmas]
+    n = len(vals)
+    if n < 2:
+        return 0, max(0, n - 1)
+    ref = vals[0]
+    n_steps = n - 1
+    if ref <= 0.0:
+        return 0, n_steps
+    count = 0
+    for i in range(n_steps):
+        if (1.0 - vals[i] / ref) < float(soften_range):
+            count += 1
+        else:
+            break
+    return count, n_steps
+
+
+def _format_info(max_soften, soften_range, window):
+    """Build the short ``info`` string. ``window`` is (count, n_steps) or None."""
+    if max_soften <= 0.0 or soften_range <= 0.0:
+        return "Soften: OFF"
+    head = f"Soften: ease {max_soften:.2f}, top {soften_range * 100:.0f}% of range"
+    if window is not None:
+        count, n_steps = window
+        return f"{head}  = first {count} of {n_steps} steps"
+    return head + "\n(connect SIGMAS to see steps)"
+
+
 class LTXKeyframeSoftenSchedule:
-    """Sigma-schedule the LTX keyframe pins: soft early (smooth motion), sharp late."""
+    """Ease the LTX keyframe pins in the high-sigma range: smooth motion, sharp poses."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": ("MODEL", {"tooltip": "LTX 2.3 model (place after the other model patchers)."}),
+                "model": ("MODEL", {"tooltip": "LTX 2.3 model."}),
                 "max_soften": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "EASE amount (normalized 0-1; maps to internal 0-0.20). "
-                               "How gently the keyframe pins loosen at the START of "
-                               "denoise — the smooth approach into each key. 0 = stock "
-                               "(no ease). Higher = smoother, but also more invented "
-                               "in-between motion. Default 0.5 = internal 0.10.",
+                    "default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Ease strength — how much to unpin the keyframes. "
+                               "0 = off, ~0.1 = gentle, 1 = max.",
                 }),
-                "crossover": ("FLOAT", {
-                    "default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "INVENTION window (normalized 0-1; maps to internal "
-                               "0-0.05). How long the pins stay loose before re-locking. "
-                               "LOWER = poses lock back sooner = FEWER invented in-between "
-                               "frames (truer to your keyframes). Higher = more invented "
-                               "motion (and risk of a noisy/under-resolved image). "
-                               "Default 0.65 = internal ~0.033.",
+                "soften_range": ("FLOAT", {
+                    "default": 0.03, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Ease the TOP % of the sigma range (where motion forms). "
+                               "0.03 = top 3%. It's a level, not a step count — wire "
+                               "SIGMAS to see which steps that is.",
+                }),
+            },
+            "optional": {
+                "sigmas": ("SIGMAS", {
+                    "tooltip": "Optional — connect your sampler's SIGMAS to show the "
+                               "exact steps on the 'info' output.",
                 }),
             },
         }
 
-    RETURN_TYPES = ("MODEL",)
-    RETURN_NAMES = ("model",)
+    RETURN_TYPES = ("MODEL", "STRING")
+    RETURN_NAMES = ("model", "info")
     FUNCTION = "patch"
     CATEGORY = "Koolook/LTX"
     DESCRIPTION = (
-        "Smooth motion early, sharp poses late: sigma-schedule the LTX keyframe "
-        "pins — loosen them at high sigma so the model forms smooth motion between "
-        "poses, restore them by a crossover (~step 9) so the poses sharpen. Adds no "
-        "frames; audio mask untouched (lip-sync safe)."
+        "Eases the keyframe pins in the high-sigma (early) part of denoise so motion "
+        "between poses is smooth, then restores them so poses sharpen. Adds no frames; "
+        "lip-sync safe. `info` shows the eased steps (wire SIGMAS)."
     )
 
-    def patch(self, model, max_soften, crossover):
+    def patch(self, model, max_soften, soften_range, sigmas=None):
         m = model.clone()
+        max_soften = float(max_soften)
+        soften_range = float(soften_range)
 
-        # Widgets are normalized 0-1; map onto the sensitive internal range.
-        max_soften_w, crossover_w = float(max_soften), float(crossover)
-        max_soften = max_soften_w * _MAX_SOFTEN_SCALE
-        crossover = crossover_w * _CROSSOVER_SCALE
+        # info string (display only)
+        window = None
+        if sigmas is not None:
+            try:
+                window = steps_in_range(sigmas, soften_range)
+            except Exception as e:
+                log.warning("[LTXKeyframeSoftenSchedule] could not read preview sigmas: %s", e)
+        info = _format_info(max_soften, soften_range, window)
 
-        try:
-            sigma_max = float(m.get_model_object("model_sampling").sigma_max)
-        except Exception as e:  # pragma: no cover - live model
-            log.warning("[LTXKeyframeSoftenSchedule] no model_sampling.sigma_max: %s", e)
-            sigma_max = 1.0
+        if max_soften <= 0.0 or soften_range <= 0.0:
+            log.info("[LTXKeyframeSoftenSchedule] off (max_soften/soften_range = 0).")
+            return (m, info)
 
-        if max_soften <= 0.0:
-            log.info("[LTXKeyframeSoftenSchedule] max_soften=0 — model passed through.")
-            return (m,)
-
-        # Chain any pre-existing denoise_mask_function instead of clobbering it
-        # (mirrors how the sibling LTX patchers chain model_function_wrapper).
         prev_fn = m.model_options.get("denoise_mask_function")
+        state = {"ref": None}
         diag = [False]
-        warned = [False]
 
         def denoise_mask_function(sigma, denoise_mask, extra_options=None):
             if prev_fn is not None:
                 denoise_mask = prev_fn(sigma, denoise_mask, extra_options=extra_options)
             if denoise_mask is None:
                 return denoise_mask
+
+            if state["ref"] is None:
+                rt = (extra_options or {}).get("sigmas")
+                try:
+                    state["ref"] = float(rt[0])
+                    count, n_steps = steps_in_range(rt, soften_range)
+                    log.info(
+                        "[LTXKeyframeSoftenSchedule] ease %.2f, top %.0f%% of range "
+                        "= first %d of %d steps", max_soften, soften_range * 100, count, n_steps,
+                    )
+                except Exception as _e:
+                    state["ref"] = 0.0
+                    log.warning("[LTXKeyframeSoftenSchedule] no run sigmas (%s); off.", _e)
+
+            ref = state["ref"]
+            if not ref or ref <= 0.0:
+                return denoise_mask
             try:
                 s = float(sigma.max()) if hasattr(sigma, "max") else float(sigma)
-            except Exception as _e:
-                s = sigma_max
-                if not warned[0]:
-                    warned[0] = True
-                    log.warning(
-                        "[LTXKeyframeSoftenSchedule] could not read sigma (%s); "
-                        "softening at max this step.", _e,
-                    )
-            gain = soften_gain(s, sigma_max, crossover, max_soften)
+            except Exception:
+                s = ref
+            gain = soften_gain(s, ref, soften_range, max_soften)
             if gain <= 0.0:
                 return denoise_mask
             if not diag[0]:
                 diag[0] = True
                 nested = getattr(denoise_mask, "is_nested", False)
                 log.info(
-                    "[LTXKeyframeSoftenSchedule] active (%s): softening video keyframe "
-                    "pins%s. max_soften=%.3f crossover=%.3f",
+                    "[LTXKeyframeSoftenSchedule] active (%s)%s.",
                     "A/V" if nested else "video-only",
-                    ", audio untouched" if nested else "", max_soften, crossover,
+                    " — audio untouched" if nested else "",
                 )
             return soften_denoise_mask(denoise_mask, gain)
 
         m.set_model_denoise_mask_function(denoise_mask_function)
         log.info(
-            "[LTXKeyframeSoftenSchedule] patched: max_soften=%.2f (->%.3f) "
-            "crossover=%.2f (->%.3f) sigma_max=%.3f",
-            max_soften_w, max_soften, crossover_w, crossover, sigma_max,
+            "[LTXKeyframeSoftenSchedule] patched: ease=%.2f top_range=%.2f",
+            max_soften, soften_range,
         )
-        return (m,)
+        return (m, info)
 
 
 NODE_CLASS_MAPPINGS = {"LTXKeyframeSoftenSchedule": LTXKeyframeSoftenSchedule}
@@ -204,5 +225,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {"LTXKeyframeSoftenSchedule": "LTX Keyframe Soften 
 
 __all__ = [
     "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS",
-    "soften_gain", "soften_mask_value", "soften_denoise_mask",
+    "soften_gain", "soften_mask_value", "soften_denoise_mask", "steps_in_range",
 ]
