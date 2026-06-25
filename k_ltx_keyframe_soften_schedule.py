@@ -108,20 +108,25 @@ class LTXKeyframeSoftenSchedule:
                 "model": ("MODEL", {"tooltip": "LTX 2.3 model (place after the other model patchers)."}),
                 "max_soften": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "EASE amount (normalized 0-1; maps to internal 0-0.20). "
-                               "How gently the keyframe pins loosen at the START of "
-                               "denoise — the smooth approach into each key. 0 = stock "
-                               "(no ease). Higher = smoother, but also more invented "
-                               "in-between motion. Default 0.5 = internal 0.10.",
+                    "tooltip": "EASE amount — HOW HARD the keyframe pins loosen at the "
+                               "softening peak. Amplitude only: independent of the "
+                               "sampler/sigma schedule, so it always means the same "
+                               "thing. Normalized 0-1 -> internal 0-0.20. Default 0.5 "
+                               "= ~10% unpinned at peak (a hard pin 0.20 -> 0.28). "
+                               "0 = stock (no ease); higher = smoother but more "
+                               "invented in-between motion.",
                 }),
                 "crossover": ("FLOAT", {
                     "default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "tooltip": "INVENTION window (normalized 0-1; maps to internal "
-                               "0-0.05). How long the pins stay loose before re-locking. "
-                               "LOWER = poses lock back sooner = FEWER invented in-between "
-                               "frames (truer to your keyframes). Higher = more invented "
-                               "motion (and risk of a noisy/under-resolved image). "
-                               "Default 0.65 = internal ~0.033.",
+                    "tooltip": "INVENTION window — HOW LONG the pins stay loose before "
+                               "re-locking, measured in denoise sigma-progress "
+                               "(1 - sigma/sigma_max), NOT step count. NOTE: the number "
+                               "of steps it actually covers SHIFTS if you change the "
+                               "sampler/sigma schedule. Normalized 0-1 -> internal "
+                               "0-0.05; default 0.65 protects roughly the first few "
+                               "(high-sigma) steps. LOWER = lock sooner = FEWER invented "
+                               "in-between frames; higher = more invented motion (and "
+                               "risk of a noisy/under-resolved image).",
                 }),
             },
         }
