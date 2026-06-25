@@ -8,8 +8,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import pytest
-
 
 _MOD = Path(__file__).resolve().parents[2] / "k_ltx_guide_reference_strength.py"
 _spec = importlib.util.spec_from_file_location("k_ltx_guide_reference_strength_under_test", _MOD)
