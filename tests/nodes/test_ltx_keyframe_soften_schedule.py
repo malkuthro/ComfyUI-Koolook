@@ -21,6 +21,7 @@ _spec.loader.exec_module(_m)
 gain = _m.soften_gain
 soften = _m.soften_mask_value
 soften_mask = _m.soften_denoise_mask
+resolve = _m.resolve_soften_window
 
 SMAX = 10.0
 
@@ -119,3 +120,44 @@ def test_soften_mask_noop_when_gain_zero():
 
 def test_soften_mask_noop_when_none():
     assert soften_mask(None, 0.5) is None
+
+
+# --- resolve_soften_window: step-fraction → schedule, curve-independent --------
+
+def test_resolve_half_of_steps():
+    # 4 steps (5 sigmas incl final 0); protect 0.5 -> cutoff 2 -> threshold sigmas[2]
+    cutoff, thr, n = resolve([1.0, 0.9, 0.6, 0.3, 0.0], 0.5)
+    assert (cutoff, n) == (2, 4)
+    assert thr == pytest.approx(0.6)
+
+
+def test_resolve_zero_protects_nothing():
+    # cutoff 0 -> threshold == sigma_max -> downstream crossover-progress 0 -> no soften
+    cutoff, thr, n = resolve([1.0, 0.9, 0.0], 0.0)
+    assert cutoff == 0 and thr == pytest.approx(1.0) and n == 2
+
+
+def test_resolve_full_protects_all():
+    cutoff, thr, n = resolve([1.0, 0.9, 0.0], 1.0)
+    assert cutoff == n == 2 and thr == pytest.approx(0.0)
+
+
+def test_resolve_same_fraction_scales_with_step_count():
+    # The whole point: 0.5 means "half the steps" on ANY step count.
+    c4, _, n4 = resolve([1.0, 0.9, 0.6, 0.3, 0.0], 0.5)       # 4 steps
+    c16, _, n16 = resolve([1.0 - i / 16 for i in range(17)], 0.5)  # 16 steps
+    assert (c4, n4) == (2, 4)
+    assert (c16, n16) == (8, 16)
+
+
+def test_resolve_front_loaded_curve_reads_actual_sigma():
+    # flat-top 16-step curve: protect 0.4 -> step 6, which is still on the plateau
+    sig = [1.0] * 8 + [0.9, 0.8, 0.65, 0.5, 0.35, 0.2, 0.1, 0.05, 0.0]  # 17 vals, 16 steps
+    cutoff, thr, n = resolve(sig, 0.4)
+    assert n == 16 and cutoff == 6
+    assert thr == pytest.approx(1.0)   # step 6 is still sigma 1.0 on this curve
+
+
+def test_resolve_short_or_empty():
+    assert resolve([1.0], 0.5) == (0, 1.0, 0)
+    assert resolve([], 0.5) == (0, 0.0, 0)
