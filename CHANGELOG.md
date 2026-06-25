@@ -15,14 +15,14 @@ The format is inspired by Keep a Changelog and SemVer.
   `denoise_mask_function` hook; works with **no IC-LoRA**. Audio-safe: the A/V
   mask is a `NestedTensor((video, audio))`, so only the video keyframe pins are
   softened and the audio mask passes through untouched (lip-sync unaffected).
-  Controls: `max_soften` (ease amplitude, 0-1 → internal 0-0.20; default 0.5 ≈
-  10% unpinned at peak) and **`protect_until`** — *how long* to soften as a
-  **fraction of the steps**, resolved against the sampler's actual sigma schedule
-  at run time, so "0.4 = first 40% of the steps" means the same thing on any
-  curve / step count (no per-schedule re-tuning). An optional `sigmas` input + an
-  `info` STRING output report the resolved window (softened steps + sigma range)
-  in-graph; the same coverage line is logged each run. Pure `soften_gain` ramp +
-  `resolve_soften_window` unit-tested; model wiring render-validated.
+  Two plain controls: `max_soften` (ease strength — the fraction the pins unpin
+  at the peak; 0 = off, ~0.1 = gentle, 1 = max) and `soften_range` (ease the TOP
+  % of the sigma range where coarse motion forms — e.g. 0.03 = top 3% of the
+  range; a noise-level, not a step count). An optional `sigmas` input + an `info`
+  STRING output report which steps that level actually spans in-graph (the level
+  is curve-consistent, the step count it covers depends on the schedule); the same
+  line is logged each run. Pure `soften_gain` + `steps_in_range` unit-tested;
+  model wiring render-validated.
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
   commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —

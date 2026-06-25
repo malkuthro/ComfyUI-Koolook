@@ -21,7 +21,7 @@ _spec.loader.exec_module(_m)
 gain = _m.soften_gain
 soften = _m.soften_mask_value
 soften_mask = _m.soften_denoise_mask
-resolve = _m.resolve_soften_window
+steps = _m.steps_in_range
 
 SMAX = 10.0
 
@@ -122,42 +122,40 @@ def test_soften_mask_noop_when_none():
     assert soften_mask(None, 0.5) is None
 
 
-# --- resolve_soften_window: step-fraction → schedule, curve-independent --------
+# --- steps_in_range: level (top % of sigma range) -> steps, for the info readout
 
-def test_resolve_half_of_steps():
-    # 4 steps (5 sigmas incl final 0); protect 0.5 -> cutoff 2 -> threshold sigmas[2]
-    cutoff, thr, n = resolve([1.0, 0.9, 0.6, 0.3, 0.0], 0.5)
-    assert (cutoff, n) == (2, 4)
-    assert thr == pytest.approx(0.6)
-
-
-def test_resolve_zero_protects_nothing():
-    # cutoff 0 -> threshold == sigma_max -> downstream crossover-progress 0 -> no soften
-    cutoff, thr, n = resolve([1.0, 0.9, 0.0], 0.0)
-    assert cutoff == 0 and thr == pytest.approx(1.0) and n == 2
+def test_steps_top_range_counts_leading_steps():
+    # sigmas start at 1.0; progress = 1 - sigma. top 25% = progress < 0.25.
+    # 1.0(p0) 0.9(p.1) 0.8(p.2) 0.6(p.4)... -> first 3 steps are in the top 25%.
+    count, n = steps([1.0, 0.9, 0.8, 0.6, 0.3, 0.0], 0.25)
+    assert (count, n) == (3, 5)
 
 
-def test_resolve_full_protects_all():
-    cutoff, thr, n = resolve([1.0, 0.9, 0.0], 1.0)
-    assert cutoff == n == 2 and thr == pytest.approx(0.0)
+def test_steps_zero_range_is_none():
+    count, n = steps([1.0, 0.9, 0.0], 0.0)
+    assert count == 0 and n == 2
 
 
-def test_resolve_same_fraction_scales_with_step_count():
-    # The whole point: 0.5 means "half the steps" on ANY step count.
-    c4, _, n4 = resolve([1.0, 0.9, 0.6, 0.3, 0.0], 0.5)       # 4 steps
-    c16, _, n16 = resolve([1.0 - i / 16 for i in range(17)], 0.5)  # 16 steps
-    assert (c4, n4) == (2, 4)
-    assert (c16, n16) == (8, 16)
+def test_steps_full_range_covers_all():
+    count, n = steps([1.0, 0.9, 0.5, 0.0], 1.0)
+    assert count == n == 3
 
 
-def test_resolve_front_loaded_curve_reads_actual_sigma():
-    # flat-top 16-step curve: protect 0.4 -> step 6, which is still on the plateau
-    sig = [1.0] * 8 + [0.9, 0.8, 0.65, 0.5, 0.35, 0.2, 0.1, 0.05, 0.0]  # 17 vals, 16 steps
-    cutoff, thr, n = resolve(sig, 0.4)
-    assert n == 16 and cutoff == 6
-    assert thr == pytest.approx(1.0)   # step 6 is still sigma 1.0 on this curve
+def test_steps_anchors_to_start_sigma_not_one():
+    # schedule starts at 0.931 (not 1.0); progress is relative to that start.
+    # top 20%: progress < 0.2 -> sigma > 0.931*0.8 = 0.745.
+    count, n = steps([0.931, 0.811, 0.616, 0.346, 0.0], 0.20)
+    assert (count, n) == (2, 4)   # 0.931, 0.811 in; 0.616 (p=0.34) out
 
 
-def test_resolve_short_or_empty():
-    assert resolve([1.0], 0.5) == (0, 1.0, 0)
-    assert resolve([], 0.5) == (0, 0.0, 0)
+def test_steps_flat_top_curve_spans_many_steps():
+    # the 'top 3% covers ~7 steps' case: flat-ish front-loaded 16-step curve
+    sig = [1.0, 0.999, 0.997, 0.994, 0.99, 0.985, 0.978, 0.969, 0.95,
+           0.9, 0.8, 0.65, 0.5, 0.3, 0.15, 0.05, 0.0]
+    count, n = steps(sig, 0.03)   # top 3% -> progress < 0.03 -> sigma > 0.97
+    assert n == 16 and count == 7   # steps 0..6 have sigma >= 0.978; step 7 = 0.969 out
+
+
+def test_steps_short_or_empty():
+    assert steps([1.0], 0.5) == (0, 0)
+    assert steps([], 0.5) == (0, 0)
