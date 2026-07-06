@@ -701,19 +701,17 @@ def _selected_result_switches(
     api_prompt: dict[str, Any],
     run_inputs: dict[str, Any],
 ) -> dict[str, tuple[str, int]]:
-    app = setup.get("setupSurface", {}).get("app", {})
-    if not isinstance(app, dict):
-        return {}
-    switch = app.get("switch")
-    if not isinstance(switch, dict):
-        return {}
-    selected_value = _selected_switch_value(switch, run_inputs)
-    if selected_value is None:
-        return {}
     selected: dict[str, tuple[str, int]] = {}
     for field in _app_result_fields(setup):
-        result_node_id = _result_switch_node_id(setup, field, run_inputs, api_prompt)
-        if result_node_id is not None:
+        found = _result_switch_node_and_switch(setup, field, run_inputs, api_prompt)
+        if found is None:
+            continue
+        result_node_id, switch = found
+        # Use the value of the switch that actually drives this result switch
+        # (input OR output), so a divergent EXR-in/QT-out setup reports the QT
+        # path rather than the input-type path.
+        selected_value = _selected_switch_value(switch, run_inputs)
+        if selected_value is not None:
             selected[result_node_id] = (result_node_id, selected_value)
     return selected
 
@@ -818,20 +816,30 @@ def _app_result_fields(setup: dict[str, Any]) -> list[dict[str, Any]]:
     return [field for field in app["results"] if isinstance(field, dict)]
 
 
-def _result_switch_node_id(
+def _result_switch_node_and_switch(
     setup: dict[str, Any],
     result_field: dict[str, Any],
     run_inputs: dict[str, Any],
     api_prompt: dict[str, Any] | None = None,
-) -> str | None:
+) -> tuple[str, dict[str, Any]] | None:
+    """Find the mode-switch node feeding a result field, and the app switch that
+    drives it.
+
+    A result field (e.g. ``Koolook_PublishResult.result``) is often fed by an
+    index-switch node so the displayed path matches the selected branch. That
+    switch may be driven by the input switch OR the independent output switch —
+    match against whichever one is wired to its selector so the reported result
+    follows the type actually written, not the source type.
+    """
     app = setup.get("setupSurface", {}).get("app", {})
     if not isinstance(app, dict):
         return None
-    switch = app.get("switch")
-    if not isinstance(switch, dict):
-        return None
-    selected_value = _selected_switch_value(switch, run_inputs)
-    if selected_value is None:
+    candidate_switches = [
+        switch
+        for switch in (app.get("switch"), app.get("outputSwitch"))
+        if isinstance(switch, dict) and isinstance(switch.get("target"), dict)
+    ]
+    if not candidate_switches:
         return None
 
     api_prompt = api_prompt if isinstance(api_prompt, dict) else setup.get("apiPrompt")
@@ -858,16 +866,17 @@ def _result_switch_node_id(
     if not isinstance(switch_inputs, dict):
         return None
     selector_ref = _switch_selector_ref(switch_inputs)
-    switch_target = switch.get("target")
-    if isinstance(switch_target, dict) and not _selector_matches_switch_target(
-        selector_ref,
-        switch_target,
-        api_prompt,
-    ):
-        return None
-    if not _is_api_ref(switch_inputs.get(f"value{selected_value}")):
-        return None
-    return switch_node_id
+    # Prefer whichever switch the result index-switch selector is wired from.
+    for switch in candidate_switches:
+        if not _selector_matches_switch_target(selector_ref, switch["target"], api_prompt):
+            continue
+        selected_value = _selected_switch_value(switch, run_inputs)
+        if selected_value is None:
+            continue
+        if not _is_api_ref(switch_inputs.get(f"value{selected_value}")):
+            continue
+        return (switch_node_id, switch)
+    return None
 
 
 def _selected_result_branch_ref(
@@ -878,17 +887,17 @@ def _selected_result_branch_ref(
     api_prompt = setup.get("apiPrompt")
     if not isinstance(api_prompt, dict):
         return None
-    switch_node_id = _result_switch_node_id(setup, result_field, run_inputs, api_prompt)
-    if switch_node_id is None:
+    found = _result_switch_node_and_switch(setup, result_field, run_inputs, api_prompt)
+    if found is None:
         return None
+    switch_node_id, switch = found
     switch_node = api_prompt.get(switch_node_id)
     if not isinstance(switch_node, dict):
         return None
     switch_inputs = switch_node.get("inputs")
     if not isinstance(switch_inputs, dict):
         return None
-    switch = setup.get("setupSurface", {}).get("app", {}).get("switch")
-    selected_value = _selected_switch_value(switch, run_inputs) if isinstance(switch, dict) else None
+    selected_value = _selected_switch_value(switch, run_inputs)
     if selected_value is None:
         return None
     branch_ref = switch_inputs.get(f"value{selected_value}")

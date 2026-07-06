@@ -619,6 +619,123 @@ def test_run_setup_uses_execution_map_router_to_keep_selected_writer() -> None:
     asyncio.run(exercise())
 
 
+def test_get_run_result_path_follows_output_switch_not_input() -> None:
+    """When a mode-switched Koolook_PublishResult is driven by the OUTPUT switch,
+    the reported result path follows the chosen output type. An EXR source
+    (input switch 0) with QT output (output_switch 1) must report the QT movie
+    path from the result index-switch's value1 branch, not the EXR value0."""
+    async def exercise() -> None:
+        setup = _valid_setup()
+        setup["inputContract"] = {"inputs": []}
+        setup["outputContract"] = {"outputs": []}
+        setup["visualGraph"] = {
+            "nodes": [
+                {"id": 188, "type": "Koolook_PublishInput", "inputs": [{"name": "mode", "widget": {"name": "mode"}}]},
+                {"id": 200, "type": "Koolook_PublishOutput", "inputs": [{"name": "output_mode", "widget": {"name": "output_mode"}}]},
+                {"id": 205, "type": "Koolook_PublishResult", "inputs": [{"name": "result", "link": 900}]},
+            ],
+            "links": [[900, 179, 0, 205, 0, "STRING"]],
+            "groups": [],
+        }
+        setup["apiPrompt"] = {
+            "188": {
+                "class_type": "Koolook_PublishInput",
+                "inputs": {"mode": "EXR", "sequence_folder": "/shots/source/frames", "qt_file": "", "single_file": "", "prompt": ""},
+            },
+            "200": {
+                "class_type": "Koolook_PublishOutput",
+                "inputs": {"folder": "/shots/output", "name": "publish-OUT", "version": "2", "output_mode": "QT", "input_switch": ["188", 4]},
+            },
+            # Result index-switch driven by the OUTPUT switch (node 200, slot 3).
+            "179": {
+                "class_type": "Switch any [Crystools]",
+                "inputs": {"index": ["200", 3], "value0": ["301", 0], "value1": ["302", 0], "value2": ["303", 0]},
+            },
+            "301": {"class_type": "EasyAIPipeline", "inputs": {"WRITE_file_path": "/shots/output/publish-OUT_v002.exr"}},
+            "302": {"class_type": "Easy_VideoCombine", "inputs": {"video_path": "/shots/output/publish-OUT_v002.mov"}},
+            "303": {"class_type": "EasyAIPipeline", "inputs": {"WRITE_file_path": "/shots/output/publish-OUT_v002.png"}},
+            "205": {"class_type": "Koolook_PublishResult", "inputs": {"result": ["179", 0]}},
+        }
+        setup["setupSurface"] = {
+            "sourceInputs": [
+                {"group": "Koolook Input", "nodes": [{"id": "188", "type": "Koolook_PublishInput", "title": "In"}]}
+            ],
+            "outputs": [
+                {
+                    "group": "Koolook Output",
+                    "nodes": [
+                        {"id": "200", "type": "Koolook_PublishOutput", "title": "Out"},
+                        {"id": "205", "type": "Koolook_PublishResult", "title": "Result"},
+                        {"id": "301", "type": "EasyAIPipeline", "title": "EXR path"},
+                        {"id": "302", "type": "Easy_VideoCombine", "title": "QT path"},
+                        {"id": "303", "type": "EasyAIPipeline", "title": "Img path"},
+                    ],
+                }
+            ],
+            "controls": [],
+            "app": {
+                "inputs": [
+                    {"key": "sequence_folder", "label": "Sequence folder", "visible": True, "target": {"node": "188", "input": "sequence_folder"}, "default": "/shots/source/frames"}
+                ],
+                "outputs": [],
+                "results": [
+                    {"key": "result", "label": "Result", "visible": True, "target": {"node": "205", "input": "result"}, "default": ""}
+                ],
+                "switch": {
+                    "key": "switch",
+                    "label": "Input type",
+                    "visible": True,
+                    "target": {"node": "188", "input": "mode"},
+                    "default": 0,
+                    "options": [
+                        {"value": 0, "label": "EXR", "visible": True, "input": "sequence_folder"},
+                        {"value": 1, "label": "QT", "visible": True, "input": "sequence_folder"},
+                        {"value": 2, "label": "Img", "visible": True, "input": "sequence_folder"},
+                    ],
+                },
+                "outputSwitch": {
+                    "key": "output_switch",
+                    "label": "Output type",
+                    "visible": True,
+                    "sameAsInput": True,
+                    "target": {"node": "200", "input": "output_mode"},
+                    "default": -1,
+                    "options": [
+                        {"value": 0, "label": "EXR", "visible": True},
+                        {"value": 1, "label": "QT", "visible": True},
+                        {"value": 2, "label": "Img", "visible": True},
+                    ],
+                },
+            },
+        }
+        registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+        comfy = FakeComfyClient(
+            history={
+                "comfy-prompt-1": {
+                    "status": {"completed": True, "status_str": "success"},
+                    # History carries paths for both branch nodes; the runner must
+                    # pick the QT one because output_switch selected it.
+                    "outputs": {
+                        "301": {"text": ["/shots/output/publish-OUT_v002.exr"]},
+                        "302": {"text": ["/shots/output/publish-OUT_v002.mov"]},
+                    },
+                }
+            }
+        )
+        runner = PublishedSetupRunner(registry, comfy)
+
+        queued = await runner.runSetup("ltx-director-demo", {"switch": 0, "output_switch": 1})
+        status = await runner.getRun(queued["runId"])
+
+        result_output = next(o for o in status["outputs"] if o["key"] == "result")
+        values = [item["value"] for item in result_output["items"]]
+        assert values == ["/shots/output/publish-OUT_v002.mov"], (
+            f"result should follow output_switch (QT .mov), got {values!r}"
+        )
+
+    asyncio.run(exercise())
+
+
 def test_run_setup_output_switch_selects_writer_independently_of_input() -> None:
     """Decoupled output type: the writer router is driven by the OUTPUT switch,
     so an EXR source (input switch 0) can still write a QT movie (output switch

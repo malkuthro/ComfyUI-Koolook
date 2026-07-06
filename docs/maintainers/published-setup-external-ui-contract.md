@@ -210,6 +210,12 @@ the path based on extension/type. When the result node is omitted, the runner
 can still execute the selected writer branch through `Koolook_PublishRouter`;
 the frontend should display returned writer/history items.
 
+When the result is fed by a mode-switch node, the runner reports the branch for
+whichever switch drives that node — the input switch **or** the independent
+output switch. So a divergent EXR-in/QT-out setup whose result index-switch is
+wired from `Koolook_PublishOutput.switch` reports the QT movie path, matching
+the file actually written.
+
 Decision: the first public result contract is the resolved path string. The
 important requirement is that the string matches what the real setup resolved
 inside ComfyUI. A frontend may optionally preview images or other known file
@@ -360,15 +366,6 @@ Remaining gaps:
 - The simulator is still a maintainer harness rather than the polished
   production external app, but the normal path is now the app-surface form
   instead of raw JSON.
-- **Result path follows the input switch, not the output switch.** The writer
-  *branch* is now correctly selected by `output_switch` (the actual file is
-  written to the right type), but `Koolook_PublishResult` branch selection in
-  `_selected_result_switches` still keys off `app.switch`. For a divergent
-  EXR-in/QT-out setup the queued run writes the QT movie correctly, yet a
-  mode-switched result node may report the input-type path. Wiring the result
-  switch from `output_switch` and generalizing the result-switch resolver is a
-  scoped follow-up; only setups that use a mode-switched `Koolook_PublishResult`
-  with divergent output are affected.
 - Only output types that have a wired writer branch should be offered as
   selectable output options (the execution map already records `writerNodes`
   per branch; the frontend could hide branches with none). Today an unwired
