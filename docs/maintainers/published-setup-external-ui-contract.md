@@ -149,12 +149,25 @@ naming/location controls for the external app and downstream writer/path nodes:
 | `folder` | Destination folder for generated outputs. |
 | `name` | Base output name. |
 | `version` | Version token/number used by the graph's naming logic. |
+| `output_mode` | Output type control: `Same as input`, `EXR`, `QT`, `Img`. Default `Same as input` follows the input switch; a concrete choice overrides it. |
+| `input_switch` (input slot) | Wired from `Koolook_PublishInput.switch`; only consulted when `output_mode` is `Same as input`. |
+| `switch` (output slot) | Resolved output-type index (0=EXR, 1=QT, 2=Img). Wire into `Koolook_PublishRouter.selector` to route the writer branch by output type. |
 
 The external frontend can expose these as editable output controls when the
 setup author wants the user to choose where generated files should land.
 `Koolook_PublishOutput` is an intermediate contract node: it does not choose
 the final result and should not own a mode-specific `result` field. Its outputs
 feed the writer/path-building nodes for each supported branch.
+
+The `switch` output makes output type **independent of input type**: a setup can
+read an EXR sequence and write a QT movie. When `output_mode` is `Same as input`
+the node passes the wired `input_switch` through unchanged, so setups that don't
+need divergence behave exactly as before. The inferred app surface exposes this
+as `setupSurface.app.outputSwitch` (key `output_switch`), a switch whose options
+are `EXR`/`QT`/`Img` (no `Prompt`), carrying `sameAsInput: true` so the frontend
+can offer a "Same as input" choice. The frontend must resolve "Same as input" to
+the concrete input-switch value **before submitting** `output_switch` — the
+runner validates the submitted value against the concrete option list.
 
 ### `Koolook_PublishRouter`
 
@@ -164,7 +177,7 @@ each `Koolook_PublishInput.switch` value:
 
 | Field/output | Purpose |
 |---|---|
-| `selector` | INT input wired from `Koolook_PublishInput.switch`. |
+| `selector` | INT input wired from `Koolook_PublishInput.switch` (output type follows input) **or** `Koolook_PublishOutput.switch` (independent output type). The publisher tags the resulting execution-map router with `switchKey` `switch` or `output_switch` accordingly. |
 | `payload` | Main setup payload, such as the mask/image result from the body graph. |
 | `EXR` | Output slot 0, connected to the EXR writer branch. |
 | `QT` | Output slot 1, connected to the QuickTime/movie writer branch. |
@@ -220,6 +233,7 @@ If QT:
 If Img:
   Single file: <path>
 
+Output type:  [Same as input] [EXR] [QT] [Img]
 Output folder: <path>
 Output name:   <name>
 Version:       <version>
@@ -234,6 +248,7 @@ The frontend should read this from `setupSurface.app`, not from arbitrary
 ComfyUI node classes:
 
 - `setupSurface.app.switch`
+- `setupSurface.app.outputSwitch` (optional; independent output type)
 - `setupSurface.app.inputs`
 - `setupSurface.app.outputs`
 - `setupSurface.app.results`
@@ -345,6 +360,19 @@ Remaining gaps:
 - The simulator is still a maintainer harness rather than the polished
   production external app, but the normal path is now the app-surface form
   instead of raw JSON.
+- **Result path follows the input switch, not the output switch.** The writer
+  *branch* is now correctly selected by `output_switch` (the actual file is
+  written to the right type), but `Koolook_PublishResult` branch selection in
+  `_selected_result_switches` still keys off `app.switch`. For a divergent
+  EXR-in/QT-out setup the queued run writes the QT movie correctly, yet a
+  mode-switched result node may report the input-type path. Wiring the result
+  switch from `output_switch` and generalizing the result-switch resolver is a
+  scoped follow-up; only setups that use a mode-switched `Koolook_PublishResult`
+  with divergent output are affected.
+- Only output types that have a wired writer branch should be offered as
+  selectable output options (the execution map already records `writerNodes`
+  per branch; the frontend could hide branches with none). Today an unwired
+  output type fails loudly at run validation rather than being hidden up front.
 
 ## Non-Goals
 

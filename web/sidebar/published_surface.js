@@ -64,7 +64,7 @@ const PUBLISH_OUTPUT_CLASS = "Koolook_PublishOutput";
 const PUBLISH_RESULT_CLASS = "Koolook_PublishResult";
 const WIDGET_NAMES_BY_CLASS = {
     [PUBLISH_INPUT_CLASS]: ["mode", "sequence_folder", "qt_file", "single_file", "prompt"],
-    [PUBLISH_OUTPUT_CLASS]: ["folder", "name", "version"],
+    [PUBLISH_OUTPUT_CLASS]: ["folder", "name", "version", "output_mode"],
     [PUBLISH_RESULT_CLASS]: ["result"],
 };
 const PUBLISH_INPUT_FIELDS = [
@@ -89,6 +89,15 @@ const PUBLISH_OUTPUT_FIELDS = [
     ["name", "Output name", true],
     ["version", "Version", true],
 ];
+// Output-type modes are a subset of the input modes (no Prompt — not a real
+// output format). Indices match PUBLISH_INPUT_MODES so a router slot means the
+// same type on either switch. -1 is the "Same as input" sentinel default.
+const PUBLISH_OUTPUT_MODES = [
+    [0, "EXR"],
+    [1, "QT"],
+    [2, "Img"],
+];
+const PUBLISH_OUTPUT_SAME_AS_INPUT = -1;
 const PUBLISH_RESULT_FIELDS = [
     ["result", "Result", true],
 ];
@@ -179,6 +188,29 @@ function inputSwitch(node, inputs) {
     };
 }
 
+function outputModeIndex(value) {
+    if (Number.isInteger(value)) return value;
+    const text = String(value ?? "").trim().toLowerCase();
+    const found = PUBLISH_OUTPUT_MODES.find(([_value, label]) => label.toLowerCase() === text);
+    return found ? found[0] : PUBLISH_OUTPUT_SAME_AS_INPUT;
+}
+
+function outputSwitch(node) {
+    return {
+        key: "output_switch",
+        label: "Output type",
+        visible: true,
+        sameAsInput: true,
+        target: { node: String(node.id), input: "output_mode" },
+        default: outputModeIndex(widgetValue(node, "output_mode")),
+        options: PUBLISH_OUTPUT_MODES.map(([value, label]) => ({
+            value,
+            label,
+            visible: true,
+        })),
+    };
+}
+
 function promptField(node) {
     if (!node) return null;
     const hint = widgetValue(node, "prompt");
@@ -209,6 +241,7 @@ function inferAppSurface(graph) {
         results: fieldSpecs(resultNode, PUBLISH_RESULT_FIELDS),
     };
     if (inputNode) app.switch = inputSwitch(inputNode, inputs);
+    if (outputNode) app.outputSwitch = outputSwitch(outputNode);
     return app;
 }
 

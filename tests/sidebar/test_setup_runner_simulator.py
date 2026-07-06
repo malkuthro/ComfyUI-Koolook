@@ -81,6 +81,86 @@ def test_simulator_lists_setup_and_polls_public_run_routes() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_simulator_supports_independent_output_switch() -> None:
+    """An app surface with an outputSwitch submits an output_switch value. The
+    'Same as input' sentinel (-1) follows the input switch; a concrete choice
+    overrides it — so an EXR source can be routed to a QT writer."""
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          defaultRunInputsFromSetup,
+          runInputsFromAppValues,
+        } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          setupSurface: {
+            app: {
+              switch: {
+                key: "switch",
+                default: 0,
+                options: [
+                  { value: 0, label: "EXR", input: "sequence_folder", visible: true },
+                  { value: 1, label: "QT", input: "qt_file", visible: true },
+                  { value: 2, label: "Img", input: "single_file", visible: true },
+                ],
+              },
+              outputSwitch: {
+                key: "output_switch",
+                default: -1,
+                sameAsInput: true,
+                options: [
+                  { value: 0, label: "EXR", visible: true },
+                  { value: 1, label: "QT", visible: true },
+                  { value: 2, label: "Img", visible: true },
+                ],
+              },
+              inputs: [{ key: "sequence_folder", default: "/plates/demo" }],
+              outputs: [{ key: "folder", default: "/renders/demo" }],
+            },
+          },
+        };
+
+        // Default: output follows input (EXR=0) via the "Same as input" sentinel.
+        assert.deepEqual(defaultRunInputsFromSetup(setup), {
+          switch: 0,
+          sequence_folder: "/plates/demo",
+          folder: "/renders/demo",
+          output_switch: 0,
+        });
+
+        // Explicit override: EXR source (switch 0), QT writer (output_switch 1).
+        assert.deepEqual(runInputsFromAppValues(setup, {
+          switch: 0,
+          output_switch: 1,
+          sequence_folder: "/plates/demo",
+          folder: "/renders/demo",
+        }), {
+          switch: 0,
+          sequence_folder: "/plates/demo",
+          folder: "/renders/demo",
+          output_switch: 1,
+        });
+
+        // "Same as input" (-1) submitted -> resolves to the chosen input (QT=1).
+        assert.deepEqual(runInputsFromAppValues(setup, {
+          switch: 1,
+          output_switch: -1,
+          sequence_folder: "/plates/demo",
+          folder: "/renders/demo",
+        }), {
+          switch: 1,
+          sequence_folder: "/plates/demo",
+          folder: "/renders/demo",
+          output_switch: 1,
+        });
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
 def test_simulator_times_out_when_active_status_never_progresses() -> None:
     script = textwrap.dedent(
         """

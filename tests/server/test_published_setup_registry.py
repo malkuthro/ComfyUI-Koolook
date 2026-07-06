@@ -1112,6 +1112,19 @@ def test_publish_setup_infers_app_contract_from_publish_nodes() -> None:
                 {"value": 3, "label": "Prompt", "visible": False, "input": "prompt"},
             ],
         },
+        "outputSwitch": {
+            "key": "output_switch",
+            "label": "Output type",
+            "visible": True,
+            "sameAsInput": True,
+            "target": {"node": "200", "input": "output_mode"},
+            "default": -1,
+            "options": [
+                {"value": 0, "label": "EXR", "visible": True},
+                {"value": 1, "label": "QT", "visible": True},
+                {"value": 2, "label": "Img", "visible": True},
+            ],
+        },
     }
 
 
@@ -1136,7 +1149,7 @@ def test_publish_setup_stores_execution_map_from_publish_router() -> None:
                 "pos": [520, 60],
                 "size": [360, 240],
                 "inputs": [],
-                "widgets_values": ["/out", "mask", "1"],
+                "widgets_values": ["/out", "mask", "1", "Same as input"],
             },
             {
                 "id": 400,
@@ -1171,7 +1184,7 @@ def test_publish_setup_stores_execution_map_from_publish_router() -> None:
                     "prompt": "prompt",
                 },
             },
-            "200": {"class_type": "Koolook_PublishOutput", "inputs": {"folder": "/out", "name": "mask", "version": "1"}},
+            "200": {"class_type": "Koolook_PublishOutput", "inputs": {"folder": "/out", "name": "mask", "version": "1", "output_mode": "Same as input", "input_switch": ["100", 4]}},
             "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
             "301": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".exr"}},
             "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
@@ -1211,6 +1224,103 @@ def test_publish_setup_stores_execution_map_from_publish_router() -> None:
             }
         ],
     }
+
+
+def test_publish_setup_execution_map_uses_output_switch_when_router_is_output_driven() -> None:
+    """An EXR-in / QT-out setup wires the writer router from the OUTPUT switch
+    (Koolook_PublishOutput.switch, slot 3) instead of the input switch. The
+    executionMap must tag that router with switchKey 'output_switch' so the
+    runner prunes writer branches by the independently-chosen output type."""
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {
+                "id": 100,
+                "type": "Koolook_PublishInput",
+                "title": "Koolook Publish Input",
+                "pos": [40, 60],
+                "size": [360, 320],
+                "inputs": [],
+                "widgets_values": ["EXR", "/seq", "/movie.mov", "/image.png", "prompt"],
+            },
+            {
+                "id": 200,
+                "type": "Koolook_PublishOutput",
+                "title": "Koolook Publish Output",
+                "pos": [520, 60],
+                "size": [360, 240],
+                "inputs": [],
+                "widgets_values": ["/out", "mask", "1", "QT"],
+            },
+            {
+                "id": 400,
+                "type": "Koolook_PublishRouter",
+                "title": "Koolook Publish Router",
+                "pos": [520, 340],
+                "size": [360, 220],
+                "inputs": [],
+                "widgets_values": [],
+            },
+            {"id": 311, "type": "SaveEXRFrames", "title": "EXR writer", "pos": [920, 80], "size": [220, 120]},
+            {"id": 312, "type": "Easy_VideoCombine", "title": "QT writer", "pos": [920, 260], "size": [220, 120]},
+            {"id": 313, "type": "SaveImageAndPromptExact", "title": "Img writer", "pos": [920, 440], "size": [220, 120]},
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 420, 420]},
+            {"title": "Koolook Output", "bounding": [500, 20, 700, 620]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        apiPrompt={
+            "100": {
+                "class_type": "Koolook_PublishInput",
+                "inputs": {
+                    "mode": "EXR",
+                    "sequence_folder": "/seq",
+                    "qt_file": "/movie.mov",
+                    "single_file": "/image.png",
+                    "prompt": "prompt",
+                },
+            },
+            "200": {
+                "class_type": "Koolook_PublishOutput",
+                # input_switch wired from the input switch so "Same as input"
+                # setups still work; here output_mode overrides to QT.
+                "inputs": {"folder": "/out", "name": "mask", "version": "1", "output_mode": "QT", "input_switch": ["100", 4]},
+            },
+            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
+            "301": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".exr"}},
+            "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
+            "303": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".png"}},
+            # Router selector wired from the OUTPUT switch (node 200, slot 3).
+            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["200", 3], "payload": ["300", 0]}},
+            "311": {"class_type": "SaveEXRFrames", "inputs": {"filepath": ["301", 0], "images": ["400", 0]}},
+            "312": {"class_type": "Easy_VideoCombine", "inputs": {"filepath": ["302", 0], "images": ["400", 1]}},
+            "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"filepath": ["303", 0], "image": ["400", 2]}},
+        },
+        metadata={
+            "id": "divergent-output-flow",
+            "title": "Divergent Output Flow",
+            "description": "EXR input, QT output via an output-driven router.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/Divergent Output"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("divergent-output-flow")
+    assert setup is not None
+    # The independent output switch is exposed and defaults to QT (author's widget).
+    assert setup["setupSurface"]["app"]["outputSwitch"]["default"] == 1
+    router = setup["executionMap"]["routers"][0]
+    assert router["switchKey"] == "output_switch"
+    assert router["selector"] == {"node": "200", "output": 3}
+    assert router["branches"]["1"]["writerNodes"] == ["312"]  # QT writer
 
 
 @pytest.mark.parametrize(

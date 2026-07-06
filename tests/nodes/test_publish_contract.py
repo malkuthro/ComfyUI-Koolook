@@ -9,6 +9,7 @@ from k_publish_contract import (
     Koolook_PublishRouter,
     NODE_CLASS_MAPPINGS,
     NODE_DISPLAY_NAME_MAPPINGS,
+    _resolve_output_switch,
 )
 
 
@@ -57,15 +58,37 @@ def test_publish_input_accepts_published_numeric_switch_values() -> None:
 
 
 def test_publish_output_exposes_stable_fields() -> None:
-    spec = Koolook_PublishOutput.INPUT_TYPES()["required"]
+    spec = Koolook_PublishOutput.INPUT_TYPES()
+    required = spec["required"]
+    optional = spec.get("optional", {})
 
-    assert list(spec) == ["folder", "name", "version"]
-    assert Koolook_PublishOutput.RETURN_NAMES == ("folder", "name", "version")
+    assert list(required) == ["folder", "name", "version", "output_mode"]
+    assert required["output_mode"][0] == ["Same as input", "EXR", "QT", "Img"]
+    assert list(optional) == ["input_switch"]
+    assert Koolook_PublishOutput.RETURN_NAMES == ("folder", "name", "version", "switch")
+
+    # Default output_mode ("Same as input") passes the wired input switch through.
     assert Koolook_PublishOutput().run(
         folder="/out",
         name="mask",
         version="1",
-    ) == ("/out", "mask", "1")
+        input_switch=1,
+    ) == ("/out", "mask", "1", 1)
+
+
+def test_publish_output_switch_resolution() -> None:
+    """output_mode picks the writer branch; 'Same as input' follows input_switch."""
+    # Concrete override by label -> that branch index (EXR=0, QT=1, Img=2).
+    assert Koolook_PublishOutput().run("/o", "n", "1", "QT", 0)[-1] == 1
+    assert Koolook_PublishOutput().run("/o", "n", "1", "EXR", 2)[-1] == 0
+    # Concrete override by numeric index (external runner injects an int).
+    assert Koolook_PublishOutput().run("/o", "n", "1", 2, 0)[-1] == 2
+    # "Same as input" (and the Prompt index 3, which is not an output type)
+    # both fall back to the input switch.
+    assert Koolook_PublishOutput().run("/o", "n", "1", "Same as input", 1)[-1] == 1
+    assert _resolve_output_switch(3, 1) == 1
+    # Unwired input_switch defaults to Img (2).
+    assert _resolve_output_switch("Same as input", None) == 2
 
 
 def test_publish_result_exposes_resolved_result() -> None:

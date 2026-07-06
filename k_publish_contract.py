@@ -10,6 +10,15 @@ from __future__ import annotations
 INPUT_MODES: tuple[str, ...] = ("EXR", "QT", "Img", "Prompt")
 INPUT_MODE_TO_INDEX = {name: index for index, name in enumerate(INPUT_MODES)}
 
+# Output type is a strict subset of the input modes: ``Prompt`` is a source /
+# no-op branch, never a real output format. ``Same as input`` is the default —
+# it passes the wired input switch straight through so an unmodified setup
+# writes the same type it reads; picking a concrete type overrides that.
+SAME_AS_INPUT = "Same as input"
+OUTPUT_MODES: tuple[str, ...] = (SAME_AS_INPUT, "EXR", "QT", "Img")
+OUTPUT_MODE_TO_INDEX = {"EXR": 0, "QT": 1, "Img": 2}
+_DEFAULT_SWITCH_INDEX = INPUT_MODE_TO_INDEX["Img"]  # 2
+
 
 def _resolve_mode_index(mode) -> int:
     if isinstance(mode, bool):
@@ -22,6 +31,46 @@ def _resolve_mode_index(mode) -> int:
         if 0 <= index < len(INPUT_MODES):
             return index
     return INPUT_MODE_TO_INDEX.get(text, INPUT_MODE_TO_INDEX["Img"])
+
+
+def _coerce_switch_index(value, default: int = _DEFAULT_SWITCH_INDEX) -> int:
+    """Coerce a wired/typed switch value to an int branch index.
+
+    ``bool`` is rejected first (``True``/``False`` are ints in Python but never
+    a real branch index); everything else falls back to ``default`` (Img).
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if text.isdigit():
+        return int(text)
+    return default
+
+
+def _resolve_output_switch(output_mode, input_switch) -> int:
+    """Resolve the writer-branch index emitted by ``Koolook_PublishOutput``.
+
+    ``Same as input`` (the default) passes the wired ``input_switch`` through,
+    so a setup writes the same type it reads unless the author/app overrides it.
+    A concrete ``EXR``/``QT``/``Img`` — as the combo label OR the numeric index
+    the external runner injects into ``output_mode`` — overrides it. ``Prompt``
+    is not an output format, so an index of ``3`` is treated as "no override"
+    and falls back to the input switch too.
+    """
+    if not isinstance(output_mode, bool):
+        if isinstance(output_mode, int):
+            if output_mode in OUTPUT_MODE_TO_INDEX.values():
+                return output_mode
+        else:
+            text = str(output_mode).strip()
+            if text in OUTPUT_MODE_TO_INDEX:
+                return OUTPUT_MODE_TO_INDEX[text]
+            if text.isdigit() and int(text) in OUTPUT_MODE_TO_INDEX.values():
+                return int(text)
+    # "Same as input" / Prompt / anything unrecognized -> follow the input switch.
+    return _coerce_switch_index(input_switch)
 
 
 class Koolook_PublishInput:
@@ -127,17 +176,42 @@ class Koolook_PublishOutput:
                         "tooltip": "Output version token or number exposed to the external app.",
                     },
                 ),
+                "output_mode": (
+                    list(OUTPUT_MODES),
+                    {
+                        "default": SAME_AS_INPUT,
+                        "tooltip": "Writer branch to route the payload into. 'Same as input' passes the wired input switch through (output type follows input type); pick EXR/QT/Img to write a different type than the source. The 'switch' output wires into Koolook Publish Router's selector.",
+                    },
+                ),
+            },
+            "optional": {
+                "input_switch": (
+                    "INT",
+                    {
+                        "default": _DEFAULT_SWITCH_INDEX,
+                        "min": 0,
+                        "max": len(INPUT_MODES) - 1,
+                        "tooltip": "Wire Koolook Publish Input's 'switch' output here. Used only when output_mode is 'Same as input' — it makes the output type follow the chosen input type. Ignored when a concrete output_mode is selected.",
+                    },
+                ),
             },
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("folder", "name", "version")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "INT")
+    RETURN_NAMES = ("folder", "name", "version", "switch")
     CATEGORY = "Koolook/Publish"
     FUNCTION = "run"
-    DESCRIPTION = "Declare output folder, name, and version controls for a published setup."
+    DESCRIPTION = "Declare output folder, name, version, and output-type switch for a published setup."
 
-    def run(self, folder: str, name: str, version: str):
-        return (folder, name, version)
+    def run(
+        self,
+        folder: str,
+        name: str,
+        version: str,
+        output_mode: str = SAME_AS_INPUT,
+        input_switch: int = _DEFAULT_SWITCH_INDEX,
+    ):
+        return (folder, name, version, _resolve_output_switch(output_mode, input_switch))
 
 
 class Koolook_PublishResult:

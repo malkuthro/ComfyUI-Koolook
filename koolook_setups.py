@@ -49,6 +49,16 @@ PUBLISH_INPUT_MODES = (
     (2, "Img", "single_file"),
     (3, "Prompt", "prompt"),
 )
+# Output-type modes are a subset of the input modes (no Prompt — it isn't a
+# real output format). The indices deliberately match PUBLISH_INPUT_MODES so a
+# router slot means the same type on either switch. -1 is the "Same as input"
+# sentinel the author leaves in place to keep output type following input type.
+PUBLISH_OUTPUT_MODES = (
+    (0, "EXR"),
+    (1, "QT"),
+    (2, "Img"),
+)
+PUBLISH_OUTPUT_SAME_AS_INPUT = -1
 PUBLISH_OUTPUT_FIELDS = (
     ("folder", "Output folder", True),
     ("name", "Output name", True),
@@ -60,7 +70,7 @@ PUBLISH_RESULT_FIELDS = (
 WIDGET_ONLY_INPUTS_BY_CLASS = {
     "Text Multiline": ("text",),
     "Koolook_PublishInput": ("mode", "sequence_folder", "qt_file", "single_file", "prompt"),
-    "Koolook_PublishOutput": ("folder", "name", "version"),
+    "Koolook_PublishOutput": ("folder", "name", "version", "output_mode"),
     "Koolook_PublishResult": ("result",),
     "Koolook_PublishRouter": (),
     "EasyAIPipeline": (
@@ -80,6 +90,12 @@ WIDGET_ONLY_INPUTS_BY_CLASS = {
 WIDGET_ONLY_INPUT_DEFAULTS = {
     "EasyAIPipeline": {
         "no_subfolders": False,
+    },
+    # Older published setups authored their Koolook_PublishOutput with only
+    # folder/name/version widgets. Default the new output_mode to "Same as
+    # input" so those setups keep validating and behave exactly as before.
+    "Koolook_PublishOutput": {
+        "output_mode": "Same as input",
     },
 }
 
@@ -427,6 +443,8 @@ def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
     }
     if input_node is not None:
         app["switch"] = _publish_input_switch(input_node, inputs)
+    if output_node is not None:
+        app["outputSwitch"] = _publish_output_switch(output_node)
     return app
 
 
@@ -546,14 +564,56 @@ def _publish_input_mode_index(value: Any) -> int:
     return 2
 
 
+def _publish_output_switch(node: dict[str, Any]) -> dict[str, Any]:
+    """App-surface descriptor for the independent output-type switch.
+
+    Mirrors ``_publish_input_switch`` but for ``Koolook_PublishOutput``. The
+    ``target`` is the node's ``output_mode`` input (where the runner injects the
+    submitted value). ``sameAsInput`` tells the external frontend to offer a
+    "Same as input" choice that follows the input switch; ``default`` is
+    ``-1`` when the author left the widget on "Same as input".
+    """
+    return {
+        "key": "output_switch",
+        "label": "Output type",
+        "visible": True,
+        "sameAsInput": True,
+        "target": {"node": str(node.get("id")), "input": "output_mode"},
+        "default": _publish_output_mode_index(_app_widget_value(node, "output_mode")),
+        "options": [
+            {"value": value, "label": label, "visible": True}
+            for value, label in PUBLISH_OUTPUT_MODES
+        ],
+    }
+
+
+def _publish_output_mode_index(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    text = str(value).strip().lower()
+    for mode_value, label in PUBLISH_OUTPUT_MODES:
+        if text == label.lower():
+            return mode_value
+    return PUBLISH_OUTPUT_SAME_AS_INPUT
+
+
 def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
     api_prompt = setup.get("apiPrompt")
     if not isinstance(api_prompt, dict):
         return None
     app = setup.get("setupSurface", {}).get("app", {})
-    switch = app.get("switch") if isinstance(app, dict) else None
-    switch_target = switch.get("target") if isinstance(switch, dict) else None
-    if not isinstance(switch_target, dict):
+    # A router may be driven by the input switch (source type) OR the output
+    # switch (writer type). Collect both so an EXR-in/QT-out setup wires its
+    # writer router from Koolook_PublishOutput.switch and still gets a map.
+    candidate_switches = [
+        switch
+        for switch in (
+            app.get("switch") if isinstance(app, dict) else None,
+            app.get("outputSwitch") if isinstance(app, dict) else None,
+        )
+        if isinstance(switch, dict) and isinstance(switch.get("target"), dict)
+    ]
+    if not candidate_switches:
         return None
     output_surface_ids = _setup_output_surface_node_ids(setup)
     if not output_surface_ids:
@@ -567,7 +627,17 @@ def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
             continue
         selector_ref = inputs.get("selector")
         payload_ref = inputs.get("payload")
-        if not _api_ref_matches_target_output(selector_ref, switch_target, api_prompt, "switch"):
+        matched_switch = next(
+            (
+                switch
+                for switch in candidate_switches
+                if _api_ref_matches_target_output(
+                    selector_ref, switch["target"], api_prompt, "switch"
+                )
+            ),
+            None,
+        )
+        if matched_switch is None:
             continue
         branches: dict[str, dict[str, Any]] = {}
         for value, label, _input_key in PUBLISH_INPUT_MODES:
@@ -583,7 +653,7 @@ def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
             }
         router: dict[str, Any] = {
             "node": str(node_id),
-            "switchKey": str(switch.get("key", "switch")),
+            "switchKey": str(matched_switch.get("key", "switch")),
             "selector": {"node": str(selector_ref[0]), "output": int(selector_ref[1])},
             "branches": branches,
         }
@@ -675,15 +745,30 @@ def _api_ref_matches_target_output(
 
 
 def _publish_input_output_slots(api_node: dict[str, Any]) -> dict[str, int]:
-    if api_node.get("class_type") != PUBLISH_INPUT_CLASS:
-        return {}
-    return {
-        "sequence_folder": 0,
-        "qt_file": 1,
-        "single_file": 2,
-        "prompt": 3,
-        "switch": 4,
-    }
+    """Output-slot name -> index for a publish contract node.
+
+    Both ``Koolook_PublishInput`` and ``Koolook_PublishOutput`` expose a
+    ``switch`` output that a router's ``selector`` can be wired from; the
+    executionMap matcher uses this to tie a router to whichever switch drives
+    it.
+    """
+    class_type = api_node.get("class_type")
+    if class_type == PUBLISH_INPUT_CLASS:
+        return {
+            "sequence_folder": 0,
+            "qt_file": 1,
+            "single_file": 2,
+            "prompt": 3,
+            "switch": 4,
+        }
+    if class_type == PUBLISH_OUTPUT_CLASS:
+        return {
+            "folder": 0,
+            "name": 1,
+            "version": 2,
+            "switch": 3,
+        }
+    return {}
 
 
 def _is_api_ref(value: Any) -> bool:
@@ -845,6 +930,18 @@ def _validate_surface_app(
             api_prompt,
             input_keys,
         )
+    if "outputSwitch" in app:
+        # The output switch selects a writer branch, not a source field, so its
+        # options carry no `input` mapping (require_option_input=False).
+        _validate_surface_app_switch(
+            app["outputSwitch"],
+            f"{path}.outputSwitch",
+            diagnostics,
+            node_by_id,
+            api_prompt,
+            input_keys,
+            require_option_input=False,
+        )
 
 
 def _validate_surface_app_fields(
@@ -883,6 +980,8 @@ def _validate_surface_app_switch(
     node_by_id: dict[str, dict[str, Any]],
     api_prompt: dict[str, Any] | None,
     input_keys: set[str],
+    *,
+    require_option_input: bool = True,
 ) -> None:
     if not isinstance(switch, dict):
         diagnostics.append(f"{path} must be a JSON object")
@@ -913,14 +1012,15 @@ def _validate_surface_app_switch(
         if isinstance(option.get("value"), bool) or not isinstance(option.get("value"), int):
             diagnostics.append(f"{option_path}.value must be an integer")
         _validate_non_empty_text(option.get("label"), f"{option_path}.label", diagnostics)
-        _validate_non_empty_text(option.get("input"), f"{option_path}.input", diagnostics)
-        if (
-            isinstance(option.get("input"), str)
-            and option["input"].strip()
-            and input_keys
-            and option["input"] not in input_keys
-        ):
-            diagnostics.append(f"{option_path}.input must match a setupSurface.app.inputs key")
+        if require_option_input:
+            _validate_non_empty_text(option.get("input"), f"{option_path}.input", diagnostics)
+            if (
+                isinstance(option.get("input"), str)
+                and option["input"].strip()
+                and input_keys
+                and option["input"] not in input_keys
+            ):
+                diagnostics.append(f"{option_path}.input must match a setupSurface.app.inputs key")
         if "visible" in option and not isinstance(option["visible"], bool):
             diagnostics.append(f"{option_path}.visible must be a boolean")
 

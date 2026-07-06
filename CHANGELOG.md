@@ -7,6 +7,23 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Independent output type for published setups.** `Koolook_PublishOutput`
+  gains an `output_mode` control (`Same as input` / `EXR` / `QT` / `Img`), an
+  `input_switch` input, and a `switch` output so a setup can read one type and
+  write another (e.g. EXR sequence in, QT movie out). `Same as input` (default)
+  passes the wired input switch through, so existing setups are unchanged. The
+  inferred app surface exposes `setupSurface.app.outputSwitch`; the execution
+  map tags writer routers with `switchKey` `switch` or `output_switch`, and the
+  runner prunes/validates writer branches by the chosen output type. The setup
+  runner simulator renders an "Output type" control (with a "Same as input"
+  option). Result-path selection for a mode-switched `Koolook_PublishResult`
+  still follows the input switch — a scoped follow-up noted in
+  `docs/maintainers/published-setup-external-ui-contract.md`.
+- **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
+  `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
+  the next-free-`vNNN` disk scan runs every queue instead of being memoized on
+  the first run (which froze the version and made saves skip as "already
+  exists"). Literal versions stay cacheable.
 - **Koolook Matte nodes (`KoolookMatteLoader` / `KoolookMatteSampler` /
   `KoolookMatteFocusCrop` / `KoolookMatteFocusStitch`).** First-party, mask-guided
   one-step video matting — an original GPL-3.0 reimplementation of the published
