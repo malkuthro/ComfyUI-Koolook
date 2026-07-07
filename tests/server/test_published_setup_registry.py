@@ -1321,6 +1321,53 @@ def test_publish_setup_execution_map_uses_output_switch_when_router_is_output_dr
     assert router["switchKey"] == "output_switch"
     assert router["selector"] == {"node": "200", "output": 3}
     assert router["branches"]["1"]["writerNodes"] == ["312"]  # QT writer
+    # All three output types have a wired writer here, so all stay selectable.
+    assert [opt["visible"] for opt in setup["setupSurface"]["app"]["outputSwitch"]["options"]] == [True, True, True]
+
+
+def test_publish_setup_hides_output_types_without_a_wired_writer_branch() -> None:
+    """The external app must only offer output types that will actually write a
+    file. When the output-switch router only has a QT writer wired, EXR and Img
+    output options are marked invisible."""
+    storage = StaticSetupStorage([])
+    registry = PublishedSetupRegistry(storage)
+    visual_graph = {
+        "nodes": [
+            {"id": 100, "type": "Koolook_PublishInput", "title": "In", "pos": [40, 60], "size": [360, 320], "inputs": [], "widgets_values": ["Img", "/seq", "/movie.mov", "/image.png", "prompt"]},
+            {"id": 200, "type": "Koolook_PublishOutput", "title": "Out", "pos": [520, 60], "size": [360, 240], "inputs": [], "widgets_values": ["/out", "mask", "1", "QT"]},
+            {"id": 400, "type": "Koolook_PublishRouter", "title": "Router", "pos": [520, 340], "size": [360, 220], "inputs": [], "widgets_values": []},
+            {"id": 312, "type": "Easy_VideoCombine", "title": "QT writer", "pos": [920, 260], "size": [220, 120]},
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 420, 420]},
+            {"title": "Koolook Output", "bounding": [500, 20, 700, 620]},
+        ],
+    }
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        apiPrompt={
+            "100": {"class_type": "Koolook_PublishInput", "inputs": {"mode": "Img", "sequence_folder": "/seq", "qt_file": "/movie.mov", "single_file": "/image.png", "prompt": "prompt"}},
+            "200": {"class_type": "Koolook_PublishOutput", "inputs": {"folder": "/out", "name": "mask", "version": "1", "output_mode": "QT", "input_switch": ["100", 4]}},
+            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 2]}},
+            "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
+            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["200", 3], "payload": ["300", 0]}},
+            # Only the QT output slot (1) feeds a writer; EXR (0) and Img (2) are unwired.
+            "312": {"class_type": "Easy_VideoCombine", "inputs": {"filepath": ["302", 0], "images": ["400", 1]}},
+        },
+        metadata={"id": "qt-only-output", "title": "QT Only Output", "description": "Only QT output is wired."},
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/QT Only"},
+    )
+
+    assert result.valid is True
+    setup = registry.getSetup("qt-only-output")
+    assert setup is not None
+    options = setup["setupSurface"]["app"]["outputSwitch"]["options"]
+    visible_by_label = {opt["label"]: opt["visible"] for opt in options}
+    assert visible_by_label == {"EXR": False, "QT": True, "Img": False}
 
 
 @pytest.mark.parametrize(

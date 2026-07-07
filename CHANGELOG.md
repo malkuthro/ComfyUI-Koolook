@@ -16,9 +16,11 @@ The format is inspired by Keep a Changelog and SemVer.
   map tags writer routers with `switchKey` `switch` or `output_switch`, and the
   runner prunes/validates writer branches by the chosen output type. The setup
   runner simulator renders an "Output type" control (with a "Same as input"
-  option). A mode-switched `Koolook_PublishResult` reports the branch of
-  whichever switch drives its result index-switch (input or output), so a
-  divergent EXR-in/QT-out setup reports the QT movie path it actually wrote.
+  option) and only offers output types whose writer branch is actually wired
+  (unwired types are marked `visible: false` at publish time from the execution
+  map's `writerNodes`). A mode-switched `Koolook_PublishResult` reports the
+  branch of whichever switch drives its result index-switch (input or output),
+  so a divergent EXR-in/QT-out setup reports the QT movie path it actually wrote.
 - **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
   `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
   the next-free-`vNNN` disk scan runs every queue instead of being memoized on

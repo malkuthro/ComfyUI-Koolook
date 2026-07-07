@@ -716,15 +716,22 @@ function bindSimulator(documentRef, fetchImpl) {
             ? app.outputs.filter(field => field?.visible !== false && field?.key)
             : [];
         const outputSwitch = app.outputSwitch && typeof app.outputSwitch === "object"
-            && Array.isArray(app.outputSwitch.options) && app.outputSwitch.options.length
+            && Array.isArray(app.outputSwitch.options)
             ? app.outputSwitch
             : null;
-        if (visibleOutputs.length || outputSwitch) {
+        // Only offer output types that have a wired writer branch (the contract
+        // marks the rest visible:false). With no real choice, output silently
+        // follows the input type and we skip the control entirely.
+        const visibleOutputOptions = outputSwitch
+            ? outputSwitch.options.filter(option => option && option.visible !== false)
+            : [];
+        const showOutputSwitch = Boolean(outputSwitch) && visibleOutputOptions.length > 0;
+        if (visibleOutputs.length || showOutputSwitch) {
             const outputHeading = documentRef.createElement("div");
             outputHeading.className = "form-heading";
             outputHeading.textContent = "Output";
             appForm.appendChild(outputHeading);
-            if (outputSwitch) {
+            if (showOutputSwitch) {
                 // Independent output type: lets an EXR source write a QT movie.
                 // "Same as input" keeps the writer type following the source.
                 const outLabel = documentRef.createElement("label");
@@ -740,8 +747,7 @@ function bindSimulator(documentRef, fetchImpl) {
                     if (followsInput) opt.selected = true;
                     outSelect.appendChild(opt);
                 }
-                for (const option of outputSwitch.options) {
-                    if (option?.visible === false) continue;
+                for (const option of visibleOutputOptions) {
                     const opt = documentRef.createElement("option");
                     opt.value = String(option.value);
                     opt.textContent = option.label || String(option.value);

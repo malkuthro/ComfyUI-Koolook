@@ -169,6 +169,14 @@ can offer a "Same as input" choice. The frontend must resolve "Same as input" to
 the concrete input-switch value **before submitting** `output_switch` — the
 runner validates the submitted value against the concrete option list.
 
+Each `outputSwitch` option carries a `visible` flag: at publish time the
+publisher marks an output type visible only when the `output_switch`-driven
+router has a wired writer branch for it (from the execution map's `writerNodes`).
+The frontend should render only visible options, so users can't pick an output
+type that would write nothing. When no router is driven by the output switch,
+every concrete option is `visible: false` (output can only follow input), and
+the frontend should show just "Same as input" — or omit the control entirely.
+
 ### `Koolook_PublishRouter`
 
 Placed in the `Koolook Output` area when one setup switch selects between
@@ -352,6 +360,10 @@ Implemented:
 - `setupSurface.app` support in the server schema and runner summaries.
 - Switch-selected writer execution maps let the runner prune unselected writer
   branches and report the selected result/writer output.
+- Independent output type: `Koolook_PublishOutput.output_mode`/`switch`, the
+  `setupSurface.app.outputSwitch` surface, `output_switch`-keyed execution-map
+  routers, result-path reporting that follows the output switch, and output-type
+  options auto-hidden when their writer branch is unwired.
 - Publish contract nodes:
   - `Koolook_PublishInput`
   - `Koolook_PublishOutput`
@@ -366,10 +378,6 @@ Remaining gaps:
 - The simulator is still a maintainer harness rather than the polished
   production external app, but the normal path is now the app-surface form
   instead of raw JSON.
-- Only output types that have a wired writer branch should be offered as
-  selectable output options (the execution map already records `writerNodes`
-  per branch; the frontend could hide branches with none). Today an unwired
-  output type fails loudly at run validation rather than being hidden up front.
 
 ## Non-Goals
 
