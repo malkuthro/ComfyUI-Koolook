@@ -1228,12 +1228,13 @@ def test_publish_setup_stores_execution_map_from_publish_router() -> None:
             }
         ],
     }
-    # All three writer branches are wired, so all three output types are offered;
-    # output_mode was "Same as input" (not a concrete wired type) so the default
-    # falls back to the first wired type (EXR).
+    # All three writer branches are wired and all three input types are
+    # selectable, so "Same as input" is safe (format-preserving) and stays the
+    # default; every output type is offered.
     output_switch = setup["setupSurface"]["app"]["outputSwitch"]
     assert [opt["visible"] for opt in output_switch["options"]] == [True, True, True]
-    assert output_switch["default"] == 0
+    assert output_switch["sameAsInput"] is True
+    assert output_switch["default"] == -1
 
 
 def test_publish_setup_execution_map_uses_output_switch_when_router_is_output_driven() -> None:
@@ -1428,7 +1429,9 @@ def test_publish_setup_auto_detects_output_from_input_wired_router() -> None:
     output_switch = setup["setupSurface"]["app"]["outputSwitch"]
     visible_by_label = {opt["label"]: opt["visible"] for opt in output_switch["options"]}
     assert visible_by_label == {"EXR": False, "QT": True, "Img": False}
-    # 'Same as input' would resolve to EXR (no writer), so default falls to QT.
+    # EXR/Img inputs have no matching output writer, so "Same as input" is unsafe
+    # and dropped; the control offers only QT and defaults to it.
+    assert output_switch["sameAsInput"] is False
     assert output_switch["default"] == 1
 
 

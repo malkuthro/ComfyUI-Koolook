@@ -421,15 +421,18 @@ def _reconcile_output_switch(
     setup: dict[str, Any],
     execution_map: dict[str, Any],
 ) -> None:
-    """Expose only the output types that have a wired writer branch, and pick a
-    valid default.
+    """Expose only the output types that have a wired writer branch, decide
+    whether "Same as input" is safe, and pick a valid default.
 
     A ``Koolook_PublishRouter`` is the output selector; the execution map records
     ``writerNodes`` per branch. An output type is offered (``visible``) when some
-    output router has a non-empty writer branch for it. The default is the
-    author's ``output_mode`` widget when that names a wired type; otherwise the
-    first wired type, so an EXR-in / QT-only setup defaults to QT instead of a
-    "Same as input" that would resolve to an unwritable EXR.
+    output router has a non-empty writer branch for it.
+
+    "Same as input" is only offered (``sameAsInput``) when **every selectable
+    input type has a wired output writer** — otherwise it could resolve to a type
+    with no writer (e.g. an EXR source in a setup that only wired a QT writer),
+    so it is dropped. The default is the author's ``output_mode`` when that names
+    a wired type; else "Same as input" when safe; else the first wired type.
     """
     app = setup.get("setupSurface", {}).get("app")
     if not isinstance(app, dict):
@@ -468,12 +471,31 @@ def _reconcile_output_switch(
             continue
         option["visible"] = option.get("value") in available
 
-    # Default: keep the author's concrete choice when it's wired, else the first
-    # wired type. Only touch the default when there is a wired type to point at.
-    if ordered_available:
-        current_default = output_switch.get("default")
-        if current_default not in available:
-            output_switch["default"] = ordered_available[0]
+    # "Same as input" is safe only when every input type the user can pick has a
+    # matching wired output writer (a format-preserving setup). Otherwise it
+    # could select an unwritable type, so drop it.
+    input_switch = app.get("switch")
+    selectable_inputs: set[int] = set()
+    if isinstance(input_switch, dict) and isinstance(input_switch.get("options"), list):
+        for option in input_switch["options"]:
+            if (
+                isinstance(option, dict)
+                and option.get("visible") is not False
+                and isinstance(option.get("value"), int)
+            ):
+                selectable_inputs.add(option["value"])
+    same_as_input_safe = bool(selectable_inputs) and selectable_inputs <= available
+    output_switch["sameAsInput"] = same_as_input_safe
+
+    # Default: keep the author's concrete wired choice; else "Same as input" when
+    # safe; else the first wired type.
+    current_default = output_switch.get("default")
+    if isinstance(current_default, int) and current_default in available:
+        pass
+    elif same_as_input_safe:
+        output_switch["default"] = PUBLISH_OUTPUT_SAME_AS_INPUT
+    elif ordered_available:
+        output_switch["default"] = ordered_available[0]
 
 
 def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:

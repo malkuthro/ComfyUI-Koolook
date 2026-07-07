@@ -180,12 +180,18 @@ have writers become the offered output types; the app user picks among them.
 Each `outputSwitch` option carries a `visible` flag: the publisher marks an
 output type visible only when some router has a wired writer branch for it (from
 the execution map's `writerNodes`). The frontend renders only visible options,
-so a user can't pick an output type that would write nothing. The `default` is
-the author's `output_mode` widget when it names a wired type, otherwise the first
-wired type — so an EXR-in / QT-only setup defaults to QT rather than a "Same as
-input" that would resolve to an unwritable EXR. `output_mode`/`input_switch` on
-`Koolook_PublishOutput` remain optional: `output_mode` sets the preferred
-default, and nothing needs to be wired for the output control to appear.
+so a user can't pick an output type that would write nothing.
+
+`sameAsInput` is now conditional: "Same as input" is offered **only when every
+selectable input type has a matching wired output writer** (a format-preserving
+setup — EXR→EXR, QT→QT, Img→Img all wired). Otherwise it could resolve to a type
+with no writer (an EXR source in a QT-only setup), so it is dropped and the
+control offers only the concrete wired types. The `default` is the author's
+`output_mode` widget when it names a wired type; else "Same as input" when safe;
+else the first wired type — so an EXR-in / QT-only setup defaults to QT.
+`output_mode`/`input_switch` on `Koolook_PublishOutput` remain optional:
+`output_mode` sets the preferred default, and nothing needs wiring for the
+output control to appear.
 
 ### `Koolook_PublishRouter`
 
