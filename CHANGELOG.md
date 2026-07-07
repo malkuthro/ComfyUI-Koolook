@@ -7,20 +7,23 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
-- **Independent output type for published setups.** `Koolook_PublishOutput`
-  gains an `output_mode` control (`Same as input` / `EXR` / `QT` / `Img`), an
-  `input_switch` input, and a `switch` output so a setup can read one type and
-  write another (e.g. EXR sequence in, QT movie out). `Same as input` (default)
-  passes the wired input switch through, so existing setups are unchanged. The
-  inferred app surface exposes `setupSurface.app.outputSwitch`; the execution
-  map tags writer routers with `switchKey` `switch` or `output_switch`, and the
-  runner prunes/validates writer branches by the chosen output type. The setup
-  runner simulator renders an "Output type" control (with a "Same as input"
-  option) and only offers output types whose writer branch is actually wired
-  (unwired types are marked `visible: false` at publish time from the execution
-  map's `writerNodes`). A mode-switched `Koolook_PublishResult` reports the
-  branch of whichever switch drives its result index-switch (input or output),
-  so a divergent EXR-in/QT-out setup reports the QT movie path it actually wrote.
+- **Independent output type for published setups.** A `Koolook_PublishRouter`
+  is auto-detected as the setup's **output selector**: whichever writer branches
+  you wire become the app's "Output type" options, and the external user can pick
+  any of them (defaulting to follow-input, or the `Koolook_PublishOutput.output_mode`
+  widget). No dedicated output-switch wiring is required — the router is bound to
+  the output control regardless of what its `selector` is wired from. So a setup
+  can read one type and write another (EXR sequence in, QT movie out).
+  `Koolook_PublishOutput` gains `output_mode` / `input_switch` / `switch` for
+  authors who want explicit control, but they're optional. The app surface
+  exposes `setupSurface.app.outputSwitch`; output types with no wired writer are
+  hidden (`visible: false` from the execution map's `writerNodes`), and the
+  default falls back to the first wired type so an EXR-in/QT-only setup defaults
+  to QT. The runner prunes/validates writer branches by the chosen output type,
+  and a mode-switched `Koolook_PublishResult` reports the branch of whichever
+  switch drives its result index-switch, so a divergent EXR-in/QT-out setup
+  reports the QT movie path it actually wrote. The setup runner simulator renders
+  the "Output type" control and offers only wired types.
 - **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
   `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
   the next-free-`vNNN` disk scan runs every queue instead of being memoized on

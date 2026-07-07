@@ -169,13 +169,23 @@ can offer a "Same as input" choice. The frontend must resolve "Same as input" to
 the concrete input-switch value **before submitting** `output_switch` — the
 runner validates the submitted value against the concrete option list.
 
-Each `outputSwitch` option carries a `visible` flag: at publish time the
-publisher marks an output type visible only when the `output_switch`-driven
-router has a wired writer branch for it (from the execution map's `writerNodes`).
-The frontend should render only visible options, so users can't pick an output
-type that would write nothing. When no router is driven by the output switch,
-every concrete option is `visible: false` (output can only follow input), and
-the frontend should show just "Same as input" — or omit the control entirely.
+A `Koolook_PublishRouter` is inherently the **output selector** — its slots are
+named EXR/QT/Img/Prompt. So when a setup exposes an output switch, the publisher
+auto-binds every router to it (keying the execution-map router with `switchKey:
+"output_switch"`) regardless of what the router's `selector` is physically wired
+from. The author does **not** need to wire `Koolook_PublishOutput.switch` into
+the router — just wire the writers to the router's branches. Whatever branches
+have writers become the offered output types; the app user picks among them.
+
+Each `outputSwitch` option carries a `visible` flag: the publisher marks an
+output type visible only when some router has a wired writer branch for it (from
+the execution map's `writerNodes`). The frontend renders only visible options,
+so a user can't pick an output type that would write nothing. The `default` is
+the author's `output_mode` widget when it names a wired type, otherwise the first
+wired type — so an EXR-in / QT-only setup defaults to QT rather than a "Same as
+input" that would resolve to an unwritable EXR. `output_mode`/`input_switch` on
+`Koolook_PublishOutput` remain optional: `output_mode` sets the preferred
+default, and nothing needs to be wired for the output control to appear.
 
 ### `Koolook_PublishRouter`
 

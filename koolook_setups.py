@@ -413,22 +413,23 @@ def _build_draft_setup(
     execution_map = _build_execution_map(setup)
     if execution_map is not None:
         setup["executionMap"] = execution_map
-        _reconcile_output_switch_visibility(setup, execution_map)
+        _reconcile_output_switch(setup, execution_map)
     return setup
 
 
-def _reconcile_output_switch_visibility(
+def _reconcile_output_switch(
     setup: dict[str, Any],
     execution_map: dict[str, Any],
 ) -> None:
-    """Hide output-type options that have no wired writer branch.
+    """Expose only the output types that have a wired writer branch, and pick a
+    valid default.
 
-    The external app should only offer output types that will actually write a
-    file. The execution map records ``writerNodes`` per branch for each router;
-    an output type is available when an ``output_switch``-driven router has a
-    non-empty writer branch for it. When no router is driven by the output
-    switch, output type can only follow the input type, so every concrete option
-    is hidden and the frontend is left with just the "Same as input" choice.
+    A ``Koolook_PublishRouter`` is the output selector; the execution map records
+    ``writerNodes`` per branch. An output type is offered (``visible``) when some
+    output router has a non-empty writer branch for it. The default is the
+    author's ``output_mode`` widget when that names a wired type; otherwise the
+    first wired type, so an EXR-in / QT-only setup defaults to QT instead of a
+    "Same as input" that would resolve to an unwritable EXR.
     """
     app = setup.get("setupSurface", {}).get("app")
     if not isinstance(app, dict):
@@ -441,13 +442,11 @@ def _reconcile_output_switch_visibility(
         return
 
     available: set[int] = set()
-    has_output_router = False
     routers = execution_map.get("routers") if isinstance(execution_map, dict) else None
     if isinstance(routers, list):
         for router in routers:
             if not isinstance(router, dict) or router.get("switchKey") != "output_switch":
                 continue
-            has_output_router = True
             branches = router.get("branches")
             if not isinstance(branches, dict):
                 continue
@@ -459,11 +458,22 @@ def _reconcile_output_switch_visibility(
                 if isinstance(writer_nodes, list) and writer_nodes and isinstance(value, int):
                     available.add(value)
 
+    ordered_available = [
+        option.get("value")
+        for option in options
+        if isinstance(option, dict) and option.get("value") in available
+    ]
     for option in options:
         if not isinstance(option, dict):
             continue
-        value = option.get("value")
-        option["visible"] = bool(has_output_router and isinstance(value, int) and value in available)
+        option["visible"] = option.get("value") in available
+
+    # Default: keep the author's concrete choice when it's wired, else the first
+    # wired type. Only touch the default when there is a wired type to point at.
+    if ordered_available:
+        current_default = output_switch.get("default")
+        if current_default not in available:
+            output_switch["default"] = ordered_available[0]
 
 
 def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
@@ -652,18 +662,11 @@ def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(api_prompt, dict):
         return None
     app = setup.get("setupSurface", {}).get("app", {})
-    # A router may be driven by the input switch (source type) OR the output
-    # switch (writer type). Collect both so an EXR-in/QT-out setup wires its
-    # writer router from Koolook_PublishOutput.switch and still gets a map.
-    candidate_switches = [
-        switch
-        for switch in (
-            app.get("switch") if isinstance(app, dict) else None,
-            app.get("outputSwitch") if isinstance(app, dict) else None,
-        )
-        if isinstance(switch, dict) and isinstance(switch.get("target"), dict)
-    ]
-    if not candidate_switches:
+    input_switch = app.get("switch") if isinstance(app, dict) else None
+    output_switch = app.get("outputSwitch") if isinstance(app, dict) else None
+    has_output_switch = isinstance(output_switch, dict) and isinstance(output_switch.get("target"), dict)
+    has_input_switch = isinstance(input_switch, dict) and isinstance(input_switch.get("target"), dict)
+    if not has_output_switch and not has_input_switch:
         return None
     output_surface_ids = _setup_output_surface_node_ids(setup)
     if not output_surface_ids:
@@ -677,17 +680,18 @@ def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
             continue
         selector_ref = inputs.get("selector")
         payload_ref = inputs.get("payload")
-        matched_switch = next(
-            (
-                switch
-                for switch in candidate_switches
-                if _api_ref_matches_target_output(
-                    selector_ref, switch["target"], api_prompt, "switch"
-                )
-            ),
-            None,
-        )
-        if matched_switch is None:
+        # A Koolook_PublishRouter is inherently an OUTPUT selector — its slots
+        # are named EXR/QT/Img/Prompt. So when the setup exposes an output
+        # switch, key every router to it and let the app user pick the output
+        # type (defaulting to follow-input), regardless of what the selector is
+        # physically wired from. The wired branches become the offered output
+        # types. Legacy setups with no output switch fall back to the input
+        # switch, and only if the selector is actually wired from it.
+        if has_output_switch:
+            switch_key = str(output_switch.get("key", "output_switch"))
+        elif _api_ref_matches_target_output(selector_ref, input_switch["target"], api_prompt, "switch"):
+            switch_key = str(input_switch.get("key", "switch"))
+        else:
             continue
         branches: dict[str, dict[str, Any]] = {}
         for value, label, _input_key in PUBLISH_INPUT_MODES:
@@ -703,10 +707,11 @@ def _build_execution_map(setup: dict[str, Any]) -> dict[str, Any] | None:
             }
         router: dict[str, Any] = {
             "node": str(node_id),
-            "switchKey": str(matched_switch.get("key", "switch")),
-            "selector": {"node": str(selector_ref[0]), "output": int(selector_ref[1])},
+            "switchKey": switch_key,
             "branches": branches,
         }
+        if _is_api_ref(selector_ref):
+            router["selector"] = {"node": str(selector_ref[0]), "output": int(selector_ref[1])}
         if _is_api_ref(payload_ref):
             router["payload"] = {"node": str(payload_ref[0]), "output": int(payload_ref[1])}
         routers.append(router)

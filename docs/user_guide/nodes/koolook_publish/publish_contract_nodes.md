@@ -64,19 +64,14 @@ The publisher records nearby nodes for review, but only recognized
 
 ### `Koolook_PublishRouter`
 
-Wire the workflow's main payload into `payload`, and wire the `selector` from
-**one of two switches** depending on whether output type should follow input
-type or be chosen independently:
+The router **is** the output selector. Wire the workflow's main payload into
+`payload`, wire something into `selector` (typically the input switch — its
+value is the "Same as input" default), and connect each output slot to the
+writer branch for that type:
 
 ```text
-# Output type follows input type (simplest):
-Koolook_PublishInput.switch  -> Koolook_PublishRouter.selector
-
-# Output type chosen independently of the source (EXR in, QT out):
-Koolook_PublishInput.switch  -> Koolook_PublishOutput.input_switch
-Koolook_PublishOutput.switch -> Koolook_PublishRouter.selector
-
 workflow payload -> Koolook_PublishRouter.payload
+Koolook_PublishInput.switch -> Koolook_PublishRouter.selector   # default follows input
 
 Koolook_PublishRouter.EXR -> EXR writer branch
 Koolook_PublishRouter.QT -> video writer branch
@@ -84,10 +79,13 @@ Koolook_PublishRouter.Img -> image writer branch
 Koolook_PublishRouter.Prompt -> prompt/no-op branch if needed
 ```
 
-When the setup runs from the external app, Koolook keeps the selected writer
-branch and prunes the unselected branches from the queued prompt. When the
-router is driven by `Koolook_PublishOutput.switch`, that pruning follows the
-independent **Output type** control instead of the input type.
+Whichever branches you wire to writers become the **Output type** options the
+external app offers — a user can override to any wired type, defaulting to the
+input type (or the `Koolook_PublishOutput.output_mode` widget if you set one).
+You do **not** need to wire `Koolook_PublishOutput.switch` anywhere; the router
+is auto-detected as the output control. Put the writer nodes inside the
+`Koolook Output` group so they're recognized. When the setup runs, Koolook keeps
+the chosen writer branch and prunes the rest.
 
 ### `Koolook_PublishResult`
 
