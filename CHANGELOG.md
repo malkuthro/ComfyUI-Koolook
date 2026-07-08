@@ -39,6 +39,18 @@ The format is inspired by Keep a Changelog and SemVer.
   reproduces stock behavior. Ramp math is unit-tested; the model wiring is
   validated by rendering against a live LTX 2.3 AV model.
 
+### Changed
+- **Sidebar Load now names the workflow tab.** Loading a workflow from the
+  Kforge Labs sidebar binds the resulting Comfy tab to the workflow's own name
+  (e.g. `MyWorkflow`) instead of leaving a generic `Unsaved Workflow` draft.
+  The name is de-duped before binding: against Comfy's persisted
+  `workflows/<name>.json` files (avoiding the autosave **409 Conflict** the old
+  anonymous load sidestepped) and against currently-open tabs. Because the
+  temporary-load graph id is derived from that same resolved name, a unique
+  open name yields a unique graph id — so two open tabs can never collide on a
+  shared id (the ComfyUI landmine behind #166). Tabs stay temporary/unsaved
+  until the user explicitly saves.
+
 ### Fixed
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
