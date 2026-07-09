@@ -176,6 +176,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "koolook_setups.py",
     "koolook_versioning.py",
     "forks",
+    "matte",
     "video_formats",
     "web",
 )
