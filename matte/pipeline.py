@@ -17,7 +17,7 @@ The model WEIGHTS it loads (the VideoMaMa UNet, and SVD's VAE) carry their own
 licenses (CC BY-NC 4.0 and the Stability Community License respectively); this
 code does not redistribute them and the end user is responsible for compliance.
 
-MIT licensed — see LICENSE.
+Licensed under GPL-3.0 — see the repository LICENSE.
 """
 
 import numpy as np

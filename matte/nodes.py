@@ -129,28 +129,27 @@ class KoolookMatteLoader:
 
 
 def _ensure_2d_mask(mask_np: np.ndarray) -> np.ndarray:
-    """Ensure mask array is 2D (H, W) for PIL grayscale mode.
+    """Reduce a mask array to 2D (H, W) for PIL grayscale mode.
 
-    Some mask sources (e.g. MatAnyone) output masks with extra dimensions
-    like [C, H, W] or [H, W, C] instead of the standard ComfyUI [H, W].
-    This helper squeezes/removes those extra dimensions.
+    Handles the standard ComfyUI ``[H, W]`` plus the extra-dim layouts some
+    sources emit (e.g. MatAnyone ``[C, H, W]`` / ``[H, W, C]``). Singleton dims
+    are squeezed first; a genuine multi-channel mask has identical channels, so
+    we collapse to the first. Anything that can't be unambiguously reduced
+    raises rather than silently returning the wrong geometry (e.g. the old code
+    turned ``[H, W, 3]`` into ``[W, 3]``).
     """
+    mask_np = np.squeeze(mask_np)          # [1,H,W] / [H,W,1] / [1,1,H,W] -> ...
     if mask_np.ndim == 2:
         return mask_np
     if mask_np.ndim == 3:
-        # [1, H, W] -> [H, W]  or  [H, W, 1] -> [H, W]
-        if mask_np.shape[0] == 1:
-            return mask_np[0]
-        if mask_np.shape[-1] == 1:
+        if mask_np.shape[-1] in (3, 4):    # [H, W, C]  (channels last)
             return mask_np[:, :, 0]
-    # General fallback: squeeze all singleton dimensions
-    mask_np = np.squeeze(mask_np)
-    if mask_np.ndim == 2:
-        return mask_np
-    # If still not 2D, take first slice along leading dims until 2D
-    while mask_np.ndim > 2:
-        mask_np = mask_np[0]
-    return mask_np
+        if mask_np.shape[0] in (3, 4):     # [C, H, W]  (channels first)
+            return mask_np[0]
+    raise ValueError(
+        f"_ensure_2d_mask: cannot reduce mask of shape {mask_np.shape} to 2D; "
+        "expected [H,W], [H,W,C], [C,H,W] or singleton-padded variants."
+    )
 
 
 class KoolookMatteSampler:
@@ -318,6 +317,9 @@ class KoolookMatteSampler:
             b = a > threshold
             union = b if union is None else (union | b)
         if union is None or not union.any():
+            print("[KoolookMatte] guide mask is EMPTY across all frames -> "
+                  "falling back to full-frame. If unexpected, check the "
+                  "segmentation (a black matte usually means an empty guide).")
             return None
         rows = np.where(union.any(axis=1))[0]
         cols = np.where(union.any(axis=0))[0]
@@ -420,7 +422,11 @@ class KoolookMatteSampler:
             # Run the windowed inference. On a CUDA OOM we back off on RESOLUTION, NOT
             # window_size — the temporal window stays full so mattes don't start
             # flickering. A sharp lower-res matte beats a temporally-inconsistent one.
-            oom_types = (torch.cuda.OutOfMemoryError,) if hasattr(torch.cuda, "OutOfMemoryError") else (RuntimeError,)
+            # Catch RuntimeError broadly (torch.cuda.OutOfMemoryError subclasses
+            # it, but some OOMs — cuBLAS/cuDNN/older paths — raise a plain
+            # RuntimeError: CUDA out of memory). The message guard below filters
+            # out any non-OOM RuntimeError so we never mask a real bug.
+            oom_types = (RuntimeError,)
             min_side_floor = 256
             while True:
                 cond_frames, mask_frames = _build_frames(target_w, target_h)

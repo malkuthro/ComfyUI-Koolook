@@ -1,6 +1,7 @@
 # Koolook Matte — pipeline internals, fidelity, and debugging
 
-`matte/` is a first-party, MIT-spirit **clean reimplementation** of the published
+`matte/` is a first-party (GPL-3.0, like the rest of the repo) **clean
+reimplementation** of the published
 **VideoMaMa** one-step, mask-guided SVD matting method. It loads (never bundles)
 the SVD base VAE + the VideoMaMa-fine-tuned UNet and runs a single denoising step
 at `timestep=1` with CLIP cross-attention zeroed, then decodes the latents to a
