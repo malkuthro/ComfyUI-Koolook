@@ -21,8 +21,9 @@ The format is inspired by Keep a Changelog and SemVer.
   range; a noise-level, not a step count). An optional `sigmas` input + an `info`
   STRING output report which steps that level actually spans in-graph (the level
   is curve-consistent, the step count it covers depends on the schedule); the same
-  line is logged each run. Pure `soften_gain` + `steps_in_range` unit-tested;
-  model wiring render-validated.
+  line is logged each run, and the wired `sigmas` doubles as the runtime fallback
+  anchor when the run doesn't supply usable sigmas. Pure `soften_gain` +
+  `steps_in_range` unit-tested; model wiring render- and unit-validated.
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
   commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
