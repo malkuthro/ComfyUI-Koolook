@@ -170,8 +170,14 @@ class LTXKeyframeSoftenSchedule:
             return (m, info)
 
         prev_fn = m.model_options.get("denoise_mask_function")
-        state = {"ref": None}
-        diag = [False]
+        # Fallback anchor from the connected preview SIGMAS (if wired). Used only
+        # when a run omits extra_options["sigmas"] — gives the wired input a real
+        # runtime role, not just the info readout.
+        try:
+            connected_ref = float(sigmas[0]) if sigmas is not None else None
+        except Exception:
+            connected_ref = None
+        logged = [False]
 
         def denoise_mask_function(sigma, denoise_mask, extra_options=None):
             if prev_fn is not None:
@@ -179,22 +185,25 @@ class LTXKeyframeSoftenSchedule:
             if denoise_mask is None:
                 return denoise_mask
 
-            if state["ref"] is None:
-                rt = (extra_options or {}).get("sigmas")
+            # Anchor = the schedule's START sigma, read FRESH each step from the
+            # runtime sigmas. It's constant within a run (no per-step drift) but
+            # re-derives itself if this patched clone is later run under a
+            # different sampler schedule — so no stale cached anchor, and a run
+            # that momentarily lacks runtime sigmas can never latch the node
+            # permanently off (the old cache-0.0 path). Falls back to the wired
+            # SIGMAS when the runtime doesn't supply them.
+            rt = (extra_options or {}).get("sigmas")
+            ref = None
+            if rt is not None:
                 try:
-                    state["ref"] = float(rt[0])
-                    count, n_steps = steps_in_range(rt, soften_range)
-                    log.info(
-                        "[LTXKeyframeSoftenSchedule] ease %.2f, top %.0f%% of range "
-                        "= first %d of %d steps", max_soften, soften_range * 100, count, n_steps,
-                    )
-                except Exception as _e:
-                    state["ref"] = 0.0
-                    log.warning("[LTXKeyframeSoftenSchedule] no run sigmas (%s); off.", _e)
-
-            ref = state["ref"]
+                    ref = float(rt[0])
+                except Exception:
+                    ref = None
+            if ref is None:
+                ref = connected_ref
             if not ref or ref <= 0.0:
                 return denoise_mask
+
             try:
                 s = float(sigma.max()) if hasattr(sigma, "max") else float(sigma)
             except Exception:
@@ -202,13 +211,21 @@ class LTXKeyframeSoftenSchedule:
             gain = soften_gain(s, ref, soften_range, max_soften)
             if gain <= 0.0:
                 return denoise_mask
-            if not diag[0]:
-                diag[0] = True
+            if not logged[0]:
+                logged[0] = True
                 nested = getattr(denoise_mask, "is_nested", False)
+                try:
+                    count, n_steps = steps_in_range(
+                        rt if rt is not None else [ref, 0.0], soften_range
+                    )
+                except Exception:
+                    count, n_steps = 0, 0
                 log.info(
-                    "[LTXKeyframeSoftenSchedule] active (%s)%s.",
+                    "[LTXKeyframeSoftenSchedule] active (%s)%s — ease %.2f, top %.0f%% "
+                    "of range = first %d of %d steps",
                     "A/V" if nested else "video-only",
                     " — audio untouched" if nested else "",
+                    max_soften, soften_range * 100, count, n_steps,
                 )
             return soften_denoise_mask(denoise_mask, gain)
 
