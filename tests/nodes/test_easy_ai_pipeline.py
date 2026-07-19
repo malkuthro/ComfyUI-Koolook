@@ -15,6 +15,7 @@ end-to-end ``generate_pipeline`` behavior so the bug can't regress.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -771,3 +772,56 @@ class TestStringVersionField:
         assert version_string == ""
         assert output_directory == f"{canonical}/shot"
         assert name == "shot.exr"
+
+
+# ---------------------------------------------------------------------------
+# IS_CHANGED — cache invalidation for auto-versioning
+# ---------------------------------------------------------------------------
+#
+# ``version="auto"`` (or ``"next"``) resolves the next free vNNN by scanning
+# the output folder on disk. That result depends on filesystem state, but
+# every widget input is a constant — so without an IS_CHANGED signal ComfyUI
+# memoizes the node, runs the scan exactly once per session, and freezes on
+# the first run's path. The version never advances and the downstream save
+# node then refuses to overwrite the already-written file. IS_CHANGED must
+# report the node as perpetually dirty while auto-versioning is active, and
+# stay cacheable for literal tokens.
+
+
+class TestIsChangedAutoVersion:
+    @pytest.mark.parametrize("token", ["auto", "next", "AUTO", "Next", "  auto  "])
+    def test_auto_tokens_force_rerun(self, token: str):
+        """Auto-detection modes must return NaN so ComfyUI treats the node as
+        always-dirty and re-scans the disk on every queue."""
+        result = EasyAIPipeline.IS_CHANGED(version=token)
+        assert isinstance(result, float) and math.isnan(result), (
+            f"version={token!r} should force a re-run (NaN), got {result!r}"
+        )
+
+    @pytest.mark.parametrize("token", ["v001", "final", "2", "", "v007"])
+    def test_literal_tokens_stay_cacheable(self, token: str):
+        """Explicit/literal versions must NOT return NaN — ComfyUI's normal
+        input hashing already invalidates the node when the token changes, so
+        forcing a re-run every queue would just waste a rescan."""
+        result = EasyAIPipeline.IS_CHANGED(version=token)
+        assert not (isinstance(result, float) and math.isnan(result)), (
+            f"version={token!r} should stay cacheable, got NaN"
+        )
+
+    def test_full_input_kwargs_accepted(self):
+        """ComfyUI calls IS_CHANGED with the node's full input set as kwargs;
+        the signature must tolerate all of them, not just ``version``."""
+        result = EasyAIPipeline.IS_CHANGED(
+            shot_duration=81,
+            seed_value=1,
+            instruction="(ignored)",
+            base_directory_path="n:/foo",
+            extension=".exr",
+            shot_name="shot",
+            ai_method="",
+            version="auto",
+            disable_versioning=False,
+            enable_overwrite=False,
+            no_subfolders=False,
+        )
+        assert math.isnan(result)

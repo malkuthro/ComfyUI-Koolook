@@ -241,13 +241,20 @@ def _declared_input_fields(setup: dict[str, Any]) -> dict[str, dict[str, Any]]:
             target = field.get("target")
             if isinstance(key, str) and key and isinstance(target, dict):
                 fields.setdefault(key, field)
-        switch = app.get("switch")
-        if isinstance(switch, dict):
-            key = switch.get("key")
-            target = switch.get("target")
-            if isinstance(key, str) and key and isinstance(target, dict):
-                fields.setdefault(key, switch)
+        for switch_key in ("switch", "outputSwitch"):
+            switch = app.get(switch_key)
+            if isinstance(switch, dict):
+                key = switch.get("key")
+                target = switch.get("target")
+                if isinstance(key, str) and key and isinstance(target, dict):
+                    fields.setdefault(key, switch)
     return fields
+
+
+def _is_switch_field(field: Any) -> bool:
+    """A declared field is a switch (input type OR output type) when it carries
+    an ``options`` list — the two output/input path fields never do."""
+    return isinstance(field, dict) and isinstance(field.get("options"), list)
 
 
 def _validate_run_inputs(input_fields: dict[str, dict[str, Any]], inputs: dict[str, Any]) -> list[str]:
@@ -257,7 +264,7 @@ def _validate_run_inputs(input_fields: dict[str, dict[str, Any]], inputs: dict[s
             errors.append(f"input '{key}' is not declared by this setup")
             continue
         field = input_fields[key]
-        if field.get("key") == "switch" and _switch_option_value(field, inputs[key]) is None:
+        if _is_switch_field(field) and _switch_option_value(field, inputs[key]) is None:
             errors.append(_switch_value_error(key, field))
     for key, field in input_fields.items():
         if field.get("required") is True and key not in inputs:
@@ -266,7 +273,7 @@ def _validate_run_inputs(input_fields: dict[str, dict[str, Any]], inputs: dict[s
 
 
 def _prompt_value_for_field(field: dict[str, Any], value: Any) -> Any:
-    if field.get("key") != "switch":
+    if not _is_switch_field(field):
         return value
     selected_value = _switch_option_value(field, value)
     for option in field.get("options", []):
@@ -283,6 +290,11 @@ def _switch_option_value(switch: dict[str, Any], selected: Any) -> int | None:
     for option in switch.get("options", []):
         if not isinstance(option, dict):
             continue
+        # Hidden options (e.g. output types with no wired writer branch) are
+        # not selectable through the API either — the frontend never offers
+        # them, and accepting one here would queue a run that writes nothing.
+        if option.get("visible") is False:
+            continue
         value = option.get("value")
         if isinstance(value, bool) or not isinstance(value, int):
             continue
@@ -296,7 +308,7 @@ def _switch_option_value(switch: dict[str, Any], selected: Any) -> int | None:
 def _switch_value_error(key: str, switch: dict[str, Any]) -> str:
     choices: list[str] = []
     for option in switch.get("options", []):
-        if not isinstance(option, dict):
+        if not isinstance(option, dict) or option.get("visible") is False:
             continue
         value = option.get("value")
         label = option.get("label")
@@ -512,6 +524,23 @@ def _prune_prompt_for_execution_map(
     )
 
 
+def _app_switch_by_key(app: Any, key: Any) -> dict[str, Any] | None:
+    """Return the app switch (input or output) whose ``key`` matches.
+
+    Routers are tagged with a ``switchKey`` at publish time; a writer router
+    driven by the output-type control carries ``output_switch`` while a
+    source router carries ``switch``. Resolve either so validation and pruning
+    read the right submitted value.
+    """
+    if not isinstance(app, dict) or not isinstance(key, str):
+        return None
+    for candidate_key in ("switch", "outputSwitch"):
+        switch = app.get(candidate_key)
+        if isinstance(switch, dict) and switch.get("key") == key:
+            return switch
+    return None
+
+
 def _execution_map_selected_value(
     setup: dict[str, Any],
     router: dict[str, Any],
@@ -519,9 +548,9 @@ def _execution_map_selected_value(
 ) -> int | None:
     key = router.get("switchKey")
     app = setup.get("setupSurface", {}).get("app", {})
-    switch = app.get("switch") if isinstance(app, dict) else None
-    if isinstance(switch, dict) and switch.get("key") == key:
-        return _selected_switch_value(switch, run_inputs)
+    switch = _app_switch_by_key(app, key)
+    if isinstance(switch, dict):
+        return _selected_switch_value(switch, run_inputs, app)
     selected = run_inputs.get(key) if isinstance(key, str) else None
     if isinstance(selected, bool):
         return None
@@ -542,15 +571,15 @@ def _validate_execution_map_inputs(setup: dict[str, Any], run_inputs: dict[str, 
     api_prompt = setup.get("apiPrompt")
     prompt_node_ids = set(api_prompt) if isinstance(api_prompt, dict) else set()
     app = setup.get("setupSurface", {}).get("app", {})
-    switch = app.get("switch") if isinstance(app, dict) else None
     errors: list[str] = []
     for router in routers:
         if not isinstance(router, dict):
             continue
         selected_value = _execution_map_selected_value(setup, router, run_inputs)
         key = router.get("switchKey")
+        switch = _app_switch_by_key(app, key)
         if selected_value is None:
-            if isinstance(switch, dict) and switch.get("key") == key and isinstance(key, str):
+            if isinstance(switch, dict) and isinstance(key, str):
                 if key not in run_inputs:
                     errors.append(_switch_value_error(key, switch))
             elif isinstance(key, str):
@@ -677,19 +706,18 @@ def _selected_result_switches(
     api_prompt: dict[str, Any],
     run_inputs: dict[str, Any],
 ) -> dict[str, tuple[str, int]]:
-    app = setup.get("setupSurface", {}).get("app", {})
-    if not isinstance(app, dict):
-        return {}
-    switch = app.get("switch")
-    if not isinstance(switch, dict):
-        return {}
-    selected_value = _selected_switch_value(switch, run_inputs)
-    if selected_value is None:
-        return {}
     selected: dict[str, tuple[str, int]] = {}
     for field in _app_result_fields(setup):
-        result_node_id = _result_switch_node_id(setup, field, run_inputs, api_prompt)
-        if result_node_id is not None:
+        found = _result_switch_node_and_switch(setup, field, run_inputs, api_prompt)
+        if found is None:
+            continue
+        result_node_id, switch = found
+        # Use the value of the switch that actually drives this result switch
+        # (input OR output), so a divergent EXR-in/QT-out setup reports the QT
+        # path rather than the input-type path.
+        app = setup.get("setupSurface", {}).get("app", {})
+        selected_value = _selected_switch_value(switch, run_inputs, app)
+        if selected_value is not None:
             selected[result_node_id] = (result_node_id, selected_value)
     return selected
 
@@ -702,28 +730,34 @@ def _selected_app_switches(
     app = setup.get("setupSurface", {}).get("app", {})
     if not isinstance(app, dict):
         return {}
-    switch = app.get("switch")
-    if not isinstance(switch, dict):
-        return {}
-    switch_target = switch.get("target")
-    if not isinstance(switch_target, dict):
-        return {}
-    selected_value = _selected_switch_value(switch, run_inputs)
-    if selected_value is None:
+    # Both the input switch and the (independent) output switch can drive
+    # index-switch nodes in the graph; resolve each so writer-side branches
+    # selected by output type are pruned as precisely as source-side ones.
+    switches = [
+        switch
+        for switch in (app.get("switch"), app.get("outputSwitch"))
+        if isinstance(switch, dict) and isinstance(switch.get("target"), dict)
+    ]
+    if not switches:
         return {}
 
     selected: dict[str, tuple[str, int]] = {}
-    for node_id, node in api_prompt.items():
-        if not isinstance(node, dict):
+    for switch in switches:
+        switch_target = switch["target"]
+        selected_value = _selected_switch_value(switch, run_inputs, app)
+        if selected_value is None:
             continue
-        inputs = node.get("inputs")
-        if not isinstance(inputs, dict):
-            continue
-        selector_ref = _switch_selector_ref(inputs)
-        if not _selector_matches_switch_target(selector_ref, switch_target, api_prompt):
-            continue
-        if _is_api_ref(inputs.get(f"value{selected_value}")):
-            selected[str(node_id)] = (str(node_id), selected_value)
+        for node_id, node in api_prompt.items():
+            if not isinstance(node, dict):
+                continue
+            inputs = node.get("inputs")
+            if not isinstance(inputs, dict):
+                continue
+            selector_ref = _switch_selector_ref(inputs)
+            if not _selector_matches_switch_target(selector_ref, switch_target, api_prompt):
+                continue
+            if _is_api_ref(inputs.get(f"value{selected_value}")):
+                selected[str(node_id)] = (str(node_id), selected_value)
     return selected
 
 
@@ -788,20 +822,30 @@ def _app_result_fields(setup: dict[str, Any]) -> list[dict[str, Any]]:
     return [field for field in app["results"] if isinstance(field, dict)]
 
 
-def _result_switch_node_id(
+def _result_switch_node_and_switch(
     setup: dict[str, Any],
     result_field: dict[str, Any],
     run_inputs: dict[str, Any],
     api_prompt: dict[str, Any] | None = None,
-) -> str | None:
+) -> tuple[str, dict[str, Any]] | None:
+    """Find the mode-switch node feeding a result field, and the app switch that
+    drives it.
+
+    A result field (e.g. ``Koolook_PublishResult.result``) is often fed by an
+    index-switch node so the displayed path matches the selected branch. That
+    switch may be driven by the input switch OR the independent output switch —
+    match against whichever one is wired to its selector so the reported result
+    follows the type actually written, not the source type.
+    """
     app = setup.get("setupSurface", {}).get("app", {})
     if not isinstance(app, dict):
         return None
-    switch = app.get("switch")
-    if not isinstance(switch, dict):
-        return None
-    selected_value = _selected_switch_value(switch, run_inputs)
-    if selected_value is None:
+    candidate_switches = [
+        switch
+        for switch in (app.get("switch"), app.get("outputSwitch"))
+        if isinstance(switch, dict) and isinstance(switch.get("target"), dict)
+    ]
+    if not candidate_switches:
         return None
 
     api_prompt = api_prompt if isinstance(api_prompt, dict) else setup.get("apiPrompt")
@@ -828,16 +872,17 @@ def _result_switch_node_id(
     if not isinstance(switch_inputs, dict):
         return None
     selector_ref = _switch_selector_ref(switch_inputs)
-    switch_target = switch.get("target")
-    if isinstance(switch_target, dict) and not _selector_matches_switch_target(
-        selector_ref,
-        switch_target,
-        api_prompt,
-    ):
-        return None
-    if not _is_api_ref(switch_inputs.get(f"value{selected_value}")):
-        return None
-    return switch_node_id
+    # Prefer whichever switch the result index-switch selector is wired from.
+    for switch in candidate_switches:
+        if not _selector_matches_switch_target(selector_ref, switch["target"], api_prompt):
+            continue
+        selected_value = _selected_switch_value(switch, run_inputs, app)
+        if selected_value is None:
+            continue
+        if not _is_api_ref(switch_inputs.get(f"value{selected_value}")):
+            continue
+        return (switch_node_id, switch)
+    return None
 
 
 def _selected_result_branch_ref(
@@ -848,27 +893,43 @@ def _selected_result_branch_ref(
     api_prompt = setup.get("apiPrompt")
     if not isinstance(api_prompt, dict):
         return None
-    switch_node_id = _result_switch_node_id(setup, result_field, run_inputs, api_prompt)
-    if switch_node_id is None:
+    found = _result_switch_node_and_switch(setup, result_field, run_inputs, api_prompt)
+    if found is None:
         return None
+    switch_node_id, switch = found
     switch_node = api_prompt.get(switch_node_id)
     if not isinstance(switch_node, dict):
         return None
     switch_inputs = switch_node.get("inputs")
     if not isinstance(switch_inputs, dict):
         return None
-    switch = setup.get("setupSurface", {}).get("app", {}).get("switch")
-    selected_value = _selected_switch_value(switch, run_inputs) if isinstance(switch, dict) else None
+    app = setup.get("setupSurface", {}).get("app", {})
+    selected_value = _selected_switch_value(switch, run_inputs, app)
     if selected_value is None:
         return None
     branch_ref = switch_inputs.get(f"value{selected_value}")
     return branch_ref if _is_api_ref(branch_ref) else None
 
 
-def _selected_switch_value(switch: dict[str, Any], run_inputs: dict[str, Any]) -> int | None:
+def _selected_switch_value(
+    switch: dict[str, Any],
+    run_inputs: dict[str, Any],
+    app: Any = None,
+) -> int | None:
     key = switch.get("key")
-    selected = run_inputs.get(key) if isinstance(key, str) and key in run_inputs else switch.get("default")
-    return _switch_option_value(switch, selected)
+    submitted = isinstance(key, str) and key in run_inputs
+    selected = run_inputs[key] if submitted else switch.get("default")
+    value = _switch_option_value(switch, selected)
+    # A sameAsInput switch may carry the "Same as input" sentinel (-1) as its
+    # default, which is not a concrete option. When the caller omitted the key,
+    # follow the input switch — that is what the sentinel means. Submitted
+    # values are never resolved this way: the contract requires clients to
+    # submit a concrete option, and validation rejects the sentinel.
+    if value is None and not submitted and switch.get("sameAsInput") and isinstance(app, dict):
+        input_switch = app.get("switch")
+        if isinstance(input_switch, dict) and input_switch is not switch:
+            return _selected_switch_value(input_switch, run_inputs)
+    return value
 
 
 def _selector_matches_switch_target(selector_ref: Any, switch_target: dict[str, Any], api_prompt: dict[str, Any]) -> bool:
@@ -892,15 +953,23 @@ def _switch_selector_ref(switch_inputs: dict[str, Any]) -> Any:
 
 
 def _publish_input_output_slots(api_node: dict[str, Any]) -> dict[str, int]:
-    if api_node.get("class_type") != "Koolook_PublishInput":
-        return {}
-    return {
-        "sequence_folder": 0,
-        "qt_file": 1,
-        "single_file": 2,
-        "prompt": 3,
-        "switch": 4,
-    }
+    class_type = api_node.get("class_type")
+    if class_type == "Koolook_PublishInput":
+        return {
+            "sequence_folder": 0,
+            "qt_file": 1,
+            "single_file": 2,
+            "prompt": 3,
+            "switch": 4,
+        }
+    if class_type == "Koolook_PublishOutput":
+        return {
+            "folder": 0,
+            "name": 1,
+            "version": 2,
+            "switch": 3,
+        }
+    return {}
 
 
 def _resolve_prompt_value(prompt: dict[str, Any], value: Any) -> Any:

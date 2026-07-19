@@ -7,6 +7,32 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Independent output type for published setups.** A `Koolook_PublishRouter`
+  is auto-detected as the setup's **output selector**: whichever writer branches
+  you wire become the app's "Output type" options, and the external user can pick
+  any of them (defaulting to follow-input, or the `Koolook_PublishOutput.output_mode`
+  widget). No dedicated output-switch wiring is required — the router is bound to
+  the output control regardless of what its `selector` is wired from. So a setup
+  can read one type and write another (EXR sequence in, QT movie out).
+  `Koolook_PublishOutput` gains `output_mode` / `input_switch` / `switch` for
+  authors who want explicit control, but they're optional. The app surface
+  exposes `setupSurface.app.outputSwitch`; output types with no wired writer are
+  hidden (`visible: false` from the execution map's `writerNodes`), and the
+  default falls back to the first wired type so an EXR-in/QT-only setup defaults
+  to QT. The runner prunes/validates writer branches by the chosen output type,
+  and a mode-switched `Koolook_PublishResult` reports the branch of whichever
+  switch drives its result index-switch, so a divergent EXR-in/QT-out setup
+  reports the QT movie path it actually wrote. The setup runner simulator renders
+  the "Output type" control and offers only wired types. The runner enforces the
+  contract for direct API callers too: hidden (`visible: false`) switch options
+  are rejected with a 400 listing only the visible choices, and omitting
+  `output_switch` when the default is the "Same as input" sentinel resolves
+  server-side to the input type instead of failing validation.
+- **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
+  `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
+  the next-free-`vNNN` disk scan runs every queue instead of being memoized on
+  the first run (which froze the version and made saves skip as "already
+  exists"). Literal versions stay cacheable.
 - **Koolook Matte nodes (`KoolookMatteLoader` / `KoolookMatteSampler` /
   `KoolookMatteFocusCrop` / `KoolookMatteFocusStitch`).** First-party, mask-guided
   one-step video matting — an original GPL-3.0 reimplementation of the published

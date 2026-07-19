@@ -202,6 +202,27 @@ class EasyAIPipeline:
     CATEGORY = "Koolook/Pipeline"
     OUTPUT_NODE = True  # Marks it as an output node for workflow integration
 
+    @classmethod
+    def IS_CHANGED(cls, version="", **kwargs):
+        """Force a re-run whenever auto-versioning is active.
+
+        ``auto``/``next`` resolves the next free ``vNNN`` by scanning the
+        output folder on disk (``build_pipeline_outputs`` -> ``next_version_token``).
+        That result depends on filesystem state, but every widget input is a
+        constant, so ComfyUI would memoize this node and reuse the *first*
+        run's path for the whole session — the scan never re-runs, the version
+        never advances, and the downstream save node then refuses to overwrite
+        the already-written file. Returning NaN (which never compares equal to
+        itself) marks the node perpetually dirty so the scan runs every queue.
+
+        For a literal/explicit version (``v001``, ``final``, a wired token) the
+        node stays cacheable — ComfyUI's normal input hashing already
+        invalidates it when the token changes, so we return a stable value.
+        """
+        if is_auto_version(version):
+            return float("nan")
+        return False
+
     def generate_pipeline(self, shot_duration, seed_value, instruction, base_directory_path, extension, shot_name, ai_method, version, disable_versioning, enable_overwrite, no_subfolders):
         return build_pipeline_outputs(
             shot_duration=shot_duration,

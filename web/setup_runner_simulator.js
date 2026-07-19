@@ -357,6 +357,24 @@ function fieldDefault(field) {
     return field?.default == null ? "" : field.default;
 }
 
+// Resolve the concrete output-type index to submit. A negative / blank value is
+// the "Same as input" sentinel: it follows the input switch so the writer type
+// matches the source type unless the user explicitly overrode it.
+function resolveOutputSwitchValue(app, values, selectedInputSwitch) {
+    const field = app?.outputSwitch;
+    if (!field || typeof field !== "object" || !field.key) return undefined;
+    const raw = field.key in (values || {}) ? values[field.key] : field.default;
+    const num = Number(raw);
+    if (!Number.isNaN(num) && num >= 0) return num;
+    if (selectedInputSwitch !== undefined && Number(selectedInputSwitch) >= 0) {
+        return Number(selectedInputSwitch);
+    }
+    const opts = Array.isArray(field.options)
+        ? field.options.filter(option => option && option.visible !== false)
+        : [];
+    return opts.length ? opts[0].value : undefined;
+}
+
 export function defaultRunInputsFromSetup(setup) {
     const app = appSurface(setup);
     const inputs = {};
@@ -386,6 +404,10 @@ export function defaultRunInputsFromSetup(setup) {
         for (const field of app.outputs) {
             if (field?.visible !== false && field?.key) inputs[field.key] = fieldDefault(field);
         }
+    }
+    const outputSwitchValue = resolveOutputSwitchValue(app, {}, selectedSwitch);
+    if (app.outputSwitch?.key && outputSwitchValue !== undefined) {
+        inputs[app.outputSwitch.key] = outputSwitchValue;
     }
     return inputs;
 }
@@ -424,6 +446,10 @@ export function runInputsFromAppValues(setup, values = {}) {
                 inputs[field.key] = values[field.key] ?? fieldDefault(field);
             }
         }
+    }
+    const outputSwitchValue = resolveOutputSwitchValue(app, values, selectedSwitch);
+    if (app.outputSwitch?.key && outputSwitchValue !== undefined) {
+        inputs[app.outputSwitch.key] = outputSwitchValue;
     }
     return inputs;
 }
@@ -480,6 +506,17 @@ function demoFetch(url, options = {}) {
                             { value: 3, label: "Prompt", input: "prompt", visible: false },
                         ],
                     },
+                    outputSwitch: {
+                        key: "output_switch",
+                        label: "Output type",
+                        default: -1,
+                        sameAsInput: true,
+                        options: [
+                            { value: 0, label: "EXR", visible: true },
+                            { value: 1, label: "QT", visible: true },
+                            { value: 2, label: "Img", visible: true },
+                        ],
+                    },
                     inputs: [
                         { key: "sequence_folder", label: "Sequence folder", visible: true, default: "/shots/demo/plates" },
                         { key: "qt_file", label: "QT file", visible: true, default: "/shots/demo/source.mov" },
@@ -516,7 +553,14 @@ function demoFetch(url, options = {}) {
         const name = String(demoRunInputs.name || "demo");
         const rawVersion = String(demoRunInputs.version || "1");
         const version = rawVersion.padStart(3, "0");
-        const extension = Number(demoRunInputs.switch) === 1 ? "mov" : "png";
+        // Output extension follows the OUTPUT switch (falling back to the input
+        // switch when the setup exposes no independent output type), so choosing
+        // "QT" output on an EXR/Img source yields a .mov here in the demo too.
+        const outTypeRaw = demoRunInputs.output_switch;
+        const outType = outTypeRaw == null || Number(outTypeRaw) < 0
+            ? Number(demoRunInputs.switch)
+            : Number(outTypeRaw);
+        const extension = outType === 1 ? "mov" : outType === 0 ? "exr" : "png";
         return ok({
             ok: true,
             run: {
@@ -671,11 +715,49 @@ function bindSimulator(documentRef, fetchImpl) {
         const visibleOutputs = Array.isArray(app.outputs)
             ? app.outputs.filter(field => field?.visible !== false && field?.key)
             : [];
-        if (visibleOutputs.length) {
+        const outputSwitch = app.outputSwitch && typeof app.outputSwitch === "object"
+            && Array.isArray(app.outputSwitch.options)
+            ? app.outputSwitch
+            : null;
+        // Only offer output types that have a wired writer branch (the contract
+        // marks the rest visible:false). With no real choice, output silently
+        // follows the input type and we skip the control entirely.
+        const visibleOutputOptions = outputSwitch
+            ? outputSwitch.options.filter(option => option && option.visible !== false)
+            : [];
+        const showOutputSwitch = Boolean(outputSwitch) && visibleOutputOptions.length > 0;
+        if (visibleOutputs.length || showOutputSwitch) {
             const outputHeading = documentRef.createElement("div");
             outputHeading.className = "form-heading";
             outputHeading.textContent = "Output";
             appForm.appendChild(outputHeading);
+            if (showOutputSwitch) {
+                // Independent output type: lets an EXR source write a QT movie.
+                // "Same as input" keeps the writer type following the source.
+                const outLabel = documentRef.createElement("label");
+                outLabel.textContent = outputSwitch.label || "Output type";
+                const outSelect = documentRef.createElement("select");
+                outSelect.dataset.appOutputSwitch = outputSwitch.key || "output_switch";
+                const outDefault = outputSwitch.default;
+                const followsInput = outDefault == null || Number(outDefault) < 0;
+                if (outputSwitch.sameAsInput) {
+                    const opt = documentRef.createElement("option");
+                    opt.value = "-1";
+                    opt.textContent = "Same as input";
+                    if (followsInput) opt.selected = true;
+                    outSelect.appendChild(opt);
+                }
+                for (const option of visibleOutputOptions) {
+                    const opt = documentRef.createElement("option");
+                    opt.value = String(option.value);
+                    opt.textContent = option.label || String(option.value);
+                    if (!followsInput && String(option.value) === String(outDefault)) opt.selected = true;
+                    outSelect.appendChild(opt);
+                }
+                outSelect.addEventListener("change", updatePayloadPreview);
+                outLabel.appendChild(outSelect);
+                appForm.appendChild(outLabel);
+            }
             for (const field of visibleOutputs) {
                 appForm.appendChild(createInputField(field, { value: fieldDefault(field) }));
             }
@@ -690,6 +772,11 @@ function bindSimulator(documentRef, fetchImpl) {
         if (switchEl) {
             const numeric = Number(switchEl.value);
             values[switchEl.dataset.appSwitch] = Number.isNaN(numeric) ? switchEl.value : numeric;
+        }
+        const outSwitchEl = appForm?.querySelector("[data-app-output-switch]");
+        if (outSwitchEl) {
+            const numeric = Number(outSwitchEl.value);
+            values[outSwitchEl.dataset.appOutputSwitch] = Number.isNaN(numeric) ? outSwitchEl.value : numeric;
         }
         for (const input of appForm?.querySelectorAll("[data-app-field]") || []) {
             values[input.dataset.appField] = input.value;
