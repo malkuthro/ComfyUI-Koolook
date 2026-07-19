@@ -77,6 +77,13 @@ def test_degenerate_sigma_max():
     assert gain(1.0, 0.0, 0.5, 0.6) == 0.0
 
 
+def test_non_finite_inputs_are_noop():
+    nan, inf = float("nan"), float("inf")
+    assert gain(nan, SMAX, 0.5, 0.6) == 0.0   # nan sigma
+    assert gain(SMAX, nan, 0.5, 0.6) == 0.0   # nan anchor
+    assert gain(inf, SMAX, 0.5, 0.6) == 0.0   # inf sigma
+
+
 # --- soften_mask_value (raise a pin toward 1) ------------------------------
 
 def test_gain_zero_keeps_exact_pin():
@@ -215,6 +222,25 @@ def test_zero_start_runtime_sigmas_fall_back_to_wired(caplog):
         out = fn(1.0, 0.2, extra_options={"sigmas": [0.0, 0.0]})
     assert out == pytest.approx(soften(0.2, 0.5))
     assert "first 3 of 5 steps" in caplog.text
+
+
+def test_nan_runtime_sigmas_fall_back_to_wired(caplog):
+    # a runtime schedule anchored at nan is unusable: behavior AND coverage log
+    # must come from the wired schedule — never a nan-poisoned mask.
+    fn = _patched_fn()
+    with caplog.at_level("INFO", logger=_m.log.name):
+        out = fn(1.0, 0.2, extra_options={"sigmas": [float("nan"), 0.5, 0.0]})
+    assert out == pytest.approx(soften(0.2, 0.5))
+    assert "first 3 of 5 steps" in caplog.text
+
+
+def test_non_finite_runtime_and_wired_warns_and_passes_through(caplog):
+    # nan runtime anchor + inf wired anchor: nothing usable -> inert with warning
+    fn = _patched_fn(sigmas=[float("inf"), 1.0, 0.0])
+    with caplog.at_level("WARNING", logger=_m.log.name):
+        out = fn(1.0, 0.2, extra_options={"sigmas": [float("nan"), 0.5]})
+    assert out == 0.2
+    assert "soften inactive" in caplog.text
 
 
 def test_no_usable_sigmas_anywhere_warns_once_and_passes_through(caplog):

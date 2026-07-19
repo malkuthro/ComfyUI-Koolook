@@ -27,8 +27,18 @@ validated by rendering against a live LTX 2.3 model.
 from __future__ import annotations
 
 import logging
+import math
 
 log = logging.getLogger(__name__)
+
+
+def _usable_ref(value):
+    """The anchor sigma as a float if usable (finite and positive), else None."""
+    try:
+        f = float(value)
+    except Exception:
+        return None
+    return f if math.isfinite(f) and f > 0.0 else None
 
 
 def soften_gain(sigma, sigma_start, soften_range, max_soften):
@@ -43,6 +53,8 @@ def soften_gain(sigma, sigma_start, soften_range, max_soften):
     if sigma_start <= 0.0:
         return 0.0
     progress = 1.0 - (float(sigma) / sigma_start)
+    if not math.isfinite(progress):
+        return 0.0
     progress = 0.0 if progress < 0.0 else (1.0 if progress > 1.0 else progress)
     soften_range = float(soften_range)
     if soften_range <= 0.0 or progress >= soften_range:
@@ -181,7 +193,7 @@ class LTXKeyframeSoftenSchedule:
             connected_sigmas = [float(s) for s in sigmas] if sigmas is not None else None
         except Exception:
             connected_sigmas = None
-        connected_ref = connected_sigmas[0] if connected_sigmas else None
+        connected_ref = _usable_ref(connected_sigmas[0]) if connected_sigmas else None
         logged = [False]
         warned = [False]
 
@@ -203,15 +215,15 @@ class LTXKeyframeSoftenSchedule:
             cov = None   # the schedule the anchor came from — coverage log follows it
             if rt is not None:
                 try:
-                    ref = float(rt[0])
-                    cov = rt
+                    ref = _usable_ref(rt[0])
                 except Exception:
                     ref = None
-            if ref is None or ref <= 0.0:
-                # Runtime sigmas absent or unusable (malformed/empty/zero-start):
-                # anchor AND coverage both come from the wired schedule instead.
+                cov = rt if ref is not None else None
+            if ref is None:
+                # Runtime sigmas absent or unusable (malformed / empty / zero-start
+                # / non-finite): anchor AND coverage come from the wired schedule.
                 ref, cov = connected_ref, connected_sigmas
-            if not ref or ref <= 0.0:
+            if ref is None:
                 # No usable reference sigma from the run and none wired: the node
                 # is patched but inert this run. Warn ONCE so a silent no-op on a
                 # sampler path that doesn't pass sigmas doesn't look like a bug.
@@ -227,6 +239,8 @@ class LTXKeyframeSoftenSchedule:
             try:
                 s = float(sigma.max()) if hasattr(sigma, "max") else float(sigma)
             except Exception:
+                s = ref
+            if not math.isfinite(s):
                 s = ref
             gain = soften_gain(s, ref, soften_range, max_soften)
             if gain <= 0.0:
