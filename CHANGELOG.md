@@ -142,6 +142,20 @@ The format is inspired by Keep a Changelog and SemVer.
   guide-node changes, no graph rewire. When an IC-LoRA *is* active it scales the
   real entries instead. The split/fabrication math is unit-tested.
 
+### Changed
+- **Sidebar Load now names the workflow tab.** Loading a workflow from the
+  Kforge Labs sidebar binds the resulting Comfy tab to the workflow's own name
+  (e.g. `MyWorkflow`) instead of leaving a generic `Unsaved Workflow` draft.
+  The name is de-duped before binding: against Comfy's persisted
+  `workflows/<name>.json` files (avoiding the autosave **409 Conflict** the old
+  anonymous load sidestepped) and against currently-open tabs. The
+  temporary-load graph id is derived from the folder-qualified load key *plus*
+  that resolved name — so same-named workflows in different sidebar folders
+  keep distinct draft identities, and since a resolved name is never a
+  currently-open tab's name, two open tabs can never collide on a shared id
+  (the ComfyUI landmine behind #166). Tabs stay temporary/unsaved until the
+  user explicitly saves.
+
 ### Fixed
 - **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
   timeline editor auto-generated the `guide_strength` string from each clip's

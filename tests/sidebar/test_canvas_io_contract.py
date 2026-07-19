@@ -6,14 +6,31 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_sidebar_workflow_load_does_not_bind_comfy_filename_namespace() -> None:
+def test_sidebar_workflow_load_binds_deduped_tab_name() -> None:
     source = (REPO_ROOT / "web/sidebar/canvas_io.js").read_text(encoding="utf-8")
     load_fn = source[source.index("export async function loadWorkflowOntoCanvas"):]
     load_fn = load_fn[:load_fn.index("export async function dropPlaceholdersForPacks")]
 
-    assert "app.loadGraphData(graph, true, true);" in load_fn
+    # The tab is bound to the *resolved* (de-duped) name, never the raw
+    # sidebar workflow name. Binding raw wfName reintroduces the autosave
+    # 409 Conflict against persisted workflows/<name>.json files and the
+    # duplicate-graph-id crash across open tabs (#166).
+    assert "const tabName = resolveLoadedTabName(store, wfName);" in load_fn
+    assert "app.loadGraphData(graph, true, true, tabName);" in load_fn
     assert "app.loadGraphData(graph, true, true, wfName" not in load_fn
     assert "workflows/${wfName}.json" not in load_fn
+
+    # The stable draft id stays folder-qualified (dirPath in the key) so
+    # same-named workflows in different sidebar folders keep distinct draft
+    # identities, and includes the resolved tab name so two open tabs can
+    # never share a graph id.
+    assert 'const loadKey = [...dirPath, wfName, tabName].join("\\u0000");' in load_fn
+    assert "cloneWorkflowForTemporaryLoad(sourceGraph, loadKey)" in load_fn
+
+    # The 409 guard: de-dupe must consider persisted (non-temporary)
+    # workflow files, not just open tabs.
+    assert "persistedWorkflowNames" in source
+    assert "wf?.isTemporary === true" in source
 
 
 def test_sidebar_selection_serialization_preserves_selected_groups() -> None:
