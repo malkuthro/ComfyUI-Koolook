@@ -417,12 +417,17 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
         return;
     }
     // Bind the tab to the workflow's name. `tabName` is de-duped against both
-    // persisted files and open tabs; deriving the temporary-load id from that
-    // same string keeps id and name in lockstep so two open tabs can never
-    // share a graph id (see resolveLoadedTabName).
+    // persisted files and open tabs (see resolveLoadedTabName). The stable
+    // draft id is derived from the folder-qualified load key PLUS that
+    // resolved name — the dirPath keeps same-named workflows in different
+    // sidebar folders on distinct draft identities, and because `tabName` is
+    // never a currently-open tab's name, two open tabs can never share a
+    // graph id (the #166 hazard). When the name is free the key is
+    // deterministic per workflow, so repeat loads reuse one draft id.
     const store = publishWorkflowStore();
     const tabName = resolveLoadedTabName(store, wfName);
-    const graph = cloneWorkflowForTemporaryLoad(sourceGraph, tabName);
+    const loadKey = [...dirPath, wfName, tabName].join("\u0000");
+    const graph = cloneWorkflowForTemporaryLoad(sourceGraph, loadKey);
     const apply = async () => {
         // Snapshot the current canvas before loading. If loadGraphData throws
         // partway (missing node type, malformed payload), we restore the
