@@ -178,6 +178,7 @@ class LTXKeyframeSoftenSchedule:
         except Exception:
             connected_ref = None
         logged = [False]
+        warned = [False]
 
         def denoise_mask_function(sigma, denoise_mask, extra_options=None):
             if prev_fn is not None:
@@ -202,6 +203,16 @@ class LTXKeyframeSoftenSchedule:
             if ref is None:
                 ref = connected_ref
             if not ref or ref <= 0.0:
+                # No usable reference sigma from the run and none wired: the node
+                # is patched but inert this run. Warn ONCE so a silent no-op on a
+                # sampler path that doesn't pass sigmas doesn't look like a bug.
+                if not warned[0]:
+                    warned[0] = True
+                    log.warning(
+                        "[LTXKeyframeSoftenSchedule] no usable sigmas from the run "
+                        "and none wired to the 'sigmas' input — soften inactive this "
+                        "run. Connect your sampler's SIGMAS to enable it.",
+                    )
                 return denoise_mask
 
             try:
