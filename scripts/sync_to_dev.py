@@ -317,7 +317,15 @@ def sync(
             # subtrees (runtime-downloaded model checkpoints the repo doesn't
             # carry). A blanket rmtree here would nuke matte/checkpoints/ and
             # trigger a ~10GB re-download on the next load.
-            if dst.exists():
+            # A top-level symlinked dest (e.g. target/matte -> elsewhere) must
+            # never be cleaned/copied THROUGH: iterdir()/copytree would follow it
+            # and mutate files outside the target. Drop the link and own the path
+            # as a real dir. (is_symlink is checked before exists(), which follows
+            # symlinks.)
+            if dst.is_symlink():
+                dst.unlink()
+                dst.mkdir(parents=True, exist_ok=True)
+            elif dst.exists():
                 _clean_dest(dst, target)
             else:
                 dst.mkdir(parents=True, exist_ok=True)

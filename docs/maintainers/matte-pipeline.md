@@ -15,7 +15,8 @@ catches them.
 
 The upstream reference we validate against is okdalto's `ComfyUI-VideoMaMa`
 (unlicensed — do **not** vendor it; it's a *comparison oracle* only). Our nodes
-are a near-verbatim reimplementation, so a side-by-side A/B isolates any
+are an independent implementation that targets behavioural parity with it, so a
+side-by-side A/B isolates any
 regression to `matte/pipeline.py`.
 
 ---
@@ -134,11 +135,13 @@ repo has no copy.
 `scripts/sync_to_dev.py` mirrors each runtime path (`rmtree` + `copytree`). Left
 naive, that **deletes `matte/checkpoints/` on every matte sync** and forces a
 multi-GB re-download on the next node load (this manifested as ComfyUI "stuck at
-8%"). The sync now protects it via `PRESERVE_IN_DEST = {"checkpoints"}` and a
-selective `_clean_dest` that keeps preserved subtrees while still mirroring code.
+8%"). The sync now protects it via `PRESERVE_IN_DEST = {"matte/checkpoints"}`
+(an **exact path relative to the sync target**, not a bare name matched at any
+depth) and a selective `_clean_dest` that keeps preserved subtrees while still
+mirroring code.
 
-If you add another node pack with runtime-downloaded weights, add its data dir
-name to `PRESERVE_IN_DEST`.
+If you add another node pack with runtime-downloaded weights, add its
+**target-relative path** (e.g. `"otherpack/checkpoints"`) to `PRESERVE_IN_DEST`.
 
 See also [`dev-iteration-loop.md`](dev-iteration-loop.md) for the general
 push/publish gates.

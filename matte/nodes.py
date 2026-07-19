@@ -100,6 +100,14 @@ class KoolookMatteLoader:
         # fp16 is the default; only an explicit bf16 opts out. Anything else
         # (incl. a stale "auto" widget from an older node version) -> fp16.
         weight_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cpu":
+            # Half precision is unreliable/unsupported for many ops on CPU, and
+            # SVD effectively needs a GPU anyway. Force float32 so a CPU fallback
+            # at least runs correctly (slowly) instead of erroring on fp16 kernels.
+            print("[KoolookMatte] CUDA unavailable -> CPU/float32 (very slow; a "
+                  "GPU is strongly recommended).")
+            weight_dtype = torch.float32
         node_dir = Path(__file__).parent
         # relative paths resolve next to this pack; absolute paths pass through
         base = base_model_path if os.path.isabs(base_model_path) else str(node_dir / base_model_path)
@@ -115,7 +123,7 @@ class KoolookMatteLoader:
                 base_model_path=base,
                 unet_checkpoint_path=unet,
                 weight_dtype=weight_dtype,
-                device="cuda" if torch.cuda.is_available() else "cpu",
+                device=device,
                 enable_model_cpu_offload=enable_model_cpu_offload,
                 vae_encode_chunk_size=vae_encode_chunk_size,
                 attention_mode=attention_mode,
@@ -331,6 +339,9 @@ class KoolookMatteSampler:
         x2 = min(orig_w, x2 + padding)
         y2 = min(orig_h, y2 + padding)
         if x2 - x1 < 8 or y2 - y1 < 8:
+            print(f"[KoolookMatte] guide-mask region is degenerate "
+                  f"({x2 - x1}x{y2 - y1}px) -> falling back to full-frame. "
+                  "Check the segmentation if unexpected.")
             return None            # degenerate region; process full frame
         return (x1, y1, x2, y2)
 
