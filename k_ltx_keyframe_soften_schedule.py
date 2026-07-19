@@ -170,13 +170,16 @@ class LTXKeyframeSoftenSchedule:
             return (m, info)
 
         prev_fn = m.model_options.get("denoise_mask_function")
-        # Fallback anchor from the connected preview SIGMAS (if wired). Used only
-        # when a run omits extra_options["sigmas"] — gives the wired input a real
-        # runtime role, not just the info readout.
+        # Fallback from the connected SIGMAS (if wired). Used when a run omits
+        # extra_options["sigmas"] — gives the wired input a real runtime role,
+        # not just the info readout. Keep the WHOLE schedule, not only the anchor:
+        # the coverage log needs the real step count to stay honest (a wired
+        # 16-step schedule must report "of 16 steps", not a synthetic 1).
         try:
-            connected_ref = float(sigmas[0]) if sigmas is not None else None
+            connected_sigmas = [float(s) for s in sigmas] if sigmas is not None else None
         except Exception:
-            connected_ref = None
+            connected_sigmas = None
+        connected_ref = connected_sigmas[0] if connected_sigmas else None
         logged = [False]
         warned = [False]
 
@@ -225,10 +228,11 @@ class LTXKeyframeSoftenSchedule:
             if not logged[0]:
                 logged[0] = True
                 nested = getattr(denoise_mask, "is_nested", False)
+                # Report coverage against the schedule actually in force: the
+                # runtime one, else the wired one we anchored to.
+                cov = rt if rt is not None else connected_sigmas
                 try:
-                    count, n_steps = steps_in_range(
-                        rt if rt is not None else [ref, 0.0], soften_range
-                    )
+                    count, n_steps = steps_in_range(cov, soften_range)
                 except Exception:
                     count, n_steps = 0, 0
                 log.info(
