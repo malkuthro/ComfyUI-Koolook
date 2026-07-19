@@ -7,6 +7,58 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Independent output type for published setups.** A `Koolook_PublishRouter`
+  is auto-detected as the setup's **output selector**: whichever writer branches
+  you wire become the app's "Output type" options, and the external user can pick
+  any of them (defaulting to follow-input, or the `Koolook_PublishOutput.output_mode`
+  widget). No dedicated output-switch wiring is required — the router is bound to
+  the output control regardless of what its `selector` is wired from. So a setup
+  can read one type and write another (EXR sequence in, QT movie out).
+  `Koolook_PublishOutput` gains `output_mode` / `input_switch` / `switch` for
+  authors who want explicit control, but they're optional. The app surface
+  exposes `setupSurface.app.outputSwitch`; output types with no wired writer are
+  hidden (`visible: false` from the execution map's `writerNodes`), and the
+  default falls back to the first wired type so an EXR-in/QT-only setup defaults
+  to QT. The runner prunes/validates writer branches by the chosen output type,
+  and a mode-switched `Koolook_PublishResult` reports the branch of whichever
+  switch drives its result index-switch, so a divergent EXR-in/QT-out setup
+  reports the QT movie path it actually wrote. The setup runner simulator renders
+  the "Output type" control and offers only wired types. The runner enforces the
+  contract for direct API callers too: hidden (`visible: false`) switch options
+  are rejected with a 400 listing only the visible choices, and omitting
+  `output_switch` when the default is the "Same as input" sentinel resolves
+  server-side to the input type instead of failing validation.
+- **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
+  `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
+  the next-free-`vNNN` disk scan runs every queue instead of being memoized on
+  the first run (which froze the version and made saves skip as "already
+  exists"). Literal versions stay cacheable.
+- **Koolook Matte nodes (`KoolookMatteLoader` / `KoolookMatteSampler` /
+  `KoolookMatteFocusCrop` / `KoolookMatteFocusStitch`).** First-party, mask-guided
+  one-step video matting — an original GPL-3.0 reimplementation of the published
+  VideoMaMa method (single-step SVD, 12-channel UNet), with temporal windowing,
+  subject "hero-crop" ROI, and shortest-side/`/64` resolution control with OOM
+  auto-backoff. **Model caveat:** the nodes *load* (never bundle) the VideoMaMa
+  UNet (**CC BY-NC 4.0 — non-commercial**) and SVD's VAE (**Stability Community
+  License**) at runtime; the user is responsible for model-license compliance
+  (see `matte/NOTICE`). Maintainer notes: `docs/maintainers/matte-pipeline.md`.
+- **LTX Keyframe Soften Schedule node (`LTXKeyframeSoftenSchedule`).** Smooths
+  motion between keyframes without adding any guide frames: a model patcher that
+  sigma-schedules the keyframe denoise-mask pins — loosening them early (high
+  sigma) so the model forms smooth motion between poses, then restoring them so
+  the poses sharpen as denoise finishes. Uses the sampler's per-step
+  `denoise_mask_function` hook; works with **no IC-LoRA**. Audio-safe: the A/V
+  mask is a `NestedTensor((video, audio))`, so only the video keyframe pins are
+  softened and the audio mask passes through untouched (lip-sync unaffected).
+  Two plain controls: `max_soften` (ease strength — the fraction the pins unpin
+  at the peak; 0 = off, ~0.1 = gentle, 1 = max) and `soften_range` (ease the TOP
+  % of the sigma range where coarse motion forms — e.g. 0.03 = top 3% of the
+  range; a noise-level, not a step count). An optional `sigmas` input + an `info`
+  STRING output report which steps that level actually spans in-graph (the level
+  is curve-consistent, the step count it covers depends on the schedule); the same
+  line is logged each run, and the wired `sigmas` doubles as the runtime fallback
+  anchor when the run doesn't supply usable sigmas. Pure `soften_gain` +
+  `steps_in_range` unit-tested; model wiring render- and unit-validated.
 - **LTX Director fork bumped to upstream v2.0.2** with a new
   `forks/whatdreamscost_koolook/versions/v2_0_2/` namespace (pinned to upstream
   commit `fe09f73`). This version is a **faithful replica of upstream 2.0.2** —
@@ -39,6 +91,57 @@ The format is inspired by Keep a Changelog and SemVer.
   reproduces stock behavior. Ramp math is unit-tested; the model wiring is
   validated by rendering against a live LTX 2.3 AV model.
 
+- **LTX Director Ghost Mask reference (REF image / character sheet).** New
+  optional `reference_images` (IMAGE) + `reference_strength` inputs on
+  `LTXDirector__koolook` (plus informational `clean_latent_frames` /
+  `clean_pixel_frames` outputs). Reference image(s) are added as guide frames
+  just past the clean timeline, so the model anchors identity (face / mouth
+  shape) the way a WAN VACE reference does — without the references appearing in
+  the output and **without a LoRA**. Targets mouth/identity drift when keyframes
+  show a closed (or different) mouth than the audio-driven motion needs. The
+  references ride the **same append-and-crop path as the timeline keyframes**:
+  `LTXDirectorGuide` appends each as an extra latent frame and
+  `LTXDirectorCropGuides` removes it, so the video latent is never pre-grown and
+  the audio track stays in sync (pre-growing it desyncs A/V and breaks motion).
+  A general-purpose root node **`CleanLatentSlice`** ("Clean Latent Slice
+  (Koolook)") is also included for bare pipelines that don't use
+  `LTXDirectorCropGuides`. The trailing-reference *approach* is adapted (idea
+  only, reimplemented) from CGlide's WhatDreamsCost-CSGlide (GPL-3.0); see
+  `forks/THIRD_PARTY.md`. Geometry is unit-tested; model behavior is validated
+  by rendering against a live LTX 2.3 model. (Phase 1: Ghost Mask only — the
+  LoRA-backed Licon MSR prefix mode is intentionally not ported.)
+
+- **LTX Guide Reference Strength node (`LTXGuideReferenceStrength`).** Companion
+  to the Ghost Mask reference: rewrites the strength of *only* the reference
+  frames in `guide_data` (the trailing entries the Director tags with
+  `reference_count`), leaving the keyframe pins untouched. Intended for
+  two-stage pipelines — feed stage 1 the Director's `guide_data` unchanged
+  (light reference, motion forms freely) and route stage 2's guide_data through
+  this node at a higher reference strength, so identity locks during the
+  low-denoise refinement without disturbing stage-1 motion. Strength math is
+  unit-tested.
+
+- **LTX Reference Bind Schedule node (`LTXReferenceBindSchedule`).** Ramps the
+  Ghost Mask reference's **attention** up as sigma falls — neutral early (motion
+  forms freely) rising to `peak_strength` late (identity locks during
+  refinement). The inverse of the motion curve and the mirror of
+  `LTXAVBindSchedule`. Mechanism: a `model_function_wrapper` captures the
+  per-step sigma and an object-patch on the core LTX
+  `_build_guide_self_attention_mask` (which is rebuilt every denoise step and
+  supports `strength > 1.0` to amplify) scales **only the trailing
+  `num_references` guide entries'** attention strength — keyframe pins and the
+  noise-mask freezing are untouched, so it's orthogonal to `reference_strength`.
+  Single pass, no re-noise. The `ref_gain` ramp is unit-tested; model behavior is
+  validated by rendering against a live LTX 2.3 model. **Works without an
+  IC-LoRA:** the attention-bias machinery is base-model functionality, but
+  `LTXDirectorGuide` only *populates* the per-guide entries when an IC-LoRA is
+  active. So when the entries are missing this node **fabricates them itself**
+  for the trailing reference tokens (set `num_keyframes` so it knows the
+  keyframe/reference split of `num_guide_tokens`), giving the reference the same
+  amplified-attention channel an IC-LoRA would use — inside the Director, no
+  guide-node changes, no graph rewire. When an IC-LoRA *is* active it scales the
+  real entries instead. The split/fabrication math is unit-tested.
+
 ### Changed
 - **Sidebar Load now names the workflow tab.** Loading a workflow from the
   Kforge Labs sidebar binds the resulting Comfy tab to the workflow's own name
@@ -52,6 +155,14 @@ The format is inspired by Keep a Changelog and SemVer.
   until the user explicitly saves.
 
 ### Fixed
+- **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
+  timeline editor auto-generated the `guide_strength` string from each clip's
+  per-segment `guideStrength`, filling **1.0** for any clip left unset — and the
+  Director's Python fallback did the same. 1.0 is a hard pin, so any clip you
+  forgot to lower snapped instead of transitioning smoothly. Unset clips now
+  default to **0.8** in both the editor (display + serialization) and the node;
+  per-clip values you set explicitly still override (e.g. a hard 1.0 pin on a
+  critical pose). Clips with no explicit strength shift from 1.0 → 0.8 on load.
 - **`dev-sync` from a git worktree.** `scripts/sync_to_dev.py` now resolves
   `.env` with the worktree→main-repo fallback (the committed `.env` lives only
   in the main checkout), matching `sync_to_dev_audio.py` and the documented

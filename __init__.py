@@ -132,6 +132,10 @@ else:
         _merge_node_group("Koolook Loop Status", ".k_loop_status")
         _merge_node_group("Koolook Publish Contract", ".k_publish_contract")
         _merge_node_group("LTX A/V Bind Schedule", ".k_ltx_av_bind_schedule")
+        _merge_node_group("Clean Latent Slice", ".k_clean_latent_slice")
+        _merge_node_group("LTX Guide Reference Strength", ".k_ltx_guide_reference_strength")
+        _merge_node_group("LTX Reference Bind Schedule", ".k_ltx_reference_bind_schedule")
+        _merge_node_group("LTX Keyframe Soften Schedule", ".k_ltx_keyframe_soften_schedule")
         # The VHS-dependent video wrappers degrade to empty mappings when
         # VideoHelperSuite is absent (they catch the import internally); the
         # guard also covers a hard ImportError should one ever slip through.
@@ -139,6 +143,9 @@ else:
         _merge_node_group("Easy Video Combine", ".k_video_combine")
         _merge_node_group("Radiance Koolook VAE", ".forks.radiance_koolook")
         _merge_node_group("WhatDreamsCost LTX Director", ".forks.whatdreamscost_koolook")
+        # First-party matte nodes. Load diffusers (already present via the forks
+        # above); the guard skips them cleanly if diffusers is ever absent.
+        _merge_node_group("Koolook Matte", ".matte")
 
         # Register the Kforge Labs snapshot/preset endpoints. Installed
         # regardless of the node-import results above, so a broken node

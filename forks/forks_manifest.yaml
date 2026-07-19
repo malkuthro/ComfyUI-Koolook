@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-06-22"
+updated_at: "2026-06-25"
 external_forks:
   root_relative_to_main: "../ComfyUI-Forks"
   root_env_var: "KOLOOK_FORKS_DIR"
@@ -130,9 +130,10 @@ entries:
       - "forks/whatdreamscost_koolook/versions/v2_0_2/prompt_relay.py"
       - "forks/whatdreamscost_koolook/versions/v2_0_2/patches.py"
       - "forks/whatdreamscost_koolook/versions/v2_0_2/keyframe_grid.py"
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/reference_ghost.py"
       - "web/whatdreamscost_koolook/ltx_director.js"
     status: "modified"
-    sync_state: "upstream-verbatim-plus-keyframe-snap"
+    sync_state: "upstream-verbatim-plus-koolook-additions"
     license: "GPL-3.0"
     license_verified_at: "2026-06-22"
     exposed_node_ids:
@@ -161,6 +162,48 @@ entries:
       so the editor UX matches upstream 2.0.2 exactly; the old 1.3.9-era editor
       and its now-obsolete base64-scrub deltas are replaced. localStorage quota
       guarding stays in the global `web/koolook_draft_guard.js`.
+      Beyond the keyframe snap, `ltx_director.py` also carries the Koolook
+      `keyframe_ease`/`ease_falloff` neighbour-pin softening and the Ghost Mask
+      reference feature (`reference_images`/`reference_strength` inputs +
+      `clean_latent_frames`/`clean_pixel_frames` outputs); all are optional
+      inputs / appended outputs (saved workflows unaffected). The Ghost Mask
+      geometry lives in the new Koolook-original `reference_ghost.py`; its
+      companion root node is `k_clean_latent_slice.py` ("Clean Latent Slice
+      (Koolook)", node id `CleanLatentSlice`). The Ghost Mask APPROACH (append
+      references as trailing guide frames, then slice them off) is adapted —
+      idea only, reimplemented — from CGlide/WhatDreamsCost-CSGlide (main_cs @
+      21dd076, GPL-3.0, verified 2026-06-24); see forks/THIRD_PARTY.md. The
+      LoRA-backed Licon MSR prefix mode is intentionally not ported. The CGlide
+      Ghost Mask adaptation has its own formal entry below
+      (`csglide_ghost_mask_reimplementation`).
+
+  - id: "csglide_ghost_mask_reimplementation"
+    name: "WhatDreamsCost-CSGlide Ghost Mask approach (Koolook reimplementation)"
+    source_repo: "https://github.com/CGlide/WhatDreamsCost-CSGlide"
+    source_ref: "main_cs (idea-only adaptation — no source code copied)"
+    pinned_commit: "21dd076"
+    local_paths:
+      - "forks/whatdreamscost_koolook/versions/v2_0_2/reference_ghost.py"
+      - "k_clean_latent_slice.py"
+    status: "inspired_reimplementation"
+    sync_state: "no-upstream-tracking-needed"
+    license: "GPL-3.0"
+    license_verified_at: "2026-06-24"
+    exposed_node_ids:
+      - "CleanLatentSlice"
+    notes: |
+      Idea-level adaptation of CSGlide's "Ghost Mask" reference approach — append
+      reference images as trailing guide frames, let the transformer attend to
+      them for identity, then slice them off the output latent so they never
+      appear. NO source code was copied: the integer geometry is a fresh
+      Koolook write in `forks/whatdreamscost_koolook/versions/v2_0_2/reference_ghost.py`
+      (pure-stdlib, unit-tested), the in-Director plumbing lives in that fork's
+      `ltx_director.py` (Ghost Mask block), and the tensor slice is the
+      Koolook-original `k_clean_latent_slice.py` (node id `CleanLatentSlice`).
+      CSGlide is itself a GPL-3.0 fork of WhatDreamsCost-ComfyUI (already vendored
+      here under GPL-3.0), so no relicense pressure. `pinned_commit` is the short
+      hash on record (`main_cs @ 21dd076`); full attribution in
+      forks/THIRD_PARTY.md. The LoRA-backed Licon MSR prefix mode is not ported.
 
   - id: "easy_resize_inspiration"
     name: "Easy Resize (Koolook reimplementation, inspired by KJ Nodes)"

@@ -14,14 +14,23 @@ notes: |
   motion) behave exactly as upstream.
 
   This version folder ships:
-    - ltx_director.py  (upstream 2.0.2 VERBATIM + three additive changes only:
-      the namespaced node ID `LTXDirector__koolook`, and the
-      `snap_keyframes_to_grid` latent-bucket keyframe snap from issue #258,
-      and `keyframe_ease` / `ease_falloff` strength-ramped neighbor pins).
+    - ltx_director.py  (upstream 2.0.2 VERBATIM + Koolook additive changes only:
+      the namespaced node ID `LTXDirector__koolook`; the
+      `snap_keyframes_to_grid` latent-bucket keyframe snap from issue #258;
+      the `keyframe_ease`/`ease_falloff` strength-ramped neighbor pins; and the
+      Ghost Mask reference feature (`reference_images`/`reference_strength`
+      inputs + `clean_latent_frames`/`clean_pixel_frames` outputs). All
+      additions are optional inputs / appended outputs, so saved workflows are
+      unaffected.).
     - prompt_relay.py  (VERBATIM upstream 2.0.2; imported by ltx_director.py).
     - patches.py       (VERBATIM upstream 2.0.2; imported by ltx_director.py).
     - keyframe_grid.py (NEW, Koolook-original) pure latent-grid snap/ease helpers
       used by ltx_director.py; unit-tested in tests/forks/.
+    - reference_ghost.py (NEW, Koolook-original) pure geometry for the Ghost
+      Mask trailing-reference layout; unit-tested in tests/forks/. The Ghost
+      Mask APPROACH is adapted from CGlide's WhatDreamsCost-CSGlide (main_cs @
+      21dd076, GPL-3.0) — idea only, reimplemented; see forks/THIRD_PARTY.md.
+      Companion root node: k_clean_latent_slice.py (CleanLatentSlice).
 
   Node IDs: the canonical `LTXDirector__koolook` rolls to this clean 2.0.2
   implementation (package entrypoint loads v2_0_2 last). The legacy

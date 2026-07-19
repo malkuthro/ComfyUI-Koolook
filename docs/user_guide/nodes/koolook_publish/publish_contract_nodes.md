@@ -19,8 +19,9 @@ The nodes are not image processors. They are contract markers:
 
 - `Koolook_PublishInput` declares source inputs such as an EXR sequence folder,
   QuickTime file, single image/file, or prompt.
-- `Koolook_PublishOutput` declares output folder/name/version controls.
-- `Koolook_PublishRouter` connects the selected source mode to matching writer
+- `Koolook_PublishOutput` declares output folder/name/version controls, plus an
+  optional independent **output type** (so an EXR source can write a QT movie).
+- `Koolook_PublishRouter` connects the selected mode to matching writer
   branches so only the chosen branch runs.
 - `Koolook_PublishResult` optionally reports the final resolved path or status
   string back to the external app.
@@ -57,16 +58,20 @@ The publisher records nearby nodes for review, but only recognized
 | `folder` | Destination folder for generated outputs. |
 | `name` | Base output name. |
 | `version` | Version token or number. |
+| `output_mode` | Output type: `Same as input`, `EXR`, `QT`, or `Img`. `Same as input` (default) follows the input type; a concrete choice writes a different type than the source. `Prompt` is not an output format. |
+| `input_switch` (input) | Wire `Koolook_PublishInput.switch` here. Used only when `output_mode` is `Same as input`, so the output type mirrors the chosen input type. |
+| `switch` (output) | Resolved output-type index. Wire into `Koolook_PublishRouter.selector` to drive the writer branch. |
 
 ### `Koolook_PublishRouter`
 
-Wire `Koolook_PublishInput.switch` into `selector`, and wire the workflow's
-main payload into `payload`. Connect each router output to the writer branch
-for that source mode:
+The router **is** the output selector. Wire the workflow's main payload into
+`payload`, wire something into `selector` (typically the input switch — its
+value is the "Same as input" default), and connect each output slot to the
+writer branch for that type:
 
 ```text
-Koolook_PublishInput.switch -> Koolook_PublishRouter.selector
 workflow payload -> Koolook_PublishRouter.payload
+Koolook_PublishInput.switch -> Koolook_PublishRouter.selector   # default follows input
 
 Koolook_PublishRouter.EXR -> EXR writer branch
 Koolook_PublishRouter.QT -> video writer branch
@@ -74,8 +79,13 @@ Koolook_PublishRouter.Img -> image writer branch
 Koolook_PublishRouter.Prompt -> prompt/no-op branch if needed
 ```
 
-When the setup runs from the external app, Koolook keeps the selected writer
-branch and prunes the unselected branches from the queued prompt.
+Whichever branches you wire to writers become the **Output type** options the
+external app offers — a user can override to any wired type, defaulting to the
+input type (or the `Koolook_PublishOutput.output_mode` widget if you set one).
+You do **not** need to wire `Koolook_PublishOutput.switch` anywhere; the router
+is auto-detected as the output control. Put the writer nodes inside the
+`Koolook Output` group so they're recognized. When the setup runs, Koolook keeps
+the chosen writer branch and prunes the rest.
 
 ### `Koolook_PublishResult`
 

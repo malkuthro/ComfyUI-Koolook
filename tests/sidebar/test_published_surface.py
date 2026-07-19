@@ -133,6 +133,19 @@ def test_infer_setup_surface_app_contract_from_publish_nodes() -> None:
               { value: 3, label: "Prompt", visible: false, input: "prompt" },
             ],
           },
+          outputSwitch: {
+            key: "output_switch",
+            label: "Output type",
+            visible: true,
+            sameAsInput: true,
+            target: { node: "200", input: "output_mode" },
+            default: -1,
+            options: [
+              { value: 0, label: "EXR", visible: true },
+              { value: 1, label: "QT", visible: true },
+              { value: 2, label: "Img", visible: true },
+            ],
+          },
         });
         """
     )

@@ -149,12 +149,58 @@ naming/location controls for the external app and downstream writer/path nodes:
 | `folder` | Destination folder for generated outputs. |
 | `name` | Base output name. |
 | `version` | Version token/number used by the graph's naming logic. |
+| `output_mode` | Output type control: `Same as input`, `EXR`, `QT`, `Img`. Default `Same as input` follows the input switch; a concrete choice overrides it. |
+| `input_switch` (input slot) | Wired from `Koolook_PublishInput.switch`; only consulted when `output_mode` is `Same as input`. |
+| `switch` (output slot) | Resolved output-type index (0=EXR, 1=QT, 2=Img). Wire into `Koolook_PublishRouter.selector` to route the writer branch by output type. |
 
 The external frontend can expose these as editable output controls when the
 setup author wants the user to choose where generated files should land.
 `Koolook_PublishOutput` is an intermediate contract node: it does not choose
 the final result and should not own a mode-specific `result` field. Its outputs
 feed the writer/path-building nodes for each supported branch.
+
+The `switch` output makes output type **independent of input type**: a setup can
+read an EXR sequence and write a QT movie. When `output_mode` is `Same as input`
+the node passes the wired `input_switch` through unchanged, so setups that don't
+need divergence behave exactly as before. The inferred app surface exposes this
+as `setupSurface.app.outputSwitch` (key `output_switch`), a switch whose options
+are `EXR`/`QT`/`Img` (no `Prompt`), carrying `sameAsInput: true` so the frontend
+can offer a "Same as input" choice. The frontend must resolve "Same as input" to
+the concrete input-switch value **before submitting** `output_switch` — the
+runner validates the submitted value against the concrete option list, so an
+explicit `-1` sentinel is rejected. Omitting `output_switch` entirely is valid:
+when the published default is the `-1` "Same as input" sentinel, the runner
+resolves it server-side to the input switch's selected value, so direct API
+clients that skip the key get the same follow-input behavior the simulator
+pre-resolves in the browser.
+
+A `Koolook_PublishRouter` is inherently the **output selector** — its slots are
+named EXR/QT/Img/Prompt. So when a setup exposes an output switch, the publisher
+auto-binds every router to it (keying the execution-map router with `switchKey:
+"output_switch"`) regardless of what the router's `selector` is physically wired
+from. The author does **not** need to wire `Koolook_PublishOutput.switch` into
+the router — just wire the writers to the router's branches. Whatever branches
+have writers become the offered output types; the app user picks among them.
+
+Each `outputSwitch` option carries a `visible` flag: the publisher marks an
+output type visible only when some router has a wired writer branch for it (from
+the execution map's `writerNodes`). The frontend renders only visible options,
+so a user can't pick an output type that would write nothing. The runner
+enforces this server-side too: a submitted switch value whose option is
+`visible: false` is rejected with a 400 before queueing (the error lists only
+the visible choices), so a direct API caller can't bypass the frontend and
+queue a run with no writer.
+
+`sameAsInput` is now conditional: "Same as input" is offered **only when every
+selectable input type has a matching wired output writer** (a format-preserving
+setup — EXR→EXR, QT→QT, Img→Img all wired). Otherwise it could resolve to a type
+with no writer (an EXR source in a QT-only setup), so it is dropped and the
+control offers only the concrete wired types. The `default` is the author's
+`output_mode` widget when it names a wired type; else "Same as input" when safe;
+else the first wired type — so an EXR-in / QT-only setup defaults to QT.
+`output_mode`/`input_switch` on `Koolook_PublishOutput` remain optional:
+`output_mode` sets the preferred default, and nothing needs wiring for the
+output control to appear.
 
 ### `Koolook_PublishRouter`
 
@@ -164,7 +210,7 @@ each `Koolook_PublishInput.switch` value:
 
 | Field/output | Purpose |
 |---|---|
-| `selector` | INT input wired from `Koolook_PublishInput.switch`. |
+| `selector` | INT input wired from `Koolook_PublishInput.switch` (output type follows input) **or** `Koolook_PublishOutput.switch` (independent output type). The publisher tags the resulting execution-map router with `switchKey` `switch` or `output_switch` accordingly. |
 | `payload` | Main setup payload, such as the mask/image result from the body graph. |
 | `EXR` | Output slot 0, connected to the EXR writer branch. |
 | `QT` | Output slot 1, connected to the QuickTime/movie writer branch. |
@@ -197,6 +243,12 @@ the path based on extension/type. When the result node is omitted, the runner
 can still execute the selected writer branch through `Koolook_PublishRouter`;
 the frontend should display returned writer/history items.
 
+When the result is fed by a mode-switch node, the runner reports the branch for
+whichever switch drives that node — the input switch **or** the independent
+output switch. So a divergent EXR-in/QT-out setup whose result index-switch is
+wired from `Koolook_PublishOutput.switch` reports the QT movie path, matching
+the file actually written.
+
 Decision: the first public result contract is the resolved path string. The
 important requirement is that the string matches what the real setup resolved
 inside ComfyUI. A frontend may optionally preview images or other known file
@@ -220,6 +272,7 @@ If QT:
 If Img:
   Single file: <path>
 
+Output type:  [Same as input] [EXR] [QT] [Img]
 Output folder: <path>
 Output name:   <name>
 Version:       <version>
@@ -234,6 +287,7 @@ The frontend should read this from `setupSurface.app`, not from arbitrary
 ComfyUI node classes:
 
 - `setupSurface.app.switch`
+- `setupSurface.app.outputSwitch` (optional; independent output type)
 - `setupSurface.app.inputs`
 - `setupSurface.app.outputs`
 - `setupSurface.app.results`
@@ -331,6 +385,10 @@ Implemented:
 - `setupSurface.app` support in the server schema and runner summaries.
 - Switch-selected writer execution maps let the runner prune unselected writer
   branches and report the selected result/writer output.
+- Independent output type: `Koolook_PublishOutput.output_mode`/`switch`, the
+  `setupSurface.app.outputSwitch` surface, `output_switch`-keyed execution-map
+  routers, result-path reporting that follows the output switch, and output-type
+  options auto-hidden when their writer branch is unwired.
 - Publish contract nodes:
   - `Koolook_PublishInput`
   - `Koolook_PublishOutput`

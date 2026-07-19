@@ -33,7 +33,7 @@ msgpack==1.2.1
 multidict==6.7.1
 packageurl-python==0.17.6
 packaging==26.2
-pillow==12.2.0
+pillow==12.3.0
 pip-api==0.0.34
 pip_audit==2.10.1
 pip-requirements-parser==32.0.1

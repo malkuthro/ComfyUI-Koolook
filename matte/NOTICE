@@ -1,0 +1,35 @@
+Koolook Matte — NOTICE
+======================
+
+The CODE in this pack is licensed under GPL-3.0 (see the repository LICENSE) and
+is an ORIGINAL, independent implementation — it does not incorporate third-party
+wrapper code.
+
+Method credit
+-------------
+This pack implements the method described in:
+  "VideoMaMa: Mask-Guided Video Matting via Generative Prior" (CVPR 2026),
+  cvlab-kaist — https://github.com/cvlab-kaist/VideoMaMa
+The method, the original reference code, and the trained weights are the work of
+those authors. This project re-implements the (published) inference method using
+the standard `diffusers` API and adds its own windowing / focus-crop tooling.
+
+Model weights (NOT bundled or redistributed — loaded at runtime)
+----------------------------------------------------------------
+* VideoMaMa fine-tuned UNet — **CC BY-NC 4.0 (NON-COMMERCIAL)**.
+  Source: `SammyLim/VideoMaMa` (Hugging Face) / cvlab-kaist/VideoMaMa.
+  ==> Do NOT use these weights for commercial work without a separate license
+      from the model authors.
+* Stable Video Diffusion img2vid-xt (its temporal VAE is used) —
+  **Stability AI Community License**.
+  Source: `stabilityai/stable-video-diffusion-img2vid-xt`.
+
+You (the user) are solely responsible for complying with the above model
+licenses. This pack downloading/loading a model does not grant you any rights
+to it.
+
+Technique note
+--------------
+The temporal sliding-window batching and the subject bounding-box crop/paste
+implemented here are standard, well-known techniques, written independently for
+this pack.
