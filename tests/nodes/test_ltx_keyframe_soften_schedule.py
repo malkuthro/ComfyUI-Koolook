@@ -159,3 +159,68 @@ def test_steps_flat_top_curve_spans_many_steps():
 def test_steps_short_or_empty():
     assert steps([1.0], 0.5) == (0, 0)
     assert steps([], 0.5) == (0, 0)
+
+
+# --- denoise_mask_function wiring: connected-SIGMAS fallback + honest coverage log
+
+
+class _FakeModelPatcher:
+    """Stub of the ModelPatcher surface patch() touches."""
+
+    def __init__(self):
+        self.model_options = {}
+        self.mask_fn = None
+
+    def clone(self):
+        return self
+
+    def set_model_denoise_mask_function(self, fn):
+        self.mask_fn = fn
+
+
+WIRED = [1.0, 0.9, 0.8, 0.6, 0.3, 0.0]   # 5 steps; top 25% covers the first 3
+
+
+def _patched_fn(sigmas=WIRED):
+    node = _m.LTXKeyframeSoftenSchedule()
+    fake = _FakeModelPatcher()
+    node.patch(fake, max_soften=0.5, soften_range=0.25, sigmas=sigmas)
+    return fake.mask_fn
+
+
+def test_runtime_sigmas_anchor_and_log_coverage(caplog):
+    # a valid runtime schedule wins over the wired one, for anchor AND log
+    fn = _patched_fn()
+    with caplog.at_level("INFO", logger=_m.log.name):
+        out = fn(1.0, 0.2, extra_options={"sigmas": [1.0, 0.5, 0.0]})
+    assert out == pytest.approx(soften(0.2, 0.5))   # progress 0 -> full gain
+    assert "first 1 of 2 steps" in caplog.text
+
+
+def test_malformed_runtime_sigmas_fall_back_to_wired_for_anchor_and_log(caplog):
+    # runtime sigmas present but empty: behavior anchors to the WIRED schedule,
+    # and the coverage log must report the wired steps too — not "0 of 0".
+    fn = _patched_fn()
+    with caplog.at_level("INFO", logger=_m.log.name):
+        out = fn(1.0, 0.2, extra_options={"sigmas": []})
+    assert out == pytest.approx(soften(0.2, 0.5))
+    assert "first 3 of 5 steps" in caplog.text
+    assert "0 of 0" not in caplog.text
+
+
+def test_zero_start_runtime_sigmas_fall_back_to_wired(caplog):
+    # a degenerate runtime schedule (starts at 0) is unusable -> wired fallback
+    fn = _patched_fn()
+    with caplog.at_level("INFO", logger=_m.log.name):
+        out = fn(1.0, 0.2, extra_options={"sigmas": [0.0, 0.0]})
+    assert out == pytest.approx(soften(0.2, 0.5))
+    assert "first 3 of 5 steps" in caplog.text
+
+
+def test_no_usable_sigmas_anywhere_warns_once_and_passes_through(caplog):
+    fn = _patched_fn(sigmas=None)
+    with caplog.at_level("WARNING", logger=_m.log.name):
+        out1 = fn(1.0, 0.2, extra_options={})
+        out2 = fn(1.0, 0.2, extra_options={})
+    assert out1 == 0.2 and out2 == 0.2   # mask untouched
+    assert caplog.text.count("soften inactive") == 1

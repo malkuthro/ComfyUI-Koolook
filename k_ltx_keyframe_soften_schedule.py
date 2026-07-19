@@ -136,7 +136,8 @@ class LTXKeyframeSoftenSchedule:
             "optional": {
                 "sigmas": ("SIGMAS", {
                     "tooltip": "Optional — connect your sampler's SIGMAS to show the "
-                               "exact steps on the 'info' output.",
+                               "exact steps on the 'info' output; also used as the "
+                               "fallback schedule when the run doesn't supply sigmas.",
                 }),
             },
         }
@@ -171,7 +172,8 @@ class LTXKeyframeSoftenSchedule:
 
         prev_fn = m.model_options.get("denoise_mask_function")
         # Fallback from the connected SIGMAS (if wired). Used when a run omits
-        # extra_options["sigmas"] — gives the wired input a real runtime role,
+        # extra_options["sigmas"] or supplies an unusable one — gives the wired
+        # input a real runtime role,
         # not just the info readout. Keep the WHOLE schedule, not only the anchor:
         # the coverage log needs the real step count to stay honest (a wired
         # 16-step schedule must report "of 16 steps", not a synthetic 1).
@@ -195,16 +197,20 @@ class LTXKeyframeSoftenSchedule:
             # different sampler schedule — so no stale cached anchor, and a run
             # that momentarily lacks runtime sigmas can never latch the node
             # permanently off (the old cache-0.0 path). Falls back to the wired
-            # SIGMAS when the runtime doesn't supply them.
+            # SIGMAS when the runtime doesn't supply usable ones.
             rt = (extra_options or {}).get("sigmas")
             ref = None
+            cov = None   # the schedule the anchor came from — coverage log follows it
             if rt is not None:
                 try:
                     ref = float(rt[0])
+                    cov = rt
                 except Exception:
                     ref = None
-            if ref is None:
-                ref = connected_ref
+            if ref is None or ref <= 0.0:
+                # Runtime sigmas absent or unusable (malformed/empty/zero-start):
+                # anchor AND coverage both come from the wired schedule instead.
+                ref, cov = connected_ref, connected_sigmas
             if not ref or ref <= 0.0:
                 # No usable reference sigma from the run and none wired: the node
                 # is patched but inert this run. Warn ONCE so a silent no-op on a
@@ -228,9 +234,9 @@ class LTXKeyframeSoftenSchedule:
             if not logged[0]:
                 logged[0] = True
                 nested = getattr(denoise_mask, "is_nested", False)
-                # Report coverage against the schedule actually in force: the
-                # runtime one, else the wired one we anchored to.
-                cov = rt if rt is not None else connected_sigmas
+                # cov is the schedule the anchor came from (see above), so a
+                # malformed runtime object can't be reported while the wired
+                # schedule is the one actually in force.
                 try:
                     count, n_steps = steps_in_range(cov, soften_range)
                 except Exception:
