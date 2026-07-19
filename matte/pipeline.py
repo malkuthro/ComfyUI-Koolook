@@ -190,7 +190,14 @@ class KoolookMattePipeline:
         return video * 2.0 - 1.0
 
     def _encode_latents(self, t):
-        """Encode [1,F,3,H,W] -> raw VAE latents [1,F,4,h,w] (chunked over frames)."""
+        """Encode [1,F,3,H,W] -> raw VAE latents [1,F,4,h,w] (chunked over frames).
+
+        The UNet is fed conditioning + mask latents at the RAW VAE scale (no
+        ``scaling_factor`` applied), matching okdalto's ``VideoInferencePipeline``
+        (which encodes ``* scaling_factor`` then divides it back out, netting to
+        raw). Dividing here would over-scale the conditioning ~5.5x (1/0.18215),
+        pushing the fine-tuned UNet out of distribution and softening the matte.
+        """
         b, f = t.shape[0], t.shape[1]
         t = t.reshape(b * f, *t.shape[2:])
         parts = []

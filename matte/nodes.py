@@ -97,7 +97,9 @@ class KoolookMatteLoader:
         enable_vae_tiling: bool,
         enable_vae_slicing: bool
     ):
-        weight_dtype = torch.float16 if precision == "fp16" else torch.bfloat16
+        # fp16 is the default; only an explicit bf16 opts out. Anything else
+        # (incl. a stale "auto" widget from an older node version) -> fp16.
+        weight_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
         node_dir = Path(__file__).parent
         # relative paths resolve next to this pack; absolute paths pass through
         base = base_model_path if os.path.isabs(base_model_path) else str(node_dir / base_model_path)

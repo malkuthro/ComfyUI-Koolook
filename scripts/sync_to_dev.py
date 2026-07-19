@@ -191,6 +191,13 @@ DIR_EXCLUDES: tuple[str, ...] = (
     "README.md",
 )
 
+# Directory names that live ONLY in the live install (gitignored, downloaded at
+# runtime) and must survive a sync. The repo has no copy of these, so a blanket
+# ``rmtree`` of the dest subtree would delete them and force a multi-GB
+# re-download on the next node load. ``matte/checkpoints/`` holds the SVD base
+# model + VideoMaMa UNet (~10GB). Matched by name at any depth of a synced tree.
+PRESERVE_IN_DEST: frozenset[str] = frozenset({"checkpoints"})
+
 
 def load_dotenv(env_path: Path) -> None:
     """Minimal `.env` loader. No dependency on python-dotenv."""
@@ -240,6 +247,29 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
+def _contains_preserved(d: Path) -> bool:
+    """True if ``d`` holds a PRESERVE_IN_DEST directory anywhere below it."""
+    return any(p.is_dir() and p.name in PRESERVE_IN_DEST for p in d.rglob("*"))
+
+
+def _clean_dest(dst: Path) -> None:
+    """Recursively remove ``dst``'s contents so the copy mirrors the repo,
+    but keep any ``PRESERVE_IN_DEST`` directory (e.g. ``checkpoints/``) wherever
+    it appears. Replaces a blanket ``shutil.rmtree(dst)`` that would delete the
+    gitignored, runtime-downloaded model weights and force a ~10GB re-download.
+    """
+    for child in dst.iterdir():
+        if child.name in PRESERVE_IN_DEST:
+            continue  # keep runtime-downloaded data (model checkpoints)
+        if child.is_dir():
+            if _contains_preserved(child):
+                _clean_dest(child)  # descend to spare a nested preserved subtree
+            else:
+                shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def sync(
     target: Path,
     dry_run: bool,
@@ -268,9 +298,15 @@ def sync(
             copied += 1
             continue
         if src.is_dir():
+            # Clean the dest for a fresh mirror, but keep PRESERVE_IN_DEST
+            # subtrees (runtime-downloaded model checkpoints the repo doesn't
+            # carry). A blanket rmtree here would nuke matte/checkpoints/ and
+            # trigger a ~10GB re-download on the next load.
             if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst, ignore=_ignore)
+                _clean_dest(dst)
+            else:
+                dst.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dst, ignore=_ignore, dirs_exist_ok=True)
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
