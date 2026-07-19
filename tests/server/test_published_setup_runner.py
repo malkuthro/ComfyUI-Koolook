@@ -736,115 +736,128 @@ def test_get_run_result_path_follows_output_switch_not_input() -> None:
     asyncio.run(exercise())
 
 
+def _divergent_output_setup(
+    *,
+    output_default: int = 1,
+    output_options: list[dict[str, object]] | None = None,
+    same_as_input: bool = True,
+) -> dict:
+    """Setup with an EXR/QT/Img writer router driven by the output switch."""
+    setup = _valid_setup()
+    setup["inputContract"] = {"inputs": []}
+    setup["outputContract"] = {"outputs": []}
+    setup["visualGraph"] = {
+        "nodes": [
+            {"id": 100, "type": "Koolook_PublishInput", "inputs": [{"name": "mode", "widget": {"name": "mode"}}]},
+            {"id": 200, "type": "Koolook_PublishOutput", "inputs": [{"name": "output_mode", "widget": {"name": "output_mode"}}]},
+        ],
+        "links": [],
+        "groups": [],
+    }
+    setup["apiPrompt"] = {
+        "100": {
+            "class_type": "Koolook_PublishInput",
+            "inputs": {
+                "mode": "EXR",
+                "sequence_folder": "/shots/source/frames",
+                "qt_file": "",
+                "single_file": "",
+                "prompt": "",
+            },
+        },
+        "200": {
+            "class_type": "Koolook_PublishOutput",
+            "inputs": {"folder": "/shots/output", "name": "publish-OUT", "version": "2", "output_mode": "QT", "input_switch": ["100", 4]},
+        },
+        "300": {"class_type": "RMBG", "inputs": {"image": ["100", 0]}},
+        "301": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".exr"}},
+        "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
+        "303": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".png"}},
+        "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["200", 3], "payload": ["300", 0]}},
+        "311": {"class_type": "SaveEXRFrames", "inputs": {"filepath": ["301", 0], "images": ["400", 0]}},
+        "312": {"class_type": "Easy_VideoCombine", "inputs": {"filepath": ["302", 0], "images": ["400", 1]}},
+        "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"filepath": ["303", 0], "image": ["400", 2]}},
+    }
+    setup["setupSurface"] = {
+        "sourceInputs": [
+            {"group": "Koolook Input", "nodes": [{"id": "100", "type": "Koolook_PublishInput", "title": "In"}]}
+        ],
+        "outputs": [
+            {
+                "group": "Koolook Output",
+                "nodes": [
+                    {"id": "200", "type": "Koolook_PublishOutput", "title": "Out"},
+                    {"id": "400", "type": "Koolook_PublishRouter", "title": "Router"},
+                    {"id": "311", "type": "SaveEXRFrames", "title": "EXR writer"},
+                    {"id": "312", "type": "Easy_VideoCombine", "title": "QT writer"},
+                    {"id": "313", "type": "SaveImageAndPromptExact", "title": "Image writer"},
+                ],
+            }
+        ],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {"key": "sequence_folder", "label": "Sequence folder", "visible": True, "target": {"node": "100", "input": "sequence_folder"}, "default": "/shots/source/frames"}
+            ],
+            "outputs": [
+                {"key": "folder", "label": "Output folder", "visible": True, "target": {"node": "200", "input": "folder"}, "default": "/shots/output"},
+            ],
+            "results": [],
+            "switch": {
+                "key": "switch",
+                "label": "Input type",
+                "visible": True,
+                "target": {"node": "100", "input": "mode"},
+                "default": 0,
+                "options": [
+                    {"value": 0, "label": "EXR", "visible": True, "input": "sequence_folder"},
+                    {"value": 1, "label": "QT", "visible": False, "input": "sequence_folder"},
+                    {"value": 2, "label": "Img", "visible": False, "input": "sequence_folder"},
+                ],
+            },
+            "outputSwitch": {
+                "key": "output_switch",
+                "label": "Output type",
+                "visible": True,
+                "sameAsInput": same_as_input,
+                "target": {"node": "200", "input": "output_mode"},
+                "default": output_default,
+                "options": output_options
+                if output_options is not None
+                else [
+                    {"value": 0, "label": "EXR", "visible": True},
+                    {"value": 1, "label": "QT", "visible": True},
+                    {"value": 2, "label": "Img", "visible": True},
+                ],
+            },
+        },
+    }
+    setup["executionMap"] = {
+        "version": 1,
+        "routers": [
+            {
+                "node": "400",
+                "switchKey": "output_switch",
+                "selector": {"node": "200", "output": 3},
+                "payload": {"node": "300", "output": 0},
+                "branches": {
+                    "0": {"label": "EXR", "output": 0, "writerNodes": ["311"]},
+                    "1": {"label": "QT", "output": 1, "writerNodes": ["312"]},
+                    "2": {"label": "Img", "output": 2, "writerNodes": ["313"]},
+                },
+            }
+        ],
+    }
+    return setup
+
+
 def test_run_setup_output_switch_selects_writer_independently_of_input() -> None:
     """Decoupled output type: the writer router is driven by the OUTPUT switch,
     so an EXR source (input switch 0) can still write a QT movie (output switch
     1). The runner must keep the QT writer and prune the EXR/Img writers, proving
     the writer branch follows output_switch, not the input switch."""
     async def exercise() -> None:
-        setup = _valid_setup()
-        setup["inputContract"] = {"inputs": []}
-        setup["outputContract"] = {"outputs": []}
-        setup["visualGraph"] = {
-            "nodes": [
-                {"id": 100, "type": "Koolook_PublishInput", "inputs": [{"name": "mode", "widget": {"name": "mode"}}]},
-                {"id": 200, "type": "Koolook_PublishOutput", "inputs": [{"name": "output_mode", "widget": {"name": "output_mode"}}]},
-            ],
-            "links": [],
-            "groups": [],
-        }
-        setup["apiPrompt"] = {
-            "100": {
-                "class_type": "Koolook_PublishInput",
-                "inputs": {
-                    "mode": "EXR",
-                    "sequence_folder": "/shots/source/frames",
-                    "qt_file": "",
-                    "single_file": "",
-                    "prompt": "",
-                },
-            },
-            "200": {
-                "class_type": "Koolook_PublishOutput",
-                "inputs": {"folder": "/shots/output", "name": "publish-OUT", "version": "2", "output_mode": "QT", "input_switch": ["100", 4]},
-            },
-            "300": {"class_type": "RMBG", "inputs": {"image": ["100", 0]}},
-            "301": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".exr"}},
-            "302": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".mov"}},
-            "303": {"class_type": "EasyAIPipeline", "inputs": {"base_directory_path": ["200", 0], "extension": ".png"}},
-            "400": {"class_type": "Koolook_PublishRouter", "inputs": {"selector": ["200", 3], "payload": ["300", 0]}},
-            "311": {"class_type": "SaveEXRFrames", "inputs": {"filepath": ["301", 0], "images": ["400", 0]}},
-            "312": {"class_type": "Easy_VideoCombine", "inputs": {"filepath": ["302", 0], "images": ["400", 1]}},
-            "313": {"class_type": "SaveImageAndPromptExact", "inputs": {"filepath": ["303", 0], "image": ["400", 2]}},
-        }
-        setup["setupSurface"] = {
-            "sourceInputs": [
-                {"group": "Koolook Input", "nodes": [{"id": "100", "type": "Koolook_PublishInput", "title": "In"}]}
-            ],
-            "outputs": [
-                {
-                    "group": "Koolook Output",
-                    "nodes": [
-                        {"id": "200", "type": "Koolook_PublishOutput", "title": "Out"},
-                        {"id": "400", "type": "Koolook_PublishRouter", "title": "Router"},
-                        {"id": "311", "type": "SaveEXRFrames", "title": "EXR writer"},
-                        {"id": "312", "type": "Easy_VideoCombine", "title": "QT writer"},
-                        {"id": "313", "type": "SaveImageAndPromptExact", "title": "Image writer"},
-                    ],
-                }
-            ],
-            "controls": [],
-            "app": {
-                "inputs": [
-                    {"key": "sequence_folder", "label": "Sequence folder", "visible": True, "target": {"node": "100", "input": "sequence_folder"}, "default": "/shots/source/frames"}
-                ],
-                "outputs": [
-                    {"key": "folder", "label": "Output folder", "visible": True, "target": {"node": "200", "input": "folder"}, "default": "/shots/output"},
-                ],
-                "results": [],
-                "switch": {
-                    "key": "switch",
-                    "label": "Input type",
-                    "visible": True,
-                    "target": {"node": "100", "input": "mode"},
-                    "default": 0,
-                    "options": [
-                        {"value": 0, "label": "EXR", "visible": True, "input": "sequence_folder"},
-                        {"value": 1, "label": "QT", "visible": False, "input": "sequence_folder"},
-                        {"value": 2, "label": "Img", "visible": False, "input": "sequence_folder"},
-                    ],
-                },
-                "outputSwitch": {
-                    "key": "output_switch",
-                    "label": "Output type",
-                    "visible": True,
-                    "sameAsInput": True,
-                    "target": {"node": "200", "input": "output_mode"},
-                    "default": 1,
-                    "options": [
-                        {"value": 0, "label": "EXR", "visible": True},
-                        {"value": 1, "label": "QT", "visible": True},
-                        {"value": 2, "label": "Img", "visible": True},
-                    ],
-                },
-            },
-        }
-        setup["executionMap"] = {
-            "version": 1,
-            "routers": [
-                {
-                    "node": "400",
-                    "switchKey": "output_switch",
-                    "selector": {"node": "200", "output": 3},
-                    "payload": {"node": "300", "output": 0},
-                    "branches": {
-                        "0": {"label": "EXR", "output": 0, "writerNodes": ["311"]},
-                        "1": {"label": "QT", "output": 1, "writerNodes": ["312"]},
-                        "2": {"label": "Img", "output": 2, "writerNodes": ["313"]},
-                    },
-                }
-            ],
-        }
+        setup = _divergent_output_setup()
         registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
         comfy = FakeComfyClient()
         runner = PublishedSetupRunner(registry, comfy)
@@ -862,8 +875,68 @@ def test_run_setup_output_switch_selects_writer_independently_of_input() -> None
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize("switch_value", [True, 99])
+def test_run_setup_rejects_hidden_output_switch_option() -> None:
+    """An output type marked visible: False (no wired writer branch) is not
+    selectable through the API either — a direct caller submitting it gets a
+    400 listing only the visible choices, and nothing is queued."""
+    async def exercise() -> None:
+        setup = _divergent_output_setup(
+            output_default=1,
+            same_as_input=False,
+            output_options=[
+                {"value": 0, "label": "EXR", "visible": False},
+                {"value": 1, "label": "QT", "visible": True},
+                {"value": 2, "label": "Img", "visible": False},
+            ],
+        )
+        registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(registry, comfy)
+
+        with pytest.raises(SetupRunError) as exc_info:
+            await runner.runSetup(
+                "ltx-director-demo",
+                {"switch": 0, "output_switch": 0, "sequence_folder": "/shots/source/frames"},
+            )
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.errors == [
+            "input 'output_switch' must be one of: 1 (QT)"
+        ]
+        assert comfy.submitted_prompts == []
+
+    asyncio.run(exercise())
+
+
+def test_run_setup_omitted_output_switch_follows_input_when_default_is_same_as_input() -> None:
+    """When the registry leaves outputSwitch.default at the -1 "Same as input"
+    sentinel, a direct API caller that omits output_switch must still get a
+    valid run: the runner resolves the sentinel to the input switch's value
+    and keeps that writer branch (the browser simulator pre-resolves this;
+    the server must handle it too)."""
+    async def exercise() -> None:
+        setup = _divergent_output_setup(output_default=-1, same_as_input=True)
+        registry = PublishedSetupRegistry(StaticSetupStorage([setup]))
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(registry, comfy)
+
+        # EXR in, no output_switch submitted — output follows input.
+        await runner.runSetup(
+            "ltx-director-demo",
+            {"switch": 0, "sequence_folder": "/shots/source/frames", "folder": "/shots/output"},
+        )
+
+        kept = set(comfy.submitted_prompts[0])
+        assert "311" in kept, "EXR writer (output follows input) must be kept"
+        assert "312" not in kept and "313" not in kept, "non-selected writers must be pruned"
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("switch_value", [True, 99, 0, 1])
 def test_run_setup_rejects_invalid_switch_values_before_queueing(switch_value: object) -> None:
+    """Out-of-range values AND hidden options (0/1 are visible: False here) are
+    rejected before queueing; the error offers only the selectable choices."""
     async def exercise() -> None:
         setup = _valid_setup()
         setup["inputContract"] = {"inputs": []}
@@ -932,7 +1005,7 @@ def test_run_setup_rejects_invalid_switch_values_before_queueing(switch_value: o
 
         assert exc_info.value.status_code == 400
         assert exc_info.value.errors == [
-            "input 'switch' must be one of: 0 (EXR), 1 (QT), 2 (Img)"
+            "input 'switch' must be one of: 2 (Img)"
         ]
         assert comfy.submitted_prompts == []
 

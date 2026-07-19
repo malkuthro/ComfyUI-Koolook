@@ -23,7 +23,11 @@ The format is inspired by Keep a Changelog and SemVer.
   and a mode-switched `Koolook_PublishResult` reports the branch of whichever
   switch drives its result index-switch, so a divergent EXR-in/QT-out setup
   reports the QT movie path it actually wrote. The setup runner simulator renders
-  the "Output type" control and offers only wired types.
+  the "Output type" control and offers only wired types. The runner enforces the
+  contract for direct API callers too: hidden (`visible: false`) switch options
+  are rejected with a 400 listing only the visible choices, and omitting
+  `output_switch` when the default is the "Same as input" sentinel resolves
+  server-side to the input type instead of failing validation.
 - **Auto-versioning re-runs each queue (`EasyAIPipeline`).** Added an
   `IS_CHANGED` that marks the node dirty while `version` is `auto`/`next`, so
   the next-free-`vNNN` disk scan runs every queue instead of being memoized on

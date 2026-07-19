@@ -167,7 +167,12 @@ as `setupSurface.app.outputSwitch` (key `output_switch`), a switch whose options
 are `EXR`/`QT`/`Img` (no `Prompt`), carrying `sameAsInput: true` so the frontend
 can offer a "Same as input" choice. The frontend must resolve "Same as input" to
 the concrete input-switch value **before submitting** `output_switch` — the
-runner validates the submitted value against the concrete option list.
+runner validates the submitted value against the concrete option list, so an
+explicit `-1` sentinel is rejected. Omitting `output_switch` entirely is valid:
+when the published default is the `-1` "Same as input" sentinel, the runner
+resolves it server-side to the input switch's selected value, so direct API
+clients that skip the key get the same follow-input behavior the simulator
+pre-resolves in the browser.
 
 A `Koolook_PublishRouter` is inherently the **output selector** — its slots are
 named EXR/QT/Img/Prompt. So when a setup exposes an output switch, the publisher
@@ -180,7 +185,11 @@ have writers become the offered output types; the app user picks among them.
 Each `outputSwitch` option carries a `visible` flag: the publisher marks an
 output type visible only when some router has a wired writer branch for it (from
 the execution map's `writerNodes`). The frontend renders only visible options,
-so a user can't pick an output type that would write nothing.
+so a user can't pick an output type that would write nothing. The runner
+enforces this server-side too: a submitted switch value whose option is
+`visible: false` is rejected with a 400 before queueing (the error lists only
+the visible choices), so a direct API caller can't bypass the frontend and
+queue a run with no writer.
 
 `sameAsInput` is now conditional: "Same as input" is offered **only when every
 selectable input type has a matching wired output writer** (a format-preserving

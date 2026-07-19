@@ -290,6 +290,11 @@ def _switch_option_value(switch: dict[str, Any], selected: Any) -> int | None:
     for option in switch.get("options", []):
         if not isinstance(option, dict):
             continue
+        # Hidden options (e.g. output types with no wired writer branch) are
+        # not selectable through the API either — the frontend never offers
+        # them, and accepting one here would queue a run that writes nothing.
+        if option.get("visible") is False:
+            continue
         value = option.get("value")
         if isinstance(value, bool) or not isinstance(value, int):
             continue
@@ -303,7 +308,7 @@ def _switch_option_value(switch: dict[str, Any], selected: Any) -> int | None:
 def _switch_value_error(key: str, switch: dict[str, Any]) -> str:
     choices: list[str] = []
     for option in switch.get("options", []):
-        if not isinstance(option, dict):
+        if not isinstance(option, dict) or option.get("visible") is False:
             continue
         value = option.get("value")
         label = option.get("label")
@@ -545,7 +550,7 @@ def _execution_map_selected_value(
     app = setup.get("setupSurface", {}).get("app", {})
     switch = _app_switch_by_key(app, key)
     if isinstance(switch, dict):
-        return _selected_switch_value(switch, run_inputs)
+        return _selected_switch_value(switch, run_inputs, app)
     selected = run_inputs.get(key) if isinstance(key, str) else None
     if isinstance(selected, bool):
         return None
@@ -710,7 +715,8 @@ def _selected_result_switches(
         # Use the value of the switch that actually drives this result switch
         # (input OR output), so a divergent EXR-in/QT-out setup reports the QT
         # path rather than the input-type path.
-        selected_value = _selected_switch_value(switch, run_inputs)
+        app = setup.get("setupSurface", {}).get("app", {})
+        selected_value = _selected_switch_value(switch, run_inputs, app)
         if selected_value is not None:
             selected[result_node_id] = (result_node_id, selected_value)
     return selected
@@ -738,7 +744,7 @@ def _selected_app_switches(
     selected: dict[str, tuple[str, int]] = {}
     for switch in switches:
         switch_target = switch["target"]
-        selected_value = _selected_switch_value(switch, run_inputs)
+        selected_value = _selected_switch_value(switch, run_inputs, app)
         if selected_value is None:
             continue
         for node_id, node in api_prompt.items():
@@ -870,7 +876,7 @@ def _result_switch_node_and_switch(
     for switch in candidate_switches:
         if not _selector_matches_switch_target(selector_ref, switch["target"], api_prompt):
             continue
-        selected_value = _selected_switch_value(switch, run_inputs)
+        selected_value = _selected_switch_value(switch, run_inputs, app)
         if selected_value is None:
             continue
         if not _is_api_ref(switch_inputs.get(f"value{selected_value}")):
@@ -897,17 +903,33 @@ def _selected_result_branch_ref(
     switch_inputs = switch_node.get("inputs")
     if not isinstance(switch_inputs, dict):
         return None
-    selected_value = _selected_switch_value(switch, run_inputs)
+    app = setup.get("setupSurface", {}).get("app", {})
+    selected_value = _selected_switch_value(switch, run_inputs, app)
     if selected_value is None:
         return None
     branch_ref = switch_inputs.get(f"value{selected_value}")
     return branch_ref if _is_api_ref(branch_ref) else None
 
 
-def _selected_switch_value(switch: dict[str, Any], run_inputs: dict[str, Any]) -> int | None:
+def _selected_switch_value(
+    switch: dict[str, Any],
+    run_inputs: dict[str, Any],
+    app: Any = None,
+) -> int | None:
     key = switch.get("key")
-    selected = run_inputs.get(key) if isinstance(key, str) and key in run_inputs else switch.get("default")
-    return _switch_option_value(switch, selected)
+    submitted = isinstance(key, str) and key in run_inputs
+    selected = run_inputs[key] if submitted else switch.get("default")
+    value = _switch_option_value(switch, selected)
+    # A sameAsInput switch may carry the "Same as input" sentinel (-1) as its
+    # default, which is not a concrete option. When the caller omitted the key,
+    # follow the input switch — that is what the sentinel means. Submitted
+    # values are never resolved this way: the contract requires clients to
+    # submit a concrete option, and validation rejects the sentinel.
+    if value is None and not submitted and switch.get("sameAsInput") and isinstance(app, dict):
+        input_switch = app.get("switch")
+        if isinstance(input_switch, dict) and input_switch is not switch:
+            return _selected_switch_value(input_switch, run_inputs)
+    return value
 
 
 def _selector_matches_switch_target(selector_ref: Any, switch_target: dict[str, Any], api_prompt: dict[str, Any]) -> bool:
