@@ -176,6 +176,7 @@ RUNTIME_PATHS: tuple[str, ...] = (
     "koolook_setups.py",
     "koolook_versioning.py",
     "forks",
+    "matte",
     "video_formats",
     "web",
 )
@@ -189,6 +190,15 @@ DIR_EXCLUDES: tuple[str, ...] = (
     "forks_manifest.yaml",
     "README.md",
 )
+
+# Paths (POSIX, relative to the sync TARGET root) that live ONLY in the live
+# install — gitignored, downloaded at runtime — and must survive a sync. The
+# repo has no copy of these, so a blanket ``rmtree`` of the dest subtree would
+# delete them and force a multi-GB re-download on the next node load.
+# ``matte/checkpoints/`` holds the SVD base model + VideoMaMa UNet (~10GB).
+# Matched by EXACT relative path (not by bare name at any depth), so an
+# unrelated ``checkpoints/`` elsewhere in the tree is still mirrored normally.
+PRESERVE_IN_DEST: frozenset[str] = frozenset({"matte/checkpoints"})
 
 
 def load_dotenv(env_path: Path) -> None:
@@ -239,6 +249,42 @@ def _ignore(_dir: str, names: list[str]) -> list[str]:
     return [n for n in names if n in DIR_EXCLUDES]
 
 
+def _is_preserved(rel: str) -> bool:
+    """True if ``rel`` (POSIX, relative to the target root) is exactly a
+    preserved path."""
+    return rel in PRESERVE_IN_DEST
+
+
+def _contains_preserved(rel: str) -> bool:
+    """True if a preserved path lives strictly BELOW ``rel`` (so we descend into
+    ``rel`` instead of deleting it wholesale)."""
+    prefix = rel + "/"
+    return any(p.startswith(prefix) for p in PRESERVE_IN_DEST)
+
+
+def _clean_dest(dst: Path, base: Path) -> None:
+    """Recursively remove ``dst``'s contents so the copy mirrors the repo, but
+    keep any ``PRESERVE_IN_DEST`` path (matched by its POSIX path relative to
+    ``base``). Replaces a blanket ``shutil.rmtree(dst)`` that would delete the
+    gitignored, runtime-downloaded model weights and force a ~10GB re-download.
+    """
+    for child in dst.iterdir():
+        rel = child.relative_to(base).as_posix()
+        if _is_preserved(rel):
+            continue  # keep runtime-downloaded data (model checkpoints)
+        # Symlinks first: a symlinked dir reports is_dir()==True, so recursing /
+        # rmtree'ing it could reach outside the tree. Just drop the link.
+        if child.is_symlink():
+            child.unlink()
+        elif child.is_dir():
+            if _contains_preserved(rel):
+                _clean_dest(child, base)  # descend to spare a nested preserved subtree
+            else:
+                shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def sync(
     target: Path,
     dry_run: bool,
@@ -267,9 +313,23 @@ def sync(
             copied += 1
             continue
         if src.is_dir():
-            if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst, ignore=_ignore)
+            # Clean the dest for a fresh mirror, but keep PRESERVE_IN_DEST
+            # subtrees (runtime-downloaded model checkpoints the repo doesn't
+            # carry). A blanket rmtree here would nuke matte/checkpoints/ and
+            # trigger a ~10GB re-download on the next load.
+            # A top-level symlinked dest (e.g. target/matte -> elsewhere) must
+            # never be cleaned/copied THROUGH: iterdir()/copytree would follow it
+            # and mutate files outside the target. Drop the link and own the path
+            # as a real dir. (is_symlink is checked before exists(), which follows
+            # symlinks.)
+            if dst.is_symlink():
+                dst.unlink()
+                dst.mkdir(parents=True, exist_ok=True)
+            elif dst.exists():
+                _clean_dest(dst, target)
+            else:
+                dst.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dst, ignore=_ignore, dirs_exist_ok=True)
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)

@@ -143,6 +143,9 @@ else:
         _merge_node_group("Easy Video Combine", ".k_video_combine")
         _merge_node_group("Radiance Koolook VAE", ".forks.radiance_koolook")
         _merge_node_group("WhatDreamsCost LTX Director", ".forks.whatdreamscost_koolook")
+        # First-party matte nodes. Load diffusers (already present via the forks
+        # above); the guard skips them cleanly if diffusers is ever absent.
+        _merge_node_group("Koolook Matte", ".matte")
 
         # Register the Kforge Labs snapshot/preset endpoints. Installed
         # regardless of the node-import results above, so a broken node

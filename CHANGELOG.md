@@ -7,6 +7,15 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **Koolook Matte nodes (`KoolookMatteLoader` / `KoolookMatteSampler` /
+  `KoolookMatteFocusCrop` / `KoolookMatteFocusStitch`).** First-party, mask-guided
+  one-step video matting — an original GPL-3.0 reimplementation of the published
+  VideoMaMa method (single-step SVD, 12-channel UNet), with temporal windowing,
+  subject "hero-crop" ROI, and shortest-side/`/64` resolution control with OOM
+  auto-backoff. **Model caveat:** the nodes *load* (never bundle) the VideoMaMa
+  UNet (**CC BY-NC 4.0 — non-commercial**) and SVD's VAE (**Stability Community
+  License**) at runtime; the user is responsible for model-license compliance
+  (see `matte/NOTICE`). Maintainer notes: `docs/maintainers/matte-pipeline.md`.
 - **LTX Keyframe Soften Schedule node (`LTXKeyframeSoftenSchedule`).** Smooths
   motion between keyframes without adding any guide frames: a model patcher that
   sigma-schedules the keyframe denoise-mask pins — loosening them early (high
