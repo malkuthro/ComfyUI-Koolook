@@ -130,7 +130,8 @@ class KoolookMattePipeline:
         del cond, mask
         self._clear_cache(self.device)
         if self.enable_model_cpu_offload:
-            self.vae.to("cpu"); self._clear_cache(self.device)
+            self.vae.to("cpu")
+            self._clear_cache(self.device)
 
         # --- single UNet step over all frames at once ---
         if self.enable_model_cpu_offload:

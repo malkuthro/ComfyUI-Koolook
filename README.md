@@ -58,6 +58,9 @@ The root Koolook nodes and the slim Radiance Koolook VAE wrappers have no
 extra Python dependencies beyond `torch`, which ComfyUI already requires.
 The video wrappers require Video Helper Suite, and the LTX Director fork is
 for workflows that already use the LTX / Prompt Relay node ecosystem.
+The Koolook Matte nodes additionally need `diffusers` (already pulled in by the
+LTX Director / Radiance forks) and use `huggingface_hub` to download the SVD +
+VideoMaMa model weights at runtime.
 
 ## Install
 

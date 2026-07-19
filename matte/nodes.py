@@ -611,6 +611,14 @@ class KoolookMatteFocusCrop:
 
     def crop(self, images, coarse_mask, enabled, padding, max_long_side):
         num = images.shape[0]
+        if coarse_mask.shape[0] != num:
+            # Mismatched counts would make cropped_images (num) and cropped_mask
+            # (coarse_mask.shape[0]) diverge, silently dropping/misaligning frames
+            # at FocusStitch. Fail like KoolookMatteSampler.run_inference does.
+            raise ValueError(
+                f"Number of image frames ({num}) must match number of "
+                f"coarse_mask frames ({coarse_mask.shape[0]})"
+            )
         orig_h, orig_w = images.shape[1], images.shape[2]
 
         # --- Bypass: pass the full frame through unchanged with an identity focus, so
