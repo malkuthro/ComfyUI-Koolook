@@ -386,7 +386,7 @@ def _build_draft_setup(
 ) -> dict[str, Any]:
     title = metadata.get("title", "")
     setup_id = metadata.get("id", "")
-    setup_surface = _infer_setup_surface(visualGraph)
+    setup_surface = _infer_setup_surface(visualGraph, apiPrompt)
     setup = {
         "schemaVersion": SUPPORTED_SCHEMA_VERSION,
         "id": setup_id,
@@ -498,16 +498,22 @@ def _reconcile_output_switch(
         output_switch["default"] = ordered_available[0]
 
 
-def _infer_setup_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+def _infer_setup_surface(
+    visual_graph: dict[str, Any],
+    api_prompt: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "sourceInputs": _nodes_in_named_groups(visual_graph, "Koolook Input"),
         "outputs": _nodes_in_named_groups(visual_graph, "Koolook Output"),
         "controls": [],
-        "app": _infer_app_surface(visual_graph),
+        "app": _infer_app_surface(visual_graph, api_prompt),
     }
 
 
-def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
+def _infer_app_surface(
+    visual_graph: dict[str, Any],
+    api_prompt: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     input_nodes = _nodes_in_group(visual_graph, "Koolook Input")
     output_nodes = _nodes_in_group(visual_graph, "Koolook Output")
     input_node = _first_node_of_type(input_nodes, PUBLISH_INPUT_CLASS)
@@ -517,6 +523,7 @@ def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
     prompt = _publish_prompt_field(input_node)
     if prompt is not None:
         inputs.append(prompt)
+    inputs.extend(_app_builder_param_fields(visual_graph, api_prompt, inputs))
     outputs = _publish_output_fields(output_node)
     app: dict[str, Any] = {
         "inputs": inputs,
@@ -528,6 +535,95 @@ def _infer_app_surface(visual_graph: dict[str, Any]) -> dict[str, Any]:
     if output_node is not None:
         app["outputSwitch"] = _publish_output_switch(output_node)
     return app
+
+
+_APP_PARAM_VALUE_TYPES = {"string", "int", "float", "boolean"}
+
+
+def _app_param_value_type(value: Any) -> str | None:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "string"
+    return None
+
+
+def _app_builder_param_fields(
+    visual_graph: dict[str, Any],
+    api_prompt: dict[str, Any] | None,
+    existing_fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert ComfyUI app-builder picks into declared app param fields.
+
+    ComfyUI's App builder (beta) records clicked node widgets in the workflow as
+    ``extra.linearData.inputs`` — ordered ``[nodeId, widgetName]`` pairs. Each
+    pick that resolves to a *literal* named input in the API prompt becomes a
+    ``standalone`` app field the runner can inject with no special handling.
+
+    Picks are skipped (never a publish-failing diagnostic) when the node or
+    input is missing from the API prompt, the input is link-driven rather than
+    a widget literal, or the value is not a scalar — the API prompt is the
+    execution source of truth, so only picks it can honor are declared.
+    """
+    if not isinstance(visual_graph, dict) or not isinstance(api_prompt, dict):
+        return []
+    extra = visual_graph.get("extra")
+    linear = extra.get("linearData") if isinstance(extra, dict) else None
+    picks = linear.get("inputs") if isinstance(linear, dict) else None
+    if not isinstance(picks, list):
+        return []
+    node_by_id = _visual_node_index(visual_graph)
+    seen_keys = {
+        field["key"]
+        for field in existing_fields
+        if isinstance(field, dict) and isinstance(field.get("key"), str)
+    }
+    fields: list[dict[str, Any]] = []
+    for pick in picks:
+        if not isinstance(pick, (list, tuple)) or len(pick) < 2:
+            continue
+        node_id = str(pick[0]).strip()
+        widget = str(pick[1]).strip()
+        if not node_id or not widget:
+            continue
+        api_node = api_prompt.get(node_id)
+        if not isinstance(api_node, dict):
+            continue
+        api_inputs = api_node.get("inputs")
+        if not isinstance(api_inputs, dict) or widget not in api_inputs:
+            continue
+        default = api_inputs[widget]
+        value_type = _app_param_value_type(default)
+        if value_type is None:
+            continue
+        key = re.sub(r"[^A-Za-z0-9_]+", "_", f"param_{node_id}_{widget}")
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        visual_node = node_by_id.get(node_id)
+        title = ""
+        if isinstance(visual_node, dict) and isinstance(visual_node.get("title"), str):
+            title = visual_node["title"].strip()
+        if not title:
+            title = str(api_node.get("class_type") or f"Node {node_id}")
+        field: dict[str, Any] = {
+            "key": key,
+            "label": f"{title}: {widget}",
+            "visible": True,
+            "standalone": True,
+            "appParam": True,
+            "valueType": value_type,
+            "target": {"node": node_id, "input": widget},
+            "default": default,
+        }
+        if value_type == "string" and "\n" in default:
+            field["multiline"] = True
+        fields.append(field)
+    return fields
 
 
 def _first_node_of_type(
@@ -1040,12 +1136,26 @@ def _validate_surface_app_fields(
         _validate_non_empty_text(field.get("label"), f"{field_path}.label", diagnostics)
         if "visible" in field and not isinstance(field["visible"], bool):
             diagnostics.append(f"{field_path}.visible must be a boolean")
+        if "appParam" in field and not isinstance(field["appParam"], bool):
+            diagnostics.append(f"{field_path}.appParam must be a boolean")
+        if (
+            "valueType" in field
+            and field["valueType"] not in _APP_PARAM_VALUE_TYPES
+        ):
+            diagnostics.append(
+                f"{field_path}.valueType must be one of: "
+                + ", ".join(sorted(_APP_PARAM_VALUE_TYPES))
+            )
         _validate_surface_app_target(
             field.get("target"),
             f"{field_path}.target",
             diagnostics,
             node_by_id,
             api_prompt,
+            # App-builder param picks target plain widgets, which this frontend
+            # does not serialize as named visual-node inputs — the apiPrompt
+            # (checked below) is the execution source of truth for them.
+            skip_visual=field.get("appParam") is True,
         )
     return keys
 
@@ -1108,6 +1218,8 @@ def _validate_surface_app_target(
     diagnostics: list[str],
     node_by_id: dict[str, dict[str, Any]],
     api_prompt: dict[str, Any] | None,
+    *,
+    skip_visual: bool = False,
 ) -> None:
     if not isinstance(target, dict):
         diagnostics.append(f"{path} must be a JSON object")
@@ -1120,12 +1232,13 @@ def _validate_surface_app_target(
         return
     if not isinstance(input_name, str) or not input_name.strip():
         return
-    node = node_by_id.get(node_id)
-    if node is None:
-        diagnostics.append(f"{path}.node not found in visualGraph")
-        return
-    if not _visual_node_has_input(node, input_name):
-        diagnostics.append(f"{path}.input not found in visualGraph node")
+    if not skip_visual:
+        node = node_by_id.get(node_id)
+        if node is None:
+            diagnostics.append(f"{path}.node not found in visualGraph")
+            return
+        if not _visual_node_has_input(node, input_name):
+            diagnostics.append(f"{path}.input not found in visualGraph node")
     if api_prompt is None:
         return
     api_node = api_prompt.get(node_id)

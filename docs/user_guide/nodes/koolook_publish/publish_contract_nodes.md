@@ -93,16 +93,36 @@ Use this when the external app should show a specific resolved string after the
 workflow runs, such as the selected output path. If omitted, the runner still
 uses available writer/history output items.
 
+## Extra parameters via ComfyUI's App builder
+
+Beyond the fixed source/output controls above, any node widget can be exposed
+to the external app using ComfyUI's own **App builder** (beta):
+
+1. Click **Enter app mode** → **Build app** in ComfyUI.
+2. Click the node parameters you want the external app to control (e.g. a
+   sampler's `steps`, a crop node's `two_pass`). They collect into the side
+   panel in order.
+3. Exit the builder and save the workflow — the picks are stored inside the
+   workflow itself.
+
+When you publish, each pick becomes an extra always-on field in the external
+app form, typed from its current value (text / number / checkbox) and
+defaulting to it. Picks that point at wired (link-driven) inputs are skipped —
+only real widget values can be exposed. The publish dialog lists the picks
+under **App params** so you can review them before confirming.
+
 ## Minimal recipe
 
 1. Save the workflow in the Kforge Labs Workflows tree.
 2. Add a group named `Koolook Input` around `Koolook_PublishInput`.
 3. Add a group named `Koolook Output` around `Koolook_PublishOutput` and any
    router/result nodes.
-4. Wire the publish input/output values into the real loader, path, and writer
+4. Optionally pick extra parameters with ComfyUI's App builder (section above)
+   and re-save.
+5. Wire the publish input/output values into the real loader, path, and writer
    nodes used by the workflow.
-5. Right-click the saved workflow and choose **Publish setup...**.
-6. Review the publish dialog before confirming.
+6. Right-click the saved workflow and choose **Publish setup...**.
+7. Review the publish dialog before confirming.
 
 For API and maintainer-level details, see
 [`published-setups.md`](../../../maintainers/published-setups.md) and

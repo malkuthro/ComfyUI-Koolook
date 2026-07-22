@@ -357,6 +357,36 @@ function fieldDefault(field) {
     return field?.default == null ? "" : field.default;
 }
 
+// valueType by field key, for coercing form strings back into the JSON types
+// the runner injects verbatim (app-builder param picks declare valueType).
+export function appFieldValueTypes(setup) {
+    const app = appSurface(setup);
+    const types = {};
+    for (const list of [app.inputs, app.outputs]) {
+        if (!Array.isArray(list)) continue;
+        for (const field of list) {
+            if (field?.key && typeof field.valueType === "string") {
+                types[field.key] = field.valueType;
+            }
+        }
+    }
+    return types;
+}
+
+export function coerceFieldValue(value, valueType) {
+    if (valueType === "int" || valueType === "float") {
+        if (typeof value === "number") return value;
+        const text = String(value ?? "").trim();
+        const num = Number(text);
+        return text !== "" && !Number.isNaN(num) ? num : value;
+    }
+    if (valueType === "boolean") {
+        if (typeof value === "boolean") return value;
+        return value === "true" || value === "on" || value === "1";
+    }
+    return value;
+}
+
 // Resolve the concrete output-type index to submit. A negative / blank value is
 // the "Same as input" sentinel: it follows the input switch so the writer type
 // matches the source type unless the user explicitly overrode it.
@@ -531,6 +561,28 @@ function demoFetch(url, options = {}) {
                             placeholder: "a bear talking to the camera in a sunny forest",
                             help: "Describe the shot in one simple line: subject + action + setting.",
                         },
+                        // App-builder param picks (extra.linearData) become
+                        // standalone typed fields like these at publish time.
+                        {
+                            key: "param_30_steps",
+                            label: "Main sampler: steps",
+                            visible: true,
+                            standalone: true,
+                            appParam: true,
+                            valueType: "int",
+                            target: { node: "30", input: "steps" },
+                            default: 8,
+                        },
+                        {
+                            key: "param_40_two_pass",
+                            label: "Focus crop: two_pass",
+                            visible: true,
+                            standalone: true,
+                            appParam: true,
+                            valueType: "boolean",
+                            target: { node: "40", input: "two_pass" },
+                            default: true,
+                        },
                     ],
                     outputs: [
                         { key: "folder", label: "Output folder", visible: true, default: "/shots/demo/output" },
@@ -633,9 +685,24 @@ function bindSimulator(documentRef, fetchImpl) {
         const label = documentRef.createElement("label");
         label.dataset.fieldKey = name || field.key;
         label.textContent = fieldLabelText(field);
-        const input = documentRef.createElement(field?.multiline ? "textarea" : "input");
+        // App-builder param picks carry a valueType so numbers and booleans
+        // render as real controls instead of bare text boxes.
+        const valueType = field?.valueType;
+        let input;
+        if (valueType === "boolean") {
+            input = documentRef.createElement("input");
+            input.type = "checkbox";
+            input.checked = value === true || value === "true";
+        } else if (valueType === "int" || valueType === "float") {
+            input = documentRef.createElement("input");
+            input.type = "number";
+            if (valueType === "float") input.step = "any";
+            input.value = value == null ? "" : String(value);
+        } else {
+            input = documentRef.createElement(field?.multiline ? "textarea" : "input");
+            input.value = value == null ? "" : String(value);
+        }
         input.dataset.appField = name || field.key;
-        input.value = value == null ? "" : String(value);
         if (field?.placeholder) input.placeholder = String(field.placeholder);
         label.appendChild(input);
         if (field?.help) {
@@ -778,8 +845,12 @@ function bindSimulator(documentRef, fetchImpl) {
             const numeric = Number(outSwitchEl.value);
             values[outSwitchEl.dataset.appOutputSwitch] = Number.isNaN(numeric) ? outSwitchEl.value : numeric;
         }
+        const valueTypes = appFieldValueTypes(state.selectedSetup);
         for (const input of appForm?.querySelectorAll("[data-app-field]") || []) {
-            values[input.dataset.appField] = input.value;
+            values[input.dataset.appField] = coerceFieldValue(
+                input.type === "checkbox" ? input.checked : input.value,
+                valueTypes[input.dataset.appField],
+            );
         }
         return runInputsFromAppValues(state.selectedSetup, values);
     }
