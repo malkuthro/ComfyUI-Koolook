@@ -7,6 +7,22 @@ The format is inspired by Keep a Changelog and SemVer.
 ## [Unreleased]
 
 ### Added
+- **ComfyUI App-builder picks become published-setup parameters.** Authors can
+  now expose any node widget to the external app by clicking it in ComfyUI's
+  native App builder (beta) and saving the workflow — no extra wiring. At
+  publish time the registry reads the picks ComfyUI stores in the workflow
+  (`extra.linearData.inputs`, ordered `[nodeId, widgetName]` pairs) and converts
+  each resolvable one into a declared `standalone` field in
+  `setupSurface.app.inputs` (`key` `param_<node>_<widget>`, label from the node
+  title, `valueType` string/int/float/boolean and `default` taken from the API
+  prompt literal). Picks whose target is link-driven or missing from the API
+  prompt are skipped safely instead of failing the publish; validation checks
+  `appParam` fields against the API prompt (this frontend does not serialize
+  plain widgets as named visual-node inputs). The runner injects them through
+  the existing declared-field path unchanged, the publish dialog lists picks
+  under a new "App params" review line, and the setup runner simulator renders
+  them as typed controls (number input / checkbox) that submit properly typed
+  JSON values — demo mode includes two sample params.
 - **Independent output type for published setups.** A `Koolook_PublishRouter`
   is auto-detected as the setup's **output selector**: whichever writer branches
   you wire become the app's "Output type" options, and the external user can pick

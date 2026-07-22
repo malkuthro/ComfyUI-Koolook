@@ -528,3 +528,73 @@ def test_simulator_builds_external_app_inputs_from_setup_surface() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_simulator_submits_app_builder_param_fields_with_typed_values() -> None:
+    """App-builder param picks are standalone declared fields: their defaults
+    ride the payload, submitted overrides pass through, and form-string values
+    coerce back to the JSON types the runner injects verbatim."""
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import {
+          defaultRunInputsFromSetup,
+          runInputsFromAppValues,
+          appFieldValueTypes,
+          coerceFieldValue,
+        } from "./web/setup_runner_simulator.js";
+
+        const setup = {
+          setupSurface: {
+            app: {
+              inputs: [
+                {
+                  key: "param_30_steps",
+                  label: "Main sampler: steps",
+                  visible: true,
+                  standalone: true,
+                  appParam: true,
+                  valueType: "int",
+                  target: { node: "30", input: "steps" },
+                  default: 8,
+                },
+                {
+                  key: "param_30_enabled",
+                  label: "Main sampler: enabled",
+                  visible: true,
+                  standalone: true,
+                  appParam: true,
+                  valueType: "boolean",
+                  target: { node: "30", input: "enabled" },
+                  default: true,
+                },
+              ],
+              outputs: [],
+              results: [],
+            },
+          },
+        };
+
+        assert.deepEqual(defaultRunInputsFromSetup(setup), {
+          param_30_steps: 8,
+          param_30_enabled: true,
+        });
+        assert.deepEqual(
+          runInputsFromAppValues(setup, { param_30_steps: 12, param_30_enabled: false }),
+          { param_30_steps: 12, param_30_enabled: false },
+        );
+        assert.deepEqual(appFieldValueTypes(setup), {
+          param_30_steps: "int",
+          param_30_enabled: "boolean",
+        });
+        assert.equal(coerceFieldValue("12", "int"), 12);
+        assert.equal(coerceFieldValue("1.5", "float"), 1.5);
+        assert.equal(coerceFieldValue("true", "boolean"), true);
+        assert.equal(coerceFieldValue(false, "boolean"), false);
+        assert.equal(coerceFieldValue("not-a-number", "int"), "not-a-number");
+        assert.equal(coerceFieldValue("plain", undefined), "plain");
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr

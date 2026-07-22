@@ -1483,3 +1483,65 @@ def test_get_run_resolves_selected_switch_result_when_result_node_history_is_mis
         ]
 
     asyncio.run(exercise())
+
+
+def _app_builder_param_setup() -> dict:
+    """A callable setup whose app surface declares one App-builder param pick."""
+    setup = _valid_setup()
+    setup["id"] = "app-builder-runner"
+    setup["visualGraph"]["nodes"].append(
+        {"id": 30, "type": "KSampler", "title": "Main sampler", "inputs": []}
+    )
+    setup["apiPrompt"]["30"] = {"class_type": "KSampler", "inputs": {"steps": 8}}
+    setup["setupSurface"] = {
+        "sourceInputs": [],
+        "outputs": [],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "param_30_steps",
+                    "label": "Main sampler: steps",
+                    "visible": True,
+                    "standalone": True,
+                    "appParam": True,
+                    "valueType": "int",
+                    "target": {"node": "30", "input": "steps"},
+                    "default": 8,
+                }
+            ],
+            "outputs": [],
+            "results": [],
+        },
+    }
+    return setup
+
+
+def test_run_setup_injects_app_builder_param_into_cloned_prompt() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_app_builder_param_setup()]))
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(registry, comfy)
+
+        await runner.runSetup(
+            "app-builder-runner",
+            {"prompt": "external prompt", "param_30_steps": 12},
+        )
+
+        assert comfy.submitted_prompts[0]["30"]["inputs"]["steps"] == 12
+        assert comfy.submitted_prompts[0]["12"]["inputs"]["text"] == "external prompt"
+
+    asyncio.run(exercise())
+
+
+def test_run_setup_keeps_param_default_when_not_submitted() -> None:
+    async def exercise() -> None:
+        registry = PublishedSetupRegistry(StaticSetupStorage([_app_builder_param_setup()]))
+        comfy = FakeComfyClient()
+        runner = PublishedSetupRunner(registry, comfy)
+
+        await runner.runSetup("app-builder-runner", {"prompt": "external prompt"})
+
+        assert comfy.submitted_prompts[0]["30"]["inputs"]["steps"] == 8
+
+    asyncio.run(exercise())

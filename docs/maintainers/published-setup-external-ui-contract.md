@@ -255,6 +255,52 @@ inside ComfyUI. A frontend may optionally preview images or other known file
 types later, but publish-time result metadata does not need to declare file
 kind for the first version.
 
+## App-Builder Parameter Picks
+
+ComfyUI's native **App builder** (beta, "Enter app mode" → "Build app") lets an
+author click node widgets to collect them into a side panel. ComfyUI stores
+those picks in the workflow itself as `extra.linearData.inputs` — ordered
+`[nodeId, widgetName]` pairs. Koolook piggybacks on that: the author picks
+parameters with ComfyUI's own UI, saves the workflow, and publishes as usual.
+
+At publish time the registry converts each pick into an extra declared field in
+`setupSurface.app.inputs`:
+
+```json
+{
+  "key": "param_30_steps",
+  "label": "Main sampler: steps",
+  "visible": true,
+  "standalone": true,
+  "appParam": true,
+  "valueType": "int",
+  "target": { "node": "30", "input": "steps" },
+  "default": 8
+}
+```
+
+- `key` is `param_<nodeId>_<widgetName>` (sanitized); `label` comes from the
+  visual node title (falling back to `class_type`) plus the widget name.
+- `standalone: true` means the field renders independently of the source-mode
+  switch, exactly like the always-on prompt field.
+- `appParam: true` marks the field as an App-builder pick. Validation checks its
+  target against the **apiPrompt only** — this frontend does not serialize plain
+  widgets as named visual-node inputs, so the visual-graph check is skipped.
+- `valueType` (`string` / `int` / `float` / `boolean`) is inferred from the
+  apiPrompt literal so frontends can render typed controls and submit properly
+  typed JSON values. `default` is the widget value captured in the apiPrompt.
+
+A pick is silently skipped (never a publish failure) when its node or input is
+missing from the apiPrompt, or the input is link-driven rather than a widget
+literal — the apiPrompt is the execution source of truth, so only picks it can
+honor are declared. The publish dialog lists the raw picks under "App params"
+for review before confirming.
+
+The runner needs no special handling: param fields inject through the same
+declared-field path as every other input, and omitting the key at run time
+keeps the published default. Sections/grouping for these fields is a planned
+follow-up; the first version renders them as one flat ordered list.
+
 ## Expected External Frontend UI
 
 The external frontend should be able to build this kind of form from the

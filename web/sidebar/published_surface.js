@@ -253,3 +253,28 @@ export function inferSetupSurface(graph) {
         app: inferAppSurface(graph),
     };
 }
+
+// Review-preview labels for ComfyUI App-builder picks (extra.linearData).
+// The server converts resolvable picks into declared param fields at publish
+// time (koolook_setups._app_builder_param_fields is authoritative — it also
+// checks the API prompt); this only lists what the author picked so the
+// publish dialog can show them for review.
+export function appBuilderParamLabels(graph) {
+    const picks = graph?.extra?.linearData?.inputs;
+    if (!Array.isArray(picks)) return [];
+    const byId = new Map();
+    for (const node of Array.isArray(graph?.nodes) ? graph.nodes : []) {
+        if (node && node.id != null) byId.set(String(node.id), node);
+    }
+    const labels = [];
+    for (const pick of picks) {
+        if (!Array.isArray(pick) || pick.length < 2) continue;
+        const nodeId = String(pick[0]).trim();
+        const widget = String(pick[1]).trim();
+        if (!nodeId || !widget) continue;
+        const node = byId.get(nodeId);
+        const title = (node?.title || node?.type || `Node ${nodeId}`);
+        labels.push(`${title}: ${widget}`);
+    }
+    return labels;
+}

@@ -26,7 +26,7 @@ def test_publish_setup_modal_shows_inferred_group_surface() -> None:
     tree = TREE_JS.read_text(encoding="utf-8")
     modals = MODALS_JS.read_text(encoding="utf-8")
 
-    assert 'import { inferSetupSurface } from "./published_surface.js";' in modals
+    assert 'import { appBuilderParamLabels, inferSetupSurface } from "./published_surface.js";' in modals
     assert "visualGraph = null" in modals
     assert "Inferred app surface" in modals
     assert "Source breadcrumbs" in modals
@@ -34,6 +34,7 @@ def test_publish_setup_modal_shows_inferred_group_surface() -> None:
     assert "Source fields" in modals
     assert "Output controls" in modals
     assert "Result fields" in modals
+    assert "App params" in modals
     assert "Koolook Input" in modals
     assert "Koolook Output" in modals
     assert "Advanced contract JSON" in modals

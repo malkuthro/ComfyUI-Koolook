@@ -9,7 +9,7 @@
 import { compareNames, criticalToast, formatLibraryPathBreadcrumb, toast } from "./constants.js";
 import { formatLocalStamp } from "./format_time.js";
 import { listDirectoryNames, dirOf } from "./workflows_store.js";
-import { inferSetupSurface } from "./published_surface.js";
+import { appBuilderParamLabels, inferSetupSurface } from "./published_surface.js";
 import { buildPublishSuccessView } from "./published_setups.js";
 import {
     detectManager,
@@ -816,6 +816,11 @@ function appendSurfaceSection(body, visualGraph, dirPath = [], wfName = "") {
     appendSurfaceLine(section, "Source fields", fieldList(surface.app?.inputs));
     appendSurfaceLine(section, "Output controls", fieldList(surface.app?.outputs));
     appendSurfaceLine(section, "Result fields", fieldList(surface.app?.results));
+    // ComfyUI App-builder picks become extra app params at publish time.
+    const paramLabels = appBuilderParamLabels(visualGraph);
+    if (paramLabels.length) {
+        appendSurfaceLine(section, "App params", paramLabels.join(", "));
+    }
     body.appendChild(section);
 }
 

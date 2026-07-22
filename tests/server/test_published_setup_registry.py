@@ -1871,6 +1871,199 @@ def test_publish_setup_rejects_present_non_list_node_inputs() -> None:
     assert registry.getSetup("bad-flow") is None
 
 
+def _app_builder_visual_graph(picks: list) -> dict:
+    return {
+        "nodes": [
+            {
+                "id": 12,
+                "type": "Load Image",
+                "title": "Source image",
+                "pos": [40, 40],
+                "size": [180, 80],
+                "inputs": [],
+            },
+            {
+                "id": 20,
+                "type": "Preview Image",
+                "title": "Preview",
+                "pos": [420, 40],
+                "size": [180, 80],
+                "inputs": [],
+            },
+            {
+                "id": 30,
+                "type": "KSampler",
+                "title": "Main sampler",
+                "pos": [40, 240],
+                "size": [200, 120],
+                "inputs": [],
+            },
+        ],
+        "links": [],
+        "groups": [
+            {"title": "Koolook Input", "bounding": [20, 20, 240, 140]},
+            {"title": "Koolook Output", "pos": [400, 20], "size": [240, 140]},
+        ],
+        "extra": {"linearData": {"inputs": picks, "outputs": []}},
+    }
+
+
+def _app_builder_api_prompt() -> dict:
+    return {
+        "12": {"class_type": "Load Image", "inputs": {}},
+        "20": {"class_type": "Preview Image", "inputs": {}},
+        "30": {
+            "class_type": "KSampler",
+            "inputs": {
+                "steps": 8,
+                "cfg": 1.5,
+                "enabled": True,
+                "note": "hello",
+                "model": ["12", 0],
+            },
+        },
+    }
+
+
+def test_publish_setup_converts_app_builder_picks_into_param_fields() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph=_app_builder_visual_graph(
+            [
+                ["30", "steps"],
+                ["30", "cfg"],
+                ["30", "enabled"],
+                ["30", "note"],
+            ]
+        ),
+        metadata={
+            "id": "app-builder-params",
+            "title": "App Builder Params",
+            "description": "Setup with ComfyUI app-builder picks.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/App Builder Params"},
+        apiPrompt=_app_builder_api_prompt(),
+    )
+
+    assert result.valid is True, result.diagnostics
+    setup = registry.getSetup("app-builder-params")
+    assert setup is not None
+    params = [
+        field
+        for field in setup["setupSurface"]["app"]["inputs"]
+        if field.get("appParam")
+    ]
+    assert [
+        (field["key"], field["valueType"], field["default"]) for field in params
+    ] == [
+        ("param_30_steps", "int", 8),
+        ("param_30_cfg", "float", 1.5),
+        ("param_30_enabled", "boolean", True),
+        ("param_30_note", "string", "hello"),
+    ]
+    for field in params:
+        assert field["standalone"] is True
+        assert field["visible"] is True
+        assert field["target"]["node"] == "30"
+    assert params[0]["label"] == "Main sampler: steps"
+    assert params[0]["target"] == {"node": "30", "input": "steps"}
+    # The stored record keeps validating on reload (registry filters invalid).
+    assert validate_setup(setup).valid is True
+
+
+def test_publish_setup_skips_unresolvable_app_builder_picks() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+
+    result = registry.publishSetup(
+        visualGraph=_app_builder_visual_graph(
+            [
+                ["30", "model"],  # link-driven, not a widget literal
+                ["30", "missing"],  # widget absent from the API prompt
+                ["99", "steps"],  # node absent from the API prompt
+                ["30", "steps"],  # the one resolvable pick
+                ["30", "steps"],  # duplicate pick collapses to one field
+                "not-a-pair",
+            ]
+        ),
+        metadata={
+            "id": "app-builder-partial",
+            "title": "App Builder Partial",
+            "description": "Setup with unresolvable app-builder picks.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/App Builder Partial"},
+        apiPrompt=_app_builder_api_prompt(),
+    )
+
+    assert result.valid is True, result.diagnostics
+    setup = registry.getSetup("app-builder-partial")
+    assert setup is not None
+    params = [
+        field
+        for field in setup["setupSurface"]["app"]["inputs"]
+        if field.get("appParam")
+    ]
+    assert [field["key"] for field in params] == ["param_30_steps"]
+
+
+def test_publish_setup_without_linear_data_adds_no_param_fields() -> None:
+    registry = PublishedSetupRegistry(StaticSetupStorage([]))
+    visual_graph = _app_builder_visual_graph([])
+    del visual_graph["extra"]
+
+    result = registry.publishSetup(
+        visualGraph=visual_graph,
+        metadata={
+            "id": "no-linear-data",
+            "title": "No Linear Data",
+            "description": "Setup without app-builder picks.",
+        },
+        inputContract={"inputs": []},
+        outputContract={"outputs": []},
+        source={"kind": "sidebar-workflow", "path": "Demos/No Linear Data"},
+        apiPrompt=_app_builder_api_prompt(),
+    )
+
+    assert result.valid is True, result.diagnostics
+    setup = registry.getSetup("no-linear-data")
+    assert setup is not None
+    assert setup["setupSurface"]["app"]["inputs"] == []
+
+
+def test_validate_setup_rejects_malformed_param_field_metadata() -> None:
+    setup = deepcopy(_valid_setup())
+    setup["setupSurface"] = {
+        "sourceInputs": [],
+        "outputs": [],
+        "controls": [],
+        "app": {
+            "inputs": [
+                {
+                    "key": "param_12_text",
+                    "label": "Text: text",
+                    "visible": True,
+                    "standalone": True,
+                    "appParam": True,
+                    "valueType": "mystery",
+                    "target": {"node": "12", "input": "text"},
+                    "default": "demo prompt",
+                }
+            ],
+            "outputs": [],
+            "results": [],
+        },
+    }
+
+    result = validate_setup(setup)
+
+    assert result.valid is False
+    assert any("valueType" in diagnostic for diagnostic in result.diagnostics)
+
+
 def _json(value: dict) -> str:
     import json
 

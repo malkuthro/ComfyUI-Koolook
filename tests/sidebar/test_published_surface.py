@@ -228,3 +228,36 @@ def test_infer_setup_surface_ignores_malformed_group_geometry() -> None:
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+def test_app_builder_param_labels_list_picks_for_review() -> None:
+    script = textwrap.dedent(
+        """
+        import assert from "node:assert/strict";
+        import { appBuilderParamLabels } from "./web/sidebar/published_surface.js";
+
+        const graph = {
+          nodes: [
+            { id: 30, type: "KSampler", title: "Main sampler" },
+            { id: 31, type: "CLIPTextEncode" },
+          ],
+          extra: {
+            linearData: {
+              inputs: [["30", "steps"], ["31", "text"], ["99", "seed"], "junk"],
+              outputs: [],
+            },
+          },
+        };
+
+        assert.deepEqual(appBuilderParamLabels(graph), [
+          "Main sampler: steps",
+          "CLIPTextEncode: text",
+          "Node 99: seed",
+        ]);
+        assert.deepEqual(appBuilderParamLabels({ nodes: [] }), []);
+        assert.deepEqual(appBuilderParamLabels(null), []);
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
