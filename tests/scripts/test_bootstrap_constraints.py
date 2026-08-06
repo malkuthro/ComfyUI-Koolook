@@ -35,7 +35,7 @@ def _pinned_names() -> dict[str, str]:
             continue
         assert "==" in line, f"constraint not pinned with '==': {line!r}"
         name, version = line.split("==", 1)
-        pins[_canonical(name)] = version.strip()
+        pins[_canonical(name)] = version.split(";", 1)[0].strip()
     return pins
 
 
@@ -66,12 +66,12 @@ def test_every_top_level_test_extra_is_pinned():
 
 
 def test_no_duplicate_pins():
-    names: list[str] = []
+    pins: list[str] = []
     for raw in CONSTRAINTS.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if line and not line.startswith("#"):
-            names.append(_canonical(line.split("==", 1)[0]))
-    dupes = sorted({name for name in names if names.count(name) > 1})
+            pins.append(re.sub(r"\s+", " ", line))
+    dupes = sorted({pin for pin in pins if pins.count(pin) > 1})
     assert not dupes, f"duplicate pins in constraints-test.txt: {dupes}"
 
 
@@ -84,15 +84,41 @@ def test_bootstrap_upgrades_setuptools_before_audit():
     assert "--upgrade pip setuptools" in sh
 
 
-def test_bootstrap_relock_does_not_inspect_editable_git_metadata():
-    """Relock should work from cross-drive git worktrees on Windows."""
+def test_bootstrap_relock_checks_uv_before_replacing_venv():
+    """A missing relock prerequisite must not discard a usable test env."""
     ps1 = (REPO_ROOT / "scripts" / "bootstrap_test_env.ps1").read_text(encoding="utf-8")
     sh = (REPO_ROOT / "scripts" / "bootstrap_test_env.sh").read_text(encoding="utf-8")
 
-    assert "pip list --format=freeze" in ps1
-    assert "pip list --format=freeze" in sh
-    assert "pip freeze --exclude-editable" not in ps1
-    assert "pip freeze --exclude-editable" not in sh
+    assert ps1.index("Get-Command uv") < ps1.index("Remove-Item -Recurse -Force .venv")
+    assert sh.index("command -v uv") < sh.index("rm -rf .venv")
+    assert "pip list --format=freeze" not in ps1
+    assert "pip list --format=freeze" not in sh
+
+
+def test_bootstrap_relock_generates_a_universal_ci_lock():
+    """Relocks include conditional dependencies for both CI platforms."""
+    ps1 = (REPO_ROOT / "scripts" / "bootstrap_test_env.ps1").read_text(encoding="utf-8")
+    sh = (REPO_ROOT / "scripts" / "bootstrap_test_env.sh").read_text(encoding="utf-8")
+
+    for script in (ps1, sh):
+        assert "uv pip compile pyproject.toml --extra test --universal" in script
+        assert "--python-version 3.11" in script
+        assert "--upgrade" in script
+        assert "--no-emit-package pip" in script
+
+
+def test_constraints_cover_conditional_ci_dependencies():
+    pins = _pinned_names()
+
+    assert "typing-extensions" in pins
+    assert "colorama" in pins
+
+
+def test_marker_versions_are_parsed_without_environment_markers():
+    pins = _pinned_names()
+
+    assert pins["typing-extensions"] == "4.16.0"
+    assert pins["colorama"] == "0.4.6"
 
 
 def test_ci_audits_committed_lock_on_prs_and_schedule():
@@ -100,6 +126,8 @@ def test_ci_audits_committed_lock_on_prs_and_schedule():
 
     assert "schedule:" in ci
     assert "pip-audit -r constraints-test.txt" in ci
+    assert "pip-audit --no-deps -r /tmp/constraints-all-platforms.txt" in ci
+    assert "sed -E 's/[[:space:]]*;.*$//' constraints-test.txt" in ci
 
 
 def test_ci_pytest_installs_from_committed_lock():

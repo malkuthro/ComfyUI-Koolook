@@ -12,13 +12,33 @@ check `constraints-test.txt` with `pip-audit`.
   `pip-audit` on the installed environment.
 - CI audits the committed lock with `pip-audit -r constraints-test.txt` on each
   pull request and on a weekly schedule, so newly disclosed CVEs in old pins are
-  caught even when nobody has touched the dependency files.
+  caught even when nobody has touched the dependency files. It also strips
+  environment markers into a temporary manifest and audits that manifest, so
+  Windows-only and Linux-only pins are each checked.
 - Bandit remains a separate first-party-code scan. A green Bandit job does not
   mean the dependency lock is clean.
 
+## GitHub Actions
+
+Every third-party `uses:` reference in `.github/workflows/` is pinned to an
+immutable commit SHA, with its source release or branch reference left in a
+comment for readability. When updating an Action, resolve that reference to a
+commit with the GitHub API, review the change in the PR, then update both the
+SHA and its comment together. Do not use mutable major-version tags such as
+`@v3` or `@v7` in committed workflows.
+
+Dependabot groups all GitHub Action updates into one weekly pull request. Python
+test dependencies are updated through the deliberate universal relock below, so
+the complete cross-platform lock diff stays one reviewable security unit.
+
 ## Regenerating the lock
 
-Regenerate the lock only as an intentional dependency-change PR:
+Regenerate the lock only as an intentional dependency-change PR. The bootstrap
+uses `uv` to resolve a universal Python 3.11 lock, including the conditional
+dependencies needed by both CI platforms. The scripts check that `uv` is
+available before replacing an existing `.venv`, then use `--upgrade` so the
+relock can move stale vulnerable pins. Install `uv` before relocking if it is
+not already available.
 
 ```powershell
 scripts\bootstrap_test_env.ps1 -Force -Relock
@@ -29,8 +49,7 @@ bash scripts/bootstrap_test_env.sh --force --relock
 ```
 
 Review and commit the resulting `constraints-test.txt` diff. Do not hand-edit
-individual pins unless you are immediately re-running the relock command to
-prove the full resolved set.
+individual pins.
 
 ## Responding to a CVE
 

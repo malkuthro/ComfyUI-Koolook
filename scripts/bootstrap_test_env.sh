@@ -41,14 +41,25 @@ if [ -z "$PYTHON_BIN" ]; then
     fi
 fi
 
-if [ -d .venv ]; then
-    if [ -z "$FORCE" ]; then
-        if [ -n "$RELOCK" ]; then
-            echo "--relock requires --force (the lock is rewritten from a fresh resolve); nothing was changed." >&2
-        fi
-        echo ".venv already exists. Pass --force to recreate."
-        exit 0
+if [ -d .venv ] && [ -z "$FORCE" ]; then
+    if [ -n "$RELOCK" ]; then
+        echo "--relock requires --force (the lock is rewritten from a fresh resolve); nothing was changed." >&2
     fi
+    echo ".venv already exists. Pass --force to recreate."
+    exit 0
+fi
+
+if [ -n "$RELOCK" ]; then
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "--relock requires uv to generate the universal Python 3.11 lock; nothing was changed." >&2
+        exit 1
+    fi
+    echo "Resolving upgraded universal Python 3.11 test lock ..."
+    uv pip compile pyproject.toml --extra test --universal --python-version 3.11 \
+        --upgrade --no-annotate --no-emit-package pip --output-file "$CONSTRAINTS"
+fi
+
+if [ -d .venv ]; then
     echo "Removing existing .venv ..."
     rm -rf .venv
 fi
@@ -59,30 +70,13 @@ echo "Creating .venv ..."
 echo "Upgrading pip + setuptools ..."
 .venv/bin/python -m pip install --quiet --upgrade pip setuptools
 
-if [ -f "$CONSTRAINTS" ] && [ -z "$RELOCK" ]; then
-    echo "Installing project + test extras (locked via $CONSTRAINTS) ..."
-    .venv/bin/python -m pip install --quiet -e '.[test]' -c "$CONSTRAINTS"
-else
-    echo "Resolving + installing project + test extras ..."
-    .venv/bin/python -m pip install --quiet -e '.[test]'
-    echo "Writing locked set to $CONSTRAINTS ..."
-    cat > "$CONSTRAINTS" <<'EOF'
-# Locked test dependency set for ComfyUI-Koolook.
-#
-# Pinned resolve of the `[test]` extras in pyproject.toml plus their full
-# transitive closure. The bootstrap scripts install with `-c
-# constraints-test.txt`, so every fresh .venv is reproducible and
-# pip-audit-verifiable.
-#
-# DO NOT hand-edit the version pins. To change the set: edit the `[test]`
-# extras in pyproject.toml, then regenerate this file with
-#   bash scripts/bootstrap_test_env.sh --force --relock   (POSIX)
-#   scripts\bootstrap_test_env.ps1 -Force -Relock         (Windows)
-# and commit the diff -- that diff is the dependency-change review surface.
-#
-EOF
-    .venv/bin/python -m pip list --format=freeze --exclude pip --exclude setuptools --exclude wheel --exclude koolook >> "$CONSTRAINTS"
+if [ ! -f "$CONSTRAINTS" ]; then
+    echo "$CONSTRAINTS is missing. Run: bash scripts/bootstrap_test_env.sh --force --relock" >&2
+    exit 1
 fi
+
+echo "Installing project + test extras (locked via $CONSTRAINTS) ..."
+.venv/bin/python -m pip install --quiet -e '.[test]' -c "$CONSTRAINTS"
 
 if [ -n "$AUDIT" ]; then
     echo "Auditing installed set (pip-audit) ..."

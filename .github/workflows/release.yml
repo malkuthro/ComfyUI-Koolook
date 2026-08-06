@@ -28,7 +28,7 @@ jobs:
       issues: write     # publish-node-action opens an issue on failure
     steps:
       - name: Check out the tag
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: true
           fetch-depth: 0   # full history so the tag-on-main ancestry check resolves
@@ -51,7 +51,7 @@ jobs:
             exit 1
           fi
       - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@v1
+        uses: Comfy-Org/publish-node-action@0eb6cd742945443bee7f79eeddd4f732780029a1 # v1 branch head
         with:
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
 
@@ -64,7 +64,7 @@ jobs:
       contents: write   # create the GitHub Release
     steps:
       - name: Check out the tag
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Extract CHANGELOG section
         run: |
           set -euo pipefail
