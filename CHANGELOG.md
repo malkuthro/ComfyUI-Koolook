@@ -8,9 +8,9 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ### Security
 - **Supply-chain hardening.** Raised the test-dependency floors to patched
-  `aiohttp` and Pillow releases, regenerated the audited test lock on Python
-  3.11, pinned every GitHub Action to an immutable commit SHA, and enabled
-  weekly Dependabot updates for those pins.
+  `aiohttp` and Pillow releases, regenerated the audited universal Python 3.11
+  test lock with a forced upgrade, pinned every GitHub Action to an immutable
+  commit SHA, and enabled one grouped weekly Dependabot update for those pins.
 
 ### Added
 - **Independent output type for published setups.** A `Koolook_PublishRouter`

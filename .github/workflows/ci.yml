@@ -61,6 +61,11 @@ jobs:
       - name: Dependency audit
         run: pip-audit -r constraints-test.txt
 
+      - name: Audit all platform dependency pins
+        run: |
+          sed -E 's/[[:space:]]*;.*$//' constraints-test.txt > /tmp/constraints-all-platforms.txt
+          pip-audit --no-deps -r /tmp/constraints-all-platforms.txt
+
   preflight:
     name: Pre-flight Release
     runs-on: ubuntu-latest

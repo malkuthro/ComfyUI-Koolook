@@ -28,7 +28,8 @@
   resolve of `.[test]` + its full transitive closure), then **audit** it
   with `pip-audit`; a known CVE fails the bootstrap. Idempotent (no-op if
   `.venv` exists) — pass `-Force` / `--force` to recreate, `-Relock` /
-  `--relock` to re-resolve and rewrite the lock, `-NoAudit` / `--no-audit`
+  `--relock` to re-resolve and upgrade the lock (requires `uv`, which is
+  checked before an existing `.venv` is replaced), `-NoAudit` / `--no-audit`
   to skip the audit (e.g. offline). Do not install into system Python or
   user-site packages. If `.venv` cannot be used, stop and explain the
   blocker before installing anywhere broader.
@@ -47,7 +48,7 @@
 
 Running the bootstrap script above is **pre-approved** — run it
 automatically whenever `.venv` is missing or `pytest` isn't importable,
-without asking first. It is safe by construction: it installs only the
+without asking first. Normal bootstrap is safe by construction: it installs only the
 already-reviewed, pinned `constraints-test.txt` set and `pip-audit`-gates
 the result, so it can never silently pull an unreviewed package or version.
 This **supersedes the global `/warmup` skill's `MISSING_VENV` hard-stop**:
@@ -56,9 +57,9 @@ and continue — do not surface it as a blocker.
 
 Two things still need your attention, and only these:
 
-- **Bootstrap exits non-zero** (pip-audit flagged a CVE, or no Python was
-  found) — surface *that* as the blocker. A failed audit is the one signal
-  that genuinely warrants a human.
+- **Bootstrap exits non-zero** (pip-audit flagged a CVE, no Python was found,
+  or a requested relock cannot find `uv`) — surface *that* as the blocker. A
+  failed audit is the one signal that genuinely warrants a human.
 - **Dependency changes** — editing the `[test]` extras in `pyproject.toml`
   or regenerating `constraints-test.txt` (`--relock`) — still go through a
   reviewed PR diff. The lock file *is* the review surface; never relock
