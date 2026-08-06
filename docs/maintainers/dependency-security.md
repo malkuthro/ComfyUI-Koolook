@@ -16,6 +16,15 @@ check `constraints-test.txt` with `pip-audit`.
 - Bandit remains a separate first-party-code scan. A green Bandit job does not
   mean the dependency lock is clean.
 
+## GitHub Actions
+
+Every third-party `uses:` reference in `.github/workflows/` is pinned to an
+immutable commit SHA, with the corresponding release tag left in a comment for
+readability. When updating an Action, resolve its release tag to a commit with
+the GitHub API, review that change in the PR, then update both the SHA and its
+version comment together. Do not use mutable major-version tags such as
+`@v3` or `@v7` in committed workflows.
+
 ## Regenerating the lock
 
 Regenerate the lock only as an intentional dependency-change PR:
