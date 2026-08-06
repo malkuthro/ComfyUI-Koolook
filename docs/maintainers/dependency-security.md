@@ -19,15 +19,18 @@ check `constraints-test.txt` with `pip-audit`.
 ## GitHub Actions
 
 Every third-party `uses:` reference in `.github/workflows/` is pinned to an
-immutable commit SHA, with the corresponding release tag left in a comment for
-readability. When updating an Action, resolve its release tag to a commit with
-the GitHub API, review that change in the PR, then update both the SHA and its
-version comment together. Do not use mutable major-version tags such as
+immutable commit SHA, with its source release or branch reference left in a
+comment for readability. When updating an Action, resolve that reference to a
+commit with the GitHub API, review the change in the PR, then update both the
+SHA and its comment together. Do not use mutable major-version tags such as
 `@v3` or `@v7` in committed workflows.
 
 ## Regenerating the lock
 
-Regenerate the lock only as an intentional dependency-change PR:
+Regenerate the lock only as an intentional dependency-change PR. The bootstrap
+uses `uv` to resolve a universal Python 3.11 lock, including the conditional
+dependencies needed by both CI platforms; install `uv` before relocking if it
+is not already available.
 
 ```powershell
 scripts\bootstrap_test_env.ps1 -Force -Relock
@@ -38,8 +41,7 @@ bash scripts/bootstrap_test_env.sh --force --relock
 ```
 
 Review and commit the resulting `constraints-test.txt` diff. Do not hand-edit
-individual pins unless you are immediately re-running the relock command to
-prove the full resolved set.
+individual pins.
 
 ## Responding to a CVE
 

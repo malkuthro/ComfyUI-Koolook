@@ -59,7 +59,17 @@ echo "Creating .venv ..."
 echo "Upgrading pip + setuptools ..."
 .venv/bin/python -m pip install --quiet --upgrade pip setuptools
 
-if [ -f "$CONSTRAINTS" ] && [ -z "$RELOCK" ]; then
+if [ -n "$RELOCK" ]; then
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "--relock requires uv to generate the universal Python 3.11 lock." >&2
+        exit 1
+    fi
+    echo "Resolving universal Python 3.11 test lock ..."
+    uv pip compile pyproject.toml --extra test --universal --python-version 3.11 \
+        --no-annotate --no-emit-package pip --output-file "$CONSTRAINTS"
+fi
+
+if [ -f "$CONSTRAINTS" ]; then
     echo "Installing project + test extras (locked via $CONSTRAINTS) ..."
     .venv/bin/python -m pip install --quiet -e '.[test]' -c "$CONSTRAINTS"
 else

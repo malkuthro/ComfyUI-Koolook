@@ -6,6 +6,12 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Security
+- **Supply-chain hardening.** Raised the test-dependency floors to patched
+  `aiohttp` and Pillow releases, regenerated the audited test lock on Python
+  3.11, pinned every GitHub Action to an immutable commit SHA, and enabled
+  weekly Dependabot updates for those pins.
+
 ### Added
 - **Independent output type for published setups.** A `Koolook_PublishRouter`
   is auto-detected as the setup's **output selector**: whichever writer branches

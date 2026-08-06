@@ -37,7 +37,18 @@ python -m venv .venv
 Write-Host "Upgrading pip + setuptools ..."
 .\.venv\Scripts\python -m pip install --quiet --upgrade pip setuptools
 
-if ((Test-Path $Constraints) -and (-not $Relock)) {
+if ($Relock) {
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        throw "-Relock requires uv to generate the universal Python 3.11 lock."
+    }
+    Write-Host "Resolving universal Python 3.11 test lock ..."
+    uv pip compile pyproject.toml --extra test --universal --python-version 3.11 --no-annotate --no-emit-package pip --output-file $Constraints
+    if ($LASTEXITCODE -ne 0) {
+        throw "uv could not generate $Constraints."
+    }
+}
+
+if (Test-Path $Constraints) {
     Write-Host "Installing project + test extras (locked via $Constraints) ..."
     .\.venv\Scripts\python -m pip install --quiet -e ".[test]" -c $Constraints
 } else {

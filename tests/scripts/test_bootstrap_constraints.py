@@ -95,6 +95,24 @@ def test_bootstrap_relock_does_not_inspect_editable_git_metadata():
     assert "pip freeze --exclude-editable" not in sh
 
 
+def test_bootstrap_relock_generates_a_universal_ci_lock():
+    """Relocks include conditional dependencies for both CI platforms."""
+    ps1 = (REPO_ROOT / "scripts" / "bootstrap_test_env.ps1").read_text(encoding="utf-8")
+    sh = (REPO_ROOT / "scripts" / "bootstrap_test_env.sh").read_text(encoding="utf-8")
+
+    for script in (ps1, sh):
+        assert "uv pip compile pyproject.toml --extra test --universal" in script
+        assert "--python-version 3.11" in script
+        assert "--no-emit-package pip" in script
+
+
+def test_constraints_cover_conditional_ci_dependencies():
+    pins = _pinned_names()
+
+    assert "typing-extensions" in pins
+    assert "colorama" in pins
+
+
 def test_ci_audits_committed_lock_on_prs_and_schedule():
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
