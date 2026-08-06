@@ -15,7 +15,7 @@ import sys
 import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,9 @@ CSV_FIELDS = [
     "pending_versions",
     "active_versions",
 ]
+SUMMARY_BASELINE_DATE = "2026-05-08"
+SUMMARY_BASELINE_DOWNLOADS = 95
+SUMMARY_SINCE_VERSION = "0.3.0"
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,41 @@ def _upsert_today(rows: list[dict[str, str]], snapshot: Snapshot) -> list[dict[s
     return [*kept, snapshot.as_row()]
 
 
+def _make_summary(rows: list[dict[str, str]]) -> dict[str, str | int | float]:
+    """Build the stable, machine-readable landing-page summary.
+
+    The Registry did not expose per-version downloads at the v0.3.0 release,
+    so its maintainer-recorded 95-download total on 2026-05-08 is the fixed
+    baseline for the public "since v0.3.0" metric.
+    """
+    if not rows:
+        raise ValueError("cannot summarize an empty metrics history")
+
+    latest = rows[-1]
+    latest_date = date.fromisoformat(latest["date"])
+    baseline_date = date.fromisoformat(SUMMARY_BASELINE_DATE)
+    days = (latest_date - baseline_date).days
+    if days <= 0:
+        raise ValueError("latest metrics snapshot must be after the summary baseline")
+
+    downloads_since = int(latest["downloads_total"]) - SUMMARY_BASELINE_DOWNLOADS
+    peak = max(rows, key=lambda row: int(row.get("daily_delta") or 0))
+    return {
+        "asOf": latest["date"],
+        "sinceVersion": SUMMARY_SINCE_VERSION,
+        "downloadsSince": downloads_since,
+        "days": days,
+        "avgPerDay": round(downloads_since / days, 1),
+        "peakDate": peak["date"],
+        "peakDelta": int(peak.get("daily_delta") or 0),
+        "latestVersion": latest["latest_version"],
+    }
+
+
+def _write_summary(path: Path, summary: dict[str, str | int | float]) -> None:
+    path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+
 def _render_overview(node_id: str, rows: list[dict[str, str]]) -> str:
     if not rows:
         return f"# Comfy Registry Metrics: {node_id}\n\nNo snapshots recorded yet.\n"
@@ -184,6 +222,7 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     csv_path = output_dir / "comfy-registry-downloads.csv"
     overview_path = output_dir / "README.md"
+    summary_path = output_dir / "summary.json"
 
     node = _fetch_json(f"{API_ROOT}/nodes/{args.node}")
     versions = _fetch_json(f"{API_ROOT}/nodes/{args.node}/versions")
@@ -193,6 +232,7 @@ def main() -> int:
 
     _write_rows(csv_path, updated_rows)
     overview_path.write_text(_render_overview(args.node, updated_rows), encoding="utf-8")
+    _write_summary(summary_path, _make_summary(updated_rows))
 
     print(
         f"{snapshot.date}: downloads={snapshot.downloads_total} "

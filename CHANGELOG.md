@@ -13,6 +13,10 @@ The format is inspired by Keep a Changelog and SemVer.
   commit SHA, and enabled one grouped weekly Dependabot update for those pins.
 
 ### Added
+- **Registry metrics summary.** The daily Comfy Registry collector now writes
+  `metrics/summary.json` beside its CSV history, giving downstream consumers a
+  small stable contract for the v0.3.0 downloads, daily-average, peak-day, and
+  latest-version summary.
 - **Independent output type for published setups.** A `Koolook_PublishRouter`
   is auto-detected as the setup's **output selector**: whichever writer branches
   you wire become the app's "Output type" options, and the external user can pick
