@@ -1,6 +1,7 @@
 _safe*
 .venv/
 .tmp/
+.review-worktrees/
 Runpod_Comfy/
 PLAN.md
 
