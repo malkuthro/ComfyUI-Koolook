@@ -183,6 +183,28 @@ The format is inspired by Keep a Changelog and SemVer.
   The skip uses the unresolved load path so a
   `custom_nodes/<name>` → worktree symlink cannot defeat the check via
   `Path.resolve()`.
+- **Status pill no longer shows "drifted" on every ComfyUI start (#276).** The
+  #161 boot-time drift guard flagged *any* difference between the tracked
+  snapshot file and the live state — which is also what ordinary "kept working
+  after the last snapshot save" looks like, so nearly every session booted into
+  a false corruption warning and periodic autosaves were misrouted to
+  `_unsaved_autosave/` instead of the preset's own recovery folder. The check
+  is now three-way: a mismatch only counts as **drifted** when the live state's
+  fingerprint matches the persisted last-named-save baseline (it *claims* to be
+  saved, yet the file disagrees — which pins the out-of-band change to the
+  *file* side: a cross-machine library sync, a hand-edit, another install
+  writing it); otherwise it reports the honest **unsaved**. The first-session
+  baseline seeding now runs *after* the drift check **and only when that check
+  proved the file and live state agree** — seeding on an unproven boot
+  baselined whatever the live state happened to be, which both showed "saved"
+  for state that was never saved to the named file and handed the next boot a
+  live state that "claims saved" against a file it never matched, re-opening
+  the same false positive from the other side (reachable whenever a tracked
+  preset name outlives its fingerprint: upgrades from before the baseline key
+  existed, or a persist that lost to localStorage quota). Trade-off:
+  out-of-band changes to the live `/userdata`
+  side — including corruption — now read "unsaved"; the #162 duplicate-install
+  vector (the known live-side corruptor) keeps its own dedicated guard.
 - **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
   timeline editor auto-generated the `guide_strength` string from each clip's
   per-segment `guideStrength`, filling **1.0** for any clip left unset — and the

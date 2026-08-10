@@ -193,14 +193,15 @@ function isoToFsToken(iso) {
 // to `_unsaved_autosave/`. Sanitizes the preset name through the same
 // filename whitelist so the dirname is server-validation-safe.
 //
-// Boot-time drift override (#161): when the session opened with the
-// tracked snapshot's named file diverging from the live state, route
+// Boot-time drift override (#161, narrowed by #276): when the session
+// opened with the tracked snapshot's named file diverging from the live
+// state *while the live state still matched the last named save*, route
 // auto-saves to `_unsaved_autosave/` regardless of whether a preset is
-// tracked. This is the core data-loss-prevention move — without it the
-// periodic timer captures the (potentially corrupt) live state INTO the
-// named preset's recovery folder, where the Load dialog will later
-// present it as a "newer recovery" choice and the user can accept it
-// thinking it's a legitimate auto-save of their work.
+// tracked. The file changed out of band, so which side the user wants to
+// keep is unknown — without this the periodic timer writes the live state
+// INTO the named preset's recovery folder, where the Load dialog later
+// presents it as a "newer recovery" choice and the user can accept it as
+// a legitimate auto-save, quietly discarding whatever the file held.
 function _autosaveSubdir() {
     if (_bootDrifted) return AUTOSAVE_UNSAVED_SUBDIR;
     const name = getCurrentPresetName();
@@ -238,13 +239,16 @@ let _lastPeriodicFingerprint = null;
 let _lastPeriodicAt = null;
 
 // =============================================================================
-// Boot-time drift state (#161). Set by `detectBootDrift()` when the live
-// `/userdata` workflow store + picks diverge from the tracked named snapshot
-// file on disk at session start. While set:
+// Boot-time drift state (#161, narrowed by #276). Set by `detectBootDrift()`
+// when the live `/userdata` workflow store + picks diverge from the tracked
+// named snapshot file on disk at session start *while the live state claims
+// to be saved* (its fingerprint matches the persisted last-named-save
+// baseline). A mismatch without that claim is ordinary unsaved work and does
+// NOT set the flag. While set:
 //   • `_autosaveSubdir()` routes periodic auto-saves to `_unsaved_autosave/`
-//     so the named preset's recovery folder is never overwritten with the
-//     corrupted live state (the data-loss surface this whole guard exists
-//     to close).
+//     so the named preset's recovery folder stays untouched while the file
+//     and live state disagree — the file changed out of band, and which
+//     side the user wants to keep is unknown until they Reload or Save.
 //   • `getSnapshotStatus()` returns `state: "drifted"` with highest
 //     precedence so the sidebar pill carries the warning.
 // Cleared by `_clearBootDriftInternal()` whenever `markStateSaved()` runs —
@@ -355,28 +359,31 @@ export function markStateAutosaved() {
 //
 // Status precedence (highest first):
 //   • "drifted"   — boot-time check found the named-snapshot file on disk
-//                   diverged from the live /userdata state; user must
-//                   Reload or re-Save to realign (#161)
+//                   diverged from the live /userdata state WHILE the live
+//                   state's fingerprint matched the last-named-save
+//                   baseline, i.e. it claimed to be saved; user must
+//                   Reload or re-Save to realign (#161, #276)
 //   • "saved"     — current fingerprint matches the last named save
 //   • "autosaved" — current matches the latest periodic auto-save (only)
 //   • "unsaved"   — there IS a tracked preset but state diverged
 //   • "none"      — no preset tracked, no autosave match
 //
-// "drifted" wins over "saved" because the localStorage fingerprint can be
-// stale — if a previous session baselined against already-corrupt live
-// state, the in-memory fingerprint would falsely satisfy `"saved"`. The
-// disk-file comparison run by `detectBootDrift()` at session start is the
-// authoritative check; until the user Reloads or Saves, we keep flagging.
+// "drifted" wins over "saved" because that is precisely the contradiction
+// it flags: the localStorage fingerprint says "saved" but the disk-file
+// comparison run by `detectBootDrift()` at session start disagrees —
+// something changed one of the two out-of-band. Until the user Reloads or
+// Saves, we keep flagging. A divergence WITHOUT the saved claim never sets
+// the flag (#276) — it falls through to the honest "unsaved" below.
 export function getSnapshotStatus() {
     const name = getCurrentPresetName();
     const fp = _computeFingerprint();
     if (_bootDrifted) {
-        // ``lastNamedSaveAt`` is from localStorage and may be a baseline
-        // captured by a PRIOR session whose live state was already corrupt
-        // — surfacing it in the drift tooltip ("Last named save: <stale>")
-        // would mislead users about when the divergence actually happened.
-        // Replace it with ``driftDetectedAt`` (when this session noticed
-        // the disk-vs-live disagreement) so the tooltip's timestamp
+        // Suppress ``lastNamedSaveAt`` in the drifted status: the
+        // divergence started with an out-of-band change to the FILE at
+        // some unknowable time after that save, so "Last named save:
+        // <stamp>" would misleadingly date a file whose current content
+        // that save did not produce. ``driftDetectedAt`` (when this
+        // session noticed the disagreement) is the only timestamp that
         // anchors on a meaningful event. ``lastAutosaveAt`` stays — it's
         // session-scoped and the only autosaves landing while drifted go
         // to ``_unsaved_autosave/`` so the timestamp is still accurate.
@@ -401,13 +408,17 @@ export function getSnapshotStatus() {
 }
 
 // =============================================================================
-// Boot-time drift detection (#161). Invoked once from `koolook_sidebar.js`'s
-// `setup()` immediately after `loadWorkflowsStore()` completes. Reads the
-// tracked named snapshot file from the library, computes its fingerprint
+// Boot-time drift detection (#161, narrowed by #276). Invoked once from
+// `koolook_sidebar.js`'s `setup()` immediately after `loadWorkflowsStore()`
+// completes — and BEFORE any first-session baseline seeding, so a freshly
+// fabricated baseline can never satisfy the claims-saved gate below. Reads
+// the tracked named snapshot file from the library, computes its fingerprint
 // using the same shape as the live-state fingerprint (`picks` + `workflows`,
 // dropping the wrapping `name`/`kind`/`version`/`exportedAt` envelope), and
-// compares. On mismatch, sets `_bootDrifted` — see the state block above
-// for what gates on the flag.
+// compares. On mismatch, sets `_bootDrifted` only when the live state also
+// matches the persisted last-named-save baseline (it "claims saved") — see
+// the state block above for what gates on the flag and the inline comment
+// below for the three-way rationale.
 //
 // Skips silently when no preset is tracked (fresh user, nothing to verify
 // against) or when the named file can't be read (renamed, deleted, server
@@ -473,6 +484,44 @@ export async function detectBootDrift(trackedName) {
         _emitStatusChanged();
         return { drifted: false, trackedName };
     }
+    // File and live state disagree — but that alone is NOT corruption
+    // (#276). The user editing workflows after their last named save
+    // produces exactly the same mismatch, and that is the ordinary
+    // "unsaved" state. Drift is only flagged when the live state *claims*
+    // to be saved — its fingerprint matches the persisted last-named-save
+    // baseline (the same comparison `getSnapshotStatus` uses for "saved")
+    // — yet the file on disk tells a different story. Since the baseline
+    // was captured when file and live agreed, the only way to reach that
+    // contradiction is the FILE changing out of band: a cross-machine
+    // sync of the library, a hand-edit, another install writing it. A
+    // live-side out-of-band change would have broken the baseline match
+    // instead. Without a baseline the state can't claim anything, so we
+    // fall through to "unsaved" there too rather than cry wolf.
+    //
+    // Trade-off: out-of-band changes to the live /userdata side —
+    // including corruption — now read "unsaved", whether the state was
+    // clean or dirty when they landed. The #162 duplicate-install vector
+    // (the known live-side corruptor) has its own dedicated guard
+    // (extension_guard.js); this check remains the backstop for
+    // file-side changes only.
+    const hasBaseline = Boolean(_lastNamedSaveFingerprint);
+    const claimsSaved =
+        hasBaseline && _computeFingerprint() === _lastNamedSaveFingerprint;
+    if (!claimsSaved) {
+        // Two distinct ways to land here — say which, or the log claims
+        // "unsaved edits" for a session that has no save to be edited
+        // since (fresh profile, cleared storage, a baseline write that
+        // lost to localStorage quota).
+        console.log(
+            `[Koolook] boot drift check: tracked snapshot "${trackedName}" differs ` +
+            `from live state, but ` +
+            (hasBaseline
+                ? "the live state has unsaved edits since the last named save"
+                : "there is no last-named-save baseline to judge it against") +
+            ` — reporting "unsaved", not drift.`
+        );
+        return { drifted: false, trackedName, reason: "unsaved-edits" };
+    }
     _bootDrifted = true;
     _bootDriftDiagnostics = {
         trackedName,
@@ -491,6 +540,26 @@ export async function detectBootDrift(trackedName) {
     );
     _emitStatusChanged();
     return { drifted: true, trackedName, diagnostics: _bootDriftDiagnostics };
+}
+
+// True only when `detectBootDrift()` positively PROVED the tracked named
+// file and the live state agree — i.e. it reached the fingerprint
+// comparison and they matched. `null` (no preset tracked, file
+// unreadable) and the `reason`-carrying early exits both return false:
+// those outcomes prove nothing either way.
+//
+// Exists so `koolook_sidebar.js` can gate its first-session baseline
+// seeding on real evidence. Seeding calls `markStateSaved()`, which
+// baselines whatever the live state happens to be; doing that after an
+// unproven boot both shows a "saved" pill for state that was never saved
+// to the named file AND manufactures the claims-saved condition that
+// `detectBootDrift` reads next boot — re-opening the #276 false positive
+// from the other side. The entry point imports ComfyUI's `app.js` and
+// can't be loaded headlessly, so the decision lives here where it is
+// unit-testable — same split as `extension_guard.js`'s
+// `claimSidebarRegistration`.
+export function bootCheckProvedAligned(outcome) {
+    return Boolean(outcome) && outcome.drifted === false && !outcome.reason;
 }
 
 // True iff `detectBootDrift()` flagged a mismatch this session and no

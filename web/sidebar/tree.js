@@ -3301,24 +3301,28 @@ export function renderPanel(container, options = {}) {
             ? status.lastAutosaveAt
             : status.lastNamedSaveAt;
         const location = snapshotLibraryPath || "loading...";
-        // Drifted (#161): the named snapshot file on disk diverged from the
-        // live state when the session started. Tooltip carries the recovery
-        // instructions so the user understands what the pill colour means
-        // and how to clear it without hunting through docs.
+        // Drifted (#161, narrowed by #276): the named snapshot file on disk
+        // diverged from the live state at session start even though the live
+        // state still matches the last named save — the file changed out of
+        // band (another machine's sync, a hand-edit, another install writing
+        // it). Tooltip carries the recovery instructions so the user
+        // understands what the pill colour means and how to clear it without
+        // hunting through docs.
         if (status.state === "drifted") {
             // Use ``driftDetectedAt`` (session-noticed-at), NOT
-            // ``lastNamedSaveAt`` — the latter comes from a localStorage
-            // baseline that may have been captured by a prior session
-            // whose live state was already corrupt, and surfacing it
-            // here as "Last named save" would mislead the user about
-            // when the divergence actually started.
+            // ``lastNamedSaveAt`` — the divergence started with an
+            // out-of-band change to the file at some unknowable time, so
+            // "when this session noticed" is the only timestamp that
+            // anchors on a meaningful event; surfacing the named-save time
+            // here would mislead the user about when the file changed.
             return (
                 `Tracked snapshot "${status.name || "?"}" diverges from live state.\n` +
-                `Periodic auto-saves are being redirected to _unsaved_autosave/\n` +
-                `to protect the named snapshot's recovery folder.\n` +
+                `The file changed outside this session (sync, hand-edit, or\n` +
+                `another install); periodic auto-saves are being redirected to\n` +
+                `_unsaved_autosave/ until the two are realigned.\n` +
                 `\n` +
-                `To resolve: Load the tracked snapshot (discards live changes), or\n` +
-                `Save / Quick Save (overwrites the tracked snapshot with live state).\n` +
+                `To resolve: Load the tracked snapshot (replaces live state with\n` +
+                `the file), or Save / Quick Save (overwrites the file with live state).\n` +
                 `\n` +
                 `Drift detected: ${formatLocalTime(status.driftDetectedAt)}\n` +
                 `Location: ${location}`
