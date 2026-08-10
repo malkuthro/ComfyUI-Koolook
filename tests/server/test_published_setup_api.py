@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tomllib
 from copy import deepcopy
+from pathlib import Path
 
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
@@ -11,6 +13,16 @@ import koolook_routes
 from koolook_setup_runner import PublishedSetupRunner
 from koolook_setups import FileSetupStorage, PublishedSetupRegistry, StaticSetupStorage
 from tests.server.test_published_setup_registry import _valid_setup
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _pyproject_pack_version() -> str:
+    """Independent expected version — not ``koolook_routes._read_pack_version``."""
+    data = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    version = data["project"]["version"]
+    assert isinstance(version, str) and version and version != "unknown"
+    return version
 
 
 def test_catalog_routes_expose_list_and_detail_contracts() -> None:
@@ -61,8 +73,9 @@ def test_version_route_exposes_installed_version_and_release_urls() -> None:
 
         assert response.status == 200
         body = _json_body(response)
-        # Keep in sync with pyproject.toml so release bumps don't hard-fail CI.
-        assert body["version"] == koolook_routes._read_pack_version()
+        # Independent pyproject parse (not _read_pack_version) so this is not
+        # tautological, and release bumps still don't hard-fail CI.
+        assert body["version"] == _pyproject_pack_version()
         assert body["releasesUrl"] == "https://github.com/malkuthro/ComfyUI-Koolook/releases"
         assert body["latestReleaseApiUrl"].endswith("/malkuthro/ComfyUI-Koolook/releases/latest")
 
