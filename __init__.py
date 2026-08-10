@@ -38,11 +38,13 @@ try:
     from .koolook_install_guard import (  # noqa: E402
         build_duplicate_report,
         detect_duplicate_koolook_installs,
+        should_run_duplicate_guard,
     )
 except ImportError:  # pragma: no cover - exercised only outside package context
     from koolook_install_guard import (  # type: ignore[no-redef]
         build_duplicate_report,
         detect_duplicate_koolook_installs,
+        should_run_duplicate_guard,
     )
 
 NODE_CLASS_MAPPINGS: dict = {}
@@ -68,6 +70,10 @@ def _merge_node_group(label: str, module_name: str) -> None:
     NODE_DISPLAY_NAME_MAPPINGS.update(display_mappings)
 
 
+# Unresolved load path — preserves a ``custom_nodes/`` parent when this
+# pack is loaded via a symlink into a linked worktree (#281 review).
+# Resolved path is for package ``__path__`` / imports only.
+_load_here = Path(__file__).parent
 _here = Path(__file__).resolve().parent
 if "__path__" not in globals():
     # Registry scanners commonly load custom-node entrypoints directly from
@@ -85,10 +91,17 @@ if "__path__" not in globals():
 # OSError/ValueError; this try is the final backstop for anything unforeseen.
 _is_winning_install = True
 try:
-    _siblings = detect_duplicate_koolook_installs(_here)
-    if _siblings:
-        _is_winning_install, _report = build_duplicate_report(_here, _siblings)
-        print(_report)
+    # Skip sibling scanning in linked git worktrees outside custom_nodes/
+    # (#281) — agent/dev worktrees are not ComfyUI installs. Use the
+    # unresolved load path so a ``custom_nodes/<name>`` → worktree symlink
+    # still runs the #162 guard and scans the real custom_nodes siblings.
+    if should_run_duplicate_guard(_load_here):
+        _siblings = detect_duplicate_koolook_installs(_load_here)
+        if _siblings:
+            _is_winning_install, _report = build_duplicate_report(
+                _load_here, _siblings
+            )
+            print(_report)
 except Exception as _guard_err:  # pragma: no cover - defensive backstop
     print(
         f"[Koolook] install-guard check failed ({_guard_err!r}); "

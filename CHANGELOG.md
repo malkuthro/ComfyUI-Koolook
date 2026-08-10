@@ -175,6 +175,14 @@ The format is inspired by Keep a Changelog and SemVer.
   real entries instead. The split/fabrication math is unit-tested.
 
 ### Fixed
+- **Duplicate-install guard no longer false-positives in git worktrees (#281).**
+  Linked worktrees (``.git`` is a `gitdir:` file) outside a `custom_nodes/`
+  parent skip the sibling scan, so agent/Cursor worktrees no longer treat each
+  other as competing ComfyUI installs and blank `NODE_CLASS_MAPPINGS`. A
+  worktree deliberately placed under `custom_nodes/` still gets the #162 guard.
+  The skip uses the unresolved load path so a
+  `custom_nodes/<name>` → worktree symlink cannot defeat the check via
+  `Path.resolve()`.
 - **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
   timeline editor auto-generated the `guide_strength` string from each clip's
   per-segment `guideStrength`, filling **1.0** for any clip left unset — and the

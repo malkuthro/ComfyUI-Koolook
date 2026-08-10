@@ -27,6 +27,58 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def is_linked_git_worktree(path: Path) -> bool:
+    """True when ``path`` is a linked git worktree (``.git`` is a file
+    containing ``gitdir: …``) rather than a real checkout or install.
+
+    Same ``gitdir:`` marker recipe as ``scripts/sync_to_dev.py::find_dotenv``
+    and ``scripts/make_card.py`` — kept inline here because this module is
+    stdlib-only and must stay importable from ComfyUI without ``scripts/``.
+    """
+    git_marker = path / ".git"
+    try:
+        if not git_marker.is_file():
+            return False
+        content = git_marker.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        # Unreadable / non-UTF-8 marker — treat as "not a worktree" so the
+        # duplicate-install guard still runs. Never raise into ``__init__.py``.
+        return False
+    return content.startswith("gitdir:")
+
+
+def _loaded_under_custom_nodes(here: Path) -> bool:
+    """True when the *load* path (not necessarily the resolved real path)
+    sits under a ``custom_nodes`` directory.
+
+    Important for symlink installs: ``custom_nodes/ComfyUI-Koolook`` → a
+    linked worktree elsewhere. ``Path.resolve()`` walks through the
+    symlink and loses the ``custom_nodes`` parent; the unresolved load
+    path still carries it. Callers must pass the unresolved load path.
+    """
+    try:
+        return any(part == "custom_nodes" for part in here.parts)
+    except (OSError, ValueError):
+        return False
+
+
+def should_run_duplicate_guard(here: Path) -> bool:
+    """Whether the #162 sibling scan should run for this checkout.
+
+    Linked worktrees whose *load* path is outside ``custom_nodes/`` are
+    development checkouts ComfyUI never loads — sibling worktrees must
+    not be treated as competing installs (#281).
+
+    A worktree loaded *via* ``custom_nodes/`` (including a symlink from
+    ``custom_nodes/<name>`` into a worktree) still gets the guard: that
+    *is* genuine competition. Pass the unresolved load path so
+    ``Path.resolve()`` cannot defeat this check.
+    """
+    if is_linked_git_worktree(here) and not _loaded_under_custom_nodes(here):
+        return False
+    return True
+
+
 def detect_duplicate_koolook_installs(here: Path) -> list[Path]:
     """Return every sibling directory under ``here.parent`` that also
     contains a ``koolook_routes.py`` marker file (and is not ``here``).

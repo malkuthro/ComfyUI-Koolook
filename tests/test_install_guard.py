@@ -12,11 +12,15 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 from koolook_install_guard import (
     build_duplicate_report,
     detect_duplicate_koolook_installs,
+    is_linked_git_worktree,
     pick_winning_install,
     read_pyproject_version,
+    should_run_duplicate_guard,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +68,134 @@ def _make_install(parent: Path, name: str, version: str | None = "0.3.7") -> Pat
             encoding="utf-8",
         )
     return install_dir
+
+
+# =============================================================================
+# is_linked_git_worktree / should_run_duplicate_guard (#281)
+# =============================================================================
+
+
+def test_is_linked_git_worktree_detects_gitdir_file(tmp_path: Path) -> None:
+    """A ``.git`` *file* whose contents start with ``gitdir:`` is a linked
+    worktree — the shape agent / Cursor checkouts use."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/koolook\n", encoding="utf-8"
+    )
+    assert is_linked_git_worktree(here) is True
+
+
+def test_is_linked_git_worktree_false_for_git_directory(tmp_path: Path) -> None:
+    """A plain ``git clone`` has ``.git`` as a directory — not a linked
+    worktree; the duplicate-install guard must still run."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").mkdir()
+    assert is_linked_git_worktree(here) is False
+
+
+def test_is_linked_git_worktree_false_when_git_absent(tmp_path: Path) -> None:
+    """Manager / Registry installs have no ``.git`` at all — not a
+    worktree; the guard must still run."""
+    here = _make_install(tmp_path, "koolook")
+    assert is_linked_git_worktree(here) is False
+
+
+def test_should_run_guard_skips_worktree_outside_custom_nodes(
+    tmp_path: Path,
+) -> None:
+    """Linked worktree under a non-``custom_nodes`` parent (e.g.
+    ``.claude/worktrees/``) is not a ComfyUI install — skip the sibling
+    scan so sibling worktrees do not look like duplicate installs."""
+    parent = tmp_path / "worktrees"
+    parent.mkdir()
+    here = _make_install(parent, "repro-b")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/repro-b\n", encoding="utf-8"
+    )
+    assert should_run_duplicate_guard(here) is False
+
+
+def test_should_run_guard_keeps_worktree_under_custom_nodes(
+    tmp_path: Path,
+) -> None:
+    """A linked worktree deliberately placed inside ``custom_nodes/``
+    is genuine competition — the #162 guard must still fire."""
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+    here = _make_install(custom_nodes, "koolook")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/koolook\n", encoding="utf-8"
+    )
+    assert should_run_duplicate_guard(here) is True
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    """Create a directory symlink, or a Windows junction if symlinks are
+    blocked (no Developer Mode / admin). Raises OSError if both fail."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        import subprocess
+
+        # Junctions do not require elevated symlink privilege.
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and link.exists():
+            return
+        raise OSError(
+            result.returncode,
+            f"mklink /J failed: {result.stderr or result.stdout}",
+        )
+    raise OSError("directory symlink not supported")
+
+
+def test_should_run_guard_keeps_symlink_under_custom_nodes(
+    tmp_path: Path,
+) -> None:
+    """``custom_nodes/ComfyUI-Koolook`` → linked worktree elsewhere must
+    still run the guard. ``Path.resolve()`` would drop the
+    ``custom_nodes`` parent and incorrectly skip (#282 review)."""
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir()
+    real = _make_install(worktrees, "real-koolook")
+    (real / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/real-koolook\n", encoding="utf-8"
+    )
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+    link = custom_nodes / "ComfyUI-Koolook"
+    try:
+        _link_dir(link, real)
+    except OSError as exc:
+        pytest.skip(f"dir link not permitted in this environment: {exc}")
+
+    # Load path (unresolved symlink/junction) keeps custom_nodes → guard runs.
+    assert should_run_duplicate_guard(link) is True
+    # Resolved real path loses custom_nodes → would skip; callers must
+    # not pass resolve() into the predicate for the load-path check.
+    assert should_run_duplicate_guard(link.resolve()) is False
+
+    # Sibling scan from the load path sees the Manager install next door.
+    other = _make_install(custom_nodes, "koolook")
+    assert detect_duplicate_koolook_installs(link) == [other]
+
+
+def test_is_linked_git_worktree_handles_non_utf8_git_file(
+    tmp_path: Path,
+) -> None:
+    """Unreadable / non-UTF-8 ``.git`` file degrades to "not a worktree"
+    and never raises — same discipline as ``read_pyproject_version``."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").write_bytes(b"\xff\xfe gitdir: broken \x00")
+    assert is_linked_git_worktree(here) is False
+    assert should_run_duplicate_guard(here) is True
 
 
 # =============================================================================
