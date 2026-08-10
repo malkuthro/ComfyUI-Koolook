@@ -193,14 +193,15 @@ function isoToFsToken(iso) {
 // to `_unsaved_autosave/`. Sanitizes the preset name through the same
 // filename whitelist so the dirname is server-validation-safe.
 //
-// Boot-time drift override (#161): when the session opened with the
-// tracked snapshot's named file diverging from the live state, route
+// Boot-time drift override (#161, narrowed by #276): when the session
+// opened with the tracked snapshot's named file diverging from the live
+// state *while the live state still matched the last named save*, route
 // auto-saves to `_unsaved_autosave/` regardless of whether a preset is
-// tracked. This is the core data-loss-prevention move — without it the
-// periodic timer captures the (potentially corrupt) live state INTO the
-// named preset's recovery folder, where the Load dialog will later
-// present it as a "newer recovery" choice and the user can accept it
-// thinking it's a legitimate auto-save of their work.
+// tracked. The file changed out of band, so which side the user wants to
+// keep is unknown — without this the periodic timer writes the live state
+// INTO the named preset's recovery folder, where the Load dialog later
+// presents it as a "newer recovery" choice and the user can accept it as
+// a legitimate auto-save, quietly discarding whatever the file held.
 function _autosaveSubdir() {
     if (_bootDrifted) return AUTOSAVE_UNSAVED_SUBDIR;
     const name = getCurrentPresetName();
@@ -503,13 +504,21 @@ export async function detectBootDrift(trackedName) {
     // (the known live-side corruptor) has its own dedicated guard
     // (extension_guard.js); this check remains the backstop for
     // file-side changes only.
+    const hasBaseline = Boolean(_lastNamedSaveFingerprint);
     const claimsSaved =
-        _lastNamedSaveFingerprint && _computeFingerprint() === _lastNamedSaveFingerprint;
+        hasBaseline && _computeFingerprint() === _lastNamedSaveFingerprint;
     if (!claimsSaved) {
+        // Two distinct ways to land here — say which, or the log claims
+        // "unsaved edits" for a session that has no save to be edited
+        // since (fresh profile, cleared storage, a baseline write that
+        // lost to localStorage quota).
         console.log(
             `[Koolook] boot drift check: tracked snapshot "${trackedName}" differs ` +
-            `from live state, but the live state has unsaved edits since the last ` +
-            `named save — reporting "unsaved", not drift.`
+            `from live state, but ` +
+            (hasBaseline
+                ? "the live state has unsaved edits since the last named save"
+                : "there is no last-named-save baseline to judge it against") +
+            ` — reporting "unsaved", not drift.`
         );
         return { drifted: false, trackedName, reason: "unsaved-edits" };
     }
@@ -531,6 +540,26 @@ export async function detectBootDrift(trackedName) {
     );
     _emitStatusChanged();
     return { drifted: true, trackedName, diagnostics: _bootDriftDiagnostics };
+}
+
+// True only when `detectBootDrift()` positively PROVED the tracked named
+// file and the live state agree — i.e. it reached the fingerprint
+// comparison and they matched. `null` (no preset tracked, file
+// unreadable) and the `reason`-carrying early exits both return false:
+// those outcomes prove nothing either way.
+//
+// Exists so `koolook_sidebar.js` can gate its first-session baseline
+// seeding on real evidence. Seeding calls `markStateSaved()`, which
+// baselines whatever the live state happens to be; doing that after an
+// unproven boot both shows a "saved" pill for state that was never saved
+// to the named file AND manufactures the claims-saved condition that
+// `detectBootDrift` reads next boot — re-opening the #276 false positive
+// from the other side. The entry point imports ComfyUI's `app.js` and
+// can't be loaded headlessly, so the decision lives here where it is
+// unit-testable — same split as `extension_guard.js`'s
+// `claimSidebarRegistration`.
+export function bootCheckProvedAligned(outcome) {
+    return Boolean(outcome) && outcome.drifted === false && !outcome.reason;
 }
 
 // True iff `detectBootDrift()` flagged a mismatch this session and no

@@ -194,10 +194,15 @@ The format is inspired by Keep a Changelog and SemVer.
   saved, yet the file disagrees — which pins the out-of-band change to the
   *file* side: a cross-machine library sync, a hand-edit, another install
   writing it); otherwise it reports the honest **unsaved**. The first-session
-  baseline seeding now runs *after* the drift check so a freshly fabricated
-  baseline can't satisfy the claims-saved gate — which also means drift can
-  never fire in a session with no persisted baseline (fresh browser profile,
-  cleared site data). Trade-off: out-of-band changes to the live `/userdata`
+  baseline seeding now runs *after* the drift check **and only when that check
+  proved the file and live state agree** — seeding on an unproven boot
+  baselined whatever the live state happened to be, which both showed "saved"
+  for state that was never saved to the named file and handed the next boot a
+  live state that "claims saved" against a file it never matched, re-opening
+  the same false positive from the other side (reachable whenever a tracked
+  preset name outlives its fingerprint: upgrades from before the baseline key
+  existed, or a persist that lost to localStorage quota). Trade-off:
+  out-of-band changes to the live `/userdata`
   side — including corruption — now read "unsaved"; the #162 duplicate-install
   vector (the known live-side corruptor) keeps its own dedicated guard.
 - **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The

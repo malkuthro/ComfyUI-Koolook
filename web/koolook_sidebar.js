@@ -25,6 +25,7 @@ import {
     markStateSaved,
     getCurrentPresetName,
     detectBootDrift,
+    bootCheckProvedAligned,
     SNAPSHOT_KIND,
     SNAPSHOT_VERSION,
     writePreset,
@@ -225,36 +226,47 @@ if (!claimSidebarRegistration(window)) {
         // Runs BEFORE the first-session baseline seeding below (#276):
         // seeding fabricates a baseline from the live state, which would
         // make the live state trivially "claim saved" and re-open the
-        // false-positive this ordering closes. The reverse hazard doesn't
-        // exist — seeding only runs when NO baseline is stored, and with
-        // no baseline the drift check never flags, so the seeding call's
-        // `markStateSaved()` can't retire a legitimate warning.
+        // false-positive this ordering closes. Ordering alone isn't
+        // enough though — see the seeding block for why its outcome is
+        // also gated on what this check proved.
         //
         // Failure here is silent (logged, not toasted): a missing file or
         // unreachable server are distinct failure modes the user already
         // has surface for elsewhere. Drift specifically means "both
         // present, both differ".
         const trackedNameForDrift = getCurrentPresetName();
+        let bootDriftOutcome = null;
         if (trackedNameForDrift) {
             try {
-                await detectBootDrift(trackedNameForDrift);
+                bootDriftOutcome = await detectBootDrift(trackedNameForDrift);
             } catch (e) {
                 console.warn("[Koolook] boot drift check threw:", e);
             }
         }
         // Baseline the saved-state fingerprint at session start IFF the
-        // tracker says a preset is currently loaded AND we don't already
-        // have a baseline persisted from a previous session. The "saved
-        // fingerprint persists across reloads" path is more accurate, but
-        // first-ever-session needs this seeding to avoid showing "unsaved"
-        // immediately for users who closed the tab on a clean state.
-        // Without this, the indicator would flicker "unsaved → saved" the
-        // first time the user clicks Save (since markStateSaved baselines
-        // there). With it, "saved" is shown from the start. Trade-off: if
-        // the user closed mid-edit (state on /userdata diverges from the
-        // tracked preset's content), we'll show "saved" briefly until they
-        // mutate again — acceptable for an indicator.
-        if (getCurrentPresetName() && !localStorage.getItem("koolook.snapshot.savedFingerprint.v1")) {
+        // boot check above PROVED the named file and live state agree AND
+        // we don't already have a baseline persisted from a previous
+        // session. The "saved fingerprint persists across reloads" path is
+        // more accurate, but a first session with no stored baseline needs
+        // this seeding to avoid showing "unsaved" immediately for users who
+        // closed the tab on a clean state. Without it the indicator would
+        // flicker "unsaved → saved" the first time the user clicks Save
+        // (since markStateSaved baselines there).
+        //
+        // The `bootCheckProvedAligned` gate is what makes the seeding safe
+        // (#276 review). Seeding on an UNPROVEN boot — no tracked file, an
+        // unreadable one, or a file that demonstrably differs — baselines
+        // whatever the live state happens to be, which both shows "saved"
+        // for state that was never saved to the named file and hands the
+        // next boot's drift check a live state that now "claims saved"
+        // against a file it never matched: a fresh false "drifted". That
+        // path is reachable in practice whenever the tracked-preset name
+        // outlives its fingerprint (upgrade from a build before the
+        // baseline key existed, or a persist that lost to localStorage
+        // quota — the same pressure `koolook_draft_guard.js` exists for).
+        // When the boot check proved nothing, "unsaved" is the honest pill.
+        if (bootCheckProvedAligned(bootDriftOutcome)
+            && !localStorage.getItem("koolook.snapshot.savedFingerprint.v1")) {
             markStateSaved();
         }
         app.extensionManager.registerSidebarTab({

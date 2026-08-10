@@ -53,6 +53,7 @@ import {
     markStateSaved,
     clearBootDrift,
     isBootDrifted,
+    bootCheckProvedAligned,
     setCurrentPresetName,
     writePreLoadAutosave,
 } from "./web/sidebar/snapshot.js";
@@ -615,6 +616,150 @@ def test_no_drift_without_saved_baseline() -> None:
             "mismatch without a claims-saved baseline must not flag drift");
         assert.equal(outcome.reason, "unsaved-edits");
         assert.equal(isBootDrifted(), false);
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+# =============================================================================
+# 5. Seeding gate — bootCheckProvedAligned (#276 review)
+# =============================================================================
+
+
+def test_boot_check_proved_aligned_only_on_verified_match() -> None:
+    """``koolook_sidebar.js`` seeds a first-session "saved" baseline only
+    when the boot check PROVED file ≡ live. Every other outcome — no
+    preset tracked / unreadable file (``null``), or a mismatch that fell
+    through to the unsaved-edits exit — must return false.
+
+    Seeding on an unproven boot baselines whatever the live state happens
+    to be, which hands the NEXT boot a live state that "claims saved"
+    against a file it never matched: a fresh false "drifted", i.e. #276
+    re-opened from the other side."""
+    result = _run(
+        """
+        // Proven match — the only true case.
+        assert.equal(bootCheckProvedAligned({ drifted: false, trackedName: "A" }), true);
+
+        // Mismatch that fell through to the unsaved-edits exit.
+        assert.equal(
+            bootCheckProvedAligned({ drifted: false, trackedName: "A", reason: "unsaved-edits" }),
+            false, "unsaved-edits outcome proves nothing — must not seed");
+
+        // Real drift.
+        assert.equal(bootCheckProvedAligned({ drifted: true, trackedName: "A" }), false);
+
+        // No preset tracked, or the named file was unreadable.
+        assert.equal(bootCheckProvedAligned(null), false,
+            "null outcome proves nothing — must not seed");
+        assert.equal(bootCheckProvedAligned(undefined), false);
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_seeding_gate_blocks_baseline_when_file_differs() -> None:
+    """End-to-end on the real module: a session whose tracked-preset name
+    outlived its fingerprint baseline (upgrade path, or a persist that
+    lost to localStorage quota) and whose live state differs from the
+    named file must NOT be seeded — and a second boot against the same
+    unchanged state must still report "unsaved", never "drifted".
+
+    This is the regression the seeding gate exists to prevent; without it
+    the first boot writes a baseline equal to live, and the second boot
+    reads live == baseline + file != live and flags drift."""
+    result = _run(
+        """
+        SERVER.workflowsStore = {
+            directories: {
+                "Renders": {
+                    workflows: {
+                        "live-only": { graph: { nodes: [{ id: 9 }] }, archived: false, module: false, tags: [] },
+                    },
+                    directories: {},
+                },
+            },
+        };
+        SERVER.presets.set("Upgraded.json", {
+            kind: "koolook-snapshot",
+            version: 1,
+            name: "Upgraded",
+            exportedAt: "2026-08-10T08:00:00.000Z",
+            picks: [],
+            workflows: { directories: {} },
+        });
+        await loadWorkflowsStore();
+        setAllPicks([]);
+        setCurrentPresetName("Upgraded");
+        // No markStateSaved() — the tracked name exists but no baseline
+        // was ever persisted. That is the reachable upgrade/quota state.
+
+        // --- Boot 1
+        const first = await detectBootDrift("Upgraded");
+        assert.equal(first.drifted, false);
+        assert.equal(bootCheckProvedAligned(first), false,
+            "unproven boot must not authorize baseline seeding");
+        // The sidebar entry point would call markStateSaved() here only if
+        // the gate returned true. It didn't, so the state stays unbaselined.
+        assert.equal(getSnapshotStatus().state, "unsaved");
+
+        // --- Boot 2 against the same unchanged state.
+        const second = await detectBootDrift("Upgraded");
+        assert.equal(second.drifted, false,
+            "second boot must not flag drift — nothing changed and nothing was saved");
+        assert.equal(isBootDrifted(), false);
+        assert.equal(getSnapshotStatus().state, "unsaved");
+
+        // --- Counterfactual: prove the gate is load-bearing, not decorative.
+        // Replay what the UNGATED seeding did — markStateSaved() on an
+        // unproven boot — and show the very next boot false-positives.
+        // If this leg ever stops flagging drift, the gate above has become
+        // redundant and this whole test can go.
+        markStateSaved();
+        const third = await detectBootDrift("Upgraded");
+        assert.equal(third.drifted, true,
+            "counterfactual must flag drift — otherwise the seeding gate guards nothing");
+        assert.equal(getSnapshotStatus().state, "drifted");
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_seeding_gate_allows_baseline_when_file_matches() -> None:
+    """The other side of the gate: when the boot check proves file ≡ live,
+    seeding is authorized and the pill reads "saved" from the start —
+    the original reason the seeding exists."""
+    result = _run(
+        """
+        const sharedStore = {
+            directories: {
+                "X": {
+                    workflows: {
+                        "Y": { graph: { nodes: [] }, archived: false, module: false, tags: [] },
+                    },
+                    directories: {},
+                },
+            },
+        };
+        SERVER.workflowsStore = sharedStore;
+        SERVER.presets.set("Aligned.json", {
+            kind: "koolook-snapshot",
+            version: 1,
+            name: "Aligned",
+            exportedAt: "2026-08-10T08:00:00.000Z",
+            picks: [],
+            workflows: sharedStore,
+        });
+        await loadWorkflowsStore();
+        setAllPicks([]);
+        setCurrentPresetName("Aligned");
+
+        const outcome = await detectBootDrift("Aligned");
+        assert.equal(bootCheckProvedAligned(outcome), true,
+            "a proven match must authorize seeding");
+        // Entry point seeds here.
+        markStateSaved();
+        assert.equal(getSnapshotStatus().state, "saved");
         """
     )
     assert result.returncode == 0, result.stderr
