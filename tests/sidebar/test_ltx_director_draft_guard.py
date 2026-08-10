@@ -108,9 +108,9 @@ def _scrub_harness_prelude() -> str:
         const block = src.slice(src.lastIndexOf("\\n", startMark) + 1, src.lastIndexOf("\\n", endMark));
 
         const api = { apiURL: (p) => "/api" + p };
-        const scrub = new Function(
+        const { scrub, persist } = new Function(
           "api",
-          block + "\\nreturn scrubTimelinePreviewMedia;",
+          block + "\\nreturn { scrub: scrubTimelinePreviewMedia, persist: persistScrubbedTimelineWidget };",
         )(api);
         """
     )
@@ -195,8 +195,73 @@ def test_scrub_rewrites_legacy_image_blobs_to_view_urls() -> None:
           backslash.imageB64,
           "/api/view?filename=pic.png&type=input&subfolder=whatdreamscost",
         );
+
+        // A malformed path yields no /view URL: keep the data-URL rather than
+        // blanking the preview with an empty string.
+        const malformed = scrub({
+          type: "image", imageFile: "whatdreamscost/",
+          imageB64: "data:image/png;base64,GGGG",
+        });
+        assert.equal(malformed.imageB64, "data:image/png;base64,GGGG");
         """
     )
 
     result = run_node_scenario(script)
     assert result.returncode == 0, result.stderr
+
+
+@requires_node
+def test_restore_rewrites_the_widget_so_fat_payloads_never_reach_the_draft() -> None:
+    """parseInitial scrubs the in-memory timeline, but onSerialize (and
+    LiteGraph's widgets_values, which the draft autosave serializes) reads the
+    widget. A legacy fat payload must be rewritten on restore, before any edit
+    triggers commitChanges.
+    """
+    script = _scrub_harness_prelude() + textwrap.dedent(
+        """
+        // Fat legacy payload in the widget -> rewritten from the scrubbed copy.
+        const fat = { segments: [{ type: "video", imageFile: "a/clip.mp4" }] };
+        const widget = {
+          value: JSON.stringify({
+            segments: [{
+              type: "video", imageFile: "a/clip.mp4",
+              imageB64: "data:image/jpeg;base64," + "A".repeat(50000),
+            }],
+          }),
+        };
+        const before = widget.value.length;
+        persist(widget, fat);
+        assert.ok(widget.value.length < before / 10, "widget was not slimmed");
+        assert.ok(!widget.value.includes("data:"), "data-URL survived");
+        assert.deepEqual(JSON.parse(widget.value), fat);
+
+        // Already-clean widget: untouched (no needless churn on normal loads).
+        const clean = { value: '{"segments":[]}' };
+        persist(clean, { segments: [{ injected: true }] });
+        assert.equal(clean.value, '{"segments":[]}');
+
+        // Defensive: missing widget / non-string value must not throw.
+        persist(null, fat);
+        persist({ value: undefined }, fat);
+
+        // Unserializable timeline leaves the original value intact.
+        const cyclic = {};
+        cyclic.self = cyclic;
+        const survivor = { value: '{"x":"data:image/png;base64,AAAA"}' };
+        persist(survivor, cyclic);
+        assert.equal(survivor.value, '{"x":"data:image/png;base64,AAAA"}');
+        """
+    )
+
+    result = run_node_scenario(script)
+    assert result.returncode == 0, result.stderr
+
+
+def test_both_restore_paths_sync_the_widget() -> None:
+    """The editor constructor and the onConfigure sync block both restore from
+    the widget; each must write the scrubbed copy back or the fat payload
+    survives on that path.
+    """
+    source = LTX_DIRECTOR_JS.read_text(encoding="utf-8")
+
+    assert source.count("persistScrubbedTimelineWidget(") == 3  # 1 def + 2 calls

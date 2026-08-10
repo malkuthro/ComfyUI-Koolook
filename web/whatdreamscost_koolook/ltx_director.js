@@ -16,7 +16,9 @@
 // localStorage draft-quota guarding is intentionally NOT embedded here; it
 // lives in the global web/koolook_draft_guard.js (covers all draft keys on
 // every page). 2.0.2 persists timeline media via imageFile/audioFile + the
-// /api/view URL, so the old koolook base64-scrub deltas are no longer needed.
+// /api/view URL, but it ALSO stamps rebuildable base64 poster JPEGs onto
+// video segments and keeps them across serialize round-trips — which is why
+// the third delta above reinstates a (narrower) base64 scrub.
 // License: GPL-3.0-or-later (matches the ComfyUI-Koolook pack).
 
 const { app } = window.comfyAPI.app;
@@ -718,13 +720,37 @@ function scrubTimelinePreviewMedia(seg) {
     if (seg.type === "video" || seg.type === "motion_video") {
       if (seg.imageFile || seg.videoFile) delete seg.imageB64;
     } else if (seg.imageFile) {
-      seg.imageB64 = inputImageViewUrl(seg.imageFile);
+      // Only swap in the /view URL if the path actually yields one — a
+      // malformed imageFile (e.g. a bare "dir/") would otherwise blank a
+      // preview that at least rendered from its data-URL.
+      const url = inputImageViewUrl(seg.imageFile);
+      if (url) seg.imageB64 = url;
     }
   }
   if (seg && seg.audioB64 && seg.audioFile) {
     delete seg.audioB64;
   }
   return seg;
+}
+
+// parseInitial only scrubs the timeline the editor holds in memory. The
+// node's timeline_data widget still carries the original payload, and THAT is
+// what onSerialize / LiteGraph's widgets_values read — so a legacy fat
+// timeline would ride straight into the draft autosave that fires on load,
+// before any edit triggers commitChanges. Rewrite the widget from the
+// scrubbed timeline (the round-trip is lossless: parseInitial whitelists
+// exactly the keys commitChanges persists). Narrower than calling
+// commitChanges here, which would also recompute the prompt/length/strength
+// widgets on every node's configure. No-ops unless a data-URL is present, so
+// normal loads are untouched; a false positive (a prompt containing "data:")
+// costs only a lossless rewrite.
+function persistScrubbedTimelineWidget(widget, scrubbedTimeline) {
+  if (!widget || typeof widget.value !== "string" || !widget.value.includes("data:")) return;
+  try {
+    widget.value = JSON.stringify(scrubbedTimeline);
+  } catch (_e) {
+    // Keep the original value; the next commitChanges scrubs it anyway.
+  }
 }
 // --- end KOOLOOK DELTA -----------------------------------------------------
 
@@ -912,6 +938,9 @@ class TimelineEditor {
 
     console.log("[LTXDirector debug] Constructor: timelineDataWidget value:", this.timelineDataWidget?.value);
     this.timeline = parseInitial(this.timelineDataWidget?.value);
+    // KOOLOOK DELTA: same widget sync as the configure path — the editor can
+    // be constructed for an already-populated node without configure re-running.
+    persistScrubbedTimelineWidget(this.timelineDataWidget, this.timeline);
     this.retakeMode = this.timeline.retakeMode === true;
     if (this.retakeMode) {
       if (this.timeline.retake_global_prompt) {
@@ -11561,6 +11590,9 @@ app.registerExtension({
             const tl = parseInitial(this._timelineEditor.timelineDataWidget?.value);
             console.log("[LTXDirector debug] setTimeout: parsed timeline:", JSON.stringify(tl));
             this._timelineEditor.timeline = tl;
+            // KOOLOOK DELTA: keep the widget in sync with the scrubbed
+            // timeline so a legacy fat payload can't reach the draft store.
+            persistScrubbedTimelineWidget(this._timelineEditor.timelineDataWidget, tl);
 
             // Sync editor states from the parsed timeline object (the absolute source of truth)
             this._timelineEditor.mainTrackEnabled = tl.mainTrackEnabled !== false;

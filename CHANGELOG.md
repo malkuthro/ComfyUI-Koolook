@@ -20,9 +20,13 @@ The format is inspired by Keep a Changelog and SemVer.
   obsolete; a minimal scrub is reinstated as a third documented delta: video
   poster blobs are dropped from persisted timelines (they rebuild from the
   video element on load), legacy pre-2.0.2 image segments carrying full inline
-  data-URLs are rewritten to the `/view` URL form 2.0.2 itself writes, and
-  blobs with no backing file path are left untouched. On-screen previews are
-  unaffected — only the persisted copy is scrubbed.
+  data-URLs are rewritten to the `/view` URL form 2.0.2 itself writes, legacy
+  inline `audioB64` is dropped when a backing `audioFile` exists (playback only
+  falls back to it when no file resolves), and blobs with no backing file path
+  are left untouched. Restoring a timeline also rewrites the node's
+  `timeline_data` widget from the scrubbed copy, so an already-fat saved
+  workflow can't feed the draft autosave that fires on load before any edit.
+  On-screen previews are unaffected — only persisted copies are scrubbed.
 
 ### Security
 - **Supply-chain hardening.** Raised the test-dependency floors to patched
