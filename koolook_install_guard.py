@@ -47,15 +47,34 @@ def is_linked_git_worktree(path: Path) -> bool:
     return content.startswith("gitdir:")
 
 
+def _loaded_under_custom_nodes(here: Path) -> bool:
+    """True when the *load* path (not necessarily the resolved real path)
+    sits under a ``custom_nodes`` directory.
+
+    Important for symlink installs: ``custom_nodes/ComfyUI-Koolook`` → a
+    linked worktree elsewhere. ``Path.resolve()`` walks through the
+    symlink and loses the ``custom_nodes`` parent; the unresolved load
+    path still carries it. Callers must pass the unresolved load path.
+    """
+    try:
+        return any(part == "custom_nodes" for part in here.parts)
+    except (OSError, ValueError):
+        return False
+
+
 def should_run_duplicate_guard(here: Path) -> bool:
     """Whether the #162 sibling scan should run for this checkout.
 
-    Linked worktrees outside a ``custom_nodes/`` parent are development
-    checkouts ComfyUI never loads — sibling worktrees must not be treated
-    as competing installs (#281). A worktree deliberately placed *under*
-    ``custom_nodes/`` still gets the guard: that *is* genuine competition.
+    Linked worktrees whose *load* path is outside ``custom_nodes/`` are
+    development checkouts ComfyUI never loads — sibling worktrees must
+    not be treated as competing installs (#281).
+
+    A worktree loaded *via* ``custom_nodes/`` (including a symlink from
+    ``custom_nodes/<name>`` into a worktree) still gets the guard: that
+    *is* genuine competition. Pass the unresolved load path so
+    ``Path.resolve()`` cannot defeat this check.
     """
-    if is_linked_git_worktree(here) and here.parent.name != "custom_nodes":
+    if is_linked_git_worktree(here) and not _loaded_under_custom_nodes(here):
         return False
     return True
 
