@@ -157,11 +157,18 @@ entries:
       companion `LTXDirectorGuide` is upstream-unmodified and consumed from the
       user's install. v1.3.9 (with the older customizations) remains on disk.
       The timeline editor `web/whatdreamscost_koolook/ltx_director.js` is the
-      upstream 2.0.2 `js/ltx_director.js` vendored verbatim with only two
-      retargeting edits (unique extension name + bind to `LTXDirector__koolook`),
-      so the editor UX matches upstream 2.0.2 exactly; the old 1.3.9-era editor
-      and its now-obsolete base64-scrub deltas are replaced. localStorage quota
-      guarding stays in the global `web/koolook_draft_guard.js`.
+      upstream 2.0.2 `js/ltx_director.js` vendored verbatim with three Koolook
+      edits: two retargeting ones (unique extension name + bind to
+      `LTXDirector__koolook`) and a preview-media scrub. The scrub exists
+      because 2.0.2 stamps rebuildable base64 poster JPEGs onto video segments
+      and keeps them across serialize round-trips, which pushes `timeline_data`
+      — and the workflow draft ComfyUI 1.44+ autosaves to localStorage — past
+      the browser storage quota on large timelines. It drops those posters from
+      persisted/restored timelines (they re-derive from the video element),
+      rewrites legacy pre-2.0.2 inline image data-URLs to `/view` URLs, and
+      leaves blobs with no backing file alone. The editor UX is otherwise
+      upstream 2.0.2 exactly. localStorage quota guarding itself stays in the
+      global `web/koolook_draft_guard.js`.
       Beyond the keyframe snap, `ltx_director.py` also carries the Koolook
       `keyframe_ease`/`ease_falloff` neighbour-pin softening and the Ghost Mask
       reference feature (`reference_images`/`reference_strength` inputs +

@@ -6,6 +6,28 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **"Failed to save workflow draft" toast storms with LTX Director timelines.**
+  The vendored upstream 2.0.2 timeline editor stamps a base64 poster JPEG onto
+  every video segment (`canvas.toDataURL`) and kept it across serialize
+  round-trips, so `timeline_data` — and with it the workflow draft ComfyUI
+  1.44+ writes to browser storage ~512ms after every edit — grew by ~50–150k
+  characters per video segment. A big timeline then exceeded the storage quota
+  no matter how many old drafts `web/koolook_draft_guard.js` evicted, and the
+  frontend latched its session-wide storage-unavailable flag: every subsequent
+  edit toasted "Failed to save workflow draft" until the page was reloaded.
+  The 2.0.2 vendoring had dropped the 1.3.9-era Koolook media-scrub as
+  obsolete; a minimal scrub is reinstated as a third documented delta: video
+  poster blobs are dropped from persisted timelines (they rebuild from the
+  video element on load), legacy pre-2.0.2 image segments carrying full inline
+  data-URLs are rewritten to the `/view` URL form 2.0.2 itself writes, legacy
+  inline `audioB64` is dropped when a backing `audioFile` exists (playback only
+  falls back to it when no file resolves), and blobs with no backing file path
+  are left untouched. Restoring a timeline also rewrites the node's
+  `timeline_data` widget from the scrubbed copy, so an already-fat saved
+  workflow can't feed the draft autosave that fires on load before any edit.
+  On-screen previews are unaffected — only persisted copies are scrubbed.
+
 ### Security
 - **Supply-chain hardening.** Raised the test-dependency floors to patched
   `aiohttp` and Pillow releases, regenerated the audited universal Python 3.11
