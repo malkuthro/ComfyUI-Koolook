@@ -741,11 +741,16 @@ function scrubTimelinePreviewMedia(seg) {
 // scrubbed timeline (the round-trip is lossless: parseInitial whitelists
 // exactly the keys commitChanges persists). Narrower than calling
 // commitChanges here, which would also recompute the prompt/length/strength
-// widgets on every node's configure. No-ops unless a data-URL is present, so
-// normal loads are untouched; a false positive (a prompt containing "data:")
-// costs only a lossless rewrite.
+// widgets on every node's configure. No-ops unless the payload contains
+// something the scrub actually removes — a data-URL (poster/image blobs) or a
+// legacy raw-base64 audioB64 — so normal loads are untouched; a false positive
+// (a prompt mentioning either token) costs only a lossless rewrite.
+function scrubWouldChange(raw) {
+  return raw.includes("data:") || raw.includes("audioB64");
+}
+
 function persistScrubbedTimelineWidget(widget, scrubbedTimeline) {
-  if (!widget || typeof widget.value !== "string" || !widget.value.includes("data:")) return;
+  if (!widget || typeof widget.value !== "string" || !scrubWouldChange(widget.value)) return;
   try {
     widget.value = JSON.stringify(scrubbedTimeline);
   } catch (_e) {

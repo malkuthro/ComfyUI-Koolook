@@ -235,6 +235,20 @@ def test_restore_rewrites_the_widget_so_fat_payloads_never_reach_the_draft() -> 
         assert.ok(!widget.value.includes("data:"), "data-URL survived");
         assert.deepEqual(JSON.parse(widget.value), fat);
 
+        // Legacy raw-base64 audioB64 carries no "data:" prefix, but the scrub
+        // still removes it — the widget rewrite must trigger on it too.
+        const audioFat = { audioSegments: [{ type: "audio", audioFile: "a/v.wav" }] };
+        const audioWidget = {
+          value: JSON.stringify({
+            audioSegments: [{
+              type: "audio", audioFile: "a/v.wav", audioB64: "U".repeat(50000),
+            }],
+          }),
+        };
+        persist(audioWidget, audioFat);
+        assert.ok(!audioWidget.value.includes("audioB64"), "audioB64 survived");
+        assert.deepEqual(JSON.parse(audioWidget.value), audioFat);
+
         // Already-clean widget: untouched (no needless churn on normal loads).
         const clean = { value: '{"segments":[]}' };
         persist(clean, { segments: [{ injected: true }] });
