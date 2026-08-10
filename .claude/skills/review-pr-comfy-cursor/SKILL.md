@@ -15,6 +15,10 @@ Repo-local Cursor skill. **Does not** shadow global `/review-pr`. Claude Code
 sessions should keep using global `/review-pr` unless a Claude twin
 (`review-pr-comfy`) is added later.
 
+**Canonical copy:** `.claude/skills/review-pr-comfy-cursor/SKILL.md`.
+The `.cursor/skills/review-pr-comfy-cursor/SKILL.md` discovery mirror must
+stay **byte-identical** (enforced by `tests/test_skill_mirrors.py`).
+
 **Fast vs deep:** use `/review-pr-fast-comfy-cursor` for a ~1–2 min first
 pass (one comment, no approve/request-changes). Use **this** skill before
 merge when you want the full team + verification gate.
@@ -97,7 +101,15 @@ else
 fi
 
 create_review_worktree() {
-  REVIEW_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/review-pr-comfy-$PR_NUM.XXXXXX")
+  # Keep the detached checkout inside the repo so Cursor Task Read/Grep
+  # (often workspace-scoped) can reach it. /tmp is outside the workspace and
+  # can silently fall back to the wrong tree.
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  REVIEW_ROOT="$REPO_ROOT/.review-worktrees/pr-$PR_NUM"
+  mkdir -p "$REPO_ROOT/.review-worktrees"
+  if [ -e "$REVIEW_ROOT" ]; then
+    git worktree remove --force "$REVIEW_ROOT" 2>/dev/null || rm -rf "$REVIEW_ROOT"
+  fi
   git worktree add --detach "$REVIEW_ROOT" "$PR_FETCH_REF"
   REVIEW_WORKTREE_CREATED="yes"
 }
@@ -347,7 +359,7 @@ Do not present raw synthesizer output when verification ran.
 If `REVIEW_WORKTREE_CREATED` is `yes`, remove it after verification:
 
 ```bash
-git worktree remove "$REVIEW_ROOT"
+git worktree remove --force "$REVIEW_ROOT"
 ```
 
 If `SYNC_STATUS` is `warn-dirty`, `warn-ahead`, or `fetched`, prepend:

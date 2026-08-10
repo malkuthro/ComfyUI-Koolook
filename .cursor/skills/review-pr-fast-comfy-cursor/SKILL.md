@@ -9,6 +9,10 @@ disable-model-invocation: true
 
 **Skill version:** v1 — Cursor/Grok first pass for this repo.
 
+**Canonical copy:** `.claude/skills/review-pr-fast-comfy-cursor/SKILL.md`.
+The `.cursor/skills/…` discovery mirror must stay **byte-identical**
+(enforced by `tests/test_skill_mirrors.py`).
+
 **Fast vs deep:** this skill posts **one** PR comment only (never approve /
 request-changes). Before merge, run `/review-pr-comfy-cursor` for the full
 v2 batched-verify team.
@@ -23,9 +27,11 @@ Claude Code sessions can keep using global `/review-pr-fast`.
 ## Step 1: Refresh PR head (parent)
 
 Same freshness goal as `/review-pr-comfy-cursor` Step 1 — fetch
-`refs/pull/$PR_NUM/head` and ensure file reads target that SHA. Prefer the
-detached review worktree path when the current branch is not the PR head.
-If a full worktree refresh is too heavy for a fast pass, at minimum:
+`refs/pull/$PR_NUM/head` and ensure file reads target that SHA. Prefer a
+detached review worktree under
+`<repo>/.review-worktrees/pr-$PR_NUM` (workspace-scoped; never `/tmp`) when
+the current branch is not the PR head. If a full worktree refresh is too
+heavy for a fast pass, at minimum:
 
 ```bash
 gh pr view "$PR_NUM" --json title,body,additions,deletions,changedFiles,files,url,headRefName,baseRefName,headRefOid
