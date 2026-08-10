@@ -27,6 +27,39 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def is_linked_git_worktree(path: Path) -> bool:
+    """True when ``path`` is a linked git worktree (``.git`` is a file
+    containing ``gitdir: …``) rather than a real checkout or install.
+
+    Same ``gitdir:`` marker recipe as ``scripts/sync_to_dev.py::find_dotenv``
+    and ``scripts/make_card.py`` — kept inline here because this module is
+    stdlib-only and must stay importable from ComfyUI without ``scripts/``.
+    """
+    git_marker = path / ".git"
+    try:
+        if not git_marker.is_file():
+            return False
+        content = git_marker.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        # Unreadable / non-UTF-8 marker — treat as "not a worktree" so the
+        # duplicate-install guard still runs. Never raise into ``__init__.py``.
+        return False
+    return content.startswith("gitdir:")
+
+
+def should_run_duplicate_guard(here: Path) -> bool:
+    """Whether the #162 sibling scan should run for this checkout.
+
+    Linked worktrees outside a ``custom_nodes/`` parent are development
+    checkouts ComfyUI never loads — sibling worktrees must not be treated
+    as competing installs (#281). A worktree deliberately placed *under*
+    ``custom_nodes/`` still gets the guard: that *is* genuine competition.
+    """
+    if is_linked_git_worktree(here) and here.parent.name != "custom_nodes":
+        return False
+    return True
+
+
 def detect_duplicate_koolook_installs(here: Path) -> list[Path]:
     """Return every sibling directory under ``here.parent`` that also
     contains a ``koolook_routes.py`` marker file (and is not ``here``).

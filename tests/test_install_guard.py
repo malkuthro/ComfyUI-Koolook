@@ -15,8 +15,10 @@ from pathlib import Path
 from koolook_install_guard import (
     build_duplicate_report,
     detect_duplicate_koolook_installs,
+    is_linked_git_worktree,
     pick_winning_install,
     read_pyproject_version,
+    should_run_duplicate_guard,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +66,76 @@ def _make_install(parent: Path, name: str, version: str | None = "0.3.7") -> Pat
             encoding="utf-8",
         )
     return install_dir
+
+
+# =============================================================================
+# is_linked_git_worktree / should_run_duplicate_guard (#281)
+# =============================================================================
+
+
+def test_is_linked_git_worktree_detects_gitdir_file(tmp_path: Path) -> None:
+    """A ``.git`` *file* whose contents start with ``gitdir:`` is a linked
+    worktree — the shape agent / Cursor checkouts use."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/koolook\n", encoding="utf-8"
+    )
+    assert is_linked_git_worktree(here) is True
+
+
+def test_is_linked_git_worktree_false_for_git_directory(tmp_path: Path) -> None:
+    """A plain ``git clone`` has ``.git`` as a directory — not a linked
+    worktree; the duplicate-install guard must still run."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").mkdir()
+    assert is_linked_git_worktree(here) is False
+
+
+def test_is_linked_git_worktree_false_when_git_absent(tmp_path: Path) -> None:
+    """Manager / Registry installs have no ``.git`` at all — not a
+    worktree; the guard must still run."""
+    here = _make_install(tmp_path, "koolook")
+    assert is_linked_git_worktree(here) is False
+
+
+def test_should_run_guard_skips_worktree_outside_custom_nodes(
+    tmp_path: Path,
+) -> None:
+    """Linked worktree under a non-``custom_nodes`` parent (e.g.
+    ``.claude/worktrees/``) is not a ComfyUI install — skip the sibling
+    scan so sibling worktrees do not look like duplicate installs."""
+    parent = tmp_path / "worktrees"
+    parent.mkdir()
+    here = _make_install(parent, "repro-b")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/repro-b\n", encoding="utf-8"
+    )
+    assert should_run_duplicate_guard(here) is False
+
+
+def test_should_run_guard_keeps_worktree_under_custom_nodes(
+    tmp_path: Path,
+) -> None:
+    """A linked worktree deliberately placed inside ``custom_nodes/``
+    is genuine competition — the #162 guard must still fire."""
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+    here = _make_install(custom_nodes, "koolook")
+    (here / ".git").write_text(
+        "gitdir: /tmp/fake/.git/worktrees/koolook\n", encoding="utf-8"
+    )
+    assert should_run_duplicate_guard(here) is True
+
+
+def test_is_linked_git_worktree_handles_non_utf8_git_file(
+    tmp_path: Path,
+) -> None:
+    """Unreadable / non-UTF-8 ``.git`` file degrades to "not a worktree"
+    and never raises — same discipline as ``read_pyproject_version``."""
+    here = _make_install(tmp_path, "koolook")
+    (here / ".git").write_bytes(b"\xff\xfe gitdir: broken \x00")
+    assert is_linked_git_worktree(here) is False
+    assert should_run_duplicate_guard(here) is True
 
 
 # =============================================================================

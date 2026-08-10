@@ -38,11 +38,13 @@ try:
     from .koolook_install_guard import (  # noqa: E402
         build_duplicate_report,
         detect_duplicate_koolook_installs,
+        should_run_duplicate_guard,
     )
 except ImportError:  # pragma: no cover - exercised only outside package context
     from koolook_install_guard import (  # type: ignore[no-redef]
         build_duplicate_report,
         detect_duplicate_koolook_installs,
+        should_run_duplicate_guard,
     )
 
 NODE_CLASS_MAPPINGS: dict = {}
@@ -85,10 +87,15 @@ if "__path__" not in globals():
 # OSError/ValueError; this try is the final backstop for anything unforeseen.
 _is_winning_install = True
 try:
-    _siblings = detect_duplicate_koolook_installs(_here)
-    if _siblings:
-        _is_winning_install, _report = build_duplicate_report(_here, _siblings)
-        print(_report)
+    # Skip sibling scanning in linked git worktrees outside custom_nodes/
+    # (#281) — agent/dev worktrees are not ComfyUI installs.
+    if should_run_duplicate_guard(_here):
+        _siblings = detect_duplicate_koolook_installs(_here)
+        if _siblings:
+            _is_winning_install, _report = build_duplicate_report(
+                _here, _siblings
+            )
+            print(_report)
 except Exception as _guard_err:  # pragma: no cover - defensive backstop
     print(
         f"[Koolook] install-guard check failed ({_guard_err!r}); "
