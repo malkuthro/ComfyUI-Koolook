@@ -211,6 +211,37 @@ if (!claimSidebarRegistration(window)) {
         if (loadResult.fallbackBlob) {
             wireOfflineFallbackRecovery(loadResult.fallbackBlob);
         }
+        // Boot-time tracked-snapshot drift check (#161, narrowed by #276).
+        // When a preset is tracked, compare the named snapshot file on
+        // disk against the live /userdata + picks state. On mismatch —
+        // and only when the live state also matches the persisted
+        // last-named-save baseline, i.e. it *claims* to be saved — flag
+        // drift: the status pill flips to "drifted (reload?)" and
+        // periodic auto-saves redirect to `_unsaved_autosave/` so the
+        // named preset's recovery folder stays untouched until the user
+        // decides which side to keep. A mismatch without that claim is
+        // ordinary unsaved work and reports "unsaved".
+        //
+        // Runs BEFORE the first-session baseline seeding below (#276):
+        // seeding fabricates a baseline from the live state, which would
+        // make the live state trivially "claim saved" and re-open the
+        // false-positive this ordering closes. The reverse hazard doesn't
+        // exist — seeding only runs when NO baseline is stored, and with
+        // no baseline the drift check never flags, so the seeding call's
+        // `markStateSaved()` can't retire a legitimate warning.
+        //
+        // Failure here is silent (logged, not toasted): a missing file or
+        // unreachable server are distinct failure modes the user already
+        // has surface for elsewhere. Drift specifically means "both
+        // present, both differ".
+        const trackedNameForDrift = getCurrentPresetName();
+        if (trackedNameForDrift) {
+            try {
+                await detectBootDrift(trackedNameForDrift);
+            } catch (e) {
+                console.warn("[Koolook] boot drift check threw:", e);
+            }
+        }
         // Baseline the saved-state fingerprint at session start IFF the
         // tracker says a preset is currently loaded AND we don't already
         // have a baseline persisted from a previous session. The "saved
@@ -225,30 +256,6 @@ if (!claimSidebarRegistration(window)) {
         // mutate again — acceptable for an indicator.
         if (getCurrentPresetName() && !localStorage.getItem("koolook.snapshot.savedFingerprint.v1")) {
             markStateSaved();
-        }
-        // Boot-time tracked-snapshot drift check (#161). When a preset is
-        // tracked, compare the named snapshot file on disk against the
-        // live /userdata + picks state. On mismatch, flag drift — the
-        // status pill flips to "drifted (reload?)" and periodic auto-
-        // saves redirect to `_unsaved_autosave/` so the named preset's
-        // recovery folder is never overwritten with the (potentially
-        // corrupt) live state.
-        //
-        // Runs AFTER the localStorage fingerprint baseline above so the
-        // drift flag wins precedence over the fingerprint match — see
-        // `getSnapshotStatus()` for the precedence rationale.
-        //
-        // Failure here is silent (logged, not toasted): a missing file or
-        // unreachable server are distinct failure modes the user already
-        // has surface for elsewhere. Drift specifically means "both
-        // present, both differ".
-        const trackedNameForDrift = getCurrentPresetName();
-        if (trackedNameForDrift) {
-            try {
-                await detectBootDrift(trackedNameForDrift);
-            } catch (e) {
-                console.warn("[Koolook] boot drift check threw:", e);
-            }
         }
         app.extensionManager.registerSidebarTab({
             id: TAB_ID,

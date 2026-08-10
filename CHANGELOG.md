@@ -183,6 +183,23 @@ The format is inspired by Keep a Changelog and SemVer.
   The skip uses the unresolved load path so a
   `custom_nodes/<name>` → worktree symlink cannot defeat the check via
   `Path.resolve()`.
+- **Status pill no longer shows "drifted" on every ComfyUI start (#276).** The
+  #161 boot-time drift guard flagged *any* difference between the tracked
+  snapshot file and the live state — which is also what ordinary "kept working
+  after the last snapshot save" looks like, so nearly every session booted into
+  a false corruption warning and periodic autosaves were misrouted to
+  `_unsaved_autosave/` instead of the preset's own recovery folder. The check
+  is now three-way: a mismatch only counts as **drifted** when the live state's
+  fingerprint matches the persisted last-named-save baseline (it *claims* to be
+  saved, yet the file disagrees — which pins the out-of-band change to the
+  *file* side: a cross-machine library sync, a hand-edit, another install
+  writing it); otherwise it reports the honest **unsaved**. The first-session
+  baseline seeding now runs *after* the drift check so a freshly fabricated
+  baseline can't satisfy the claims-saved gate — which also means drift can
+  never fire in a session with no persisted baseline (fresh browser profile,
+  cleared site data). Trade-off: out-of-band changes to the live `/userdata`
+  side — including corruption — now read "unsaved"; the #162 duplicate-install
+  vector (the known live-side corruptor) keeps its own dedicated guard.
 - **Keyframe guidance now defaults to 0.8 (smooth), not 1.0 (robotic).** The
   timeline editor auto-generated the `guide_strength` string from each clip's
   per-segment `guideStrength`, filling **1.0** for any clip left unset — and the

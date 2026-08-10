@@ -1,7 +1,10 @@
-"""Tests for the boot-time tracked-snapshot drift guard (#161).
+"""Tests for the boot-time tracked-snapshot drift guard (#161, #276).
 
-Covers the four observable contracts the rest of the codebase depends on:
-  1. ``detectBootDrift()`` flags drift on file-vs-live mismatch.
+Covers the observable contracts the rest of the codebase depends on:
+  1. ``detectBootDrift()`` flags drift on file-vs-live mismatch — but
+     ONLY when the live state also matches the persisted last-named-save
+     baseline ("claims saved", #276). A mismatch with unsaved edits (or
+     with no baseline at all) reports "unsaved", never drift.
   2. ``detectBootDrift()`` does NOT flag drift when the named file and
      live state agree.
   3. ``getSnapshotStatus()`` returns ``state: "drifted"`` while the
@@ -155,8 +158,9 @@ def _run(scenario_body: str) -> subprocess.CompletedProcess[str]:
 
 def test_detect_drift_flags_mismatch() -> None:
     """The named snapshot file holds 2 workflows; the live store holds
-    a different 1-workflow shape. ``detectBootDrift()`` must flag this
-    as drift and console.warn with the diagnostics."""
+    a different 1-workflow shape, and the live state claims to be saved
+    (baseline matches). ``detectBootDrift()`` must flag this as drift
+    and console.warn with the diagnostics."""
     result = _run(
         """
         // Arrange: named file with workflows A + B.
@@ -192,6 +196,9 @@ def test_detect_drift_flags_mismatch() -> None:
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("Foo");
+        // The live state must claim "saved" for the mismatch to count as
+        // drift (#276) — baseline it as a prior session's Save would have.
+        markStateSaved();
 
         // Act
         const outcome = await detectBootDrift("Foo");
@@ -234,10 +241,16 @@ def test_detect_drift_skips_when_states_match() -> None:
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("Bar");
+        // Baseline the state so the claims-saved gate (#276) cannot be
+        // the reason for `drifted: false` — this test must pin the
+        // fingerprint MATCH branch, not the unsaved-edits early exit.
+        markStateSaved();
 
         const outcome = await detectBootDrift("Bar");
 
         assert.equal(outcome.drifted, false);
+        assert.equal(outcome.reason, undefined,
+            "match branch must not carry an unsaved-edits reason");
         assert.equal(isBootDrifted(), false);
         """
     )
@@ -336,6 +349,8 @@ def test_mark_state_saved_clears_drift_flag() -> None:
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("Qux");
+        // Claims-saved baseline from a prior session's Save (#276).
+        markStateSaved();
 
         await detectBootDrift("Qux");
         assert.equal(isBootDrifted(), true);
@@ -368,6 +383,8 @@ def test_clear_boot_drift_public_export_works() -> None:
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("Zap");
+        // Claims-saved baseline from a prior session's Save (#276).
+        markStateSaved();
 
         await detectBootDrift("Zap");
         assert.equal(isBootDrifted(), true);
@@ -402,6 +419,8 @@ def test_pre_load_autosave_redirects_to_unsaved_when_drifted() -> None:
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("Drifty");
+        // Claims-saved baseline from a prior session's Save (#276).
+        markStateSaved();
 
         await detectBootDrift("Drifty");
         assert.equal(isBootDrifted(), true);
@@ -483,10 +502,118 @@ def test_detect_drift_does_not_fire_on_normalize_only_shape_differences() -> Non
         await loadWorkflowsStore();
         setAllPicks([]);
         setCurrentPresetName("CrossMachine");
+        // Baseline the state so the claims-saved gate (#276) cannot be
+        // the reason for `drifted: false` — this test guards the
+        // canonicalization contract, so it must reach the fingerprint
+        // comparison and prove the shapes MATCH.
+        markStateSaved();
 
         const outcome = await detectBootDrift("CrossMachine");
         assert.equal(outcome.drifted, false,
             "shape differences that normalize to the same canonical form should NOT trigger drift");
+        assert.equal(outcome.reason, undefined,
+            "canonically equal shapes must take the match branch, not the unsaved-edits exit");
+        assert.equal(isBootDrifted(), false);
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_no_drift_when_live_has_unsaved_edits_since_baseline() -> None:
+    """#276: the everyday case — the user saved a snapshot, then kept
+    working. The live state diverges from BOTH the named file and the
+    persisted last-named-save baseline. That is ordinary work-in-progress
+    ("unsaved"), not corruption — flagging it as "drifted" made the pill
+    cry wolf on every boot and misrouted periodic autosaves to
+    ``_unsaved_autosave/`` instead of the preset's recovery folder."""
+    result = _run(
+        """
+        // Arrange: live store + baseline agree at "save time".
+        SERVER.workflowsStore = {
+            directories: {
+                "Renders": {
+                    workflows: {
+                        "A": { graph: { nodes: [{ id: 1 }] }, archived: false, module: false, tags: [] },
+                    },
+                    directories: {},
+                },
+            },
+        };
+        SERVER.presets.set("Wip.json", {
+            kind: "koolook-snapshot",
+            version: 1,
+            name: "Wip",
+            exportedAt: "2026-08-10T08:00:00.000Z",
+            picks: [],
+            workflows: SERVER.workflowsStore,
+        });
+        await loadWorkflowsStore();
+        setAllPicks([]);
+        setCurrentPresetName("Wip");
+        markStateSaved();  // baseline == live == file
+
+        // Act: the user keeps working — live store gains a workflow the
+        // named file does not have. Baseline is now stale on purpose.
+        await replaceAllWorkflows({
+            directories: {
+                "Renders": {
+                    workflows: {
+                        "A": { graph: { nodes: [{ id: 1 }] }, archived: false, module: false, tags: [] },
+                        "B-new": { graph: { nodes: [{ id: 2 }] }, archived: false, module: false, tags: [] },
+                    },
+                    directories: {},
+                },
+            },
+        });
+        const outcome = await detectBootDrift("Wip");
+
+        // Assert: no drift — this is the "unsaved" state, not corruption.
+        assert.equal(outcome.drifted, false,
+            "post-save edits must not flag boot drift");
+        assert.equal(outcome.reason, "unsaved-edits");
+        assert.equal(isBootDrifted(), false);
+        const status = getSnapshotStatus();
+        assert.equal(status.state, "unsaved",
+            `expected honest "unsaved", got "${status.state}"`);
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_no_drift_without_saved_baseline() -> None:
+    """#276: with no persisted last-named-save baseline at all, the live
+    state cannot *claim* to be saved — so a file-vs-live mismatch is
+    indistinguishable from ordinary unsaved work and must not flag."""
+    result = _run(
+        """
+        SERVER.workflowsStore = {
+            directories: {
+                "Renders": {
+                    workflows: {
+                        "C": { graph: { nodes: [{ id: 3 }] }, archived: false, module: false, tags: [] },
+                    },
+                    directories: {},
+                },
+            },
+        };
+        SERVER.presets.set("NoBase.json", {
+            kind: "koolook-snapshot",
+            version: 1,
+            name: "NoBase",
+            exportedAt: "2026-08-10T08:00:00.000Z",
+            picks: ["EasyResize_Koolook"],
+            workflows: { directories: {} },
+        });
+        await loadWorkflowsStore();
+        setAllPicks([]);
+        setCurrentPresetName("NoBase");
+        // Deliberately NO markStateSaved() — no baseline exists.
+
+        const outcome = await detectBootDrift("NoBase");
+
+        assert.equal(outcome.drifted, false,
+            "mismatch without a claims-saved baseline must not flag drift");
+        assert.equal(outcome.reason, "unsaved-edits");
         assert.equal(isBootDrifted(), false);
         """
     )
