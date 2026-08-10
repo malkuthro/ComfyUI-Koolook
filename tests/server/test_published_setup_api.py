@@ -61,7 +61,8 @@ def test_version_route_exposes_installed_version_and_release_urls() -> None:
 
         assert response.status == 200
         body = _json_body(response)
-        assert body["version"] == "0.4.4"
+        # Keep in sync with pyproject.toml so release bumps don't hard-fail CI.
+        assert body["version"] == koolook_routes._read_pack_version()
         assert body["releasesUrl"] == "https://github.com/malkuthro/ComfyUI-Koolook/releases"
         assert body["latestReleaseApiUrl"].endswith("/malkuthro/ComfyUI-Koolook/releases/latest")
 
