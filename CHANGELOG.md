@@ -6,6 +6,10 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
+Stability update: the Kforge Labs status no longer shows a false "drifted" warning after normal work, and large LTX Director timelines no longer trigger endless "Failed to save workflow draft" toasts.
+
 ### Fixed
 - **"Failed to save workflow draft" toast storms with LTX Director timelines.**
   The vendored upstream 2.0.2 timeline editor stamps a base64 poster JPEG onto
