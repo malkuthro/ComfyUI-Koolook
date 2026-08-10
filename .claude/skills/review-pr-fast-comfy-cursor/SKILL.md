@@ -1,6 +1,6 @@
 ---
-name: review-pr-fast-koolook-cursor
-description: Quick first-pass ComfyUI-Koolook PR review for Cursor — one Grok 4.5 Task reads the diff and changed files, identifies obvious issues, and posts ONE comment. Use for /review-pr-fast-koolook-cursor (~1-2 min). Escalate to /review-pr-koolook-cursor before merge.
+name: review-pr-fast-comfy-cursor
+description: Quick first-pass ComfyUI-Koolook PR review for Cursor — one Grok 4.5 Task reads the diff and changed files, identifies obvious issues, and posts ONE comment. Use for /review-pr-fast-comfy-cursor (~1-2 min). Escalate to /review-pr-comfy-cursor before merge.
 version: 1
 disable-model-invocation: true
 ---
@@ -10,19 +10,19 @@ disable-model-invocation: true
 **Skill version:** v1 — Cursor/Grok first pass for this repo.
 
 **Fast vs deep:** this skill posts **one** PR comment only (never approve /
-request-changes). Before merge, run `/review-pr-koolook-cursor` for the full
+request-changes). Before merge, run `/review-pr-comfy-cursor` for the full
 v2 batched-verify team.
 
 Claude Code sessions can keep using global `/review-pr-fast`.
 
 ## Step 0: Parse arguments
 
-- Argument passed (e.g. `/review-pr-fast-koolook-cursor 278`) → `PR_NUM`
+- Argument passed (e.g. `/review-pr-fast-comfy-cursor 278`) → `PR_NUM`
 - Else ask: "Which PR number should I review?"
 
 ## Step 1: Refresh PR head (parent)
 
-Same freshness goal as `/review-pr-koolook-cursor` Step 1 — fetch
+Same freshness goal as `/review-pr-comfy-cursor` Step 1 — fetch
 `refs/pull/$PR_NUM/head` and ensure file reads target that SHA. Prefer the
 detached review worktree path when the current branch is not the PR head.
 If a full worktree refresh is too heavy for a fast pass, at minimum:
@@ -53,7 +53,7 @@ One `Task`, `subagent_type: generalPurpose`, `model: cursor-grok-4.5-high-fast`,
 `readonly: true` when supported, `run_in_background: false`:
 
 ```markdown
-You are doing a quick ComfyUI-Koolook first-pass PR review (review-pr-fast-koolook-cursor).
+You are doing a quick ComfyUI-Koolook first-pass PR review (review-pr-fast-comfy-cursor).
 
 ## PR Context
 - PR #<N>: <title>
@@ -88,12 +88,12 @@ You are doing a quick ComfyUI-Koolook first-pass PR review (review-pr-fast-koolo
      - UI changes claiming readiness without visual/harness evidence when mockups apply
    - Tests: missing coverage for new behavior that similar areas already test
 3. Return ONLY the markdown body to post as a PR comment (no approve/request-changes).
-   - If clean: a short LGTM line that mentions review-pr-fast-koolook-cursor and tells
-     the operator to run /review-pr-koolook-cursor before merge.
-   - If findings: `## First-pass review (review-pr-fast-koolook-cursor)` then each item as
+   - If clean: a short LGTM line that mentions review-pr-fast-comfy-cursor and tells
+     the operator to run /review-pr-comfy-cursor before merge.
+   - If findings: `## First-pass review (review-pr-fast-comfy-cursor)` then each item as
      `**[BLOCKING|IMPORTANT|NIT]** path:line — one-sentence description`, then
-     escalate line pointing at `/review-pr-koolook-cursor`.
-4. End the body with: `Model: cursor-grok-4.5-high-fast (review-pr-fast-koolook-cursor)`.
+     escalate line pointing at `/review-pr-comfy-cursor`.
+4. End the body with: `Model: cursor-grok-4.5-high-fast (review-pr-fast-comfy-cursor)`.
 ```
 
 ## Step 5: Post ONE comment (parent)
@@ -114,5 +114,5 @@ Terse. One sentence per finding. No filler.
 
 ## When to escalate
 
-After this pass, run `/review-pr-koolook-cursor` before merge for the full
+After this pass, run `/review-pr-comfy-cursor` before merge for the full
 invariants / scope / quality / silent-failure team with Medium+ verification.

@@ -1,6 +1,6 @@
 ---
-name: review-pr-koolook-cursor
-description: ComfyUI-Koolook PR review for Cursor — v2 batched-verify team (invariants, scope, code quality, silent failure → synthesizer → Medium+ verifier batches) with every subagent on cursor-grok-4.5-high-fast via Task. Use for /review-pr-koolook-cursor. Prefer /review-pr-fast-koolook-cursor for a quick first pass.
+name: review-pr-comfy-cursor
+description: ComfyUI-Koolook PR review for Cursor — v2 batched-verify team (invariants, scope, code quality, silent failure → synthesizer → Medium+ verifier batches) with every subagent on cursor-grok-4.5-high-fast via Task. Use for /review-pr-comfy-cursor. Prefer /review-pr-fast-comfy-cursor for a quick first pass.
 version: 2
 verifier_pipeline: batched-verify
 disable-model-invocation: true
@@ -13,15 +13,15 @@ file-grouped batches of ≤8 (sequential), not one verifier per finding.
 
 Repo-local Cursor skill. **Does not** shadow global `/review-pr`. Claude Code
 sessions should keep using global `/review-pr` unless a Claude twin
-(`review-pr-koolook`) is added later.
+(`review-pr-comfy`) is added later.
 
-**Fast vs deep:** use `/review-pr-fast-koolook-cursor` for a ~1–2 min first
+**Fast vs deep:** use `/review-pr-fast-comfy-cursor` for a ~1–2 min first
 pass (one comment, no approve/request-changes). Use **this** skill before
 merge when you want the full team + verification gate.
 
 ## Runtime mapping
 
-| Stage | Cursor `/review-pr-koolook-cursor` |
+| Stage | Cursor `/review-pr-comfy-cursor` |
 |-------|-------------------------------------|
 | 4 reviewers | `Task` × 4, `subagent_type: generalPurpose`, `run_in_background: true`, `model: cursor-grok-4.5-high-fast` |
 | Synthesizer | `Task`, `generalPurpose`, foreground, same model |
@@ -29,12 +29,12 @@ merge when you want the full team + verification gate.
 
 | Role | Brief file |
 |------|------------|
-| Invariants | `.claude/skills/review-pr-koolook-cursor/agents/invariants.md` |
-| Scope & Spec | `.claude/skills/review-pr-koolook-cursor/agents/scope-reviewer.md` |
-| Code Quality | `.claude/skills/review-pr-koolook-cursor/agents/code-quality.md` |
-| Silent Failure | `.claude/skills/review-pr-koolook-cursor/agents/silent-failure-hunter.md` |
-| Synthesizer | `.claude/skills/review-pr-koolook-cursor/agents/synthesizer.md` |
-| Verifier (batched Medium+) | `.claude/skills/review-pr-koolook-cursor/agents/verifier.md` |
+| Invariants | `.claude/skills/review-pr-comfy-cursor/agents/invariants.md` |
+| Scope & Spec | `.claude/skills/review-pr-comfy-cursor/agents/scope-reviewer.md` |
+| Code Quality | `.claude/skills/review-pr-comfy-cursor/agents/code-quality.md` |
+| Silent Failure | `.claude/skills/review-pr-comfy-cursor/agents/silent-failure-hunter.md` |
+| Synthesizer | `.claude/skills/review-pr-comfy-cursor/agents/synthesizer.md` |
+| Verifier (batched Medium+) | `.claude/skills/review-pr-comfy-cursor/agents/verifier.md` |
 
 **Important:** always use `subagent_type: generalPurpose` and inject the brief
 into the Task `prompt`. Custom role names are **not** in the Cursor Task enum.
@@ -49,7 +49,7 @@ Synthesizer runs **foreground** after they complete. Verifier batches run
 
 ## Step 0: Parse arguments
 
-- Argument passed (e.g. `/review-pr-koolook-cursor 278`) → `PR_NUM`
+- Argument passed (e.g. `/review-pr-comfy-cursor 278`) → `PR_NUM`
 - Else ask: "Which PR number should I review?"
 
 ## Step 1: Refresh PR head and base from GitHub
@@ -97,7 +97,7 @@ else
 fi
 
 create_review_worktree() {
-  REVIEW_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/review-pr-koolook-$PR_NUM.XXXXXX")
+  REVIEW_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/review-pr-comfy-$PR_NUM.XXXXXX")
   git worktree add --detach "$REVIEW_ROOT" "$PR_FETCH_REF"
   REVIEW_WORKTREE_CREATED="yes"
 }
