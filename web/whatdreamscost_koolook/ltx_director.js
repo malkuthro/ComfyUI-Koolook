@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Vendored VERBATIM from WhatDreamsCost-ComfyUI js/ltx_director.js at commit
-// fe09f73756df202d08341c66b4dc5fc8d2acca22 (version 2.0.2), with ONLY two
-// retargeting edits by ComfyUI-Koolook on 2026-06-22:
+// fe09f73756df202d08341c66b4dc5fc8d2acca22 (version 2.0.2), with ONLY three
+// Koolook edits:
 //   - extension name 'LTXDirector' -> 'LTXDirector_Koolook' (avoid collision
-//     with the installed upstream WhatDreamsCost extension)
+//     with the installed upstream WhatDreamsCost extension) [2026-06-22]
 //   - node guard nodeData.name 'LTXDirector' -> 'LTXDirector__koolook'
+//     [2026-06-22]
+//   - preview-media scrub: rebuildable base64 poster blobs are dropped from
+//     persisted/restored timeline_data and legacy inline image previews are
+//     rewritten to /view URLs (see the KOOLOOK DELTA block above
+//     parseInitial) so workflow drafts stay under the browser storage
+//     quota [2026-08-10]
 // The timeline editor UX is otherwise byte-for-byte upstream 2.0.2.
 //
 // localStorage draft-quota guarding is intentionally NOT embedded here; it
@@ -666,6 +672,62 @@ const ICONS = {
 };
 
 // --- Data Models ---
+// --- KOOLOOK DELTA: draft-quota scrub for persisted preview media ---------
+// Upstream 2.0.2 stamps a base64 poster JPEG onto every video segment
+// (seg.imageB64 = canvas.toDataURL(...)) and the serialize round-trip keeps
+// it, so timeline_data — and with it the workflow draft Comfy 1.44+ writes
+// to localStorage ~512ms after every edit — grows by ~50-150k chars per
+// video segment. A big timeline then exceeds the origin quota no matter how
+// many old drafts web/koolook_draft_guard.js evicts, the frontend latches
+// "storage unavailable", and every edit toasts "Failed to save workflow
+// draft" until reload. Posters are display-only and rebuild from the video
+// element on load (_ensureVideoEl's seeked handler), so persistence drops
+// them; legacy pre-2.0.2 image segments still carrying full data-URLs are
+// converted to the /view URL form 2.0.2 itself writes for image segments
+// (loadMedia renders image previews from seg.imageB64 only — deleting it
+// outright would blank restored thumbnails). Segments with a data-URL but
+// no file path are left alone: nothing could rebuild them.
+// Contract-tested by tests/sidebar/test_ltx_director_draft_guard.py.
+
+function inputImageViewUrl(imageFile) {
+  // Split on both separators like _ensureVideoEl does — legacy timelines can
+  // carry Windows-style backslash paths.
+  const parts = String(imageFile).split(/[/\\]/);
+  const filename = parts.pop();
+  const subfolder = parts.join("/");
+  if (!filename) return "";
+  return api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+}
+
+// Applied to every segment both when timeline_data is persisted
+// (commitChanges maps — runs on the throwaway `rest` spread, so on-screen
+// previews are untouched) and when it is restored (parseInitial maps — the
+// upgrade path for timelines saved before this delta existed):
+//   - video / motion_video posters: dropped when the segment has a backing
+//     file (main track stores it in imageFile, motion track in videoFile);
+//     _ensureVideoEl's seeked handler re-derives them on load.
+//   - image-type segments with a legacy inline data-URL: rewritten to the
+//     /view URL loadMedia() can render from (there is no other rebuild path,
+//     deleting would blank the thumbnail).
+//   - legacy inline audioB64 (raw base64, no data: prefix): dropped when
+//     audioFile exists — playback only falls back to audioB64 when no file
+//     resolves.
+//   - blobs with no backing file: left alone; nothing could rebuild them.
+function scrubTimelinePreviewMedia(seg) {
+  if (seg && typeof seg.imageB64 === "string" && seg.imageB64.startsWith("data:")) {
+    if (seg.type === "video" || seg.type === "motion_video") {
+      if (seg.imageFile || seg.videoFile) delete seg.imageB64;
+    } else if (seg.imageFile) {
+      seg.imageB64 = inputImageViewUrl(seg.imageFile);
+    }
+  }
+  if (seg && seg.audioB64 && seg.audioFile) {
+    delete seg.audioB64;
+  }
+  return seg;
+}
+// --- end KOOLOOK DELTA -----------------------------------------------------
+
 function parseInitial(jsonStr) {
   let parsed = {
     segments: [],
@@ -714,19 +776,19 @@ function parseInitial(jsonStr) {
       if (Array.isArray(p.segments)) {
         parsed.segments = p.segments.map(s => {
           const { imgObj, videoEl, _isSeeking, thumbnails, _extractingThumbs, _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _blobUrl, ...rest } = s;
-          return rest;
+          return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
         });
       }
       if (Array.isArray(p.motionSegments)) {
         parsed.motionSegments = p.motionSegments.map(s => {
           const { videoEl, _isSeeking, thumbnails, _extractingThumbs, _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _blobUrl, ...rest } = s;
-          return rest;
+          return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
         });
       }
       if (Array.isArray(p.audioSegments)) {
         parsed.audioSegments = p.audioSegments.map(s => {
           const { _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _decoding, ...rest } = s;
-          return rest;
+          return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
         });
       }
     }
@@ -8853,15 +8915,15 @@ class TimelineEditor {
       normalDurationFrames: this.timeline.normalDurationFrames,
       segments: sortedSegments.map(s => {
         const { imgObj, videoEl, _isSeeking, thumbnails, _extractingThumbs, _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _blobUrl, ...rest } = s;
-        return rest;
+        return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
       }),
       motionSegments: (this.timeline.motionSegments || []).map(s => {
         const { imgObj, videoEl, _isSeeking, thumbnails, _extractingThumbs, _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _blobUrl, ...rest } = s;
-        return rest;
+        return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
       }),
       audioSegments: (this.timeline.audioSegments || []).map(s => {
         const { _sSecs, _lSecs, _tSecs, _dSecs, _uploading, _decoding, _blobUrl, _audioBuffer, ...rest } = s;
-        return rest;
+        return scrubTimelinePreviewMedia(rest); // KOOLOOK DELTA
       })
     };
 
