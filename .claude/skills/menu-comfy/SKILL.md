@@ -63,6 +63,8 @@ Match this layout (substitute real values):
 | docs-sync | Find-and-replace a version tag across docs, code, and manifests in one controlled pass. | `/docs-sync <old> <new>` |
 | add-external-fork | Set up an external upstream repository as a pinned reference checkout under ../ComfyUI-Forks. | `/add-external-fork` |
 | license-pre-check | Run a license-compatibility audit before incorporating any third-party code. | `/license-pre-check` |
+| review-pr-fast-comfy-cursor | Quick Cursor/Grok first-pass PR comment; escalate before merge. | `/review-pr-fast-comfy-cursor <n>` |
+| review-pr-comfy-cursor | Deep Cursor/Grok v2 batched-verify PR review team. | `/review-pr-comfy-cursor <n>` |
 | menu-comfy | List all project-level skills with their one-line descriptions. | `/menu-comfy` |
 
 To add a new project skill: create `.claude/skills/<name>/SKILL.md`
@@ -76,4 +78,6 @@ with YAML frontmatter and a markdown body. Re-run `/menu-comfy` to see it.
 
 ## Related skills
 
-- (none — this skill is purely an indexer)
+- `/review-pr-fast-comfy-cursor` — quick Cursor/Grok first-pass PR comment
+- `/review-pr-comfy-cursor` — deep Cursor/Grok v2 batched-verify PR review
+  (use before merge; does not shadow global `/review-pr`)
