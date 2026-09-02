@@ -1,9 +1,9 @@
 {
-  "asOf": "2026-09-01",
+  "asOf": "2026-09-02",
   "sinceVersion": "0.3.0",
-  "downloadsSince": 36270,
-  "days": 116,
-  "avgPerDay": 312.7,
+  "downloadsSince": 36603,
+  "days": 117,
+  "avgPerDay": 312.8,
   "peakDate": "2026-08-05",
   "peakDelta": 927,
   "latestVersion": "0.5.0"
