@@ -14,7 +14,6 @@ from k_video_load import (
     EMPTY_BRANCH_SENTINEL,
     _SilentFallbackAudioMap,
     _compose_input_video_path,
-    _guard_lazy_audio,
     _is_existing_local_video_path,
     _is_lazy_mapping,
     _normalize_path_input,
