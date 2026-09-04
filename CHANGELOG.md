@@ -6,6 +6,26 @@ The format is inspired by Keep a Changelog and SemVer.
 
 ## [Unreleased]
 
+### Fixed
+- **`Easy_LoadVideo` no longer fails a prompt on video with no audio track.**
+  VHS returns a lazy audio map for the `AUDIO` output that shells out to
+  `ffmpeg -f f32le` only when something reads it. Since ComfyUI core
+  `c01175530`, `comfy/model_patcher.py` walks every linked output hunting for
+  model patchers and recurses into any `Mapping`, which forces that extraction
+  even when nothing consumes the `AUDIO` socket. On a source with no audio
+  stream the ffmpeg call exits `-22` (`Output file does not contain any
+  stream`) and took down the whole prompt — which is every Nuke `mov64` write,
+  since those carry video plus timecode and no audio. `Easy_LoadVideo` now
+  wraps the deferred map on its declared `AUDIO` output. Silence is
+  substituted only on *evidence of absence*: ffmpeg opened the input, listed
+  its streams, none was audio, and the muxer then had nothing to write. Every
+  other failure — a missing ffmpeg binary, a permission error, a timeout, a
+  truncated log, any non-ffmpeg exception — proves nothing about whether the
+  source has audio and is re-raised untouched, so real problems stay loud.
+  An unrecognised ffmpeg message re-raises by design, so a future wording
+  change surfaces as a visible error rather than silent corruption. The
+  wrapper stays lazy, so nothing runs ffmpeg that did not before.
+
 ## [0.5.0] - 2026-08-10
 
 Stability update: the Kforge Labs status no longer shows a false "drifted" warning after normal work, and large LTX Director timelines no longer trigger endless "Failed to save workflow draft" toasts.
