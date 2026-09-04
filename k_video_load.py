@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 import os
+import re
+from collections.abc import Mapping
 from typing import Optional
 
 try:
@@ -258,6 +260,72 @@ def _empty_load_video_result(return_types) -> tuple:
     return tuple(_empty_value_for_type(t) for t in return_types)
 
 
+# ComfyUI core walks every linked output looking for model patchers and recurses
+# into anything that is a Mapping (comfy/model_patcher.py, since core c01175530).
+# VHS hands back a lazy audio map, so that walk runs ffmpeg even when nothing
+# consumes the AUDIO socket -- and on a source with no audio track that ffmpeg
+# call fails, taking down the whole prompt. Nuke mov64 writes carry video plus
+# timecode and no audio, so ordinary plates hit this.
+_AUDIO_STREAM_RE = re.compile(r"Stream #\d+:\d+.*?: Audio:")
+
+
+def _report_lists_audio_stream(report: str) -> bool:
+    """True when an ffmpeg report mentions at least one audio stream.
+
+    Distinguishes "this source has no audio track" (degrade to silence) from a
+    genuine extraction failure on a source that does have one (re-raise).
+    """
+    return bool(_AUDIO_STREAM_RE.search(report or ""))
+
+
+def _is_lazy_mapping(value) -> bool:
+    """True for VHS's deferred audio map, false for plain dict outputs."""
+    return isinstance(value, Mapping) and not isinstance(value, dict)
+
+
+class _SilentFallbackAudioMap(Mapping):
+    """Defers to VHS's lazy audio map, degrading to silence when the source
+    carries no audio stream. Any other extraction failure is re-raised."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self._resolved = None
+
+    def _resolve(self):
+        if self._resolved is None:
+            try:
+                self._resolved = dict(self._inner)
+            except Exception as exc:
+                if _report_lists_audio_stream(str(exc)):
+                    raise
+                print(
+                    "[Easy_LoadVideo] "
+                    f"{getattr(self._inner, 'file', 'source')} has no audio "
+                    "stream; substituting silence for the AUDIO output."
+                )
+                self._resolved = _empty_value_for_type("AUDIO")
+        return self._resolved
+
+    def __getitem__(self, key):
+        return self._resolve()[key]
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+
+def _guard_lazy_audio(result):
+    """Wrap any deferred audio map in the loader result with the silent fallback."""
+    if not isinstance(result, tuple):
+        return result
+    return tuple(
+        _SilentFallbackAudioMap(value) if _is_lazy_mapping(value) else value
+        for value in result
+    )
+
+
 if _VHS_AVAILABLE:
     class Easy_LoadVideo(_VHS_LoadVideoPath):
         """VHS Load Video Path variant with split directory + filename fields."""
@@ -309,8 +377,8 @@ if _VHS_AVAILABLE:
             kwargs["video"] = composed
             if _is_existing_local_video_path(kwargs["video"]):
                 kwargs["video"] = _strip_outer_quotes(kwargs["video"])
-                return _VHS_LOAD_VIDEO_FN(*args, **kwargs)
-            return super().load_video(*args, **kwargs)
+                return _guard_lazy_audio(_VHS_LOAD_VIDEO_FN(*args, **kwargs))
+            return _guard_lazy_audio(super().load_video(*args, **kwargs))
 
         @classmethod
         def IS_CHANGED(cls, video, input_path="", **kwargs):

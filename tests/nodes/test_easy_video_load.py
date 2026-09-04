@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -11,10 +12,14 @@ import pytest
 import k_video_load
 from k_video_load import (
     EMPTY_BRANCH_SENTINEL,
+    _SilentFallbackAudioMap,
     _compose_input_video_path,
+    _guard_lazy_audio,
     _is_existing_local_video_path,
+    _is_lazy_mapping,
     _normalize_path_input,
     _normalize_text_input,
+    _report_lists_audio_stream,
 )
 
 
@@ -370,3 +375,155 @@ def test_easy_load_video_returns_empty_result_for_existing_directory(
     monkeypatch.delitem(sys.modules, "folder_paths")
     monkeypatch.delitem(sys.modules, "torch")
     importlib.reload(k_video_load)
+
+
+# --- audio-less source guard -----------------------------------------------
+#
+# ComfyUI core recurses into Mapping outputs hunting for model patchers, which
+# forces VHS's lazy audio map to shell out to ffmpeg even when nothing consumes
+# the AUDIO socket. A Nuke mov64 write has video + timecode and no audio, so
+# that call fails and used to take down the whole prompt.
+
+# Trimmed from a real failure: Nuke ProRes 4444, video + timecode, no audio.
+_NO_AUDIO_REPORT = """VHS failed to extract audio from cow_cropped.mov:
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'cow_cropped.mov':
+  Stream #0:0[0x1]: Video: prores (4444) (ap4h / 0x68347061), 1920x1080, 25 fps
+  Stream #0:1[0x2](eng): Data: none (tmcd / 0x64636D74), 0 kb/s
+Output #0, f32le, to 'pipe:':
+Output file does not contain any stream
+Error opening output files: Invalid argument
+"""
+
+_HAS_AUDIO_REPORT = """VHS failed to extract audio from take_02.mov:
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'take_02.mov':
+  Stream #0:0[0x1]: Video: prores (4444) (ap4h / 0x68347061), 1920x1080, 25 fps
+  Stream #0:1[0x2](eng): Audio: pcm_s16le, 48000 Hz, stereo, s16, 1536 kb/s
+Some other ffmpeg failure
+"""
+
+
+class _ExplodingAudioMap(Mapping):
+    """Stands in for VHS's LazyAudioMap: raises on materialization."""
+
+    def __init__(self, report, file="cow_cropped.mov"):
+        self.report = report
+        self.file = file
+        self.calls = 0
+
+    def _boom(self):
+        self.calls += 1
+        raise Exception(self.report)
+
+    def __getitem__(self, key):
+        self._boom()
+
+    def __iter__(self):
+        self._boom()
+
+    def __len__(self):
+        self._boom()
+
+
+@pytest.fixture
+def stub_torch(monkeypatch: pytest.MonkeyPatch):
+    """Minimal torch so _empty_value_for_type('AUDIO') works without real torch."""
+    fake = types.ModuleType("torch")
+    fake.float32 = "float32"
+    fake.zeros = lambda shape, dtype=None: ("zeros", shape, dtype)
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    return fake
+
+
+def test_report_lists_audio_stream_detects_presence_and_absence() -> None:
+    assert _report_lists_audio_stream(_NO_AUDIO_REPORT) is False
+    assert _report_lists_audio_stream(_HAS_AUDIO_REPORT) is True
+    assert _report_lists_audio_stream("") is False
+    assert _report_lists_audio_stream(None) is False
+
+
+def test_report_does_not_mistake_a_data_or_video_stream_for_audio() -> None:
+    # Timecode tracks and video tracks must not read as audio.
+    assert _report_lists_audio_stream("Stream #0:1[0x2](eng): Data: none (tmcd)") is False
+    assert _report_lists_audio_stream("Stream #0:0[0x1]: Video: prores (4444)") is False
+
+
+def test_silent_fallback_is_lazy_until_accessed() -> None:
+    inner = _ExplodingAudioMap(_NO_AUDIO_REPORT)
+    guarded = _SilentFallbackAudioMap(inner)
+
+    # Merely wrapping must not shell out to ffmpeg.
+    assert inner.calls == 0
+
+
+def test_silent_fallback_substitutes_silence_when_source_has_no_audio(stub_torch) -> None:
+    guarded = _SilentFallbackAudioMap(_ExplodingAudioMap(_NO_AUDIO_REPORT))
+
+    assert dict(guarded) == {"waveform": ("zeros", (1, 2, 1), "float32"), "sample_rate": 44100}
+    assert guarded["sample_rate"] == 44100
+    assert len(guarded) == 2
+
+
+def test_silent_fallback_reraises_when_the_source_does_have_audio() -> None:
+    guarded = _SilentFallbackAudioMap(_ExplodingAudioMap(_HAS_AUDIO_REPORT))
+
+    # A real extraction failure must stay loud, not degrade to silence.
+    with pytest.raises(Exception) as excinfo:
+        dict(guarded)
+    assert "Some other ffmpeg failure" in str(excinfo.value)
+
+
+def test_silent_fallback_resolves_once(stub_torch) -> None:
+    inner = _ExplodingAudioMap(_NO_AUDIO_REPORT)
+    guarded = _SilentFallbackAudioMap(inner)
+
+    dict(guarded)
+    dict(guarded)
+    assert inner.calls == 1
+
+
+def test_silent_fallback_passes_real_audio_through() -> None:
+    class _Lazy(Mapping):
+        def __init__(self):
+            self._d = {"waveform": "wave", "sample_rate": 48000}
+
+        def __getitem__(self, k):
+            return self._d[k]
+
+        def __iter__(self):
+            return iter(self._d)
+
+        def __len__(self):
+            return len(self._d)
+
+    guarded = _SilentFallbackAudioMap(_Lazy())
+    assert dict(guarded) == {"waveform": "wave", "sample_rate": 48000}
+
+
+def test_is_lazy_mapping_targets_only_deferred_maps() -> None:
+    # VHS_VIDEOINFO and already-materialized audio are plain dicts; leave them be.
+    assert _is_lazy_mapping({"waveform": 1, "sample_rate": 44100}) is False
+    assert _is_lazy_mapping({}) is False
+    assert _is_lazy_mapping("string") is False
+    assert _is_lazy_mapping(None) is False
+    assert _is_lazy_mapping(_ExplodingAudioMap(_NO_AUDIO_REPORT)) is True
+
+
+def test_guard_lazy_audio_wraps_only_the_lazy_slot() -> None:
+    lazy = _ExplodingAudioMap(_NO_AUDIO_REPORT)
+    info = {"source_fps": 25}
+    # Reach through the module: other tests reload k_video_load, which refreshes
+    # the module dict in place, so a top-level-imported class can go stale while
+    # the helper resolves the rebound one.
+    result = k_video_load._guard_lazy_audio(("images", 8, lazy, info))
+
+    assert isinstance(result, tuple)
+    assert result[0] == "images"
+    assert result[1] == 8
+    assert isinstance(result[2], k_video_load._SilentFallbackAudioMap)
+    assert result[3] is info
+
+
+def test_guard_lazy_audio_passes_non_tuple_results_through() -> None:
+    assert _guard_lazy_audio(None) is None
+    sentinel = {"not": "a tuple"}
+    assert _guard_lazy_audio(sentinel) is sentinel
