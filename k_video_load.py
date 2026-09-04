@@ -267,15 +267,36 @@ def _empty_load_video_result(return_types) -> tuple:
 # call fails, taking down the whole prompt. Nuke mov64 writes carry video plus
 # timecode and no audio, so ordinary plates hit this.
 _AUDIO_STREAM_RE = re.compile(r"Stream #\d+:\d+.*?: Audio:")
+_ANY_STREAM_RE = re.compile(r"Stream #\d+:\d+")
+_INPUT_PARSED_RE = re.compile(r"^\s*Input #\d+", re.MULTILINE)
+_EMPTY_MUX_RE = re.compile(r"does not contain any stream")
 
 
-def _report_lists_audio_stream(report: str) -> bool:
-    """True when an ffmpeg report mentions at least one audio stream.
+def _reports_source_has_no_audio(report: str) -> bool:
+    """True only when ffmpeg positively demonstrated the source carries no audio.
 
-    Distinguishes "this source has no audio track" (degrade to silence) from a
-    genuine extraction failure on a source that does have one (re-raise).
+    Silence is substituted on *evidence of absence*, never on absence of
+    evidence. All four signals must line up: ffmpeg opened the input, listed
+    its streams, none of them is audio, and the audio muxer then had nothing
+    to write. A missing ffmpeg binary, a permission error, a timeout, a
+    truncated log, or any non-ffmpeg exception satisfies none of them and so
+    stays loud -- those failures say nothing about whether the source has an
+    audio track, and swallowing them would hand back silence for a file that
+    may well have audio.
+
+    Deliberately strict: an unrecognised ffmpeg message re-raises rather than
+    degrades, so a future wording change surfaces as a visible error instead
+    of silent corruption.
     """
-    return bool(_AUDIO_STREAM_RE.search(report or ""))
+    if not report:
+        return False
+    if _AUDIO_STREAM_RE.search(report):
+        return False  # the source HAS audio; this failure is something real
+    if not _INPUT_PARSED_RE.search(report):
+        return False  # ffmpeg never parsed an input -- ambiguous
+    if not _ANY_STREAM_RE.search(report):
+        return False  # no stream listing to conclude from -- ambiguous
+    return bool(_EMPTY_MUX_RE.search(report))
 
 
 def _is_lazy_mapping(value) -> bool:
@@ -284,8 +305,8 @@ def _is_lazy_mapping(value) -> bool:
 
 
 class _SilentFallbackAudioMap(Mapping):
-    """Defers to VHS's lazy audio map, degrading to silence when the source
-    carries no audio stream. Any other extraction failure is re-raised."""
+    """Defers to VHS's lazy audio map, degrading to silence only when ffmpeg
+    proved the source has no audio track. Every other failure is re-raised."""
 
     def __init__(self, inner):
         self._inner = inner
@@ -296,7 +317,7 @@ class _SilentFallbackAudioMap(Mapping):
             try:
                 self._resolved = dict(self._inner)
             except Exception as exc:
-                if _report_lists_audio_stream(str(exc)):
+                if not _reports_source_has_no_audio(str(exc)):
                     raise
                 print(
                     "[Easy_LoadVideo] "
@@ -316,14 +337,21 @@ class _SilentFallbackAudioMap(Mapping):
         return len(self._resolve())
 
 
-def _guard_lazy_audio(result):
-    """Wrap any deferred audio map in the loader result with the silent fallback."""
-    if not isinstance(result, tuple):
+def _guard_lazy_audio(result, return_types):
+    """Wrap the declared AUDIO output's deferred map with the silent fallback.
+
+    Scoped by RETURN_TYPES rather than by shape, so an unrelated Mapping
+    output can never have its failures rewritten as missing audio.
+    """
+    if not isinstance(result, tuple) or not return_types:
         return result
-    return tuple(
-        _SilentFallbackAudioMap(value) if _is_lazy_mapping(value) else value
-        for value in result
-    )
+    guarded = list(result)
+    for index, type_name in enumerate(return_types):
+        if index >= len(guarded):
+            break
+        if str(type_name) == "AUDIO" and _is_lazy_mapping(guarded[index]):
+            guarded[index] = _SilentFallbackAudioMap(guarded[index])
+    return tuple(guarded)
 
 
 if _VHS_AVAILABLE:
@@ -377,8 +405,12 @@ if _VHS_AVAILABLE:
             kwargs["video"] = composed
             if _is_existing_local_video_path(kwargs["video"]):
                 kwargs["video"] = _strip_outer_quotes(kwargs["video"])
-                return _guard_lazy_audio(_VHS_LOAD_VIDEO_FN(*args, **kwargs))
-            return _guard_lazy_audio(super().load_video(*args, **kwargs))
+                return _guard_lazy_audio(
+                    _VHS_LOAD_VIDEO_FN(*args, **kwargs), self.RETURN_TYPES
+                )
+            return _guard_lazy_audio(
+                super().load_video(*args, **kwargs), self.RETURN_TYPES
+            )
 
         @classmethod
         def IS_CHANGED(cls, video, input_path="", **kwargs):

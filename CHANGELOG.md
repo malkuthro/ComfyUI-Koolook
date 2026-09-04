@@ -16,10 +16,15 @@ The format is inspired by Keep a Changelog and SemVer.
   stream the ffmpeg call exits `-22` (`Output file does not contain any
   stream`) and took down the whole prompt — which is every Nuke `mov64` write,
   since those carry video plus timecode and no audio. `Easy_LoadVideo` now
-  wraps the deferred map: when the ffmpeg report lists no audio stream it
-  substitutes silence and logs once; any other extraction failure is re-raised
-  untouched, so real problems stay loud. The wrapper stays lazy, so nothing
-  runs ffmpeg that did not before.
+  wraps the deferred map on its declared `AUDIO` output. Silence is
+  substituted only on *evidence of absence*: ffmpeg opened the input, listed
+  its streams, none was audio, and the muxer then had nothing to write. Every
+  other failure — a missing ffmpeg binary, a permission error, a timeout, a
+  truncated log, any non-ffmpeg exception — proves nothing about whether the
+  source has audio and is re-raised untouched, so real problems stay loud.
+  An unrecognised ffmpeg message re-raises by design, so a future wording
+  change surfaces as a visible error rather than silent corruption. The
+  wrapper stays lazy, so nothing runs ffmpeg that did not before.
 
 ## [0.5.0] - 2026-08-10
 
