@@ -331,13 +331,103 @@ export async function captureWorkflowApiPrompt(visualGraph) {
     return prompt;
 }
 
+// Reduce a ComfyWorkflow-ish object to its bare workflow name (no directory,
+// no `.json`). Comfy's workflow objects vary across versions — `.filename`,
+// `.path`, and `.key` have all been the canonical field at different points —
+// so we try each and normalise. Returns "" when nothing usable is present.
+function comfyWorkflowBasename(wf) {
+    try {
+        let s = String(wf?.filename ?? wf?.path ?? wf?.key ?? "");
+        const slash = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+        if (slash >= 0) s = s.slice(slash + 1);
+        if (s.toLowerCase().endsWith(".json")) s = s.slice(0, -5);
+        return s;
+    } catch (e) {
+        return "";
+    }
+}
+
+// Names of every workflow tab currently open (temporary drafts included).
+function openWorkflowNames(store) {
+    const names = new Set();
+    try {
+        for (const wf of store?.openWorkflows || []) {
+            const b = comfyWorkflowBasename(wf);
+            if (b) names.add(b);
+        }
+    } catch (e) {
+        console.warn("[Koolook] could not read open workflows for name de-dupe:", e);
+    }
+    return names;
+}
+
+// Names of Comfy's *persisted* workflow files (the ones that live under
+// `workflows/` on disk). Only these can trigger the autosave 409 Conflict the
+// sidebar Load path historically avoided, so temporary drafts are excluded.
+function persistedWorkflowNames(store) {
+    const names = new Set();
+    try {
+        const all = store?.workflows;
+        if (Array.isArray(all)) {
+            for (const wf of all) {
+                if (wf?.isTemporary === true) continue;
+                const b = comfyWorkflowBasename(wf);
+                if (b) names.add(b);
+            }
+        }
+    } catch (e) {
+        console.warn("[Koolook] could not read persisted workflows for name de-dupe:", e);
+    }
+    return names;
+}
+
+// Pick the name the loaded tab should carry. We bind the Comfy tab to the
+// sidebar workflow's own name (so the tab reads "MyWorkflow" instead of a
+// generic "Unsaved Workflow") but must dodge two hazards:
+//
+//   1. 409 Conflict — binding to a name that already exists as a persisted
+//      `workflows/<name>.json` file lets Comfy's autosave/draft writer collide
+//      with that file. We de-dupe against persisted names to avoid it.
+//   2. Duplicate graph id — Comfy is unforgiving about two OPEN tabs sharing a
+//      graph `.id`. Because the caller derives the graph id from this resolved
+//      name, de-duping against currently-open tab names guarantees a unique
+//      name -> a unique id, so no two live tabs can ever collide. This holds
+//      whether a named `loadGraphData` reuses or spawns a tab.
+//
+// When the resolved name is free of open tabs it is deterministic for a given
+// workflow, so repeat loads reuse one draft id (preserving the #166 behaviour).
+function resolveLoadedTabName(store, wfName) {
+    const persisted = persistedWorkflowNames(store);
+    const open = openWorkflowNames(store);
+    const taken = (n) => persisted.has(n) || open.has(n);
+    if (!taken(wfName)) return wfName;
+    for (let i = 2; i < 1000; i += 1) {
+        const candidate = `${wfName} (${i})`;
+        if (!taken(candidate)) return candidate;
+    }
+    // Astronomically unlikely; fall back to the raw name and let Comfy's own
+    // collision handling take over rather than looping forever.
+    return wfName;
+}
+
 export async function loadWorkflowOntoCanvas(dirPath, wfName) {
     const sourceGraph = getWorkflowGraph(dirPath, wfName);
     if (!sourceGraph) {
         toast(`Workflow not found: ${wfName}`);
         return;
     }
-    const graph = cloneWorkflowForTemporaryLoad(sourceGraph, [...dirPath, wfName].join("\u0000"));
+    // Bind the tab to the workflow's name. `tabName` is de-duped against both
+    // persisted files and open tabs (see resolveLoadedTabName). The stable
+    // draft id is derived from the folder-qualified load key PLUS that
+    // resolved name — the dirPath keeps same-named workflows in different
+    // sidebar folders on distinct draft identities, and because `tabName` is
+    // never a currently-open tab's name, two open tabs can never share a
+    // graph id (the #166 hazard). When the name is free the key is
+    // deterministic per workflow, so repeat loads reuse one draft id.
+    const store = publishWorkflowStore();
+    const tabName = resolveLoadedTabName(store, wfName);
+    const loadKey = [...dirPath, wfName, tabName].join("\u0000");
+    const graph = cloneWorkflowForTemporaryLoad(sourceGraph, loadKey);
     const apply = async () => {
         // Snapshot the current canvas before loading. If loadGraphData throws
         // partway (missing node type, malformed payload), we restore the
@@ -349,15 +439,16 @@ export async function loadWorkflowOntoCanvas(dirPath, wfName) {
             previousGraph = null;
         }
         try {
-            // Keep sidebar workflow loads as Comfy-owned temporary drafts.
-            // Passing `wfName` here, or renaming the active Comfy workflow to
-            // `workflows/<wfName>.json`, binds the tab to Comfy's native
-            // workflow-file namespace. If that file already exists, Comfy's
-            // autosave/draft writer can hit a 409 Conflict even though the
-            // Koolook sidebar workflow with the same display name is valid.
-            await app.loadGraphData(graph, true, true);
+            // Bind the loaded tab to the workflow's name (4th arg) so it reads
+            // "MyWorkflow" instead of a generic "Unsaved Workflow". `tabName`
+            // was de-duped against persisted `workflows/<name>.json` files, so
+            // the 409 Conflict the old anonymous load avoided cannot occur, and
+            // against open tabs, so it can't collide with another live tab's
+            // graph id. Comfy keeps the tab temporary (unsaved) until the user
+            // explicitly saves it.
+            await app.loadGraphData(graph, true, true, tabName);
 
-            toast(`Loaded "${wfName}".`);
+            toast(`Loaded "${tabName}".`);
         } catch (e) {
             console.error("[Koolook] loadGraphData failed:", e);
             if (previousGraph) {
